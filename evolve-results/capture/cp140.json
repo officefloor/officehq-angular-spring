@@ -1,0 +1,72 @@
+{
+  "checkpoint": 140,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp140_remainder-to-smallest",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    106,
+    109,
+    119
+  ],
+  "replaced_tests": [
+    "cp106_pool-cuts.spec.ts::pool cuts",
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 2",
+    "cp119_cut-totals.spec.ts::cut totals"
+  ],
+  "request": {
+    "spec": "The remainder of a pool's cuts now goes to the member with the smallest non-zero cut, the latest\nadded on a tie (a member with no cut gets none; a pool with no non-zero cut gives it to the last\nmember with a share).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe remainder of a pool's cuts now goes to the member with the smallest non-zero cut, the latest\nadded on a tie (a member with no cut gets none; a pool with no non-zero cut gives it to the last\nmember with a share).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "80d563d37f7fb1a62c9f7a91823eb5a4fe828647",
+  "reset_sha": "",
+  "preagent_sha": "99d72025704db18b5ff29f75b691749e187da73d",
+  "prev_sha": "99d72025704db18b5ff29f75b691749e187da73d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3373942,
+    "input_tokens": 8,
+    "output_tokens": 854,
+    "cache_read_tokens": 108734,
+    "cache_creation_tokens": 2556,
+    "num_turns": 3,
+    "duration_ms": 11566,
+    "duration_api_ms": 35501,
+    "model": "claude-opus-5-5",
+    "session_id": "244c297e-b964-4076-b3f4-a80165285959",
+    "stop_reason": "success",
+    "result_text": "I changed which member gets a pool's leftover cent, and all 4 tests in `bin/e2e` pass.\n\nWhen a pool's pot is split by shares, each cut is rounded, so the cuts can add up to a little more or less than the pot. That difference (the remainder) used to go to the member with the largest share. It now goes to the member with the smallest cut above zero, and to the most recently added of them if several tie. Members with a zero cut don't receive it. If no member has a cut above zero, it goes to the last member who takes part in the split, meaning one who isn't retired, held, or outside their dates. That's how I read \"the last member with a share\" in the request.\n\nExample: with a pot of 0.02 and shares of 33.33 / 33.33 / 33.34, the rounded cuts are 0.01 each, which is 0.01 over the pot. All three tie for smallest, so the 0.01 comes off the latest-added member: 0.01 / 0.01 / 0.00.\n\nThe cuts are only worked out in the front end, so the whole change is in `cuts()` in `src/main/frontend/src/app/features/pools/pools.ts`, plus its doc comment. Nothing needed changing in the server, the stored data, or the audit file.\n\nI tidied the wording of that doc comment after the passing run and didn't rerun the tests; the code itself is unchanged since then.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.3373942,
+        "num_turns": 3,
+        "duration_ms": 11566,
+        "duration_api_ms": 35501,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp140.agent.jsonl",
+  "agent_diff_file": "cp140.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
