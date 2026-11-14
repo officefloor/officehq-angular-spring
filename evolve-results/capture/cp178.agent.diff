@@ -1,0 +1,237 @@
+diff --git a/src/main/frontend/src/app/features/dashboard/dashboard.ts b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+new file mode 100644
+index 000000000..6e99eda59
+--- /dev/null
++++ b/src/main/frontend/src/app/features/dashboard/dashboard.ts
+@@ -0,0 +1,32 @@
++import { Component, input } from '@angular/core';
++
++/** A steward's dashboard counts; null for a user who is not a steward (the cells show empty). */
++export interface DashboardCounts {
++  pending: number;
++  review: number;
++  overdue: number;
++}
++
++// A steward's dashboard over the sheet: how many of its claims are PENDING, how many are in REVIEW,
++// and how many of those that count are overdue. A user who is not a steward (by their own role or a
++// delegation in force on the sheet's today) sees the cells empty; under an as-of date it shows the
++// counts as they stood then, for the role the user had then.
++@Component({
++  selector: 'app-dashboard',
++  template: `
++    <section aria-labelledby="dashboard-heading">
++      <h2 id="dashboard-heading">Steward's dashboard</h2>
++      <dl>
++        <dt>PENDING claims</dt>
++        <dd data-testid="dash-pending-count">{{ counts()?.pending ?? '' }}</dd>
++        <dt>REVIEW claims</dt>
++        <dd data-testid="dash-review-count">{{ counts()?.review ?? '' }}</dd>
++        <dt>Overdue claims</dt>
++        <dd data-testid="dash-overdue-count">{{ counts()?.overdue ?? '' }}</dd>
++      </dl>
++    </section>
++  `,
++})
++export class Dashboard {
++  readonly counts = input.required<DashboardCounts | null>();
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3ddbc54d6..a04a75244 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -12,6 +12,7 @@ import { SettingStore, Settings } from '../settings/settings';
+ import { Summary } from '../summary/summary';
+ import { PersonPlans, PlanGenerate } from '../plans/plans';
+ import { Counters } from '../counters/counters';
++import { Dashboard, DashboardCounts } from '../dashboard/dashboard';
+ import { PoolStore, Pools, figure, personCutTotals } from '../pools/pools';
+ import { CrewStore, Crews, crewDueCents } from '../crews/crews';
+ 
+@@ -131,7 +132,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+ // saves their changes.
+ @Component({
+   selector: 'app-people',
+-  imports: [ClaimTemplates, Counters, Crews, Holidays, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, Summary, VoidReasons],
++  imports: [ClaimTemplates, Counters, Crews, Dashboard, Holidays, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, Summary, VoidReasons],
+   template: `
+     <app-counters
+       [peopleCount]="people().length"
+@@ -145,6 +146,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+       [consolidatedDueTotal]="consolidatedDue()"
+       [consolidatedOverdueTotal]="consolidatedOverdue()"
+     />
++    <app-dashboard [counts]="dashboard()" />
+     <app-settings />
+     <app-rates />
+     <app-periods [dueTotals]="periodDueTotals()" />
+@@ -900,6 +902,25 @@ export class People {
+     const delegated = today !== null && this.settings.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
+     return !delegated && this.settings.roles().some((r) => r.user === user && r.role === 'viewer');
+   });
++  /** Whether the signed-in user is a steward on the sheet: by their own role, or by a delegation of the
++   *  steward role in force on the sheet's today. */
++  private readonly steward = computed(() => {
++    const user = this.session.user();
++    const today = this.session.today();
++    const delegated = today !== null && this.settings.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
++    return delegated || this.settings.roles().some((r) => r.user === user && r.role === 'steward');
++  });
++  /** The steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that count;
++   *  null for a user who is not a steward. */
++  protected readonly dashboard = computed<DashboardCounts | null>(() => {
++    if (!this.steward()) return null;
++    const claims = this.claims();
++    return {
++      pending: claims.filter((c) => c.status === 'PENDING').length,
++      review: claims.filter((c) => c.status === 'REVIEW').length,
++      overdue: this.overdueCount(),
++    };
++  });
+   /** The sheet's floor in cents in force on a date. */
+   protected readonly floor = computed(() => {
+     const floorOn = this.settings.floorOn();
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 4af24658d..3927d9293 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -92,14 +92,14 @@ public class RateController {
+     }
+ 
+     /** The rates of the sheets the sheet's rates fall back to, nearest first (its parent, the
+-     *  parent's parent, up to three levels up), each listed as {@link #list} lists them: as they stand
+-     *  now, or as they stood at the end of the screen's as-of date. */
++     *  parent's parent, up to three levels up), each listed as {@link #list} lists them as they stand
++     *  now; under the screen's as-of date, the parents the sheet had at the end of that day. */
+     @GetMapping("/inherited")
+     public List<List<RateView>> inherited(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+             @RequestHeader(value = AsOf.HEADER, required = false) String asOf) {
+         LocalDate day = AsOf.parse(asOf);
+-        return service.ancestors(sheetId.trim()).stream()
+-                .map(ancestor -> service.list(ancestor, day).stream().map(this::view).toList())
++        return service.ancestors(sheetId.trim(), day).stream()
++                .map(ancestor -> service.list(ancestor).stream().map(this::view).toList())
+                 .toList();
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 73a6ae724..1e3bdcd10 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -10,6 +10,7 @@ import java.util.Optional;
+ import java.util.stream.Stream;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.history.History;
++import net.officefloor.hq.app.setting.SettingService;
+ import net.officefloor.hq.app.sheet.Sheet;
+ import net.officefloor.hq.app.sheet.SheetRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -45,20 +46,29 @@ public class RateService {
+         this.audit = audit;
+     }
+ 
+-    /** The sheet's parent sheet's id; null when it has none. The parent is not kept in the sheet's
+-     *  history: a sheet shown as of a past day falls back to its parent as it stands now. */
+-    private String parentOf(String sheetId) {
++    /** The sheet's parent sheet's id as it stood at the end of a day (null: as it stands now); null
++     *  when it had none. A sheet whose parent was never kept in its history has it as it stands now. */
++    private String parentOf(String sheetId, LocalDate asOf) {
++        if (asOf != null && history.settingsKept(sheetId).contains(SettingService.PARENT)) {
++            return history.settings(sheetId, asOf).get(SettingService.PARENT);
++        }
+         return sheetRepository.findById(sheetId).map(Sheet::getParentId).orElse(null);
+     }
+ 
+     /** The sheets the sheet's rates fall back to, nearest first: its parent, the parent's parent, up
+      *  to {@link #PARENT_LEVELS} levels up. */
+     public List<String> ancestors(String sheetId) {
++        return ancestors(sheetId, null);
++    }
++
++    /** The sheets the sheet's rates fall back to as they stood at the end of a day (null: now),
++     *  nearest first: the parent each had then. */
++    public List<String> ancestors(String sheetId, LocalDate asOf) {
+         List<String> found = new ArrayList<>();
+-        String sheet = parentOf(sheetId);
++        String sheet = parentOf(sheetId, asOf);
+         while (sheet != null && found.size() < PARENT_LEVELS && !sheet.equals(sheetId) && !found.contains(sheet)) {
+             found.add(sheet);
+-            sheet = parentOf(sheet);
++            sheet = parentOf(sheet, asOf);
+         }
+         return found;
+     }
+@@ -106,7 +116,7 @@ public class RateService {
+     }
+ 
+     /** The grade's rate in force on a date as the sheet's rates stood at the end of a day (null: as
+-     *  they stand now), falling back to its parent sheets' rates as they stood at the end of that day. */
++     *  they stand now), falling back to the rates of the parent sheets it had then, as they stand now. */
+     public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date, LocalDate asOf) {
+         return rateFor(sheetId, grade, date, null, asOf);
+     }
+@@ -120,10 +130,10 @@ public class RateService {
+         if (own.isPresent()) {
+             return own;
+         }
+-        // Read as of a day, the sheet falls back to its parents' rates as they stood at the end of it
+-        // (a rate a parent was given while its today was after the day does not count).
+-        for (String ancestor : ancestors(sheetId)) {
+-            Optional<Rate> theirs = ownRateFor(ancestor, grade, date, claimId, asOf);
++        // Read as of a day, the sheet falls back to the parents it had at the end of it, their rates as
++        // they stand now: a parent keeps its own today, so its history does not follow the sheet's.
++        for (String ancestor : ancestors(sheetId, asOf)) {
++            Optional<Rate> theirs = ownRateFor(ancestor, grade, date, claimId, null);
+             if (theirs.isPresent()) {
+                 return theirs;
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index cef3d0ac7..dbae7bade 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -71,6 +71,9 @@ public class SettingService {
+     private static final String POT = "pot";
+     private static final String ALERT_THRESHOLD = "alert-threshold";
+     private static final String FISCAL_START_MONTH = "fiscal-start-month";
++    /** The key the sheet's parent is kept under, so its rates fall back as of a past day to the parent
++     *  it had then (see RateService#ancestors); the screen still shows the parent as it stands now. */
++    public static final String PARENT = "parent";
+ 
+     /** The sheet's settings as they stood at the end of a past day: each value as it stood set then,
+      *  the day standing in for the sheet's today in those in force on a date. */
+@@ -429,8 +432,8 @@ public class SettingService {
+         return sheets.load(sheetId).getAlertThreshold();
+     }
+ 
+-    /** The sheet's parent sheet's id; null when it has none. Not kept in the sheet's history: the
+-     *  sheet shown as of a past day shows its parent as it stands now. */
++    /** The sheet's parent sheet's id; null when it has none. The sheet shown as of a past day shows
++     *  its parent as it stands now. */
+     public String parent(String sheetId) {
+         return sheets.load(sheetId).getParentId();
+     }
+@@ -790,6 +793,7 @@ public class SettingService {
+         Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+         sheet.setParentId(parentId);
+         Sheet saved = sheetRepository.saveAndFlush(sheet);
++        history.settingSet(sheetId, PARENT, parentId);
+         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=parent value="
+                 + (parentId != null ? parentId : ""));
+         return saved;
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+index 864d6d2bc..c11d7da30 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+@@ -20,9 +20,10 @@ public record StatementSummary(int count, String lastDueTotal, LocalDate lastDat
+             return NONE;
+         }
+         Statement last = statements.get(statements.size() - 1);
+-        // Oldest first by date, so those a merge or transfer brought over fall among the person's own.
++        // In the order they were taken (one taken as of a past day falls where it was taken); those a
++        // merge brought over fall before the person's own.
+         List<Line> lines = statements.stream()
+-                .sorted(Comparator.comparing(Statement::getTakenOn).thenComparingLong(Statement::getOrder))
++                .sorted(Comparator.comparingLong(Statement::getOrder))
+                 .map(statement -> new Line(statement.getTakenOn(), statement.getDueTotal())).toList();
+         return new StatementSummary(statements.size(), last.getDueTotal(), last.getTakenOn(), lines);
+     }
