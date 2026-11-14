@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { cents } from '../claims/claims-api';
 
 export interface Period {
   id: number;
@@ -18,6 +19,13 @@ export interface Period {
 /** The period whose dates contain a date (yyyy-mm-dd), or null when none does. */
 export function periodOn(periods: readonly Period[], date: string): Period | null {
   return periods.find((p) => p.from <= date && date <= p.to) ?? null;
+}
+
+/** The due-total a period shows, in cents: the one fixed when it was closed, else the live one
+ *  from dueTotals (by period id; 0 with none). */
+export function periodDueCents(p: Period, dueTotals: ReadonlyMap<number, number>): number {
+  if (p.closed && p.closedTotal !== null) return cents(p.closedTotal);
+  return dueTotals.get(p.id) ?? 0;
 }
 
 // The sheet's periods, read and written through the server.

@@ -6,20 +6,22 @@ import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
+import { Summary, SummaryPerson } from '../summary/summary';
 import { Lateness, Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
 import { GRADES, PeopleApi, Person, gradeOn, holdError, isStale, patronError, personError, retireError, statementError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total, their overdue claims, and their patrons and backing; the sheet's claimed-total,
-// due-total and overdue claims; and
+// due-total and overdue claims; a summary of them by grade, period and status; and
 // the one form that adds a person or, with a
 // person's editor open, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, Periods, Rates],
+  imports: [ReactiveFormsModule, PersonClaims, Periods, Rates, Summary],
   template: `
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
+    <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
@@ -228,6 +230,11 @@ export class People {
       }
     }
     return out;
+  });
+  /** Each person as the summary counts them: grade today, whether retired (as the list hides them), due-total. */
+  protected readonly summaryPeople = computed<SummaryPerson[]>(() => {
+    const dues = this.dueByPerson();
+    return this.people().map((p) => ({ grade: this.gradeOf(p), retired: p.retiredFrom !== null, due: dues.get(p.id) ?? null }));
   });
   /** The names of the people on the sheet, by person id (retired ones too). */
   private readonly namesById = computed(() => new Map(this.people().map((p) => [p.id, p.name])));

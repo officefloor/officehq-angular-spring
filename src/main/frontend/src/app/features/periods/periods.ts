@@ -1,8 +1,8 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { cents, money } from '../claims/claims-api';
-import { Period, PeriodsApi, closeError, periodError, reopenError } from './periods-api';
+import { money } from '../claims/claims-api';
+import { Period, PeriodsApi, closeError, periodDueCents, periodError, reopenError } from './periods-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -83,8 +83,7 @@ export class Periods {
 
   /** A closed period shows the due-total fixed when it was closed; an open one its live total. */
   protected dueOf(p: Period): string {
-    if (p.closed && p.closedTotal !== null) return money(cents(p.closedTotal));
-    return money(this.dueTotals().get(p.id) ?? 0);
+    return money(periodDueCents(p, this.dueTotals()));
   }
 
   /** Close a period, fixing its due-total; a refusal shows an error on the period. */
