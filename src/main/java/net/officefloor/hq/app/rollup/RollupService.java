@@ -160,7 +160,7 @@ public class RollupService {
     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it
      *  to (null: n/a), else its amount times the rate in force on its date of its person's grade
      *  then, rounded half to even,
-     *  raised to the sheet's floor; an unsettled one with its late charge on top. */
+     *  raised to the sheet's floor (a correction's never is); an unsettled one with its late charge on top. */
     private static BigDecimal shownDueOf(Claim c, Person person, List<Rate> sheetRates, BigDecimal floor,
             LateCharge late) {
         if (c.getSettledDue() != null) {
@@ -177,7 +177,7 @@ public class RollupService {
         }
         return inForce(person, sheetRates, c.getDate())
                 .map(r -> c.getAmount().multiply(r.getPct()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
-                .map(due -> due.max(floor))
+                .map(due -> c.isCorrection() ? due : due.max(floor))
                 .orElse(null);
     }
 

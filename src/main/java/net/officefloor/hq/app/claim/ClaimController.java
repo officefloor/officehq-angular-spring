@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -31,14 +32,15 @@ public class ClaimController {
     /** A claim as the screen shows it: the amount always with two decimals; a SETTLED claim's
      *  due as fixed when it was settled (null, so the due is live, when its grade had no rate then,
      *  and for other claims); who opened it (null while DRAFT); whether the person's last statement
-     *  bound it, and the due it was bound to (null when unbound or n/a then). */
+     *  bound it, and the due it was bound to (null when unbound or n/a then); the number of the
+     *  claim a correction corrects (null for other claims). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, Integer number, String settledDue, String openedBy, boolean stated,
-            String statedDue) {
+            String statedDue, Integer corrects) {
         static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
-                    c.getOpenedBy(), c.isStated(), money(c.getStatedDue()));
+                    c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects());
         }
 
         private static String money(BigDecimal value) {
@@ -50,12 +52,14 @@ public class ClaimController {
     public record StatementView(PersonView person, List<ClaimView> claims) {
     }
 
-    /** A claim's values as the form submits them: an amount of 0.00 or more with up to two
-     *  decimals, an optional date (the sheet's today when absent) and an optional note. */
+    /** A claim's values as the form submits them: an amount with up to two decimals (negative
+     *  for a correction), an optional date (the sheet's today when absent), an optional note, and
+     *  the number of the claim a correction corrects. */
     public record ClaimForm(
-            @NotNull @Pattern(regexp = "\\d{1,13}(\\.\\d{1,2})?") String amount,
+            @NotNull @Pattern(regexp = "-?\\d{1,13}(\\.\\d{1,2})?") String amount,
             LocalDate date,
-            @Size(max = 1000) String note) {
+            @Size(max = 1000) String note,
+            @Positive Integer corrects) {
     }
 
     private final ClaimService service;
@@ -80,7 +84,7 @@ public class ClaimController {
             @PathVariable long personId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm body) {
-        return ClaimView.of(service.add(sheetId, user.trim(), personId, new BigDecimal(body.amount()), body.date(), body.note()));
+        return ClaimView.of(service.add(sheetId, user.trim(), personId, new BigDecimal(body.amount()), body.date(), body.note(), body.corrects()));
     }
 
     @PutMapping("/claims/{id}")
@@ -89,7 +93,7 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm body) {
-        return ClaimView.of(service.update(sheetId, user.trim(), id, new BigDecimal(body.amount()), body.date(), body.note()));
+        return ClaimView.of(service.update(sheetId, user.trim(), id, new BigDecimal(body.amount()), body.date(), body.note(), body.corrects()));
     }
 
     @PostMapping("/claims/{id}/open")

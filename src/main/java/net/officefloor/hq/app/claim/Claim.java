@@ -63,6 +63,11 @@ public class Claim {
     @Column(name = "stated_due", precision = 15, scale = 2)
     private BigDecimal statedDue;
 
+    /** The number of the SETTLED claim of the same person that this correction (a negative
+     *  amount) corrects; none for any other claim. */
+    @Column(name = "corrects")
+    private Integer corrects;
+
     protected Claim() {
     }
 
@@ -92,6 +97,19 @@ public class Claim {
 
     public void setAmount(BigDecimal amount) {
         this.amount = amount;
+    }
+
+    /** Whether the claim is a correction: its amount is negative. */
+    public boolean isCorrection() {
+        return amount.signum() < 0;
+    }
+
+    public Integer getCorrects() {
+        return corrects;
+    }
+
+    public void setCorrects(Integer corrects) {
+        this.corrects = corrects;
     }
 
     public LocalDate getDate() {

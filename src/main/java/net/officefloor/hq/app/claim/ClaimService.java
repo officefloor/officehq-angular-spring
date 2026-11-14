@@ -57,17 +57,22 @@ public class ClaimService {
     }
 
     /** Add a claim for a person on the sheet; a missing date takes the sheet's today. Refused
-     *  (423) when the date is in a closed period, and (422) when it is after the person's
-     *  retirement date. */
+     *  (423) when the date is in a closed period, (422) when it is after the person's
+     *  retirement date, and (422) when it is a correction (a negative amount) that does not name
+     *  the number of a SETTLED claim of the same person. */
     @Transactional
-    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
+    public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseIfClosed(sheetId, on);
         refuseIfRetired(person, on);
+        Integer corrected = correctedBy(sheetId, personId, amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, noteOf(note)));
+        Claim fresh = new Claim(sheetId, personId, amount, on, noteOf(note));
+        fresh.setCorrects(corrected);
+        Claim claim = claims.saveAndFlush(fresh);
         record("CLAIM_ADDED", user, person, claim);
         rollup.recordChanges(sheetId, user, before);
         return claim;
@@ -76,9 +81,11 @@ public class ClaimService {
     /** Change a DRAFT claim's amount, date and note; a missing date takes the sheet's today.
      *  Refused (409) once the claim is no longer a DRAFT (an open claim is voided and a new one
      *  added instead), and (423) when its old or new date is in a closed period, and (422) when the new
-     *  date is after the person's retirement date. */
+     *  date is after the person's retirement date, or when it is a correction that does not name
+     *  the number of a SETTLED claim of the same person. */
     @Transactional
-    public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
+    public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
+            Integer corrects) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
@@ -91,8 +98,10 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         refuseIfRetired(person, on);
+        Integer corrected = correctedBy(sheetId, person.getId(), amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
+        claim.setCorrects(corrected);
         claim.setDate(on);
         claim.setNote(noteOf(note));
         claims.flush();
@@ -189,6 +198,20 @@ public class ClaimService {
         periods.refuseIfClosed(sheetId, date);
     }
 
+    /** The number a claim of the amount corrects: none unless the amount is negative, when it must
+     *  be the number of a SETTLED claim of the same person, or the claim is refused (422). */
+    private Integer correctedBy(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+        if (amount.signum() >= 0) {
+            return null;
+        }
+        if (corrects == null
+                || !claims.existsBySheetIdAndPersonIdAndNumberAndStatus(sheetId, personId, corrects, ClaimStatus.SETTLED)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A negative amount must correct a settled claim of the same person");
+        }
+        return corrects;
+    }
+
     /** Refuse (422) a claim dated after its person's retirement date. */
     private static void refuseIfRetired(Person person, LocalDate date) {
         if (person.retiredBefore(date)) {
@@ -231,13 +254,13 @@ public class ClaimService {
     }
 
     /** The claim's amount times the rate, in force on the claim's date, of its person's grade then, divided by
-     *  100, rounded half to even, raised to the sheet's floor; null with no rate in force then. */
+     *  100, rounded half to even, raised to the sheet's floor (a correction's never is); null with no rate in force then. */
     private BigDecimal dueOf(Claim claim, Person person) {
         BigDecimal floor = sheets.floor(claim.getSheetId());
         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
-                .map(due -> due.max(floor))
+                .map(due -> claim.isCorrection() ? due : due.max(floor))
                 .orElse(null);
     }
 

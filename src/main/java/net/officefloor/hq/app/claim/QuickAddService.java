@@ -38,7 +38,7 @@ public class QuickAddService {
         if (added) {
             person = personService.add(sheetId, user, trimmed, NEW_PERSON_GRADE);
         }
-        Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "");
+        Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "", null);
         return new QuickAdd(person, added, claim);
     }
 }

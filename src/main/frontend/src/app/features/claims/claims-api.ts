@@ -7,6 +7,9 @@ import type { Person } from '../people/people-api';
 /** An amount of 0.00 or more with up to two decimals. */
 export const AMOUNT_PATTERN = /^\d{1,13}(\.\d{1,2})?$/;
 
+/** A claim form's amount: up to two decimals, negative for a correction. */
+export const CLAIM_AMOUNT_PATTERN = /^-?\d{1,13}(\.\d{1,2})?$/;
+
 /** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
 
@@ -32,6 +35,13 @@ export interface Claim {
   stated: boolean;
   /** The due the claim was bound to, with two decimals; null when unbound or n/a then. */
   statedDue: string | null;
+  /** The number of the SETTLED claim this correction (a negative amount) corrects; null for others. */
+  corrects: number | null;
+}
+
+/** Whether a claim is a correction: its amount is negative. */
+export function isCorrection(c: Claim): boolean {
+  return c.amount.startsWith('-');
 }
 
 /** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do. */
@@ -55,6 +65,8 @@ export interface ClaimForm {
   /** null takes the sheet's today. */
   date: string | null;
   note: string;
+  /** The number of the claim a correction corrects; null when none is named. */
+  corrects: number | null;
 }
 
 export interface QuickAddForm {
@@ -110,12 +122,17 @@ export class ClaimsApi {
   }
 }
 
-export function claimError(e: unknown): string {
-  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount of 0.00 or more with up to two decimals.';
+/** Why a claim form was refused; `correction` says whether its amount was negative. */
+export function claimError(e: unknown, correction = false): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount with up to two decimals.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft claim can be edited; void it and add a new one.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'The date is in a closed period.';
-  if (e instanceof HttpErrorResponse && e.status === 422) return "The date is after the person's retirement date.";
+  if (e instanceof HttpErrorResponse && e.status === 422) {
+    return correction
+      ? "A correction must name the number of a settled claim of this person, and be dated by the person's retirement date."
+      : "The date is after the person's retirement date.";
+  }
   return 'Something went wrong; try again.';
 }
 
@@ -138,13 +155,16 @@ export function statusError(e: unknown, opener: boolean): string {
   return 'Something went wrong; try again.';
 }
 
-/** An amount in whole cents. */
+/** An amount in whole cents (negative for a negative amount). */
 export function cents(amount: string): number {
-  const [whole, frac = ''] = amount.split('.');
-  return Number(whole) * 100 + Number((frac + '00').slice(0, 2));
+  const negative = amount.startsWith('-');
+  const [whole, frac = ''] = (negative ? amount.slice(1) : amount).split('.');
+  const abs = Number(whole) * 100 + Number((frac + '00').slice(0, 2));
+  return negative ? -abs : abs;
 }
 
-/** Whole cents as an amount with two decimals. */
+/** Whole cents as an amount with two decimals, a minus sign before a negative one. */
 export function money(cents: number): string {
-  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
+  const abs = Math.abs(cents);
+  return `${cents < 0 ? '-' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }

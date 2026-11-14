@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, dueBy, money, overdue, statusError } from './claims-api';
+import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, dueBy, money, overdue, statusError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -21,6 +21,9 @@ import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, dueBy
       <input [id]="fieldId('date')" type="date" data-testid="claim-form-date" formControlName="date" />
       <label [for]="fieldId('note')">Note</label>
       <input [id]="fieldId('note')" data-testid="claim-form-note" formControlName="note" autocomplete="off" />
+      <label [for]="fieldId('corrects')">Corrects claim no.</label>
+      <input [id]="fieldId('corrects')" data-testid="claim-form-corrects" formControlName="corrects"
+        inputmode="numeric" autocomplete="off" />
       <button type="submit" data-testid="claim-form-submit">{{ editingId() === null ? 'Add claim' : 'Save claim' }}</button>
       @if (error(); as err) {
         <p role="alert" data-testid="claim-form-error">{{ err }}</p>
@@ -34,6 +37,7 @@ import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, dueBy
             <span data-testid="claim-amount">{{ c.amount }}</span>
             <span data-testid="claim-date">{{ c.date }}</span>
             <span data-testid="claim-note">{{ c.note }}</span>
+            <span>Corrects No. <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
             <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
             <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
             <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
@@ -90,6 +94,7 @@ export class PersonClaims {
     amount: new FormControl('', { nonNullable: true }),
     date: new FormControl('', { nonNullable: true }),
     note: new FormControl('', { nonNullable: true }),
+    corrects: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -135,7 +140,7 @@ export class PersonClaims {
       return;
     }
     this.editingId.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note });
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects === null ? '' : String(c.corrects) });
   }
 
   protected async submit(): Promise<void> {
@@ -145,8 +150,8 @@ export class PersonClaims {
     if (!sheetId) return;
     const value = this.form.getRawValue();
     const amount = value.amount.trim();
-    if (!AMOUNT_PATTERN.test(amount)) {
-      this.error.set('Enter an amount of 0.00 or more with up to two decimals.');
+    if (!CLAIM_AMOUNT_PATTERN.test(amount)) {
+      this.error.set('Enter an amount with up to two decimals.');
       return;
     }
     const date = value.date.trim();
@@ -154,7 +159,17 @@ export class PersonClaims {
       this.error.set('Enter a date as yyyy-mm-dd.');
       return;
     }
-    const form = { amount, date: date || null, note: value.note };
+    const corrects = value.corrects.trim();
+    if (corrects !== '' && !/^[1-9]\d{0,8}$/.test(corrects)) {
+      this.error.set('Enter the number of the claim corrected as a whole number.');
+      return;
+    }
+    const correction = amount.startsWith('-');
+    if (correction && corrects === '') {
+      this.error.set('A negative amount must name the number of the settled claim it corrects.');
+      return;
+    }
+    const form = { amount, date: date || null, note: value.note, corrects: corrects === '' ? null : Number(corrects) };
     const editing = this.editingId();
     this.submitting = true;
     try {
@@ -164,7 +179,7 @@ export class PersonClaims {
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
       this.reset();
     } catch (e) {
-      this.error.set(claimError(e));
+      this.error.set(claimError(e, correction));
     } finally {
       this.submitting = false;
     }
@@ -189,7 +204,7 @@ export class PersonClaims {
 
   protected reset(): void {
     this.editingId.set(null);
-    this.form.reset({ amount: '', date: '', note: '' });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '' });
     this.error.set(null);
   }
 }
