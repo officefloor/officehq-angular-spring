@@ -249,10 +249,7 @@ public class RollupService {
         List<Person> sheetPeople = personService.list(sheetId, asOf);
         Map<Long, LocalDate> retiredFrom = new HashMap<>();
         sheetPeople.forEach(person -> retiredFrom.put(person.getId(), person.getRetiredFrom()));
-        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDesc(sheetId);
-        Map<Long, List<Claim>> counted = (asOf == null ? sheetClaims : history.claims(sheetClaims, asOf)).stream()
-                .filter(claim -> claim.countsLive(retiredFrom.get(claim.getPersonId()), today))
-                .collect(Collectors.groupingBy(Claim::getPersonId));
+        Map<Long, List<Claim>> counted = counted(sheetId, asOf, today, retiredFrom);
         Map<Long, BigDecimal> shared = sharedParts(sheetId, asOf, sheetPeople, counted);
         Map<Long, BigDecimal> cutTotals = cuts.cutTotals(sheetId, asOf, sheetPeople);
         Map<Long, Figures> figures = new LinkedHashMap<>();
@@ -270,6 +267,25 @@ public class RollupService {
             overdues.add(f.overdue());
         }
         return new Rollup(figures, claimedTotal, trimmedSum(dues), trimmedSum(overdues));
+    }
+
+    /** The sheet's claims that count, as they stood at the end of a day (null: now), by person id. */
+    private Map<Long, List<Claim>> counted(String sheetId, LocalDate asOf, LocalDate today,
+            Map<Long, LocalDate> retiredFrom) {
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDesc(sheetId);
+        return (asOf == null ? sheetClaims : history.claims(sheetClaims, asOf)).stream()
+                .filter(claim -> claim.countsLive(retiredFrom.get(claim.getPersonId()), today))
+                .collect(Collectors.groupingBy(Claim::getPersonId));
+    }
+
+    /** What the shares of the claims that count move in a person's due-total, as it stood at the end of
+     *  a day (null: now); null when no share moves it. */
+    public BigDecimal sharedPartOf(String sheetId, Long personId, LocalDate asOf) {
+        LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
+        List<Person> sheetPeople = personService.list(sheetId, asOf);
+        Map<Long, LocalDate> retiredFrom = new HashMap<>();
+        sheetPeople.forEach(person -> retiredFrom.put(person.getId(), person.getRetiredFrom()));
+        return sharedParts(sheetId, asOf, sheetPeople, counted(sheetId, asOf, today, retiredFrom)).get(personId);
     }
 
     /** What the shares of the claims that count move in each person's due-total, by person id: each

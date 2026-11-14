@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.Preview;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,9 +37,11 @@ public class SheetService {
         });
     }
 
-    /** The sheet's today: the date every date-dependent decision and default on the sheet uses. */
+    /** The sheet's today: the date every date-dependent decision and default on the sheet uses. While
+     *  a read is answered for a screen set to a preview date, that date stands in for it. */
     public LocalDate today(String id) {
-        return load(id).getToday();
+        LocalDate today = load(id).getToday();
+        return Preview.current().orElse(today);
     }
 
     /** Take the sheet's next claim number, FY<year>-<n>: the one after the last given in the fiscal

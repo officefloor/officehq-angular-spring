@@ -21,3 +21,13 @@ export const asOfHeader: HttpInterceptorFn = (req, next) => {
   const asOf = inject(Session).asOf();
   return next(asOf ? req.clone({ setHeaders: { [AS_OF_HEADER]: asOf } }) : req);
 };
+
+/** The header that tells the server the date this screen previews the sheet on. */
+export const PREVIEW_HEADER = 'X-Preview';
+
+// Sends the screen's preview date, while one is set, with every API request: the server answers reads
+// as if the sheet's today were that date, and makes every change on the real today.
+export const previewHeader: HttpInterceptorFn = (req, next) => {
+  const preview = inject(Session).preview();
+  return next(preview ? req.clone({ setHeaders: { [PREVIEW_HEADER]: preview } }) : req);
+};

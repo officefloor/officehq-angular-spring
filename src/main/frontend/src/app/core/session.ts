@@ -27,9 +27,16 @@ export class Session {
    *  It belongs to this screen alone: while it is set, everything read is as it stood at the end of
    *  that day, and every change is refused. */
   readonly asOf = signal<string | null>(null);
-  /** The active sheet's today (yyyy-mm-dd): every date-dependent decision and default date uses
-   *  it, never the real clock; while an as-of date is set, that date stands in for it. */
-  readonly today = computed(() => this.asOf() ?? this.sheetToday());
+  /** The date this screen previews the sheet on (yyyy-mm-dd); null while it shows the sheet's today.
+   *  It belongs to this screen alone: while it is set, every figure is shown as if the sheet's today
+   *  were that date, over the sheet's current records, and every change still uses the real today. */
+  readonly preview = signal<string | null>(null);
+  /** The active sheet's today (yyyy-mm-dd) as changes use it, never the real clock; while an as-of
+   *  date is set, that date stands in for it. */
+  readonly realToday = computed(() => this.asOf() ?? this.sheetToday());
+  /** The day the screen's figures are worked out on (yyyy-mm-dd): the sheet's today, or the
+   *  as-of date, or the preview date while one is set. */
+  readonly today = computed(() => this.asOf() ?? this.preview() ?? this.sheetToday());
   /** Whether the active sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
   /** The number of the active sheet's last settle batch; null when there has been none. */
@@ -86,6 +93,18 @@ export class Session {
   /** Show the sheet as it is now again, re-reading everything. */
   clearAsOf(): void {
     this.asOf.set(null);
+    this.loads.update((n) => n + 1);
+  }
+
+  /** Preview the sheet on a date (yyyy-mm-dd) on this screen, re-reading every figure. */
+  setPreview(date: string): void {
+    this.preview.set(date);
+    this.loads.update((n) => n + 1);
+  }
+
+  /** Show the figures on the sheet's today again, re-reading them. */
+  clearPreview(): void {
+    this.preview.set(null);
     this.loads.update((n) => n + 1);
   }
 

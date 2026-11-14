@@ -52,7 +52,7 @@ import { SettingStore } from '../settings/settings';
 
       @if (session.sheetId(); as sheet) {
         <p>Sheet <strong data-testid="sheet-current-id">{{ sheet }}</strong></p>
-        <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
+        <p>Today <strong data-testid="sheet-today">{{ session.realToday() }}</strong></p>
         <form (submit)="saveToday($event)">
           <label for="sheet-today-date">Change today</label>
           <input
@@ -99,6 +99,22 @@ import { SettingStore } from '../settings/settings';
         @if (asOfError(); as error) {
           <p role="alert" data-testid="asof-error">{{ error }}</p>
         }
+        <form (submit)="setPreview($event)">
+          <label for="preview-date">Preview on</label>
+          <input
+            id="preview-date"
+            type="date"
+            data-testid="preview-date"
+            [value]="previewInput()"
+            (input)="previewInput.set(value($event)); previewError.set(null)"
+          />
+          <button type="submit" data-testid="preview-set">Set preview</button>
+          <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview</button>
+          Preview <strong data-testid="sheet-preview">{{ session.preview() ?? '' }}</strong>
+        </form>
+        @if (previewError(); as error) {
+          <p role="alert" data-testid="preview-error">{{ error }}</p>
+        }
         <app-people />
         <app-duplicates />
         <app-snapshot-compare />
@@ -139,6 +155,8 @@ export class Home {
   /** The id of the last clone this screen made of the active sheet. */
   protected readonly clonedTo = signal('');
   protected readonly asOfError = signal<string | null>(null);
+  protected readonly previewInput = signal('');
+  protected readonly previewError = signal<string | null>(null);
 
   protected readonly locales = LOCALES;
   /** The locale chosen in the select and not yet saved; null shows the saved one. */
@@ -230,6 +248,25 @@ export class Home {
     this.todayError.set(null);
     this.asOfInput.set('');
     this.session.clearAsOf();
+  }
+
+  /** Preview the sheet's figures on the typed date on this screen only. */
+  protected setPreview(event: Event): void {
+    event.preventDefault();
+    this.previewError.set(null);
+    const date = this.previewInput().trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.previewError.set('Type a date (yyyy-mm-dd) to preview the sheet on.');
+      return;
+    }
+    this.session.setPreview(date);
+  }
+
+  /** Show the figures on the sheet's today again. */
+  protected clearPreview(): void {
+    this.previewError.set(null);
+    this.previewInput.set('');
+    this.session.clearPreview();
   }
 
   protected async saveToday(event: Event): Promise<void> {

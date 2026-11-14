@@ -1009,7 +1009,7 @@ export class People {
   /** Whether the signed-in user is a viewer on the sheet. */
   protected readonly viewer = computed(() => {
     const user = this.session.user();
-    const today = this.session.today();
+    const today = this.session.realToday();
     // A delegation of the steward role in force on the sheet's today makes the user a steward.
     const delegated = today !== null && this.settings.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
     return !delegated && this.settings.roles().some((r) => r.user === user && r.role === 'viewer');
@@ -1018,7 +1018,7 @@ export class People {
    *  steward role is in force on the sheet's today. */
   private readonly restricted = computed(() => {
     const user = this.session.user();
-    const today = this.session.today();
+    const today = this.session.realToday();
     const delegated = today !== null && this.settings.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
     return !delegated && this.settings.roles().some((r) => r.user === user && r.role === 'restricted');
   });
@@ -1026,7 +1026,7 @@ export class People {
    *  steward role in force on the sheet's today. */
   private readonly steward = computed(() => {
     const user = this.session.user();
-    const today = this.session.today();
+    const today = this.session.realToday();
     const delegated = today !== null && this.settings.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
     return delegated || this.settings.roles().some((r) => r.user === user && r.role === 'steward');
   });

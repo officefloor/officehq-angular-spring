@@ -18,6 +18,7 @@ import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.pool.PoolCutService;
 import net.officefloor.hq.app.rate.RateService;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -44,12 +45,15 @@ public class StatementService {
     private final SettingService settings;
     private final History history;
     private final PoolCutService cuts;
+    private final RollupService rollups;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, ClaimRepository claims, ClaimService claimService,
             PersonRepository people, RateService rates, PersonGradeService grades, PersonService personService,
-            SheetService sheets, SettingService settings, History history, PoolCutService cuts, Audit audit) {
+            SheetService sheets, SettingService settings, History history, PoolCutService cuts, RollupService rollups,
+            Audit audit) {
         this.history = history;
+        this.rollups = rollups;
         this.cuts = cuts;
         this.statements = statements;
         this.claims = claims;
@@ -106,6 +110,8 @@ public class StatementService {
             throw new StatementRefusedException(person.getName() + " was not on the sheet on " + asOf);
         }
         LocalDate day = asOf != null ? asOf : today;
+        // What the shares of claims move in their due-total, as their row shows it.
+        BigDecimal sharedPart = rollups.sharedPartOf(sheetId, personId, asOf);
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean anyFigure = false;
@@ -130,6 +136,10 @@ public class StatementService {
             }
             claim.bind(due);
             counted++;
+        }
+        if (sharedPart != null) {
+            total = total.add(sharedPart);
+            anyFigure = true;
         }
         claims.saveAllAndFlush(theirs);
         boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), day, asOf), day, asOf).isPresent();

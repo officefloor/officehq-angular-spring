@@ -766,7 +766,7 @@ export class PersonClaims {
     // A change of the sheet's today releases every lock, so it closes the editor too.
     let today: string | null | undefined;
     effect(() => {
-      const now = this.session.today();
+      const now = this.session.realToday();
       if (today !== undefined && now !== today) untracked(() => this.reset());
       today = now;
     });
