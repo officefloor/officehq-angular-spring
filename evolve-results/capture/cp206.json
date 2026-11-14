@@ -1,0 +1,64 @@
+{
+  "checkpoint": 206,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp206_restricted-role",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0cac3252207db744aa05620e69f2833ddb71dfb9",
+  "reset_sha": "",
+  "preagent_sha": "3ee71b3de9ec04ccebdb0d0b892a7439f909e416",
+  "prev_sha": "3ee71b3de9ec04ccebdb0d0b892a7439f909e416",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7711043999999999,
+    "input_tokens": 30,
+    "output_tokens": 6726,
+    "cache_read_tokens": 733002,
+    "cache_creation_tokens": 61233,
+    "num_turns": 17,
+    "duration_ms": 298334,
+    "duration_api_ms": 68105,
+    "model": "claude-opus-5-5",
+    "session_id": "bf09c54d-370f-46d7-b479-23682098620f",
+    "stop_reason": "success",
+    "result_text": "The new `restricted` role is in, and all 4 tests in `bin/e2e` pass.\n\n**What a restricted user sees:** the people list shows only their own person (the one whose name or alias matches the user's name) plus the leads and members of every crew that person leads or belongs to. If no person matches the user's name, the list is empty. The totals row, header, summary, periods, pools and the \"my\" figures are still worked out over everyone on the sheet, because the filter only applies to which rows are drawn. If a user has the steward role delegated to them for the sheet's today, they act as a steward and see everyone.\n\n**One decision for you:** the request didn't say what a restricted user may *do*, so I made them act like a clerk. They count as a clerk wherever the default permissions allow clerks to open, settle, void or close a period, and the clerk limit applies to them. You can still set each action separately in the permission matrix. If you'd rather they have fewer rights, that's a small change in `Permission.java`.\n\n**Changes:**\n- **Database:** `V113__restricted_role.sql` rebuilds the `sheet_role` table so its allowed-roles check includes `restricted`, the same way `V39` did for viewer.\n- **Server:** added `RESTRICTED` to `Role.java`, to the default permissions in `Permission.java`, and to the clerk-limit check in `ClaimService.java`.\n- **Front end:**\n  - `settings.ts` accepts `restricted` as a role, its error message lists all four roles, and its permission labels mention the role.\n  - `people.ts` has a new `restricted` check and a `visiblePeople` list that sit in front of the existing retired and sort filters.\n\nSome older comments in `SettingController.java` still describe roles as just \"clerk or steward\"; I didn't update those.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7711043999999999,
+        "num_turns": 17,
+        "duration_ms": 298334,
+        "duration_api_ms": 68105,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp206.agent.jsonl",
+  "agent_diff_file": "cp206.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
