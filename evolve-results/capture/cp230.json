@@ -1,0 +1,64 @@
+{
+  "checkpoint": 230,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp230_pending-sla",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a pending SLA (settings, days, not dated; SETTING_CHANGED key=pending-sla\nvalue=<days>; blank means none). A PENDING claim whose pending day (the sheet's today when it went\nto PENDING, the latest time) plus the SLA is before the sheet's today shows pending-late yes; the\nsummary counts such claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a pending SLA (settings, days, not dated; SETTING_CHANGED key=pending-sla\nvalue=<days>; blank means none). A PENDING claim whose pending day (the sheet's today when it went\nto PENDING, the latest time) plus the SLA is before the sheet's today shows pending-late yes; the\nsummary counts such claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "783f8add2980051c16f86b801cc697bbbb206ae8",
+  "reset_sha": "",
+  "preagent_sha": "240ca73c01403cdfba768d006d33b27349e2e973",
+  "prev_sha": "240ca73c01403cdfba768d006d33b27349e2e973",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7877134,
+    "input_tokens": 42,
+    "output_tokens": 10744,
+    "cache_read_tokens": 858287,
+    "cache_creation_tokens": 50126,
+    "num_turns": 21,
+    "duration_ms": 283595,
+    "duration_api_ms": 97777,
+    "model": "claude-opus-5-5",
+    "session_id": "3c0fa981-aefb-4282-9074-a5f2cf028af8",
+    "stop_reason": "success",
+    "result_text": "I've added the pending SLA setting, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it behaves:**\n- **The setting:** \"Pending SLA (days)\" is a new undated sheet setting. Blank means no SLA, and any value other than a whole number of 0 or more is refused with the usual settings error. Saving it writes `SETTING_CHANGED key=pending-sla value=<days>` to the audit file.\n- **When a claim counts as late:** a claim shows `claim-pending-late` \"yes\" when it is PENDING, an SLA is set, and the date it last went to PENDING plus the SLA is before the sheet's today. A claim that is rejected and later goes back to PENDING takes the newer date.\n- **The summary:** a new \"Late pending\" line (`summary-pending-late-count`) shows how many claims are late.\n\n**What changed:**\n- **Stored data:** a new `pending_sla` column on the sheet (migration `V124__pending_sla.sql`). Copying (cloning) a sheet carries the setting over.\n- **Server:** a new `PUT \u2026/settings/pending-sla` endpoint, and the settings data now includes `pendingSla`. That includes the past-date version of the settings, which uses the setting's saved history.\n- **Front end:** the settings form gets the input and the \"current value\" display, and the claim row and summary get the late flag and count.\n\nI copied the existing review SLA feature throughout, so the new code follows the same patterns. The pending date isn't stored as a new field: it's read from the PENDING entries the app already writes to each claim's status log, the same way the review SLA finds its review date. If the wording of those log lines ever changes, the pattern that reads them needs to change too.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7877134,
+        "num_turns": 21,
+        "duration_ms": 283595,
+        "duration_api_ms": 97777,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp230.agent.jsonl",
+  "agent_diff_file": "cp230.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
