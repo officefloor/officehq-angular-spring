@@ -100,6 +100,7 @@ public class SheetCloneService {
         copyAll("sheet_role", "user_name, role", from, to);
         copyAll("sheet_tag", "tag", from, to);
         copyAll("rate", "grade, rate, from_date, to_date", from, to);
+        copyAll("retired_grade", "grade", from, to);
         copyAll("holiday", "holiday_date", from, to);
         copyAll("void_reason", "reason", from, to);
         copyAll("claim_template", "name, amount, note", from, to);

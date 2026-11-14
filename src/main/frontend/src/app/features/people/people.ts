@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, plusDays, reviewLate, sharePartCents, statusAsOf } from '../claims/claims';
+import { Grades } from '../grades/grades';
 import { Holidays } from '../holidays/holidays';
 import { Notes } from '../notes/notes';
 import { VoidReasonStore, VoidReasons } from '../void-reasons/void-reasons';
@@ -154,7 +155,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
 // saves their changes.
 @Component({
   selector: 'app-people',
-  imports: [ClaimTemplates, Counters, Crews, Dashboard, Holidays, Notes, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, SheetCompare, Summary, VoidReasons],
+  imports: [ClaimTemplates, Counters, Crews, Dashboard, Grades, Holidays, Notes, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, SheetCompare, Summary, VoidReasons],
   template: `
     <app-counters
       [peopleCount]="people().length"
@@ -175,6 +176,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
     <app-dashboard [counts]="dashboard()" />
     <app-settings />
     <app-rates />
+    <app-grades />
     <app-periods [dueTotals]="periodDueTotals()" />
     <app-holidays />
     <app-notes />
@@ -1802,7 +1804,9 @@ export class People {
       const message =
         e instanceof HttpErrorResponse && e.status === 412
           ? `${person.name} was saved by someone else since the sheet was loaded; reload it to give a grade.`
-          : `${person.name} could not be given grade ${grade}.`;
+          : e instanceof HttpErrorResponse && e.status === 422
+            ? `${person.name} could not be given grade ${grade}: it is retired.`
+            : `${person.name} could not be given grade ${grade}.`;
       this.rowError.set({ id: person.id, message });
     }
   }
@@ -2710,6 +2714,8 @@ export class People {
       if (id !== null && e instanceof HttpErrorResponse && e.status === 412) {
         await this.showCurrent(sheet, id, e.error as Person | null);
         this.error.set('Someone else saved this person since you opened the editor; their values are shown.');
+      } else if (e instanceof HttpErrorResponse && e.status === 422) {
+        this.error.set(`The grade ${body.grade} is retired: it cannot be chosen for a person.`);
       } else if (e instanceof HttpErrorResponse && e.status === 409) {
         this.error.set(
           `${body.name} is already a name or alias on the sheet or its tree (or one of this person's aliases is), or another person has that contact.`,
@@ -2804,7 +2810,7 @@ export class People {
     } catch {
       this.importError.set(
         'The people could not be imported: every line needs a name that is a person on the sheet (to update ' +
-          'them) or not already a name or alias on the sheet or its tree, a grade of A, B or C, terms of a whole number of days (or blank) and a contact no one ' +
+          'them) or not already a name or alias on the sheet or its tree, a grade of A, B or C that is not retired, terms of a whole number of days (or blank) and a contact no one ' +
           'else has (or blank); no name or contact may be repeated in the paste.',
       );
     } finally {

@@ -12,6 +12,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.grade.RetiredGradeRepository;
 import net.officefloor.hq.app.claim.ProofKind;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -48,10 +49,12 @@ public class SettingService {
     private final DelegationRepository delegations;
     private final History history;
     private final Audit audit;
+    private final RetiredGradeRepository retiredGrades;
 
     public SettingService(SheetService sheets, SheetRepository sheetRepository, SheetRoleRepository roles,
             SettingValueRepository values, SheetPermissionRepository permissions, DelegationRepository delegations,
-            History history, Audit audit) {
+            History history, Audit audit, RetiredGradeRepository retiredGrades) {
+        this.retiredGrades = retiredGrades;
         this.history = history;
         this.sheets = sheets;
         this.sheetRepository = sheetRepository;
@@ -499,10 +502,10 @@ public class SettingService {
     }
 
     /** The grade a person added by a quick-add, or by an import line with a blank grade, is given:
-     *  the sheet's default grade, A when it is blank. */
+     *  the sheet's default grade, A when it is blank or the grade is retired. */
     public String defaultGrade(String sheetId) {
         String grade = defaultGradeSet(sheetId);
-        return grade != null ? grade : "A";
+        return grade != null && !retiredGrades.existsBySheetIdAndGrade(sheetId, grade) ? grade : "A";
     }
 
     /** The sheet's review SLA in days; null when it is blank (none). */

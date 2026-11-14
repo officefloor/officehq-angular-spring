@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.AsOf;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.grade.GradeRetiredException;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.statement.StatementService;
@@ -407,6 +408,12 @@ public class PersonController {
             AliasRefusedException.class, ImportRefusedException.class, FlagRefusedException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public void unreadable() {
+    }
+
+    /** A retired grade chosen for a person is refused; one they are on already is kept. */
+    @ExceptionHandler(GradeRetiredException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_CONTENT)
+    public void gradeRetired() {
     }
 
     /** Someone else saved the person since the editor loaded them: the person as stored now. */

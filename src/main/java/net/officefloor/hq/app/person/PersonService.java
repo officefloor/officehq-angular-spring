@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
@@ -39,13 +40,15 @@ public class PersonService {
     private final Audit audit;
     private final ClaimRepository claims;
     private final SettingService settings;
+    private final GradeService gradeRules;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonGradeService grades,
             PersonTermsService terms, PersonHoldRepository holds, PersonWatchRepository watches, PersonAliasRepository aliases,
             PersonRetirementRepository retirements, PersonSnapshotRepository snapshots, SheetService sheets,
             EntityManager entityManager, History history, Audit audit, ClaimRepository claims,
-            SettingService settings) {
+            SettingService settings, GradeService gradeRules) {
         this.settings = settings;
+        this.gradeRules = gradeRules;
         this.claims = claims;
         this.snapshots = snapshots;
         this.retirements = retirements;
@@ -141,6 +144,7 @@ public class PersonService {
     public Person add(String sheetId, String user, String name, String grade, Integer terms, LocalDate termsFrom,
             String contact, String tags) {
         LocalDate today = sheets.today(sheetId);
+        gradeRules.requireChoosable(sheetId, grade);
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, null);
         String key = contactKey(contact);
@@ -189,6 +193,10 @@ public class PersonService {
                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
         if (person.getVersion() != version) {
             throw new StalePersonException(person);
+        }
+        // A grade left as it is, with no from-date, is not a choice of it: a retired one is kept.
+        if (gradeFrom != null || !grade.equals(grades.gradeOn(id, sheets.today(sheetId)))) {
+            gradeRules.requireChoosable(sheetId, grade);
         }
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, id);
