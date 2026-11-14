@@ -168,17 +168,28 @@ public class ClaimController {
     public record BulkReassignView(List<ClaimView> reassigned, int refused) {
     }
 
+    /** The claims selected to re-date together, and the date they are re-dated to. */
+    public record BulkRedateRequest(@NotNull @Size(max = 10000) Set<@NotNull Long> claimIds, @NotNull LocalDate date) {
+    }
+
+    /** What a bulk re-date did: the claims it re-dated, in list order, and how many of the selected
+     *  claims it refused. */
+    public record BulkRedateView(List<ClaimView> redated, int refused) {
+    }
+
     private final ClaimService service;
     private final RollupService rollups;
     private final BulkOpenService bulkOpen;
     private final BulkSettleService bulkSettle;
     private final BulkReassignService bulkReassign;
+    private final BulkRedateService bulkRedate;
     private final History history;
     private final ClaimTemplateService templates;
 
     public ClaimController(ClaimService service, RollupService rollups, BulkOpenService bulkOpen,
-            BulkSettleService bulkSettle, BulkReassignService bulkReassign, History history,
-            ClaimTemplateService templates) {
+            BulkSettleService bulkSettle, BulkReassignService bulkReassign, BulkRedateService bulkRedate,
+            History history, ClaimTemplateService templates) {
+        this.bulkRedate = bulkRedate;
         this.templates = templates;
         this.bulkReassign = bulkReassign;
         this.history = history;
@@ -375,6 +386,18 @@ public class ClaimController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return view(sheet, rollups.track(sheet, by, () -> service.redate(sheet, by, personId, id, request.date())));
+    }
+
+    /** Re-date the selected claims, in list order, each by the rules of re-dating one; the rest are
+     *  refused and left as they are. */
+    @PostMapping("/claims/redate")
+    public BulkRedateView redateAll(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated BulkRedateRequest request) {
+        String sheet = sheetId.trim();
+        BulkRedateService.Result result = bulkRedate.redate(sheet, SignedInUser.decode(user), request.claimIds(),
+                request.date());
+        return new BulkRedateView(result.redated().stream().map(claim -> view(sheet, claim)).toList(),
+                result.refused());
     }
 
     /** Split an amount off an OPEN claim into a new OPEN claim. */

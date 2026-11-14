@@ -298,6 +298,24 @@ interface StatementTaken {
       @if (bulkReassignError(); as message) {
         <p role="alert" data-testid="bulk-reassign-error">{{ message }}</p>
       }
+      <form (submit)="redateSelected($event)" aria-label="Re-date the selected claims">
+        <label for="bulk-redate-date">Re-date the selected claims to</label>
+        <input
+          type="date"
+          id="bulk-redate-date"
+          data-testid="bulk-redate-date"
+          [value]="bulkRedateDate()"
+          (input)="bulkRedateDate.set(value($event)); bulkRedateResult.set(null); bulkRedateError.set(null)"
+        />
+        <button type="submit" data-testid="bulk-redate">Re-date selected claims</button>
+        @if (bulkRedateResult(); as r) {
+          Re-dated <strong data-testid="bulk-redated">{{ r.redated }}</strong>, refused
+          <strong data-testid="bulk-redate-refused">{{ r.refused }}</strong>
+        }
+      </form>
+      @if (bulkRedateError(); as message) {
+        <p role="alert" data-testid="bulk-redate-error">{{ message }}</p>
+      }
       <form (submit)="gradeSelected($event)" aria-label="Grade the selected people">
         <label for="bulk-grade">Grade the selected people</label>
         <select
@@ -1081,6 +1099,14 @@ export class People {
   protected readonly bulkReassignError = signal<string | null>(null);
   /** Whether a bulk move is waiting for its answer; a second press meanwhile is dropped. */
   private readonly bulkReassignBusy = signal(false);
+  /** The date the selected claims are to be re-dated to. */
+  protected readonly bulkRedateDate = signal('');
+  /** How many claims the last bulk re-date re-dated and refused; null while it runs or before one. */
+  protected readonly bulkRedateResult = signal<{ redated: number; refused: number } | null>(null);
+  /** Why the last bulk re-date could not be done at all; null when it was. */
+  protected readonly bulkRedateError = signal<string | null>(null);
+  /** Whether a bulk re-date is waiting for its answer; a second press meanwhile is dropped. */
+  private readonly bulkRedateBusy = signal(false);
   /** The ids of the people selected to be given a grade together. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** The grade to give the selected people. */
@@ -1137,6 +1163,9 @@ export class People {
       this.bulkReassignTo.set('');
       this.bulkReassignResult.set(null);
       this.bulkReassignError.set(null);
+      this.bulkRedateDate.set('');
+      this.bulkRedateResult.set(null);
+      this.bulkRedateError.set(null);
       this.selectedPeople.set(new Set());
       this.bulkGrade.set('A');
       this.bulkGradeFrom.set('');
@@ -1748,6 +1777,41 @@ export class People {
       this.bulkReassignError.set('The selected claims could not be moved.');
     } finally {
       this.bulkReassignBusy.set(false);
+    }
+  }
+
+  /** Re-date the selected claims to the typed date together, in list order, each by the rules of
+   *  re-dating one, and each that cannot be re-dated left as it is; the screen shows how many were
+   *  re-dated and refused. */
+  protected async redateSelected(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.bulkRedateBusy()) return;
+    this.bulkRedateResult.set(null);
+    this.bulkRedateError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const date = this.bulkRedateDate().trim();
+    if (!date) {
+      this.bulkRedateError.set('Type the date to re-date the selected claims to.');
+      return;
+    }
+    const ids = [...this.selectedClaims()];
+    this.bulkRedateBusy.set(true);
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ redated: Claim[]; refused: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/redate`,
+          { claimIds: ids, date },
+        ),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      for (const c of result.redated) this.claimSaved(c);
+      this.selectedClaims.set(new Set());
+      this.bulkRedateResult.set({ redated: result.redated.length, refused: result.refused });
+    } catch {
+      this.bulkRedateError.set('The selected claims could not be re-dated.');
+    } finally {
+      this.bulkRedateBusy.set(false);
     }
   }
 
