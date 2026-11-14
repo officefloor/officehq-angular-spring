@@ -14,7 +14,6 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonGradeService;
-import net.officefloor.hq.app.person.PersonHold;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rate.RateService;
@@ -105,7 +104,6 @@ public class StatementService {
         }
         LocalDate day = asOf != null ? asOf : today;
         List<Claim> theirs = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId);
-        List<PersonHold> holds = asOf != null ? personService.holdsAsOf(personId, asOf) : personService.holds(personId);
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean anyFigure = false;
         int counted = 0;
@@ -113,9 +111,9 @@ public class StatementService {
             // The claim as it stood at the end of the day; one not yet theirs then is left out.
             Claim then = asOf == null ? claim
                     : history.claim(claim.getId(), asOf).filter(was -> was.getPersonId().equals(personId)).orElse(null);
-            // A held or deferred claim is left out of the statement, whether or not an earlier one bound
-            // it; one left out for the person's retirement is left out unless an earlier one bound it.
-            if (then == null || !then.counts() || then.heldBy(holds) || then.deferredOn(day)
+            // A deferred claim is left out of the statement, whether or not an earlier one bound it (a held
+            // one counts); one left out for the person's retirement is left out unless an earlier one bound it.
+            if (then == null || !then.counts() || then.deferredOn(day)
                     || (!then.isStated() && then.retiredOn(person.getRetiredFrom(), day))) {
                 claim.unbind();
                 continue;

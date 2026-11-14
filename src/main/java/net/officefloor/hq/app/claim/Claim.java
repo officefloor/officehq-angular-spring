@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.TreeSet;
 import net.officefloor.hq.app.history.HistoryListener;
-import net.officefloor.hq.app.person.PersonHold;
 
 /** A claim a person on a sheet makes: an amount (two decimals), a date, a note and a status (DRAFT
  *  when added). A claim with a negative amount is a correction, naming the number of the SETTLED
@@ -116,8 +115,8 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
-    /** Whether the claim itself is held: while OPEN or PENDING it is left out of the live totals as a
-     *  held person's claims are. */
+    /** Whether the claim itself is held: it still counts in every total; a hold only bears on the
+     *  pools' cuts. */
     @Column(name = "held", nullable = false)
     private boolean held;
 
@@ -525,37 +524,24 @@ public class Claim {
         return status.counts();
     }
 
-    /** Whether the claim is held: it is OPEN or PENDING and held itself, or dated within one of its
-     *  person's holds. */
-    public boolean heldBy(List<PersonHold> holds) {
-        return status.isOpen() && (held || holds.stream().anyMatch(hold -> hold.contains(date)));
-    }
-
     /** Whether the claim is left out for its person's retirement: it is OPEN or PENDING and the
      *  sheet's today is on or after the date they are retired from (null: not retired). */
     public boolean retiredOn(LocalDate retiredFrom, LocalDate today) {
         return status.isOpen() && retiredFrom != null && !today.isBefore(retiredFrom);
     }
 
-    /** Whether the claim counts in live totals on the sheet's today given its person's holds and
-     *  retirement date: one that counts and is not deferred, unless it is held, or OPEN or PENDING once
-     *  its person is retired, and not bound by a statement (a bound claim stays in whatever its date). */
-    public boolean countsLive(List<PersonHold> holds, LocalDate retiredFrom, LocalDate today) {
-        return counts() && !deferredOn(today) && (stated || !(heldBy(holds) || retiredOn(retiredFrom, today)));
-    }
-
-    /** Whether the claim counts in live claimed figures on the sheet's today given its person's
-     *  retirement date: as for {@link #countsLive}, except that a hold does not take it out; a held
-     *  claim's amount is still claimed, only its due leaves the totals. */
-    public boolean countsClaimed(LocalDate retiredFrom, LocalDate today) {
+    /** Whether the claim counts in live totals on the sheet's today given its person's retirement date:
+     *  one that counts and is not deferred, unless it is OPEN or PENDING once its person is retired and
+     *  not bound by a statement (a bound claim stays in whatever its date). A hold does not take it out:
+     *  a hold only bears on the pools' cuts. */
+    public boolean countsLive(LocalDate retiredFrom, LocalDate today) {
         return counts() && !deferredOn(today) && (stated || !retiredOn(retiredFrom, today));
     }
 
     /** Whether the claim counts in a period's live figures, given the status it had at the end of the
      *  period's last day (null when it was added after): that status counts, and the live rules leave
-     *  it in (not deferred on the sheet's today, and not held or retired out unless bound by a statement). */
-    public boolean countsAsOf(ClaimStatus then, List<PersonHold> holds, LocalDate retiredFrom, LocalDate today) {
-        return then != null && then.counts() && !deferredOn(today)
-                && (stated || !(heldBy(holds) || retiredOn(retiredFrom, today)));
+     *  it in (not deferred on the sheet's today, and not retired out unless bound by a statement). */
+    public boolean countsAsOf(ClaimStatus then, LocalDate retiredFrom, LocalDate today) {
+        return then != null && then.counts() && !deferredOn(today) && (stated || !retiredOn(retiredFrom, today));
     }
 }

@@ -59,8 +59,8 @@ interface Person {
   /** The person's statements still standing, oldest first by date: the date and the due-total each
    *  recorded. */
   statements: { date: string; dueTotal: string }[];
-  /** The holds put on the person, in the order they were: their OPEN claims dated within one, unless
-   *  bound by a statement, count in no live total. */
+  /** The holds put on the person, in the order they were: while one is in force on the sheet's today
+   *  they get no cut of a pool; their claims still count in every total. */
   holds: Hold[];
   /** The ids of the person's patrons, in the order they were named. */
   patronIds: number[];
@@ -1093,41 +1093,20 @@ export class People {
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   /** The sheet's claims that count in live totals: OPEN, PENDING and SETTLED ones, except one deferred
-   *  on the sheet's today, and, unless bound by a statement, an OPEN or PENDING one held itself or dated within one of its
-   *  person's holds or an OPEN or PENDING one whose person is retired by the sheet's today. */
+   *  on the sheet's today, and, unless bound by a statement, an OPEN or PENDING one whose person is
+   *  retired by the sheet's today. A hold takes no claim out: it only bears on the pools' cuts. */
   private readonly live = computed(() => this.claims().filter((c) => counts(c) && this.liveRulesKeep()(c)));
   /** Whether the live rules leave a claim in: it is not deferred on the sheet's today, and, unless bound
-   *  by a statement, not an OPEN or PENDING one dated within one of its person's holds, nor an OPEN or PENDING one
-   *  whose person's retirement date is on or before the sheet's today. */
+   *  by a statement, not an OPEN or PENDING one whose person's retirement date is on or before the
+   *  sheet's today. */
   private readonly liveRulesKeep = computed(() => {
-    const holds = new Map(this.people().map((p) => [p.id, p.holds]));
-    const retiredFrom = new Map(this.people().map((p) => [p.id, p.retiredFrom]));
-    const today = this.session.today();
-    const held = (c: Claim) =>
-      isOpen(c) &&
-      (c.held || (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to)));
-    const retired = (c: Claim) => {
-      const from = retiredFrom.get(c.personId) ?? null;
-      return isOpen(c) && from !== null && today !== null && from <= today;
-    };
-    return (c: Claim) => !deferred(c, today) && (c.stated || !(held(c) || retired(c)));
-  });
-  /** The claims that count toward what is claimed: as the live ones, except that a hold does not take
-   *  a claim out; a held claim's amount is still claimed, only its due leaves the totals. */
-  private readonly claimedLive = computed(() => {
     const retiredFrom = new Map(this.people().map((p) => [p.id, p.retiredFrom]));
     const today = this.session.today();
     const retired = (c: Claim) => {
       const from = retiredFrom.get(c.personId) ?? null;
       return isOpen(c) && from !== null && today !== null && from <= today;
     };
-    return this.claims().filter((c) => counts(c) && !deferred(c, today) && (c.stated || !retired(c)));
-  });
-  /** Each person's claims that count toward what is claimed, held ones included, by person id. */
-  private readonly claimedByPerson = computed(() => {
-    const map = new Map<number, Claim[]>();
-    for (const c of this.claimedLive()) map.set(c.personId, [...(map.get(c.personId) ?? []), c]);
-    return map;
+    return (c: Claim) => !deferred(c, today) && (c.stated || !retired(c));
   });
   /** Each person's claims that count toward what is claimed and due, by person id. */
   private readonly countedByPerson = computed(() => {
@@ -1154,7 +1133,7 @@ export class People {
     return map;
   });
   protected readonly claimedTotal = computed(() =>
-    money(this.claimedLive().reduce((sum, c) => sum + claimedCents(c), 0)),
+    money(this.live().reduce((sum, c) => sum + claimedCents(c), 0)),
   );
   /** Everyone's due-total added up, skipping those whose grade has no rate, trimmed. */
   protected readonly dueTotal = computed(() =>
@@ -2047,7 +2026,7 @@ export class People {
   }
 
   protected claimedBy(personId: number): string {
-    return money((this.claimedByPerson().get(personId) ?? []).reduce((sum, c) => sum + claimedCents(c), 0));
+    return money((this.countedByPerson().get(personId) ?? []).reduce((sum, c) => sum + claimedCents(c), 0));
   }
 
   /** The grade in force on the sheet's today among a person's grades. */

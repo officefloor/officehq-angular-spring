@@ -658,8 +658,8 @@ public class ClaimService {
         return saved;
     }
 
-    /** Hold an OPEN or PENDING claim, or release it when it is held: while held its due is left out of the
-     *  live totals as a held person's claims' are, its amount still claimed, and CLAIM_HELD or CLAIM_RELEASED is written. A claim
+    /** Hold an OPEN or PENDING claim, or release it when it is held: it still counts in every total,
+     *  and CLAIM_HELD or CLAIM_RELEASED is written. A claim
      *  in any other status, or one dated in a closed period, is refused. */
     @Transactional
     public Claim toggleHold(String sheetId, String user, Long personId, Long id) {

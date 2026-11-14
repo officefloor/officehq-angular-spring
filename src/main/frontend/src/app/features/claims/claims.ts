@@ -80,8 +80,7 @@ export interface Claim {
   lines: string[];
   /** Whether a steward waived the claim's late charge: it bears none from then on. */
   waived: boolean;
-  /** Whether the claim itself is held: while OPEN or PENDING it counts in no live total, unless bound
-   *  by a statement. */
+  /** Whether the claim itself is held: it still counts in every total. */
   held: boolean;
 }
 

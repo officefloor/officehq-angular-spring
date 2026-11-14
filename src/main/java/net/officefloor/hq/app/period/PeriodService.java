@@ -18,7 +18,6 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
-import net.officefloor.hq.app.person.PersonHold;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.setting.Permission;
@@ -247,7 +246,6 @@ public class PeriodService {
     private Map<Long, BigDecimal> personTotals(String sheetId, Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
-        Map<Long, List<PersonHold>> holds = personService.holds(sheetId);
         LocalDate today = sheets.today(sheetId);
         Map<Long, BigDecimal> personTotals = new LinkedHashMap<>();
         byId.keySet().forEach(id -> personTotals.put(id, BigDecimal.ZERO.setScale(2)));
@@ -255,8 +253,7 @@ public class PeriodService {
         for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
             if (person == null
-                    || !claim.countsAsOf(atEnd.get(claim.getId()), holds.getOrDefault(person.getId(), List.of()),
-                            person.getRetiredFrom(), today)
+                    || !claim.countsAsOf(atEnd.get(claim.getId()), person.getRetiredFrom(), today)
                     || !period.contains(claim.getDueBy())) {
                 continue;
             }
@@ -276,7 +273,6 @@ public class PeriodService {
     private Map<Long, BigDecimal> personCarried(String sheetId, Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
-        Map<Long, List<PersonHold>> holds = personService.holds(sheetId);
         List<Period> all = periods.findBySheetIdOrderByFromAsc(sheetId);
         LocalDate today = sheets.today(sheetId);
         Map<Long, BigDecimal> carried = new LinkedHashMap<>();
@@ -287,8 +283,7 @@ public class PeriodService {
             Person person = byId.get(claim.getPersonId());
             ClaimStatus then = atEnd.get(claim.getId());
             if (person == null || then == null || !then.isOpen()
-                    || !claim.countsAsOf(then, holds.getOrDefault(person.getId(), List.of()),
-                            person.getRetiredFrom(), today)
+                    || !claim.countsAsOf(then, person.getRetiredFrom(), today)
                     || all.stream().noneMatch(own -> own.contains(claim.getDueBy())
                             && own.getTo().isBefore(period.getFrom()))) {
                 continue;
