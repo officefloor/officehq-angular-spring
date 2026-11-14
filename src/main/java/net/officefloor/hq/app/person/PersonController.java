@@ -61,15 +61,15 @@ public class PersonController {
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
             List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
-            List<String> aliases) {
+            List<String> aliases, boolean clashing) {
         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
                 StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched,
-                List<String> aliases) {
+                List<String> aliases, boolean clashing) {
             return new PersonView(person.getId(), person.getName(), PersonGradeService.gradeOn(grades, today),
                     grades.stream().map(GradeView::of).toList(), person.getVersion(), statements.count(),
                     statements.lastDueTotal(), statements.lastDate(), person.isRetired(), person.getRetiredFrom(),
                     holds.stream().map(HoldView::of).toList(), patronIds, watched, person.getTerms(),
-                    person.getContact(), aliases);
+                    person.getContact(), aliases, clashing);
         }
     }
 
@@ -166,12 +166,14 @@ public class PersonController {
         Map<Long, List<PersonHold>> holds = service.holds(sheet, asOf);
         Map<Long, List<String>> aliases = service.aliases(sheet, asOf);
         LocalDate today = asOf != null ? asOf : sheets.today(sheet);
-        return service.list(sheet, asOf).stream()
+        List<Person> them = service.list(sheet, asOf);
+        Set<Long> clashing = service.clashingIds(sheet, them, aliases);
+        return them.stream()
                 .map(p -> PersonView.of(p, given.getOrDefault(p.getId(), List.of()), today,
                         summaries.getOrDefault(p.getId(), StatementSummary.NONE),
                         holds.getOrDefault(p.getId(), List.of()),
                         patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId()),
-                        aliases.getOrDefault(p.getId(), List.of())))
+                        aliases.getOrDefault(p.getId(), List.of()), clashing.contains(p.getId())))
                 .toList();
     }
 
@@ -290,7 +292,7 @@ public class PersonController {
         return PersonView.of(person, grades.of(person.getId()), sheets.today(person.getSheetId()),
                 statements.summary(person.getSheetId(), person.getId()), service.holds(person.getId()),
                 service.patronIds(person.getId()), user != null && service.watches(person.getId(), user),
-                service.aliases(person.getId()));
+                service.aliases(person.getId()), service.clashing(person));
     }
 
     /** A save that raced another to the same version; the editor re-reads the person. */

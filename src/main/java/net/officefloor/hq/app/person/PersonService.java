@@ -96,6 +96,14 @@ public class PersonService {
         }
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, id);
+        List<String> tree = sheets.tree(sheetId);
+        if (!tree.isEmpty()) {
+            for (PersonAlias alias : aliases.findByPersonIdOrderByIdAsc(id)) {
+                if (inUseOnTree(tree, alias.getAlias())) {
+                    throw new NameInUseException(alias.getAlias());
+                }
+            }
+        }
         String key = contactKey(contact);
         requireFreeContact(sheetId, key, id);
         person.setName(trimmed);
@@ -234,7 +242,7 @@ public class PersonService {
     }
 
     /** Give a person an alias, trimmed; refused when blank, or when it equals, as names are compared,
-     *  any name or alias on the sheet. */
+     *  any name or alias on the sheet or on any other sheet of its tree. */
     @Transactional
     public Person addAlias(String sheetId, String user, Long id, String alias) {
         Person person = people.findByIdAndSheetId(id, sheetId)
@@ -243,7 +251,8 @@ public class PersonService {
         if (trimmed.isEmpty()) {
             throw new AliasRefusedException("An alias may not be blank");
         }
-        if (people.nameInUse(sheetId, trimmed, null) || aliases.aliasInUse(sheetId, trimmed)) {
+        if (people.nameInUse(sheetId, trimmed, null) || aliases.aliasInUse(sheetId, trimmed)
+                || inUseOnTree(sheets.tree(sheetId), trimmed)) {
             throw new NameInUseException(trimmed);
         }
         aliases.saveAndFlush(new PersonAlias(sheetId, id, trimmed, sheets.today(sheetId)));
@@ -328,9 +337,50 @@ public class PersonService {
         }
     }
 
+    /** Refuse a name used, as names are compared, by another person on the sheet (not {@code exceptId}),
+     *  by an alias on the sheet, or as a name or alias on any other sheet of its tree. */
     private void requireFreeName(String sheetId, String name, Long exceptId) {
-        if (people.nameInUse(sheetId, name, exceptId) || aliases.aliasInUse(sheetId, name)) {
+        if (people.nameInUse(sheetId, name, exceptId) || aliases.aliasInUse(sheetId, name)
+                || inUseOnTree(sheets.tree(sheetId), name)) {
             throw new NameInUseException(name);
         }
+    }
+
+    /** Whether a name or alias on any of the tree's sheets is this name, as names are compared. */
+    private boolean inUseOnTree(List<String> tree, String name) {
+        return !tree.isEmpty() && (people.nameInUseOn(tree, name) || aliases.aliasInUseOn(tree, name));
+    }
+
+    /** The names and aliases on the other sheets of the sheet's tree, lower-cased. */
+    private Set<String> treeKeys(String sheetId) {
+        List<String> tree = sheets.tree(sheetId);
+        if (tree.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> keys = new java.util.HashSet<>(people.nameKeysOn(tree));
+        keys.addAll(aliases.aliasKeysOn(tree));
+        return keys;
+    }
+
+    private static boolean clashes(Set<String> treeKeys, String name, List<String> theirAliases) {
+        return treeKeys.contains(name.toLowerCase(Locale.ROOT))
+                || theirAliases.stream().anyMatch(alias -> treeKeys.contains(alias.toLowerCase(Locale.ROOT)));
+    }
+
+    /** Whether the person clashes: their name or an alias of theirs is used as a name or alias on
+     *  another sheet of their sheet's tree. */
+    public boolean clashing(Person person) {
+        return clashes(treeKeys(person.getSheetId()), person.getName(), aliases(person.getId()));
+    }
+
+    /** The ids of the people on the sheet who clash, as {@link #clashing(Person)} judges, with the
+     *  names and aliases given them. */
+    public Set<Long> clashingIds(String sheetId, List<Person> them, Map<Long, List<String>> theirAliases) {
+        Set<String> keys = treeKeys(sheetId);
+        if (keys.isEmpty()) {
+            return Set.of();
+        }
+        return them.stream().filter(p -> clashes(keys, p.getName(), theirAliases.getOrDefault(p.getId(), List.of())))
+                .map(Person::getId).collect(Collectors.toSet());
     }
 }

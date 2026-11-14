@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -29,6 +30,14 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     @Query("select count(p) > 0 from Person p where p.sheetId = :sheetId and lower(p.name) = lower(:name)"
             + " and (:exceptId is null or p.id <> :exceptId)")
     boolean nameInUse(String sheetId, String name, Long exceptId);
+
+    /** Whether anyone on any of the sheets has this name, ignoring case. */
+    @Query("select count(p) > 0 from Person p where p.sheetId in :sheetIds and lower(p.name) = lower(:name)")
+    boolean nameInUseOn(Collection<String> sheetIds, String name);
+
+    /** The names on any of the sheets, lower-cased. */
+    @Query("select lower(p.name) from Person p where p.sheetId in :sheetIds")
+    List<String> nameKeysOn(Collection<String> sheetIds);
 
     /** Whether another person on the sheet (not {@code exceptId}) has this contact. */
     @Query("select count(p) > 0 from Person p where p.sheetId = :sheetId and p.contact = :contact"

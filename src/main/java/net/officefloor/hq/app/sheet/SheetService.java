@@ -100,6 +100,25 @@ public class SheetService {
         return found;
     }
 
+    /** The ids of the other sheets of the sheet's tree: its ancestors (its parent, the parent's parent,
+     *  and so on) and its descendants, among the sheets that exist; the sheet itself is not among them. */
+    public List<String> tree(String id) {
+        List<String> found = new ArrayList<>();
+        Set<String> seen = new HashSet<>(Set.of(id));
+        for (String up = sheets.findById(id).map(Sheet::getParentId).orElse(null); up != null && seen.add(up);
+                up = sheets.findById(up).map(Sheet::getParentId).orElse(null)) {
+            if (sheets.existsById(up)) {
+                found.add(up);
+            }
+        }
+        for (String down : descendants(id)) {
+            if (!found.contains(down)) {
+                found.add(down);
+            }
+        }
+        return found;
+    }
+
     /** Whether the sheet is archived: every change to it is then refused. */
     public boolean isArchived(String id) {
         return sheets.findById(id).map(Sheet::isArchived).orElse(false);

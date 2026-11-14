@@ -51,6 +51,8 @@ interface Person {
   watched: boolean;
   /** The person's aliases, sorted as names are compared. */
   aliases: string[];
+  /** Whether the person's name or an alias of theirs is a name or alias on another sheet of the tree. */
+  clashing: boolean;
 }
 
 /** The figures of a sheet's descendants added up, each as that sheet shows it, and the sheet's own
@@ -301,6 +303,7 @@ interface StatementTaken {
             <th scope="col"><span class="visually-hidden">Select</span></th>
             <th scope="col">Name</th>
             <th scope="col">Aliases</th>
+            <th scope="col">Clashing</th>
             <th scope="col">Grade</th>
             <th scope="col">Terms</th>
             <th scope="col">Contact</th>
@@ -346,6 +349,7 @@ interface StatementTaken {
               </td>
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-aliases">{{ aliasesOf(p) }}</td>
+              <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
@@ -1032,7 +1036,7 @@ export class People {
     } catch {
       this.rowError.set({
         id: person.id,
-        message: `${alias} could not be added as an alias of ${person.name}: it is already a name or alias on the sheet.`,
+        message: `${alias} could not be added as an alias of ${person.name}: it is already a name or alias on the sheet or its tree.`,
       });
     }
   }
@@ -1599,7 +1603,9 @@ export class People {
         await this.showCurrent(sheet, id, e.error as Person | null);
         this.error.set('Someone else saved this person since you opened the editor; their values are shown.');
       } else if (e instanceof HttpErrorResponse && e.status === 409) {
-        this.error.set(`Another person on the sheet is already named ${body.name}, or already has that contact.`);
+        this.error.set(
+          `${body.name} is already a name or alias on the sheet or its tree (or one of this person's aliases is), or another person has that contact.`,
+        );
       } else {
         this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
       }
