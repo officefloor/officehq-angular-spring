@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.stream.Stream;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
@@ -40,11 +41,13 @@ public class PersonTransferService {
     private final History history;
     private final JdbcTemplate jdbc;
     private final EntityManager entities;
+    private final PersonMergeService merges;
     private final Audit audit;
 
     public PersonTransferService(PersonRepository people, PersonAliasRepository aliases, ClaimRepository claims,
             ClaimLogRepository logs, ClaimService claimService, RollupService rollups, SettingService settings,
-            SheetService sheets, History history, JdbcTemplate jdbc, EntityManager entities, Audit audit) {
+            SheetService sheets, History history, JdbcTemplate jdbc, EntityManager entities, PersonMergeService merges,
+            Audit audit) {
         this.people = people;
         this.aliases = aliases;
         this.claims = claims;
@@ -56,6 +59,7 @@ public class PersonTransferService {
         this.history = history;
         this.jdbc = jdbc;
         this.entities = entities;
+        this.merges = merges;
         this.audit = audit;
     }
 
@@ -65,8 +69,11 @@ public class PersonTransferService {
      *  number, in the order the claims were opened (by the sheet's today when each was, then the order
      *  they were added). Figures a statement bound are lost with the statements, references, comments
      *  and settle batches are not carried; patron links, pool memberships, holds and watches are
-     *  dropped. Anyone but a steward, a retired person, this sheet's own id, an archived sheet, or a
-     *  name, alias or contact already on the other sheet, is refused. Each sheet writes its line,
+     *  dropped. A person the other sheet already has by their name or an alias (as names are compared)
+     *  arrives and is then merged into them, as a merge does. Anyone but a steward, a retired person,
+     *  this sheet's own id, an archived sheet, a name or alias matching more than one person or a
+     *  retired one there, or (when not merged) a name, alias or contact already on the other sheet, is
+     *  refused. Each sheet writes its line,
      *  followed by its rollup lines. */
     @Transactional
     public void transfer(String sheetId, String user, Long id, String toSheetId) {
@@ -98,13 +105,28 @@ public class PersonTransferService {
             throw new TransferRefusedException("An archived sheet takes no transfer");
         }
         List<PersonAlias> theirAliases = aliases.findByPersonIdOrderByIdAsc(person.getId());
-        boolean nameTaken = Stream.concat(Stream.of(person.getName()), theirAliases.stream().map(PersonAlias::getAlias))
-                .anyMatch(name -> people.nameInUse(to, name, null) || aliases.aliasInUse(to, name));
-        if (nameTaken) {
+        List<String> theirNames = Stream.concat(Stream.of(person.getName()),
+                theirAliases.stream().map(PersonAlias::getAlias)).toList();
+        List<Long> sameNamed = theirNames.stream().map(name -> people.findByName(to, name))
+                .flatMap(Optional::stream).map(Person::getId).distinct().toList();
+        Long intoId = null;
+        if (sameNamed.size() > 1) {
             throw new NameInUseException(person.getName());
-        }
-        if (person.getContact() != null && people.contactInUse(to, person.getContact(), null)) {
-            throw new ContactInUseException(person.getContact());
+        } else if (sameNamed.size() == 1) {
+            // Already on the other sheet by a name or alias: they arrive and are merged into them.
+            intoId = sameNamed.get(0);
+            if (people.findById(intoId).orElseThrow().isRetired()) {
+                throw new TransferRefusedException("A retired person is not merged into");
+            }
+        } else {
+            boolean nameTaken = theirNames.stream()
+                    .anyMatch(name -> people.nameInUse(to, name, null) || aliases.aliasInUse(to, name));
+            if (nameTaken) {
+                throw new NameInUseException(person.getName());
+            }
+            if (person.getContact() != null && people.contactInUse(to, person.getContact(), null)) {
+                throw new ContactInUseException(person.getContact());
+            }
         }
 
         List<Claim> theirClaims = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, person.getId());
@@ -174,5 +196,8 @@ public class PersonTransferService {
                 + " to=" + to);
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + to + " by=" + user + " name=" + person.getName()
                 + " from=" + sheetId);
+        if (intoId != null) {
+            merges.absorb(to, user, people.findById(personId).orElseThrow(), people.findById(intoId).orElseThrow());
+        }
     }
 }

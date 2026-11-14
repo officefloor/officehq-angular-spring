@@ -72,6 +72,13 @@ public class PersonMergeService {
         if (from.isRetired() || into.isRetired()) {
             throw new MergeRefusedException("A retired person is neither merged nor merged into");
         }
+        absorb(sheetId, user, from, into);
+        return into;
+    }
+
+    /** Merges one person into another on the sheet, as {@link #merge} does once it is allowed: a person
+     *  transferred onto a sheet that has them already by a name or alias is merged this way. */
+    void absorb(String sheetId, String user, Person from, Person into) {
 
         List<Claim> moved = claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, from.getId()).stream()
                 .sorted(Comparator.comparing(Claim::getId)).toList();
@@ -132,7 +139,6 @@ public class PersonMergeService {
 
         audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user + " from=" + from.getName()
                 + " into=" + into.getName());
-        return into;
     }
 
     private Person person(String sheetId, Long id) {
