@@ -1,0 +1,64 @@
+{
+  "checkpoint": 205,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp205_plan-history",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan's amount can be changed (an entry and a save button on the plan; PLAN_CHANGED\nname=<person> start=<plan start> amount=<new amount>; a bad amount is refused). The new amount\napplies to the claims generated from then on; claims already generated keep theirs. Each plan lists\nits changes, oldest first, as <date> amount=<amount>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan's amount can be changed (an entry and a save button on the plan; PLAN_CHANGED\nname=<person> start=<plan start> amount=<new amount>; a bad amount is refused). The new amount\napplies to the claims generated from then on; claims already generated keep theirs. Each plan lists\nits changes, oldest first, as <date> amount=<amount>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4daddb2a7cf5fd9d47a438b52b75cfa423e57843",
+  "reset_sha": "",
+  "preagent_sha": "f7e2dca84411a9e585ffe71b2750ba01fb14618d",
+  "prev_sha": "f7e2dca84411a9e585ffe71b2750ba01fb14618d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9141778,
+    "input_tokens": 44,
+    "output_tokens": 12089,
+    "cache_read_tokens": 1021029,
+    "cache_creation_tokens": 58502,
+    "num_turns": 23,
+    "duration_ms": 527122,
+    "duration_api_ms": 112848,
+    "model": "claude-opus-5-5",
+    "session_id": "344398d3-6bbc-4f52-9b41-446be410a7c5",
+    "stop_reason": "success",
+    "result_text": "All 4 tests in `bin/e2e` now pass, including the plan amount test and its three longer scenarios.\n\n**The change:**\n- **Stored data:** a new `plan_change` table (`V111__plan_change.sql`) records each change: the plan, the sheet's today when it was made, and the new amount. The plan keeps the amount it was added with, so views as of an earlier date still show the amount that applied then.\n- **Server:** a new endpoint, `POST /api/sheets/{sheet}/plans/{plan}/amount`, checks the amount the same way adding a plan does (0.00 or more, up to two decimals), so `1.005` is refused. It saves the change and writes `PLAN_CHANGED sheet=\u2026 by=\u2026 name=<person> start=<plan start> amount=<new>`. The generate step uses the latest amount, and claims already made keep theirs. The plan list now includes each plan's changes, and its shown amount is the current one.\n- **Front end:** each plan row has an amount entry (`plan-amount`) and a save button (`plan-amount-save`). Changes are listed oldest first as `<date> amount=<amount>` (`plan-change-line`). A refused amount shows `plan-error` on that row, and the error clears when you type or save again.\n\n**One fix outside the request:** \"plan history scenario 1\" also failed on a bug in person flags. When you look at the sheet as of an earlier date, a flag added later still showed, because flags had no recorded date. I added a `flag_on` column (`V112__person_flag_on.sql`) that is set when the flag is added. As-of views now hide flags added after that date; the normal view is unchanged. Flags added before this change have no date, so as-of views will still show them as before.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9141778,
+        "num_turns": 23,
+        "duration_ms": 527122,
+        "duration_api_ms": 112848,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp205.agent.jsonl",
+  "agent_diff_file": "cp205.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

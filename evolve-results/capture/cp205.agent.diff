@@ -1,0 +1,444 @@
+diff --git a/src/main/frontend/src/app/features/plans/plans.ts b/src/main/frontend/src/app/features/plans/plans.ts
+index 63133d303..1c133636a 100644
+--- a/src/main/frontend/src/app/features/plans/plans.ts
++++ b/src/main/frontend/src/app/features/plans/plans.ts
+@@ -20,6 +20,8 @@ export interface Plan {
+   nextDates: string[];
+   /** Whether the plan is paused now; its dates from the day it was paused to the day it is resumed are skipped. */
+   paused: boolean;
++  /** The changes of the plan's amount, oldest first: the sheet's today when made, and the new amount. */
++  changes: { on: string; amount: string }[];
+ }
+ 
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+@@ -73,6 +75,17 @@ export class PlanStore {
+     this.plans.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+   }
+ 
++  /** Change the plan's amount from the sheet's today; the server refuses a bad amount. */
++  async changeAmount(planId: number, amount: string): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) throw new Error('No sheet loaded.');
++    const saved = await firstValueFrom(
++      this.http.post<Plan>(`/api/sheets/${encodeURIComponent(sheet)}/plans/${planId}/amount`, { amount }),
++    );
++    if (this.session.sheetId() !== sheet) return;
++    this.plans.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
++  }
++
+   /** Make every plan's claims due by the sheet's today; gives back the claims made. */
+   async generate(): Promise<Claim[]> {
+     const sheet = this.session.sheetId();
+@@ -112,6 +125,20 @@ export class PlanStore {
+           paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
+           <button type="button" data-testid="plan-pause" (click)="pause(pl.id, true)">Pause</button>
+           <button type="button" data-testid="plan-resume" (click)="pause(pl.id, false)">Resume</button>
++          <label [for]="'plan-amount-' + pl.id">New amount</label>
++          <input
++            [id]="'plan-amount-' + pl.id"
++            data-testid="plan-amount"
++            inputmode="decimal"
++            [value]="newAmounts()[pl.id] ?? ''"
++            (input)="typeAmount(pl.id, value($event))"
++          />
++          <button type="button" data-testid="plan-amount-save" (click)="changeAmount(pl.id)">Save amount</button>
++          <ul [attr.aria-label]="'Amount changes of the plan from ' + pl.start">
++            @for (c of pl.changes; track $index) {
++              <li data-testid="plan-change-line">{{ c.on }} amount={{ c.amount }}</li>
++            }
++          </ul>
+           @if (rowErrors()[pl.id]; as message) {
+             <p role="alert" data-testid="plan-error">{{ message }}</p>
+           }
+@@ -179,6 +206,8 @@ export class PersonPlans {
+   protected readonly error = signal<string | null>(null);
+   /** The refusal of the last pause or resume on each plan's row, by plan id. */
+   protected readonly rowErrors = signal<Record<number, string>>({});
++  /** The new amount typed on each plan's row, by plan id. */
++  protected readonly newAmounts = signal<Record<number, string>>({});
+   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
+   private readonly busy = signal(false);
+ 
+@@ -199,6 +228,28 @@ export class PersonPlans {
+     }
+   }
+ 
++  protected typeAmount(planId: number, amount: string): void {
++    this.newAmounts.update((typed) => ({ ...typed, [planId]: amount }));
++    this.rowErrors.update(({ [planId]: _, ...rest }) => rest);
++  }
++
++  /** Change the plan's amount to the typed one; a bad amount is refused on its row. */
++  protected async changeAmount(planId: number): Promise<void> {
++    this.rowErrors.update(({ [planId]: _, ...rest }) => rest);
++    const amount = (this.newAmounts()[planId] ?? '').trim();
++    const refused = 'The amount could not be changed: it needs 0.00 or more, with up to two decimals.';
++    if (!AMOUNT.test(amount)) {
++      this.rowErrors.update((errors) => ({ ...errors, [planId]: refused }));
++      return;
++    }
++    try {
++      await this.store.changeAmount(planId, amount);
++      this.newAmounts.update(({ [planId]: _, ...rest }) => rest);
++    } catch {
++      this.rowErrors.update((errors) => ({ ...errors, [planId]: refused }));
++    }
++  }
++
+   /** Add the typed plan, monthly when a day of the month is typed; a bad amount, interval or day, both
+    *  an interval and a day, or an end before the start, is refused on the row. */
+   protected async submit(event: Event): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 52b52bbe4..ff9760952 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -73,6 +73,10 @@ public class Person {
+     @Column(name = "flag_until")
+     private LocalDate flagUntil;
+ 
++    /** The sheet's today when the person's flag was put on; null when not known. */
++    @Column(name = "flag_on")
++    private LocalDate flagOn;
++
+     /** The user who may approve or reject the person's PENDING claims as a steward may; null for none. */
+     @Column(name = "approver")
+     private String approver;
+@@ -105,6 +109,7 @@ public class Person {
+         was.originSheetId = originSheetId;
+         was.flagReason = flagReason;
+         was.flagUntil = flagUntil;
++        was.flagOn = flagOn;
+         was.approver = approver;
+         return was;
+     }
+@@ -198,9 +203,23 @@ public class Person {
+     }
+ 
+     /** Flag the person with a reason until a date, replacing any flag they had. */
+-    public void flag(String reason, LocalDate until) {
++    public void flag(String reason, LocalDate until, LocalDate on) {
+         this.flagReason = reason;
+         this.flagUntil = until;
++        this.flagOn = on;
++    }
++
++    /** The person as they stood at the end of a day: this person, or, when their flag was put on after
++     *  it, a copy that is never saved without the flag. */
++    public Person flaggedAsOf(LocalDate asOf) {
++        if (flagOn == null || !flagOn.isAfter(asOf)) {
++            return this;
++        }
++        Person was = asItWas(name, terms, retiredFrom, contact);
++        was.flagReason = null;
++        was.flagUntil = null;
++        was.flagOn = null;
++        return was;
+     }
+ 
+     /** Whether the person's flag is in force on a day: on or before its until-date. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 3897d0142..a60a6c041 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -325,7 +325,7 @@ public class PersonService {
+             throw new FlagRefusedException("A flag needs a reason");
+         }
+         LocalDate to = until != null ? until : sheets.today(sheetId);
+-        person.flag(reason.trim(), to);
++        person.flag(reason.trim(), to, sheets.today(sheetId));
+         people.saveAndFlush(person);
+         audit.recordOnCommit("PERSON_FLAGGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                 + " reason=" + reason.trim() + " until=" + to);
+@@ -397,7 +397,7 @@ public class PersonService {
+ 
+     /** The sheet's people as they stood at the end of a day, in the order they were added: those added
+      *  by then (those since merged into another included), each with the name, own terms, retirement and
+-     *  contact they had then (null: as they stand now). */
++     *  contact they had then (null: as they stand now), and a flag put on since left out. */
+     public List<Person> list(String sheetId, LocalDate asOf) {
+         if (asOf == null) {
+             return list(sheetId);
+@@ -405,7 +405,8 @@ public class PersonService {
+         Map<Long, History.PersonThen> then = history.people(sheetId, asOf);
+         return people.findEverBySheetId(sheetId).stream().filter(person -> person.onSheetAsOf(asOf)).map(person -> {
+             History.PersonThen was = then.get(person.getId());
+-            return was == null ? person : person.asItWas(was.name(), was.terms(), was.retiredFrom(), was.contact());
++            return (was == null ? person : person.asItWas(was.name(), was.terms(), was.retiredFrom(), was.contact()))
++                    .flaggedAsOf(asOf);
+         }).toList();
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanChange.java b/src/main/java/net/officefloor/hq/app/plan/PlanChange.java
+new file mode 100644
+index 000000000..1de51b286
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanChange.java
+@@ -0,0 +1,56 @@
++package net.officefloor.hq.app.plan;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++
++/** A change of a plan's amount: the claims the plan generates after it take its amount; those it made
++ *  before keep theirs. */
++@Entity
++@Table(name = "plan_change")
++public class PlanChange {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "plan_id", nullable = false, updatable = false)
++    private Long planId;
++
++    /** The sheet's today when the amount was changed. */
++    @Column(name = "changed_on", nullable = false, updatable = false)
++    private LocalDate changedOn;
++
++    @Column(name = "amount", nullable = false, updatable = false, precision = 12, scale = 2)
++    private BigDecimal amount;
++
++    protected PlanChange() {
++    }
++
++    public PlanChange(Long planId, LocalDate changedOn, BigDecimal amount) {
++        this.planId = planId;
++        this.changedOn = changedOn;
++        this.amount = amount;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public Long getPlanId() {
++        return planId;
++    }
++
++    public LocalDate getChangedOn() {
++        return changedOn;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanChangeRepository.java b/src/main/java/net/officefloor/hq/app/plan/PlanChangeRepository.java
+new file mode 100644
+index 000000000..b997e49f2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanChangeRepository.java
+@@ -0,0 +1,11 @@
++package net.officefloor.hq.app.plan;
++
++import java.util.Collection;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PlanChangeRepository extends JpaRepository<PlanChange, Long> {
++
++    /** The plans' amount changes, in the order they were made. */
++    List<PlanChange> findByPlanIdInOrderByIdAsc(Collection<Long> planIds);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index 32678cbe7..5edbb1aea 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -38,15 +38,28 @@ public class PlanController {
+      *  first five plan dates after the sheet's today and on or before its end, those a pause skips left
+      *  out, and whether it is paused now. */
+     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every,
+-            Integer day, LocalDate end, int generated, List<LocalDate> nextDates, boolean paused) {
+-        static PlanView of(Plan plan, int generated, List<PlanPause> pauses, LocalDate today) {
+-            return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
++            Integer day, LocalDate end, int generated, List<LocalDate> nextDates, boolean paused,
++            List<ChangeView> changes) {
++        static PlanView of(Plan plan, int generated, List<PlanPause> pauses, List<PlanChange> changes,
++                LocalDate today) {
++            return new PlanView(plan.getId(), plan.getPersonId(),
++                    PlanService.amountAfter(plan, changes).toPlainString(), plan.getStart(),
+                     plan.getEvery(), plan.getDay(), plan.getEnd(), generated,
+                     plan.datesAfter(today, NEXT_DATES, d -> PlanService.skipped(pauses, d)),
+-                    pauses.stream().anyMatch(PlanPause::isOpen));
++                    pauses.stream().anyMatch(PlanPause::isOpen),
++                    changes.stream().map(c -> new ChangeView(c.getChangedOn(), c.getAmount().toPlainString()))
++                            .toList());
+         }
+     }
+ 
++    /** A change of a plan's amount: the sheet's today when it was made, and the new amount. */
++    public record ChangeView(LocalDate on, String amount) {
++    }
++
++    /** A plan's new amount as typed; the service checks it. */
++    public record AmountRequest(@Size(max = 50) String amount) {
++    }
++
+     /** How many next dates a plan shows. */
+     private static final int NEXT_DATES = 5;
+ 
+@@ -88,7 +101,7 @@ public class PlanController {
+         String sheet = sheetId.trim();
+         String by = SignedInUser.decode(user);
+         return PlanView.of(service.add(sheet, by, request.personId(), request.amount(), request.start(),
+-                request.every(), request.day(), request.end()), 0, List.of(), sheets.today(sheet));
++                request.every(), request.day(), request.end()), 0, List.of(), List.of(), sheets.today(sheet));
+     }
+ 
+     /** Pause the plan from the sheet's today; refused when it is paused already. */
+@@ -105,6 +118,15 @@ public class PlanController {
+         return paused(sheetId, planId, user, false);
+     }
+ 
++    /** Change the plan's amount on the sheet's today; refused when the amount is bad. */
++    @PostMapping("/{planId}/amount")
++    public PlanView amount(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long planId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated AmountRequest request) {
++        String sheet = sheetId.trim();
++        Plan plan = service.changeAmount(sheet, SignedInUser.decode(user), planId, request.amount());
++        return views(sheet, null).stream().filter(v -> v.id().equals(plan.getId())).findFirst().orElseThrow();
++    }
++
+     private PlanView paused(String sheetId, Long planId, String user, boolean on) {
+         String sheet = sheetId.trim();
+         Plan plan = service.pause(sheet, SignedInUser.decode(user), planId, on);
+@@ -127,12 +149,14 @@ public class PlanController {
+         List<Plan> them = service.list(sheet, asOf);
+         Map<Long, Integer> generated = service.generated(them, asOf);
+         Map<Long, List<PlanPause>> pauses = service.pauses(them, asOf);
++        Map<Long, List<PlanChange>> changes = service.changes(them, asOf);
+         LocalDate today = sheets.today(sheet);
+         return them.stream().map(p -> PlanView.of(p, generated.getOrDefault(p.getId(), 0),
+-                pauses.getOrDefault(p.getId(), List.of()), today)).toList();
++                pauses.getOrDefault(p.getId(), List.of()), changes.getOrDefault(p.getId(), List.of()), today))
++                .toList();
+     }
+ 
+-    /** A bad amount, interval or day of the month, an end before the start, pausing a paused plan or
++    /** A bad amount (added or changed), interval or day of the month, an end before the start, pausing a paused plan or
+      *  resuming a running one, or a date that is not a real yyyy-mm-dd date. */
+     @ExceptionHandler({PlanRefusedException.class, HttpMessageNotReadableException.class})
+     @ResponseStatus(HttpStatus.BAD_REQUEST)
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index e27ec1d4c..4f6e8f834 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -27,6 +27,7 @@ public class PlanService {
+     private final PlanRepository plans;
+     private final PlanClaimRepository made;
+     private final PlanPauseRepository pauses;
++    private final PlanChangeRepository changes;
+     private final PersonRepository people;
+     private final ClaimService claims;
+     private final SheetService sheets;
+@@ -34,10 +35,11 @@ public class PlanService {
+     private final Audit audit;
+ 
+     public PlanService(PlanRepository plans, PlanClaimRepository made, PlanPauseRepository pauses,
+-            PersonRepository people, ClaimService claims, SheetService sheets, SettingService settings, Audit audit) {
++            PlanChangeRepository changes, PersonRepository people, ClaimService claims, SheetService sheets, SettingService settings, Audit audit) {
+         this.plans = plans;
+         this.made = made;
+         this.pauses = pauses;
++        this.changes = changes;
+         this.people = people;
+         this.claims = claims;
+         this.sheets = sheets;
+@@ -81,6 +83,38 @@ public class PlanService {
+         return byPlan;
+     }
+ 
++    /** Each plan's amount changes, oldest first, by plan id: so far, or those made by the end of the
++     *  as-of date. */
++    public Map<Long, List<PlanChange>> changes(List<Plan> them, LocalDate asOf) {
++        Map<Long, List<PlanChange>> byPlan = new HashMap<>();
++        for (PlanChange c : changes.findByPlanIdInOrderByIdAsc(them.stream().map(Plan::getId).toList())) {
++            if (asOf == null || !c.getChangedOn().isAfter(asOf)) {
++                byPlan.computeIfAbsent(c.getPlanId(), k -> new ArrayList<>()).add(c);
++            }
++        }
++        return byPlan;
++    }
++
++    /** The plan's amount after its changes: that of the latest, or the one it was added with. */
++    public static BigDecimal amountAfter(Plan plan, List<PlanChange> them) {
++        return them.isEmpty() ? plan.getAmount() : them.get(them.size() - 1).getAmount();
++    }
++
++    /** Change the plan's amount on the sheet's today: an amount of 0.00 or more with up to two decimals.
++     *  The claims it generates from then on take it; those it made already keep theirs. */
++    @Transactional
++    public Plan changeAmount(String sheetId, String user, Long planId, String amount) {
++        sheets.lock(sheetId);
++        Plan plan = plans.findById(planId).filter(p -> p.getSheetId().equals(sheetId))
++                .orElseThrow(() -> new NoSuchElementException("No plan " + planId + " on sheet " + sheetId));
++        Person person = people.findByIdAndSheetId(plan.getPersonId(), sheetId).orElseThrow();
++        BigDecimal figure = amountOf(amount);
++        changes.saveAndFlush(new PlanChange(planId, sheets.today(sheetId), figure));
++        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                + " start=" + plan.getStart() + " amount=" + figure.toPlainString());
++        return plan;
++    }
++
+     /** Whether the plan date falls in one of the pauses, and so is skipped. */
+     public static boolean skipped(List<PlanPause> them, LocalDate date) {
+         return them.stream().anyMatch(p -> p.skips(date));
+@@ -138,7 +172,7 @@ public class PlanService {
+         return saved;
+     }
+ 
+-    /** For every plan on the sheet, in the order they were added, add a DRAFT claim of its amount with
++    /** For every plan on the sheet, in the order they were added, add a DRAFT claim of its amount (that of its latest change, if any) with
+      *  an empty note for each plan date up to its end and the sheet's today it has made none for yet,
+      *  as the claim form would, a date a pause skips left out; a date the form refuses is passed over, to be tried again next time.
+      *  The claims made, in the order they were; a viewer makes none. */
+@@ -155,15 +189,17 @@ public class PlanService {
+             done.add(c.getPlanId() + "@" + c.getDate());
+         }
+         Map<Long, List<PlanPause>> paused = pauses(them, null);
++        Map<Long, List<PlanChange>> changed = changes(them, null);
+         List<Claim> added = new ArrayList<>();
+         for (Plan plan : them) {
+             List<PlanPause> its = paused.getOrDefault(plan.getId(), List.of());
++            BigDecimal amount = amountAfter(plan, changed.getOrDefault(plan.getId(), List.of()));
+             for (LocalDate date : plan.datesUpTo(today, d -> skipped(its, d))) {
+                 if (done.contains(plan.getId() + "@" + date)
+                         || !claims.accepts(sheetId, plan.getPersonId(), date)) {
+                     continue;
+                 }
+-                Claim claim = claims.add(sheetId, user, plan.getPersonId(), plan.getAmount(), date, "", null);
++                Claim claim = claims.add(sheetId, user, plan.getPersonId(), amount, date, "", null);
+                 made.saveAndFlush(new PlanClaim(plan.getId(), date, claim.getId(), today));
+                 added.add(claim);
+             }
+diff --git a/src/main/resources/db/migration/V111__plan_change.sql b/src/main/resources/db/migration/V111__plan_change.sql
+new file mode 100644
+index 000000000..bb5a300e5
+--- /dev/null
++++ b/src/main/resources/db/migration/V111__plan_change.sql
+@@ -0,0 +1,9 @@
++-- Each change of a plan's amount, with the sheet's today when it was made. The plan's own amount is
++-- the one it was added with; the claims it generates take the amount of its latest change, if any.
++CREATE TABLE plan_change (
++    id BIGINT AUTO_INCREMENT PRIMARY KEY,
++    plan_id BIGINT NOT NULL REFERENCES plan (id) ON DELETE CASCADE,
++    changed_on DATE NOT NULL,
++    amount DECIMAL(12, 2) NOT NULL
++);
++CREATE INDEX plan_change_plan ON plan_change (plan_id);
+diff --git a/src/main/resources/db/migration/V112__person_flag_on.sql b/src/main/resources/db/migration/V112__person_flag_on.sql
+new file mode 100644
+index 000000000..a76f4d8fa
+--- /dev/null
++++ b/src/main/resources/db/migration/V112__person_flag_on.sql
+@@ -0,0 +1,3 @@
++-- The sheet's today when the person's flag was put on; null for a flag put on before it was kept
++-- (or while they were never flagged). A view as of an earlier day leaves the flag out.
++ALTER TABLE person ADD COLUMN flag_on DATE;
