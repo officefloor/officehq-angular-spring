@@ -46,6 +46,13 @@ public class SheetService {
         return number;
     }
 
+    /** Hold the sheet locked until the transaction ends, so changes checked against the rest of
+     *  the sheet (such as a period that must not overlap another) are made one at a time. */
+    @Transactional
+    public void lock(String id) {
+        sheets.findForUpdate(id).orElseThrow();
+    }
+
     /** Change the sheet's today (the sheet is created first if it was never loaded); it has no
      *  audit line of its own, only the figures it moves. */
     @Transactional

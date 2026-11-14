@@ -3,19 +3,22 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { Session } from '../../core/session';
 import { Claim, ClaimsApi, cents, counts, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
+import { Periods } from '../periods/periods';
+import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
 import { GRADES, PeopleApi, Person, isStale, personError, statementError } from './people-api';
 
-// The sheet's rates; the people on the active sheet, in the order they were added, each with their
+// The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed and their due-total; the sheet's claimed-total and due-total; and
 // the one form that adds a person or, with a
 // person's editor open, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, Rates],
+  imports: [ReactiveFormsModule, PersonClaims, Periods, Rates],
   template: `
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (added)="periodAdded($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
@@ -56,7 +59,7 @@ import { GRADES, PeopleApi, Person, isStale, personError, statementError } from 
                   [attr.aria-label]="'Take statement of ' + p.name">Statement</button>
               </td>
               <td>
-                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)"
+                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)" [periods]="periods()"
                   (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -78,6 +81,7 @@ export class People {
   private readonly api = inject(PeopleApi);
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
+  private readonly periodsApi = inject(PeriodsApi);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
@@ -110,6 +114,22 @@ export class People {
         continue;
       }
       out.set(p.id, counted.reduce((sum, c) => sum + (claimDueCents(rates, c) ?? 0), 0));
+    }
+    return out;
+  });
+  /** The sheet's periods, by from-date. */
+  protected readonly periods = signal<Period[]>([]);
+  /** Each period's due-total in cents, by period id: the dues (n/a ones skipped) of the OPEN and
+   *  SETTLED claims whose date falls in it. */
+  protected readonly dueByPeriod = computed(() => {
+    const out = new Map<number, number>();
+    for (const p of this.people()) {
+      const rates = this.ratesOf(p.grade);
+      for (const c of this.claimsOf(p.id).filter(counts)) {
+        const period = periodOn(this.periods(), c.date);
+        if (period === null) continue;
+        out.set(period.id, (out.get(period.id) ?? 0) + (claimDueCents(rates, c) ?? 0));
+      }
     }
     return out;
   });
@@ -146,6 +166,7 @@ export class People {
         this.people.set([]);
         this.claims.set([]);
         this.rates.set([]);
+        this.periods.set([]);
         if (id) void this.read(id);
       });
     });
@@ -199,6 +220,11 @@ export class People {
   /** Take in a rate just set, in place of the grade's old one for the same from-date. */
   protected rateSaved(rate: Rate): void {
     this.rates.update((rs) => [...rs.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
+  }
+
+  /** Take in a period just added, in its place by from-date. */
+  protected periodAdded(period: Period): void {
+    this.periods.update((ps) => [...ps.filter((p) => p.id !== period.id), period].sort((a, b) => a.from.localeCompare(b.from)));
   }
 
   /** Take in a claim just added (listed first, as the newest) or saved (in its place). */
@@ -273,10 +299,11 @@ export class People {
   private async read(sheetId: string): Promise<void> {
     const seq = ++this.readSeq;
     try {
-      const [people, claims, rates] = await Promise.all([
-        this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId)]);
+      const [people, claims, rates, periods] = await Promise.all([
+        this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId), this.periodsApi.list(sheetId)]);
       if (seq === this.readSeq) {
         this.rates.set(rates);
+        this.periods.set(periods);
         this.claims.set(claims);
         this.people.set(people);
       }
