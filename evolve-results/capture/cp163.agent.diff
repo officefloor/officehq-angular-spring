@@ -1,0 +1,209 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 32b431476..6cd1a046d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -53,6 +53,9 @@ interface Person {
+   /** The snapshots written for the person, oldest first: the day being left and their due-total
+    *  then ('n/a' when none). */
+   snapshots: { day: string; dueTotal: string }[];
++  /** The person's statements still standing, oldest first by date: the date and the due-total each
++   *  recorded. */
++  statements: { date: string; dueTotal: string }[];
+   /** The holds put on the person, in the order they were: their OPEN claims dated within one, unless
+    *  bound by a statement, count in no live total. */
+   holds: Hold[];
+@@ -85,7 +88,12 @@ const NO_DESCENDANTS: DescendantFigures = { people: 0, dueTotal: '0.00', overdue
+ /** A statement taken: the person's statements as their row shows them, and their claims as it
+  *  bound them. */
+ interface StatementTaken {
+-  statements: { count: number; lastDueTotal: string | null; lastDate: string | null };
++  statements: {
++    count: number;
++    lastDueTotal: string | null;
++    lastDate: string | null;
++    lines: { date: string; dueTotal: string }[];
++  };
+   claims: Claim[];
+ }
+ 
+@@ -480,6 +488,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+             <th scope="col">Retired from</th>
+             <th scope="col">Past retirements</th>
+             <th scope="col">Snapshots</th>
++            <th scope="col">Statement lines</th>
+             <th scope="col">Active</th>
+             @if (columnShown('hold')) {
+               <th scope="col">On hold</th>
+@@ -576,6 +585,13 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+                   }
+                 </ul>
+               </td>
++              <td>
++                <ul [attr.aria-label]="'Statements of ' + p.name">
++                  @for (st of p.statements; track $index) {
++                    <li data-testid="person-statement-line-line">{{ st.date }} {{ st.dueTotal }}</li>
++                  }
++                </ul>
++              </td>
+               <td data-testid="person-active">{{ activeIds().has(p.id) ? 'yes' : 'no' }}</td>
+               @if (columnShown('hold')) {
+                 <td data-testid="person-hold">{{ p.holds.length > 0 ? 'yes' : 'no' }}</td>
+@@ -2120,11 +2136,11 @@ export class People {
+         ...taken.claims.filter((c) => !list.some((had) => had.id === c.id)),
+         ...list.map((c) => bound.get(c.id) ?? c),
+       ].sort((a, b) => b.id - a.id));
+-      const { count, lastDueTotal, lastDate } = taken.statements;
++      const { count, lastDueTotal, lastDate, lines } = taken.statements;
+       this.people.update((list) =>
+         list.map((p) =>
+           p.id === person.id
+-            ? { ...p, statementCount: count, statedTotal: lastDueTotal, statementDate: lastDate }
++            ? { ...p, statementCount: count, statedTotal: lastDueTotal, statementDate: lastDate, statements: lines }
+             : p,
+         ),
+       );
+@@ -2146,11 +2162,11 @@ export class People {
+       if (this.session.sheetId() !== sheet) return;
+       const live = new Map(cancelled.claims.map((c) => [c.id, c]));
+       this.claims.update((list) => list.map((c) => live.get(c.id) ?? c));
+-      const { count, lastDueTotal, lastDate } = cancelled.statements;
++      const { count, lastDueTotal, lastDate, lines } = cancelled.statements;
+       this.people.update((list) =>
+         list.map((p) =>
+           p.id === person.id
+-            ? { ...p, statementCount: count, statedTotal: lastDueTotal, statementDate: lastDate }
++            ? { ...p, statementCount: count, statedTotal: lastDueTotal, statementDate: lastDate, statements: lines }
+             : p,
+         ),
+       );
+diff --git a/src/main/java/net/officefloor/hq/app/history/History.java b/src/main/java/net/officefloor/hq/app/history/History.java
+index b62b7a555..74bf4b980 100644
+--- a/src/main/java/net/officefloor/hq/app/history/History.java
++++ b/src/main/java/net/officefloor/hq/app/history/History.java
+@@ -73,6 +73,10 @@ public class History {
+                         was.setRef(is.getRef());
+                         was.setTags(is.getTags());
+                         was.setBatch(is.getBatch());
++                        // Only the last reminder is kept: it shows when it was written by then.
++                        if (is.getRemindedOn() != null && !is.getRemindedOn().isAfter(day)) {
++                            was.setRemindedOn(is.getRemindedOn());
++                        }
+                         if (was.getStatus() == ClaimStatus.VOID) {
+                             was.setVoidReason(is.getVoidReason());
+                         }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 795c9e016..1d992d980 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -71,12 +71,12 @@ public class PersonController {
+      *  grade they were given from the earliest, how many statements were taken for them and the
+      *  last one's due-total and date (null when none was), and whether they are retired and from
+      *  when (null when not), and the holds put on them in the order they were, and the ids of their patrons in the order
+-     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none), and their aliases sorted as names are compared, and the sheet they were transferred from (null for none), and their past retirements in the order they ended, and their tags sorted (empty for none), and the snapshots written for them oldest first. */
++     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none), and their aliases sorted as names are compared, and the sheet they were transferred from (null for none), and their past retirements in the order they ended, and their tags sorted (empty for none), and the snapshots written for them oldest first, and their statements' lines oldest first. */
+     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
+             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
+             List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
+             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
+-            List<String> tags, List<SnapshotView> snapshots) {
++            List<String> tags, List<SnapshotView> snapshots, List<StatementSummary.Line> statements) {
+         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
+                 StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched,
+                 List<String> aliases, boolean clashing, List<PersonRetirement> retirements,
+@@ -87,7 +87,7 @@ public class PersonController {
+                     holds.stream().map(HoldView::of).toList(), patronIds, watched, person.getTerms(),
+                     person.getContact(), aliases, clashing, person.getOriginSheetId(),
+                     retirements.stream().map(RetirementView::of).toList(), person.getTags(),
+-                    snapshots.stream().map(SnapshotView::of).toList());
++                    snapshots.stream().map(SnapshotView::of).toList(), statements.lines());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 9ec63445f..ac527ed29 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -92,13 +92,12 @@ public class RateController {
+     }
+ 
+     /** The rates of the sheets the sheet's rates fall back to, nearest first (its parent, the
+-     *  parent's parent, up to three levels up), each listed as {@link #list} lists them. */
++     *  parent's parent, up to three levels up), each listed as {@link #list} lists them now: a parent
++     *  keeps its own today, so a sheet read as of a past day falls back to its parents as they stand now. */
+     @GetMapping("/inherited")
+-    public List<List<RateView>> inherited(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+-            @RequestHeader(value = AsOf.HEADER, required = false) String asOf) {
+-        LocalDate day = AsOf.parse(asOf);
++    public List<List<RateView>> inherited(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
+         return service.ancestors(sheetId.trim()).stream()
+-                .map(ancestor -> service.list(ancestor, day).stream().map(this::view).toList())
++                .map(ancestor -> service.list(ancestor).stream().map(this::view).toList())
+                 .toList();
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index b7d0af33f..39d0d815f 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -105,8 +105,8 @@ public class RateService {
+         return rateOn(sheetId, grade, date, null);
+     }
+ 
+-    /** The grade's rate in force on a date as the rates (the sheet's and its parent sheets') stood
+-     *  at the end of a day (null: as they stand now). */
++    /** The grade's rate in force on a date as the sheet's rates stood at the end of a day (null: as
++     *  they stand now), falling back to its parent sheets' rates as they stand now. */
+     public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date, LocalDate asOf) {
+         return rateFor(sheetId, grade, date, null, asOf);
+     }
+@@ -120,8 +120,10 @@ public class RateService {
+         if (own.isPresent()) {
+             return own;
+         }
++        // A parent sheet keeps its own today, not this one's: the sheet falls back to its parents'
++        // rates as they stand now, as it does to its parents themselves.
+         for (String ancestor : ancestors(sheetId)) {
+-            Optional<Rate> theirs = ownRateFor(ancestor, grade, date, claimId, asOf);
++            Optional<Rate> theirs = ownRateFor(ancestor, grade, date, claimId, null);
+             if (theirs.isPresent()) {
+                 return theirs;
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+index 3149ba57b..864d6d2bc 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+@@ -1,13 +1,18 @@
+ package net.officefloor.hq.app.statement;
+ 
+ import java.time.LocalDate;
++import java.util.Comparator;
+ import java.util.List;
+ 
+-/** A person's statements as their row shows them: how many were taken, and the last one's
+- *  due-total and date (null when none was taken). */
+-public record StatementSummary(int count, String lastDueTotal, LocalDate lastDate) {
++/** A person's statements as their row shows them: how many were taken, the last one's due-total
++ *  and date (null when none was taken), and a line for each, oldest first. */
++public record StatementSummary(int count, String lastDueTotal, LocalDate lastDate, List<Line> lines) {
+ 
+-    public static final StatementSummary NONE = new StatementSummary(0, null, null);
++    /** One statement as its person's row lists it: its date and the due-total it recorded. */
++    public record Line(LocalDate date, String dueTotal) {
++    }
++
++    public static final StatementSummary NONE = new StatementSummary(0, null, null, List.of());
+ 
+     /** The summary of one person's statements, in their order (the last is their last statement). */
+     public static StatementSummary of(List<Statement> statements) {
+@@ -15,6 +20,10 @@ public record StatementSummary(int count, String lastDueTotal, LocalDate lastDat
+             return NONE;
+         }
+         Statement last = statements.get(statements.size() - 1);
+-        return new StatementSummary(statements.size(), last.getDueTotal(), last.getTakenOn());
++        // Oldest first by date, so those a merge or transfer brought over fall among the person's own.
++        List<Line> lines = statements.stream()
++                .sorted(Comparator.comparing(Statement::getTakenOn).thenComparingLong(Statement::getOrder))
++                .map(statement -> new Line(statement.getTakenOn(), statement.getDueTotal())).toList();
++        return new StatementSummary(statements.size(), last.getDueTotal(), last.getTakenOn(), lines);
+     }
+ }
