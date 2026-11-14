@@ -124,7 +124,8 @@ export interface RatePreview {
 const PERCENT = /^\d{1,5}(\.\d{1,2})?$/;
 
 // The active sheet's rates for each grade, each from its from-date, and those of the sheets they fall
-// back to (its parent, the parent's parent, up to three levels up), re-read whenever a sheet is loaded.
+// back to (its parent, the parent's parent, up to three levels up, then the sheet it was cloned from
+// and its own), re-read whenever a sheet is loaded.
 @Injectable({ providedIn: 'root' })
 export class RateStore {
   private readonly http = inject(HttpClient);

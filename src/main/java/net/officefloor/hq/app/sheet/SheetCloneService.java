@@ -57,7 +57,8 @@ public class SheetCloneService {
      *  sheet's today, settings, roles, rates, holidays, void reasons and templates; its people with
      *  their grades, terms, contacts, aliases, holds, retirements and patrons; its pools; its crews; its periods,
      *  all open; and its claims with their status, frozen figures, dates, notes, tags, comments and
-     *  logs. Each claim that had a number takes the clone's next number, in the order the claims were
+     *  logs. The clone keeps the sheet it was cloned from, whose rates its own fall back to (see
+     *  RateService#fallbacks). Each claim that had a number takes the clone's next number, in the order the claims were
      *  opened (by the sheet's today when each was, then the order they were added). Statements, and
      *  the figures they bound, are not copied. The sheet writes its line; the clone writes its own,
      *  then every person's rollup line and its totals. */
@@ -88,9 +89,9 @@ public class SheetCloneService {
     private void copy(String from, String to) {
         jdbc.update("INSERT INTO sheet (id, today, last_claim_number, last_batch_number, policy_date,"
                 + " period_numbering_from, grace_days, entry_date, pot, parent_id, archived, fiscal_start_month,"
-                + " alert_threshold, escalate_after, review_sla, proof_kinds)"
+                + " alert_threshold, escalate_after, review_sla, proof_kinds, cloned_from)"
                 + " SELECT ?, today, 0, 0, policy_date, period_numbering_from, grace_days, entry_date, pot, parent_id,"
-                + " FALSE, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds FROM sheet WHERE id = ?", to, from);
+                + " FALSE, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds, ? FROM sheet WHERE id = ?", to, from, from);
         LocalDate today = jdbc.queryForObject("SELECT today FROM sheet WHERE id = ?", LocalDate.class, to);
 
         // The sheet's own lists: settings, roles, rates, holidays, void reasons, templates and periods.

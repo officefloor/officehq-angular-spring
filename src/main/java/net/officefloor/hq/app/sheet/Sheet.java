@@ -94,6 +94,11 @@ public class Sheet {
     @Column(name = "parent_id")
     private String parentId;
 
+    /** The id of the sheet this one was cloned from: a grade with no rate in force on a date on this
+     *  sheet nor on its parents takes that sheet's; null when it was not cloned. */
+    @Column(name = "cloned_from")
+    private String clonedFrom;
+
     /** Whether a steward has archived the sheet: every change to it is then refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -204,6 +209,10 @@ public class Sheet {
 
     public void setParentId(String parentId) {
         this.parentId = parentId;
+    }
+
+    public String getClonedFrom() {
+        return clonedFrom;
     }
 
     public boolean isArchived() {

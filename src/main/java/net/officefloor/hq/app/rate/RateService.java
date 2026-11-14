@@ -5,8 +5,10 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.history.History;
@@ -20,7 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** The rates set on a sheet for each grade, each in force from its from-date. A grade with no rate
  *  in force on a date on a sheet takes its parent sheet's, then the parent's parent's, up to
- *  {@link #PARENT_LEVELS} levels up. */
+ *  {@link #PARENT_LEVELS} levels up; with none there either, a sheet that was cloned takes the rate
+ *  of the sheet it was cloned from, and so on up that sheet's parents and source. */
 @Service
 public class RateService {
 
@@ -73,6 +76,31 @@ public class RateService {
         return found;
     }
 
+    /** Every sheet the sheet's rates fall back to, nearest first: its {@link #ancestors} as they stood
+     *  at the end of a day (null: now); then, for a sheet that was cloned, the sheet it was cloned from
+     *  and that sheet's own fall-backs as they stand now. A sheet is listed once, the sheet itself never. */
+    public List<String> fallbacks(String sheetId, LocalDate asOf) {
+        List<String> found = new ArrayList<>();
+        Set<String> seen = new HashSet<>(Set.of(sheetId));
+        String sheet = sheetId;
+        LocalDate day = asOf;
+        while (sheet != null) {
+            for (String ancestor : ancestors(sheet, day)) {
+                if (seen.add(ancestor)) {
+                    found.add(ancestor);
+                }
+            }
+            String source = sheetRepository.findById(sheet).map(Sheet::getClonedFrom).orElse(null);
+            if (source == null || !seen.add(source)) {
+                break;
+            }
+            found.add(source);
+            sheet = source;
+            day = null;
+        }
+        return found;
+    }
+
     /** The sheet's rates by grade, each grade's from the earliest. */
     public List<Rate> list(String sheetId) {
         return rates.findBySheetIdOrderByGradeAscFromAscIdAsc(sheetId);
@@ -109,8 +137,9 @@ public class RateService {
     /** The grade's rate in force on a date: the one whose from-date is the latest on or before it
      *  (a rate with no from-date applies from the beginning of time); none applies when there is no
      *  such rate, or when that one's to-date is before the date. When none applies on the sheet, the
-     *  parent sheet's is taken, then the parent's parent's, up to {@link #PARENT_LEVELS} levels up;
-     *  empty when none applies on any of them. */
+     *  parent sheet's is taken, then the parent's parent's, up to {@link #PARENT_LEVELS} levels up,
+     *  then those of the sheet it was cloned from (see {@link #fallbacks}); empty when none applies on
+     *  any of them. */
     public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date) {
         return rateOn(sheetId, grade, date, null);
     }
@@ -132,7 +161,7 @@ public class RateService {
         }
         // Read as of a day, the sheet falls back to the parents it had at the end of it, their rates as
         // they stand now: a parent keeps its own today, so its history does not follow the sheet's.
-        for (String ancestor : ancestors(sheetId, asOf)) {
+        for (String ancestor : fallbacks(sheetId, asOf)) {
             Optional<Rate> theirs = ownRateFor(ancestor, grade, date, claimId, null);
             if (theirs.isPresent()) {
                 return theirs;
