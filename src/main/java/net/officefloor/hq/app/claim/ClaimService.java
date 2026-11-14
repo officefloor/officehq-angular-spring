@@ -519,8 +519,9 @@ public class ClaimService {
     }
 
     /** A user whose role the sheet's permission matrix lets reassign (by the standing rule a steward)
-     *  moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its
-     *  number and date, loses any figure a statement bound it to (live again until its new person's
+     *  moves a DRAFT, OPEN or PENDING claim to another person on the sheet. It keeps its date, takes
+     *  the next number in the sequence it is numbered in (its old one given up for good; a draft has
+     *  none and gets none), loses any figure a statement bound it to (live again until its new person's
      *  next statement), and is listed as its new person's newest claim. Anyone else, a SETTLED or VOID
      *  claim, a correction (it names a claim of its own person), a claim dated in a closed period, or
      *  a move to the same person or to one retired before the claim's date, is refused. */
@@ -539,6 +540,8 @@ public class ClaimService {
     private Claim move(String sheetId, String user, Long personId, Long id, Long toPersonId, boolean samePerson) {
         Person from = person(sheetId, personId);
         Person to = person(sheetId, toPersonId);
+        // Lock the sheet first, as opening does: a numbered claim takes the next number.
+        sheets.lock(sheetId);
         Claim claim = claim(sheetId, personId, id);
         if (!settings.allows(sheetId, user, Permission.REASSIGN)) {
             throw new ReassignRefusedException(user);
@@ -555,6 +558,11 @@ public class ClaimService {
         refuseClosed(sheetId, claim.getDueBy());
         refuseRetired(to, claim.getDate());
         claim.setPersonId(to.getId());
+        if (claim.getNumber() != null) {
+            String old = claim.getNumber();
+            claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
+            claims.retireNumber(sheetId, old);
+        }
         claim.unbind();
         claims.saveAndFlush(claim);
         claims.relist(claim.getId());
