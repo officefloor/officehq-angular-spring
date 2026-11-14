@@ -1,0 +1,64 @@
+{
+  "checkpoint": 3,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp03_people",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Keep a list of people on the sheet. Each has a name (required; an empty name is refused with an\nerror on the form) and a grade, one of A, B or C. People are added through a form, and an\nexisting person can be edited through the same form (opening a person's editor fills the form\nwith their values). Show all the people in the order they were added, each with their name and\ngrade.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nKeep a list of people on the sheet. Each has a name (required; an empty name is refused with an\nerror on the form) and a grade, one of A, B or C. People are added through a form, and an\nexisting person can be edited through the same form (opening a person's editor fills the form\nwith their values). Show all the people in the order they were added, each with their name and\ngrade.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c7d8679539cc149433d685f5be16f66c555012a5",
+  "reset_sha": "",
+  "preagent_sha": "9cb1db6a4003fadcd70c4e9a75f1d68025c16b7e",
+  "prev_sha": "9cb1db6a4003fadcd70c4e9a75f1d68025c16b7e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.547999,
+    "input_tokens": 22,
+    "output_tokens": 8845,
+    "cache_read_tokens": 325335,
+    "cache_creation_tokens": 38243,
+    "num_turns": 12,
+    "duration_ms": 135727,
+    "duration_api_ms": 73915,
+    "model": "claude-opus-5-5",
+    "session_id": "22f764de-38b3-4bc3-9823-b4498af5d005",
+    "stop_reason": "success",
+    "result_text": "The sheet now keeps a list of people, and the acceptance test passes when run with `bin/e2e`.\n\n**What it does**\n- A form adds a person with a name and a grade of A, B or C.\n- Each person's row has an Edit button. It fills the same form with their values, and the button changes to Save, with a Cancel button beside it.\n- An empty or spaces-only name is refused with an error on the form, and nothing is saved. The error clears as soon as the form is changed or submitted again.\n- People are listed in the order they were added, each showing their name and grade. Names are stored exactly as typed, so `\" ada \"` keeps its spaces.\n- Loading a sheet again, including the same id, re-reads its people from the store. That lets one user see what another changed.\n\n**How it's built**\n- **Stored data:** a new `person` table in `src/main/resources/db/migration/V3__person.sql`, linked to its sheet. The database itself rejects any grade other than A, B or C.\n- **Server:** a new package `src/main/java/net/officefloor/hq/app/person/` that lists, adds and updates a sheet's people. It also refuses a blank name or a bad grade, so the rule holds even if the screen is bypassed.\n- **Front end:** a new `People` component (`src/main/frontend/src/app/features/people/`) shown on the home screen once a sheet is loaded.\n- **Re-reading on load:** I added a counter to `core/session.ts` that goes up on every sheet load. Without it, loading the same id again wouldn't trigger a fresh read.\n- **Styles:** a small `.visually-hidden` style in `styles.css` labels the actions column for screen readers.\n\nNo audit records are written: the spec doesn't expect any for this change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.547999,
+        "num_turns": 12,
+        "duration_ms": 135727,
+        "duration_api_ms": 73915,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp03.agent.jsonl",
+  "agent_diff_file": "cp03.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
