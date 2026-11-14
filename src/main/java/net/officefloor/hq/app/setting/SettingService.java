@@ -65,6 +65,7 @@ public class SettingService {
     private static final String GRACE_DAYS = "grace-days";
     private static final String ENTRY_DATE = "entry-date";
     private static final String POT = "pot";
+    private static final String ALERT_THRESHOLD = "alert-threshold";
     private static final String FISCAL_START_MONTH = "fiscal-start-month";
 
     /** The sheet's settings as they stood at the end of a past day: each value as it stood set then,
@@ -73,7 +74,7 @@ public class SettingService {
             Integer graceDays, List<Delegation> delegations, BigDecimal clerkLimit, BigDecimal floor, BigDecimal cap,
             int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
             Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent,
-            int fiscalStartMonth) {
+            int fiscalStartMonth, BigDecimal alertThreshold) {
     }
 
     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
@@ -103,6 +104,9 @@ public class SettingService {
         String grace = kept.contains(GRACE_DAYS) ? then.get(GRACE_DAYS) : Objects.toString(graceDays(sheetId), null);
         BigDecimal potNow = pot(sheetId);
         String pot = kept.contains(POT) ? then.get(POT) : potNow != null ? potNow.toPlainString() : null;
+        BigDecimal alertNow = alertThreshold(sheetId);
+        String alert = kept.contains(ALERT_THRESHOLD) ? then.get(ALERT_THRESHOLD)
+                : alertNow != null ? alertNow.toPlainString() : null;
         String parent = parent(sheetId);
         String fiscal = kept.contains(FISCAL_START_MONTH) ? then.get(FISCAL_START_MONTH)
                 : String.valueOf(fiscalStartMonth(sheetId));
@@ -123,7 +127,7 @@ public class SettingService {
                 inForce(sheetId, "terms", day, day).map(v -> v.getValue().intValue()).orElse(START_TERMS),
                 latePct(sheetId, day, day), history.policyDate(sheetId, day), gradeTerms, dated,
                 entry != null ? LocalDate.parse(entry) : null, pot != null ? new BigDecimal(pot) : null, parent,
-                fiscal != null ? Integer.parseInt(fiscal) : 1);
+                fiscal != null ? Integer.parseInt(fiscal) : 1, alert != null ? new BigDecimal(alert) : null);
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -403,6 +407,11 @@ public class SettingService {
         return sheets.load(sheetId).getPot();
     }
 
+    /** The sheet's alert threshold (two decimals); null when it is blank (off). */
+    public BigDecimal alertThreshold(String sheetId) {
+        return sheets.load(sheetId).getAlertThreshold();
+    }
+
     /** The sheet's parent sheet's id; null when it has none. Not kept in the sheet's history: the
      *  sheet shown as of a past day shows its parent as it stands now. */
     public String parent(String sheetId) {
@@ -619,6 +628,20 @@ public class SettingService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         history.settingSet(sheetId, POT, scaled != null ? scaled.toPlainString() : null);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=pot value="
+                + (scaled != null ? scaled.toPlainString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's alert threshold, kept to two decimals; null leaves it blank (off). */
+    @Transactional
+    public Sheet setAlertThreshold(String sheetId, String by, BigDecimal threshold) {
+        sheets.load(sheetId);
+        BigDecimal scaled = threshold != null ? threshold.setScale(2, RoundingMode.UNNECESSARY) : null;
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setAlertThreshold(scaled);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, ALERT_THRESHOLD, scaled != null ? scaled.toPlainString() : null);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=alert-threshold value="
                 + (scaled != null ? scaled.toPlainString() : ""));
         return saved;
     }

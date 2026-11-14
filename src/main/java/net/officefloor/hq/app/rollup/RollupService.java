@@ -28,7 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** The figures a sheet rolls up to: each person's claimed, due-total and overdue-total, and the sheet's totals. A
  *  change made through {@link #track} is followed in the audit by a line for each person whose
- *  figures it moved, then one for the sheet's totals when they moved. */
+ *  figures it moved, then one for the sheet's totals when they moved, then an alert for each person
+ *  whose due-total it took above the sheet's alert threshold. */
 @Service
 public class RollupService {
 
@@ -92,6 +93,16 @@ public class RollupService {
                 || after.overdueTotal().compareTo(before.overdueTotal()) != 0) {
             audit.recordOnCommit(totalsLine(sheetId, user, after));
         }
+        BigDecimal threshold = settings.alertThreshold(sheetId);
+        if (threshold != null) {
+            after.people().forEach((id, figures) -> {
+                Figures was = before.people().get(id);
+                if (above(figures.due(), threshold) && (was == null || !above(was.due(), threshold))) {
+                    audit.recordOnCommit("ALERT sheet=" + sheetId + " by=" + user + " name=" + figures.name()
+                            + " due-total=" + figures.due().toPlainString());
+                }
+            });
+        }
         return result;
     }
 
@@ -102,6 +113,11 @@ public class RollupService {
         Rollup now = rollup(sheetId);
         now.people().values().forEach(figures -> audit.recordOnCommit(rollupLine(sheetId, user, figures)));
         audit.recordOnCommit(totalsLine(sheetId, user, now));
+    }
+
+    /** Whether a due-total is above the alert threshold; none (n/a) never is. */
+    private static boolean above(BigDecimal due, BigDecimal threshold) {
+        return due != null && due.compareTo(threshold) > 0;
     }
 
     private static String rollupLine(String sheetId, String user, Figures figures) {

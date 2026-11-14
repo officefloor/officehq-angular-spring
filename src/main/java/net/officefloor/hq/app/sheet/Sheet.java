@@ -70,6 +70,10 @@ public class Sheet {
     @Column(name = "pot", precision = 19, scale = 2)
     private BigDecimal pot;
 
+    /** The alert threshold: a person whose due-total crosses above it is alerted; null for off. */
+    @Column(name = "alert_threshold", precision = 19, scale = 2)
+    private BigDecimal alertThreshold;
+
     /** The parent sheet's id: a grade with no rate in force on a date on this sheet takes the
      *  parent's; null for none. */
     @Column(name = "parent_id")
@@ -145,6 +149,14 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    public BigDecimal getAlertThreshold() {
+        return alertThreshold;
+    }
+
+    public void setAlertThreshold(BigDecimal alertThreshold) {
+        this.alertThreshold = alertThreshold;
     }
 
     public String getParentId() {

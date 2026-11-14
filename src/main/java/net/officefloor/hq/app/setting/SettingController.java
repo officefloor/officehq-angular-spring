@@ -54,7 +54,8 @@ public class SettingController {
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
             String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
             Map<String, List<DatedView>> dated, Map<String, String> permissions, List<DelegationView> delegations,
-            String entryDate, String pot, String parent, int fiscalStartMonth) {
+            String entryDate, String pot, String parent, int fiscalStartMonth,
+            String alertThreshold) {
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
@@ -137,6 +138,10 @@ public class SettingController {
     public record PotRequest(@DecimalMin("0.00") @Digits(integer = 17, fraction = 2) BigDecimal value) {
     }
 
+    /** An alert threshold of 0.00 or more with up to two decimals; null leaves it blank (off). */
+    public record AlertThresholdRequest(@DecimalMin("0.00") @Digits(integer = 17, fraction = 2) BigDecimal value) {
+    }
+
     /** A parent sheet's id; null or blank leaves it blank (none). */
     public record ParentRequest(@Size(max = 200) String value) {
     }
@@ -181,7 +186,7 @@ public class SettingController {
                 then.delegations().stream().map(DelegationView::of).toList(),
                 then.entryDate() != null ? then.entryDate().toString() : "",
                 then.pot() != null ? then.pot().toPlainString() : null, then.parent() != null ? then.parent() : "",
-                then.fiscalStartMonth());
+                then.fiscalStartMonth(), then.alertThreshold() != null ? then.alertThreshold().toPlainString() : null);
     }
 
     /** Assign a user name a role; a role other than clerk or steward is refused. */
@@ -391,6 +396,17 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Change the sheet's alert threshold; a person whose due-total crosses above it after a change is
+     *  alerted in the audit. */
+    @PutMapping("/alert-threshold")
+    public SettingsView setAlertThreshold(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated AlertThresholdRequest request) {
+        String sheet = sheetId.trim();
+        service.setAlertThreshold(sheet, SignedInUser.decode(user), request.value());
+        return view(sheet);
+    }
+
     /** Change the sheet's parent sheet; the figures it moves are followed in the audit. */
     @PutMapping("/parent")
     public SettingsView setParent(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -412,6 +428,7 @@ public class SettingController {
         LocalDate entryDate = service.entryDate(sheet);
         BigDecimal pot = service.pot(sheet);
         String parent = service.parent(sheet);
+        BigDecimal alert = service.alertThreshold(sheet);
         Map<String, List<DatedView>> dated = new LinkedHashMap<>();
         service.dated(sheet).forEach((key, recorded) -> dated.put(key, recorded.stream().map(DatedView::of).toList()));
         return new SettingsView(service.roles(sheet).stream().map(RoleView::of).toList(),
@@ -421,7 +438,8 @@ public class SettingController {
                 numberingFrom != null ? numberingFrom.toString() : "", service.graceDays(sheet), service.gradeTerms(sheet, today), dated,
                 service.permissions(sheet), service.delegations(sheet).stream().map(DelegationView::of).toList(),
                 entryDate != null ? entryDate.toString() : "", pot != null ? pot.toPlainString() : null,
-                parent != null ? parent : "", service.fiscalStartMonth(sheet));
+                parent != null ? parent : "", service.fiscalStartMonth(sheet),
+                alert != null ? alert.toPlainString() : null);
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */

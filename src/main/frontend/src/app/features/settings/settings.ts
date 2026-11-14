@@ -55,6 +55,9 @@ interface SettingsView {
   fiscalStartMonth: number;
   /** The pot (two decimals): each member of a balanced pool shows a cut of it; null for none. */
   pot: string | null;
+  /** The alert threshold (two decimals): a person whose due-total crosses above it is alerted; null
+   *  for off. */
+  alertThreshold: string | null;
   /** The parent sheet's id: a grade with no rate in force on a date takes the parent's (then its
    *  parent's, up to three levels up); blank for none. */
   parent: string;
@@ -178,6 +181,8 @@ export class SettingStore {
   readonly fiscalStartMonth = signal(1);
   /** The pot as text: two decimals, blank for none. */
   readonly pot = signal('');
+  /** The alert threshold as text: two decimals, blank for off. */
+  readonly alertThreshold = signal('');
   /** The parent sheet's id; blank for none. */
   readonly parent = signal('');
   /** The permission matrix as set, by action; blank keeps the standing rule. */
@@ -200,6 +205,7 @@ export class SettingStore {
       this.graceDays.set('');
       this.fiscalStartMonth.set(1);
       this.pot.set('');
+      this.alertThreshold.set('');
       this.parent.set('');
       this.permissions.set({});
       if (sheet) void this.read(sheet, load);
@@ -434,6 +440,17 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Change the active sheet's alert threshold; null leaves it blank (off). */
+  async setAlertThreshold(value: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/alert-threshold`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   /** Change the active sheet's parent sheet; null leaves it blank (none). The sheet itself, a sheet
    *  that has it as an ancestor and a sheet never loaded are refused. */
   async setParent(value: string | null): Promise<void> {
@@ -479,6 +496,7 @@ export class SettingStore {
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
     this.fiscalStartMonth.set(settings.fiscalStartMonth);
     this.pot.set(settings.pot ?? '');
+    this.alertThreshold.set(settings.alertThreshold ?? '');
     this.parent.set(settings.parent);
     this.permissions.set(settings.permissions);
   }
@@ -814,6 +832,15 @@ export class SettingStore {
           (focus)="potTyped.set(true)"
           (input)="pot.set(value($event)); potTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-alert-threshold">Alert threshold (blank: off)</label>
+        <input
+          id="setting-alert-threshold"
+          data-testid="setting-alert-threshold"
+          inputmode="decimal"
+          [value]="alertThreshold()"
+          (focus)="alertThresholdTyped.set(true)"
+          (input)="alertThreshold.set(value($event)); alertThresholdTyped.set(true); settingsError.set(null)"
+        />
         <label for="setting-parent">Parent sheet (blank: none)</label>
         <input
           id="setting-parent"
@@ -949,6 +976,13 @@ export class SettingStore {
         }
       </p>
       <p>
+        Alert threshold:
+        <strong data-testid="setting-alert-threshold-current">{{ store.alertThreshold() }}</strong>
+        @if (store.alertThreshold() === '') {
+          <span>off</span>
+        }
+      </p>
+      <p>
         Parent sheet:
         <strong data-testid="setting-parent-current">{{ store.parent() }}</strong>
         @if (store.parent() === '') {
@@ -1025,6 +1059,8 @@ export class Settings {
   protected readonly fiscalStartMonthTyped = signal(false);
   protected readonly pot = signal('');
   protected readonly potTyped = signal(false);
+  protected readonly alertThreshold = signal('');
+  protected readonly alertThresholdTyped = signal(false);
   protected readonly parent = signal('');
   protected readonly parentTyped = signal(false);
   /** The permission entries typed since the last save, by action; a focused one counts as typed, as
@@ -1162,6 +1198,8 @@ export class Settings {
     const saveFiscalStartMonth = this.fiscalStartMonthTyped();
     const pot = this.pot().trim();
     const savePot = this.potTyped();
+    const alertThreshold = this.alertThreshold().trim();
+    const saveAlertThreshold = this.alertThresholdTyped();
     const parent = this.parent().trim();
     const saveParent = this.parentTyped();
     const permissions = Object.entries(this.permissions()).map(
@@ -1267,6 +1305,10 @@ export class Settings {
       this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
+    if (saveAlertThreshold && alertThreshold !== '' && !AMOUNT.test(alertThreshold)) {
+      this.settingsError.set('Type an alert threshold of 0.00 or more, with up to two decimals, or leave it blank for off.');
+      return;
+    }
     const badPermission = Object.entries(this.permissions()).find(([, roles]) => !rolesList(roles.trim()));
     if (badPermission) {
       this.settingsError.set(`Type the roles that may ${badPermission[0]} as clerk, steward or clerk,steward, or leave it blank for the standing rule.`);
@@ -1289,6 +1331,7 @@ export class Settings {
     this.graceDaysTyped.set(false);
     this.fiscalStartMonthTyped.set(false);
     this.potTyped.set(false);
+    this.alertThresholdTyped.set(false);
     this.parentTyped.set(false);
     this.permissions.set({});
     const save = async () => {
@@ -1317,6 +1360,7 @@ export class Settings {
         if (saveGraceDays) await this.store.setGraceDays(graceDays === '' ? null : Number(graceDays));
         if (saveFiscalStartMonth) await this.store.setFiscalStartMonth(Number(fiscalStartMonth));
         if (savePot) await this.store.setPot(pot === '' ? null : pot);
+        if (saveAlertThreshold) await this.store.setAlertThreshold(alertThreshold === '' ? null : alertThreshold);
         if (saveParent) await this.store.setParent(parent === '' ? null : parent);
         for (const [action, roles] of permissions) await this.store.setPermission(action, roles);
       } catch {
@@ -1337,6 +1381,7 @@ export class Settings {
         if (saveGraceDays) this.graceDaysTyped.set(true);
         if (saveFiscalStartMonth) this.fiscalStartMonthTyped.set(true);
         if (savePot) this.potTyped.set(true);
+        if (saveAlertThreshold) this.alertThresholdTyped.set(true);
         if (saveParent) this.parentTyped.set(true);
         this.permissions.update((typed) => ({ ...Object.fromEntries(permissions), ...typed }));
         this.settingsError.set('The settings could not be saved.');
