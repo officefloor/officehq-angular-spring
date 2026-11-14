@@ -89,9 +89,9 @@ public class SheetCloneService {
     private void copy(String from, String to) {
         jdbc.update("INSERT INTO sheet (id, today, last_claim_number, last_batch_number, policy_date,"
                 + " period_numbering_from, grace_days, entry_date, pot, parent_id, archived, fiscal_start_month,"
-                + " alert_threshold, escalate_after, review_sla, proof_kinds, cloned_from)"
+                + " alert_threshold, escalate_after, review_sla, proof_kinds, default_grade, cloned_from)"
                 + " SELECT ?, today, 0, 0, policy_date, period_numbering_from, grace_days, entry_date, pot, parent_id,"
-                + " FALSE, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds, ? FROM sheet WHERE id = ?", to, from, from);
+                + " FALSE, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds, default_grade, ? FROM sheet WHERE id = ?", to, from, from);
         LocalDate today = jdbc.queryForObject("SELECT today FROM sheet WHERE id = ?", LocalDate.class, to);
 
         // The sheet's own lists: settings, roles, rates, holidays, void reasons, templates and periods.

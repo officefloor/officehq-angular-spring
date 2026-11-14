@@ -57,6 +57,9 @@ interface SettingsView {
   /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each before
    *  it can be settled or approved; blank for none. */
   proofKinds: string;
+  /** The default grade, A, B or C: a person added by a quick-add, or by an import line with a blank
+   *  grade, is given it; blank for A. */
+  defaultGrade: string;
   /** The review SLA: a REVIEW claim whose review day plus this many days is before the sheet's
    *  today is late for review; null for none. */
   reviewSla: number | null;
@@ -204,6 +207,7 @@ export class SettingStore {
   readonly escalateAfter = signal('');
   /** The proof kinds, comma separated; blank for none. */
   readonly proofKinds = signal('');
+  readonly defaultGrade = signal('');
   /** The review SLA as text: whole days, blank for none. */
   readonly reviewSla = signal('');
   /** The fiscal year start month, 1 to 12; 1 unless set. */
@@ -234,6 +238,7 @@ export class SettingStore {
       this.graceDays.set('');
       this.escalateAfter.set('');
       this.proofKinds.set('');
+      this.defaultGrade.set('');
       this.reviewSla.set('');
       this.fiscalStartMonth.set(1);
       this.pot.set('');
@@ -496,6 +501,17 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Change the active sheet's default grade (A, B or C); null leaves it blank (A). */
+  async setDefaultGrade(value: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/default-grade`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   /** Change the active sheet's review SLA; null leaves it blank (none). */
   async setReviewSla(value: number | null): Promise<void> {
     const sheet = this.session.sheetId();
@@ -585,6 +601,7 @@ export class SettingStore {
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
     this.escalateAfter.set(settings.escalateAfter === null ? '' : String(settings.escalateAfter));
     this.proofKinds.set(settings.proofKinds);
+    this.defaultGrade.set(settings.defaultGrade);
     this.reviewSla.set(settings.reviewSla === null ? '' : String(settings.reviewSla));
     this.fiscalStartMonth.set(settings.fiscalStartMonth);
     this.pot.set(settings.pot ?? '');
@@ -962,6 +979,14 @@ export class SettingStore {
           (focus)="proofKindsTyped.set(true)"
           (input)="proofKinds.set(value($event)); proofKindsTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-default-grade">Default grade (A, B or C; blank for A)</label>
+        <input
+          id="setting-default-grade"
+          data-testid="setting-default-grade"
+          [value]="defaultGrade()"
+          (focus)="defaultGradeTyped.set(true)"
+          (input)="defaultGrade.set(value($event)); defaultGradeTyped.set(true); settingsError.set(null)"
+        />
         <label for="setting-review-sla">Review SLA (days)</label>
         <input
           id="setting-review-sla"
@@ -1149,6 +1174,13 @@ export class SettingStore {
         }
       </p>
       <p>
+        Default grade:
+        <strong data-testid="setting-default-grade-current">{{ store.defaultGrade() }}</strong>
+        @if (store.defaultGrade() === '') {
+          <span>A</span>
+        }
+      </p>
+      <p>
         Review SLA:
         <strong data-testid="setting-review-sla-current">{{ store.reviewSla() }}</strong>
         @if (store.reviewSla() === '') {
@@ -1256,6 +1288,8 @@ export class Settings {
   protected readonly escalateAfterTyped = signal(false);
   protected readonly proofKinds = signal('');
   protected readonly proofKindsTyped = signal(false);
+  protected readonly defaultGrade = signal('');
+  protected readonly defaultGradeTyped = signal(false);
   protected readonly reviewSla = signal('');
   protected readonly reviewSlaTyped = signal(false);
   protected readonly fiscalStartMonth = signal('');
@@ -1409,6 +1443,8 @@ export class Settings {
       .filter((kind) => kind !== '')
       .join(',');
     const saveProofKinds = this.proofKindsTyped();
+    const defaultGrade = this.defaultGrade().trim();
+    const saveDefaultGrade = this.defaultGradeTyped();
     const reviewSla = this.reviewSla().trim();
     const saveReviewSla = this.reviewSlaTyped();
     const fiscalStartMonth = this.fiscalStartMonth().trim();
@@ -1534,6 +1570,10 @@ export class Settings {
       this.settingsError.set('Type proof kinds of receipt or photo, comma separated, or leave them blank for none.');
       return;
     }
+    if (saveDefaultGrade && defaultGrade !== '' && !/^[ABC]$/.test(defaultGrade)) {
+      this.settingsError.set('Type a default grade of A, B or C, or leave it blank for A.');
+      return;
+    }
     if (saveReviewSla && reviewSla !== '' && !DAYS.test(reviewSla)) {
       this.settingsError.set('Type a review SLA of 0 or more whole days, or leave it blank for none.');
       return;
@@ -1574,6 +1614,7 @@ export class Settings {
     this.graceDaysTyped.set(false);
     this.escalateAfterTyped.set(false);
     this.proofKindsTyped.set(false);
+    this.defaultGradeTyped.set(false);
     this.reviewSlaTyped.set(false);
     this.fiscalStartMonthTyped.set(false);
     this.potTyped.set(false);
@@ -1610,6 +1651,7 @@ export class Settings {
         if (saveGraceDays) await this.store.setGraceDays(graceDays === '' ? null : Number(graceDays));
         if (saveEscalateAfter) await this.store.setEscalateAfter(escalateAfter === '' ? null : Number(escalateAfter));
         if (saveProofKinds) await this.store.setProofKinds(proofKinds === '' ? null : proofKinds);
+        if (saveDefaultGrade) await this.store.setDefaultGrade(defaultGrade === '' ? null : defaultGrade);
         if (saveReviewSla) await this.store.setReviewSla(reviewSla === '' ? null : Number(reviewSla));
         if (saveFiscalStartMonth) await this.store.setFiscalStartMonth(Number(fiscalStartMonth));
         if (savePot) await this.store.setPot(pot === '' ? null : pot);
@@ -1636,6 +1678,7 @@ export class Settings {
         if (saveGraceDays) this.graceDaysTyped.set(true);
         if (saveEscalateAfter) this.escalateAfterTyped.set(true);
         if (saveProofKinds) this.proofKindsTyped.set(true);
+        if (saveDefaultGrade) this.defaultGradeTyped.set(true);
         if (saveReviewSla) this.reviewSlaTyped.set(true);
         if (saveFiscalStartMonth) this.fiscalStartMonthTyped.set(true);
         if (savePot) this.potTyped.set(true);

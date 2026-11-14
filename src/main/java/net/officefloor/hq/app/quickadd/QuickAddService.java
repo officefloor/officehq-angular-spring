@@ -7,16 +7,14 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.setting.SettingService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Adds a DRAFT claim for a person named on the sheet, adding the person first (grade A) when the
+/** Adds a DRAFT claim for a person named on the sheet, adding the person first (given the sheet's default grade) when the
  *  name is not on it. The whole quick-add is one change: a refused claim leaves no person behind. */
 @Service
 public class QuickAddService {
-
-    /** The grade a person added by a quick-add takes. */
-    private static final String GRADE = "A";
 
     /** A quick-add's result: the person the claim is for and the claim added. */
     public record Added(Person person, Claim claim) {
@@ -26,9 +24,11 @@ public class QuickAddService {
     private final PersonService personService;
     private final ClaimService claims;
     private final RollupService rollups;
+    private final SettingService settings;
 
     public QuickAddService(PersonRepository people, PersonService personService, ClaimService claims,
-            RollupService rollups) {
+            RollupService rollups, SettingService settings) {
+        this.settings = settings;
         this.people = people;
         this.personService = personService;
         this.claims = claims;
@@ -40,7 +40,7 @@ public class QuickAddService {
     public Added add(String sheetId, String user, String name, BigDecimal amount) {
         String trimmed = name.trim();
         Person person = rollups.track(sheetId, user, () -> people.findByName(sheetId, trimmed)
-                .orElseGet(() -> personService.add(sheetId, user, trimmed, GRADE)));
+                .orElseGet(() -> personService.add(sheetId, user, trimmed, settings.defaultGrade(sheetId))));
         Claim claim = rollups.track(sheetId, user, () -> claims.add(sheetId, user, person.getId(), amount, null, "", null));
         return new Added(person, claim);
     }

@@ -6,11 +6,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.setting.SettingService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Adds a person per pasted line of name,grade,terms,contact (terms and contact may be absent or
- *  blank), each as the person form would; a line whose name matches a person on the sheet (by name or
+ *  blank; a blank grade takes the sheet's default grade), each as the person form would; a line whose name matches a person on the sheet (by name or
  *  alias, as names are compared) updates them as their editor would instead. Every line is checked
  *  first; the whole paste is one change, so one refused line imports nothing. */
 @Service
@@ -33,8 +34,11 @@ public class PersonImportService {
     private final PersonService people;
     private final PersonRepository repository;
     private final RollupService rollups;
+    private final SettingService settings;
 
-    public PersonImportService(PersonService people, PersonRepository repository, RollupService rollups) {
+    public PersonImportService(PersonService people, PersonRepository repository, RollupService rollups,
+            SettingService settings) {
+        this.settings = settings;
         this.people = people;
         this.repository = repository;
         this.rollups = rollups;
@@ -48,13 +52,14 @@ public class PersonImportService {
         List<Line> lines = new ArrayList<>();
         Set<String> names = new HashSet<>();
         Set<String> contacts = new HashSet<>();
+        String defaultGrade = settings.defaultGrade(sheetId);
         int at = 0;
         for (String raw : text.split("\\r?\\n")) {
             at++;
             if (raw.isBlank()) {
                 continue;
             }
-            Line line = read(at, raw);
+            Line line = read(at, raw, defaultGrade);
             if (!names.add(line.name().toLowerCase(Locale.ROOT))) {
                 throw new ImportRefusedException("Line " + at + ": the name " + line.name() + " is repeated");
             }
@@ -92,9 +97,9 @@ public class PersonImportService {
         return new Result(added, updated);
     }
 
-    /** One line as the person form reads it: a name that is not blank, a grade of A, B or C, terms of
+    /** One line as the person form reads it: a name that is not blank, a grade of A, B or C (blank: the default grade), terms of
      *  a whole number of days (blank: none) and a contact (blank: none), each trimmed. */
-    private static Line read(int at, String raw) {
+    private static Line read(int at, String raw, String defaultGrade) {
         String[] fields = raw.split(",", -1);
         if (fields.length < 2 || fields.length > 4) {
             throw new ImportRefusedException("Line " + at + " needs name,grade,terms,contact");
@@ -104,6 +109,9 @@ public class PersonImportService {
             throw new ImportRefusedException("Line " + at + ": the name must not be blank or too long");
         }
         String grade = fields[1].trim();
+        if (grade.isEmpty()) {
+            grade = defaultGrade;
+        }
         if (!grade.matches("[ABC]")) {
             throw new ImportRefusedException("Line " + at + ": the grade must be A, B or C");
         }

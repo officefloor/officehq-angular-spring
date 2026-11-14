@@ -66,6 +66,7 @@ public class SettingService {
     private static final String GRACE_DAYS = "grace-days";
     private static final String ESCALATE_AFTER = "escalate-after";
     private static final String PROOF_KINDS = "proof-kinds";
+    private static final String DEFAULT_GRADE = "default-grade";
     private static final String REVIEW_SLA = "review-sla";
     private static final String ENTRY_DATE = "entry-date";
     private static final String POT = "pot";
@@ -82,7 +83,7 @@ public class SettingService {
             int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
             Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent,
             int fiscalStartMonth, BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla,
-            List<String> proofKinds) {
+            List<String> proofKinds, String defaultGrade) {
     }
 
     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
@@ -113,6 +114,8 @@ public class SettingService {
         String escalate = kept.contains(ESCALATE_AFTER) ? then.get(ESCALATE_AFTER)
                 : Objects.toString(escalateAfter(sheetId), null);
         String kinds = kept.contains(PROOF_KINDS) ? then.get(PROOF_KINDS) : sheets.load(sheetId).getProofKinds();
+        String defaultGrade = kept.contains(DEFAULT_GRADE) ? then.get(DEFAULT_GRADE)
+                : sheets.load(sheetId).getDefaultGrade();
         String sla = kept.contains(REVIEW_SLA) ? then.get(REVIEW_SLA) : Objects.toString(reviewSla(sheetId), null);
         BigDecimal potNow = pot(sheetId);
         String pot = kept.contains(POT) ? then.get(POT) : potNow != null ? potNow.toPlainString() : null;
@@ -141,7 +144,7 @@ public class SettingService {
                 entry != null ? LocalDate.parse(entry) : null, pot != null ? new BigDecimal(pot) : null, parent,
                 fiscal != null ? Integer.parseInt(fiscal) : 1, alert != null ? new BigDecimal(alert) : null,
                 escalate != null ? Integer.valueOf(escalate) : null, sla != null ? Integer.valueOf(sla) : null,
-                kindsOf(kinds));
+                kindsOf(kinds), defaultGrade);
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -463,6 +466,18 @@ public class SettingService {
         return kinds == null || kinds.isBlank() ? List.of() : List.of(kinds.split(","));
     }
 
+    /** The sheet's default grade as set; null when it is blank (A). */
+    public String defaultGradeSet(String sheetId) {
+        return sheets.load(sheetId).getDefaultGrade();
+    }
+
+    /** The grade a person added by a quick-add, or by an import line with a blank grade, is given:
+     *  the sheet's default grade, A when it is blank. */
+    public String defaultGrade(String sheetId) {
+        String grade = defaultGradeSet(sheetId);
+        return grade != null ? grade : "A";
+    }
+
     /** The sheet's review SLA in days; null when it is blank (none). */
     public Integer reviewSla(String sheetId) {
         return sheets.load(sheetId).getReviewSla();
@@ -709,6 +724,23 @@ public class SettingService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         history.settingSet(sheetId, PROOF_KINDS, value.isEmpty() ? null : value);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=proof-kinds value=" + value);
+        return saved;
+    }
+
+    /** Change the sheet's default grade; null leaves it blank (A). A grade other than A, B or C is
+     *  refused. Changing it changes no one's grade. */
+    @Transactional
+    public Sheet setDefaultGrade(String sheetId, String by, String grade) {
+        if (grade != null && !grade.matches("[ABC]")) {
+            throw new IllegalArgumentException("A default grade is A, B or C, not " + grade);
+        }
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setDefaultGrade(grade);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, DEFAULT_GRADE, grade);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=default-grade value="
+                + (grade != null ? grade : ""));
         return saved;
     }
 

@@ -238,7 +238,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
         <p role="alert" data-testid="person-form-error">{{ message }}</p>
       }
       <form (submit)="importPeople($event)" aria-label="Import people">
-        <label for="import-people">Import people, one per line as name,grade,terms,contact (terms and contact may be left out)</label>
+        <label for="import-people">Import people, one per line as name,grade,terms,contact (a blank grade takes the default grade; terms and contact may be left out)</label>
         <textarea
           id="import-people"
           data-testid="import-people"
@@ -2422,7 +2422,7 @@ export class People {
     }
   }
 
-  /** Add a DRAFT claim for the named person, adding them (grade A) when the name is not on the
+  /** Add a DRAFT claim for the named person, adding them (with the sheet's default grade) when the name is not on the
    *  sheet; their row and the claim then show. */
   protected async quickAdd(event: Event): Promise<void> {
     event.preventDefault();

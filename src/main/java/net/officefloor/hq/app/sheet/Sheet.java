@@ -72,6 +72,11 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The default grade, A, B or C: a person added by a quick-add, or by an import line with a blank
+     *  grade, is given it; null for blank (A). */
+    @Column(name = "default_grade")
+    private String defaultGrade;
+
     /** The fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it. */
     @Column(name = "fiscal_start_month", nullable = false)
     private int fiscalStartMonth = 1;
@@ -161,6 +166,14 @@ public class Sheet {
 
     public void setProofKinds(String proofKinds) {
         this.proofKinds = proofKinds;
+    }
+
+    public String getDefaultGrade() {
+        return defaultGrade;
+    }
+
+    public void setDefaultGrade(String defaultGrade) {
+        this.defaultGrade = defaultGrade;
     }
 
     public Integer getReviewSla() {
