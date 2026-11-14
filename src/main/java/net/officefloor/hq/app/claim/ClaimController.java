@@ -28,10 +28,10 @@ public class ClaimController {
 
     /** A claim as the screen shows it: the amount always with two decimals. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status) {
+            ClaimStatus status, Integer number) {
         static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
-                    c.getDate(), c.getNote(), c.getStatus());
+                    c.getDate(), c.getNote(), c.getStatus(), c.getNumber());
         }
     }
 

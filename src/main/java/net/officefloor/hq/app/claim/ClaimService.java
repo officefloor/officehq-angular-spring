@@ -67,7 +67,15 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + to);
         }
+        // the VOIDED record carries the number the claim had
+        Integer number = claim.getNumber();
         claim.setStatus(to);
+        if (to == ClaimStatus.OPEN) {
+            number = sheets.nextClaimNumber(sheetId);
+            claim.setNumber(number);
+        } else if (to == ClaimStatus.VOID) {
+            claim.setNumber(null);
+        }
         claims.flush();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
@@ -77,15 +85,19 @@ public class ClaimService {
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalArgumentException("A claim cannot return to DRAFT");
         };
-        record(event, user, person, claim);
+        record(event, user, person, claim, number);
         return claim;
     }
 
-    /** Amounts are written as the screen shows them (two decimals), dates as yyyy-mm-dd. */
     private void record(String event, String user, Person person, Claim claim) {
+        record(event, user, person, claim, claim.getNumber());
+    }
+
+    /** Amounts are written as the screen shows them (two decimals), dates as yyyy-mm-dd. */
+    private void record(String event, String user, Person person, Claim claim, Integer number) {
         audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user
                 + " person=" + person.getName() + " amount=" + claim.getAmount().setScale(2).toPlainString()
-                + " date=" + claim.getDate());
+                + " date=" + claim.getDate() + (number != null ? " number=" + number : ""));
     }
 
     private static String noteOf(String note) {

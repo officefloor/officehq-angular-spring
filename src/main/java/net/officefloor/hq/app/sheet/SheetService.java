@@ -33,6 +33,16 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(LocalDate::now);
     }
 
+    /** Take the sheet's next claim number (1 for the first), holding the sheet locked until the
+     *  transaction ends so numbers are never shared and, if it rolls back, never skipped. */
+    @Transactional
+    public int nextClaimNumber(String id) {
+        Sheet sheet = sheets.findForUpdate(id).orElseThrow();
+        int number = sheet.nextClaimNumber();
+        sheets.flush();
+        return number;
+    }
+
     /** Change the sheet's today (the sheet is created first if it was never loaded). */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
