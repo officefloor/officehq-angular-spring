@@ -5,6 +5,7 @@ import { Session } from '../../core/session';
 import { PeriodStore, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, Rate, RateStore, dueCents, gradeOn, rateOn } from '../rates/rates';
 import { VoidReasonStore } from '../void-reasons/void-reasons';
+import { ClaimTemplateStore } from '../claim-templates/claim-templates';
 
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; an OPEN claim a clerk settles above
  *  the clerk limit is PENDING until a steward approves it (SETTLED) or rejects it (OPEN again); a
@@ -257,6 +258,18 @@ const NUMBER = /^\S+$/;
         {{ editingId() === null ? 'Add claim' : 'Save claim' }}
       </button>
     </form>
+    <label [for]="'claim-template-' + personId()">Template</label>
+    <select
+      [id]="'claim-template-' + personId()"
+      data-testid="claim-template-select"
+      (change)="template.set(value($event)); error.set(null)"
+    >
+      <option value="" [selected]="template() === ''">Choose a template</option>
+      @for (t of templates.templates(); track t.id) {
+        <option [value]="t.name" [selected]="template() === t.name">{{ t.name }}</option>
+      }
+    </select>
+    <button type="button" data-testid="claim-template-add" (click)="addFromTemplate()">Add from template</button>
     @if (error(); as message) {
       <p role="alert" data-testid="claim-form-error">{{ message }}</p>
     }
@@ -447,6 +460,7 @@ export class PersonClaims {
   private readonly session = inject(Session);
   private readonly periods = inject(PeriodStore);
   protected readonly voidReasons = inject(VoidReasonStore);
+  protected readonly templates = inject(ClaimTemplateStore);
   private readonly rates = inject(RateStore);
 
   readonly personId = input.required<number>();
@@ -480,6 +494,8 @@ export class PersonClaims {
   protected readonly ref = signal('');
   protected readonly tags = signal('');
   protected readonly editingId = signal<number | null>(null);
+  /** The name of the claim template chosen to add a claim from; blank for none. */
+  protected readonly template = signal('');
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
@@ -934,6 +950,37 @@ export class PersonClaims {
     this.ref.set('');
     this.tags.set('');
     this.error.set(null);
+  }
+
+  /** Add a DRAFT claim from the chosen template: its amount and note as they are now, with no
+   *  date, by every rule of the claim form; a refusal shows beside the form. */
+  protected async addFromTemplate(): Promise<void> {
+    if (this.busy()) return;
+    this.error.set(null);
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const template = this.template();
+    if (template === '') {
+      this.error.set('Choose a template to add a claim from.');
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/from-template`;
+    this.busy.set(true);
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { template }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(saved);
+    } catch (e) {
+      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+      this.error.set(
+        forbidden
+          ? 'The claim could not be added: your role may not change this sheet.'
+          : `The claim could not be added from the template ${template}.`,
+      );
+    } finally {
+      this.busy.set(false);
+    }
   }
 
   /** Open, settle, approve, reject (with the reason typed on its row), void or re-settle a claim; a clerk

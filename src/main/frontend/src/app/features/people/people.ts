@@ -5,6 +5,7 @@ import { Session } from '../../core/session';
 import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, plusDays, statusAsOf } from '../claims/claims';
 import { Holidays } from '../holidays/holidays';
 import { VoidReasonStore, VoidReasons } from '../void-reasons/void-reasons';
+import { ClaimTemplates } from '../claim-templates/claim-templates';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
 import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates';
 import { SettingStore, Settings } from '../settings/settings';
@@ -63,7 +64,7 @@ interface StatementTaken {
 // saves their changes.
 @Component({
   selector: 'app-people',
-  imports: [Counters, Holidays, PersonClaims, Periods, Rates, Settings, Summary, VoidReasons],
+  imports: [ClaimTemplates, Counters, Holidays, PersonClaims, Periods, Rates, Settings, Summary, VoidReasons],
   template: `
     <app-counters
       [peopleCount]="people().length"
@@ -76,6 +77,7 @@ interface StatementTaken {
     <app-periods [dueTotals]="periodDueTotals()" />
     <app-holidays />
     <app-void-reasons />
+    <app-claim-templates />
     <app-summary
       [grades]="gradeSummary()"
       [periods]="periodSummary()"

@@ -11,6 +11,8 @@ import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.AsOf;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.claimtemplate.ClaimTemplate;
+import net.officefloor.hq.app.claimtemplate.ClaimTemplateService;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.setting.PermissionRefusedException;
 import net.officefloor.hq.app.period.PeriodClosedException;
@@ -85,6 +87,10 @@ public class ClaimController {
             @Size(max = 2000) String tags) {
     }
 
+    /** The name of the sheet's claim template a claim is added from. */
+    public record FromTemplateRequest(@NotBlank @Size(max = 255) String template) {
+    }
+
     /** The date an OPEN claim is deferred until. */
     public record DeferRequest(@NotNull LocalDate until) {
     }
@@ -151,9 +157,12 @@ public class ClaimController {
     private final BulkSettleService bulkSettle;
     private final BulkReassignService bulkReassign;
     private final History history;
+    private final ClaimTemplateService templates;
 
     public ClaimController(ClaimService service, RollupService rollups, BulkOpenService bulkOpen,
-            BulkSettleService bulkSettle, BulkReassignService bulkReassign, History history) {
+            BulkSettleService bulkSettle, BulkReassignService bulkReassign, History history,
+            ClaimTemplateService templates) {
+        this.templates = templates;
         this.bulkReassign = bulkReassign;
         this.history = history;
         this.service = service;
@@ -193,6 +202,19 @@ public class ClaimController {
         String by = SignedInUser.decode(user);
         return view(sheet, rollups.track(sheet, by, () -> service.add(sheet, by, personId, request.amount(),
                 request.date(), request.note(), request.corrects(), request.ref(), request.tags())));
+    }
+
+    /** Add a DRAFT claim for a person from a claim template: its amount and note as they are now,
+     *  with no date, by every rule of adding one from the claim form. */
+    @PostMapping("/people/{personId}/claims/from-template")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ClaimView addFromTemplate(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated FromTemplateRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        ClaimTemplate template = templates.get(sheet, request.template());
+        return view(sheet, rollups.track(sheet, by, () -> service.add(sheet, by, personId, template.getAmount(),
+                null, template.getNote(), null, null, null)));
     }
 
     /** Change a DRAFT claim's amount, date and note. */
