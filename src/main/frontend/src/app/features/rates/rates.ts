@@ -67,6 +67,14 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
   return a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '');
 }
 
+/** How a candidate rate would change the dues of a grade's open claims. */
+export interface RatePreview {
+  /** How many OPEN and PENDING claims would show a different due. */
+  count: number;
+  /** The sum of the differences (new due minus current due), two decimals. */
+  diff: string;
+}
+
 const PERCENT = /^\d{1,5}(\.\d{1,2})?$/;
 
 // The active sheet's rates for each grade, each from its from-date, re-read whenever a sheet is
@@ -130,6 +138,17 @@ export class RateStore {
     );
   }
 
+  /** Preview a candidate rate for a grade on the active sheet; nothing is saved. */
+  async preview(grade: string, rate: string): Promise<RatePreview> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    return firstValueFrom(
+      this.http.get<RatePreview>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}/preview`, {
+        params: { rate },
+      }),
+    );
+  }
+
   private async read(sheet: string, load: number): Promise<void> {
     const list = await firstValueFrom(
       this.http.get<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates`),
@@ -187,6 +206,37 @@ export class RateStore {
       @if (error(); as message) {
         <p role="alert" data-testid="rate-form-error">{{ message }}</p>
       }
+      <form (submit)="runPreview($event)">
+        <label for="rate-preview-grade">Preview grade</label>
+        <select
+          id="rate-preview-grade"
+          data-testid="rate-preview-grade"
+          [value]="previewGrade()"
+          (change)="previewGrade.set(value($event)); previewChanged()"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
+          }
+        </select>
+        <label for="rate-preview-pct">Candidate rate (%)</label>
+        <input
+          id="rate-preview-pct"
+          data-testid="rate-preview-pct"
+          inputmode="decimal"
+          [value]="previewPct()"
+          (input)="previewPct.set(value($event)); previewChanged()"
+        />
+        <button type="submit" data-testid="rate-preview">Preview</button>
+      </form>
+      @if (previewError(); as message) {
+        <p role="alert" data-testid="rate-preview-error">{{ message }}</p>
+      }
+      @if (previewResult(); as result) {
+        <p>
+          Claims that would change: <span data-testid="rate-preview-count">{{ result.count }}</span>;
+          difference: <span data-testid="rate-preview-diff">{{ result.diff }}</span>
+        </p>
+      }
       <table>
         <caption>In force today</caption>
         <thead>
@@ -237,11 +287,37 @@ export class Rates {
   protected readonly from = signal('');
   protected readonly to = signal('');
   protected readonly error = signal<string | null>(null);
+  protected readonly previewGrade = signal('A');
+  protected readonly previewPct = signal('');
+  protected readonly previewError = signal<string | null>(null);
+  protected readonly previewResult = signal<RatePreview | null>(null);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement | HTMLSelectElement).value;
+  }
+
+  /** A changed grade or rate drops the last preview and its error: they were for the old one. */
+  protected previewChanged(): void {
+    this.previewError.set(null);
+    this.previewResult.set(null);
+  }
+
+  protected async runPreview(event: Event): Promise<void> {
+    event.preventDefault();
+    this.previewError.set(null);
+    this.previewResult.set(null);
+    const pct = this.previewPct().trim();
+    if (!PERCENT.test(pct)) {
+      this.previewError.set('Type a rate of 0.00 or more, with up to two decimals.');
+      return;
+    }
+    try {
+      this.previewResult.set(await this.store.preview(this.previewGrade(), pct));
+    } catch {
+      this.previewError.set('The rate could not be previewed.');
+    }
   }
 
   protected async submit(event: Event): Promise<void> {

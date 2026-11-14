@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.person.Person;
@@ -490,7 +491,7 @@ public class ClaimService {
         }
         refuseClosed(sheetId, claim.getDueBy());
         String old = settledDueText(claim);
-        BigDecimal figure = liveFigureOf(sheetId, person, claim, null);
+        BigDecimal figure = liveFigureOf(sheetId, person, claim, null, null);
         claim.setSettledDue(figure == null ? null
                 : floored(sheetId, claim, figure.add(lateChargeOf(sheetId, person, claim, figure, true, null)), null));
         Claim saved = claims.saveAndFlush(claim);
@@ -701,11 +702,15 @@ public class ClaimService {
     /** The figure a claim (as it stood at the end of a day) showed then, the sheet's grades and rates
      *  as they stood then (null: the figure it shows now). */
     public BigDecimal figureOf(String sheetId, Person person, Claim claim, LocalDate asOf) {
+        return figureOf(sheetId, person, claim, asOf, null);
+    }
+
+    private BigDecimal figureOf(String sheetId, Person person, Claim claim, LocalDate asOf, RateOverride override) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue()
-                : liveFigureOf(sheetId, person, claim, asOf);
+                : liveFigureOf(sheetId, person, claim, asOf, override);
     }
 
     /** The due a claim shows: a settled claim's frozen due; otherwise the greater of the sheet's floor in
@@ -719,10 +724,16 @@ public class ClaimService {
      *  sheet's today, and the floor, late percent, grades and rates are as they stood then (null: the
      *  due it shows now). */
     public BigDecimal dueOf(String sheetId, Person person, Claim claim, LocalDate asOf) {
+        return dueOf(sheetId, person, claim, asOf, null);
+    }
+
+    /** The due a claim would show were a grade's rate the one given on every date (null: as the rates
+     *  stand). */
+    private BigDecimal dueOf(String sheetId, Person person, Claim claim, LocalDate asOf, RateOverride override) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        BigDecimal figure = figureOf(sheetId, person, claim, asOf);
+        BigDecimal figure = figureOf(sheetId, person, claim, asOf, override);
         boolean open = claim.getStatus().isOpen() && !claim.deferredOn(todayOr(sheetId, asOf));
         return figure == null ? null
                 : floored(sheetId, claim, figure.add(lateChargeOf(sheetId, person, claim, figure, open, asOf)), asOf);
@@ -779,13 +790,54 @@ public class ClaimService {
      *  on the claim's date: amount times rate
      *  divided by 100, rounded to two decimals as the claim's date decides (see roundingOf); the floor is
      *  not applied here (see dueOf); null when no rate applies. */
-    private BigDecimal liveFigureOf(String sheetId, Person person, Claim claim, LocalDate asOf) {
+    private BigDecimal liveFigureOf(String sheetId, Person person, Claim claim, LocalDate asOf,
+            RateOverride override) {
         BigDecimal amount = claim.getAmount();
         RoundingMode rounding = roundingOf(sheetId, claim, asOf);
-        return rates.rateOn(sheetId, grades.gradeOn(person.getId(), claim.getDate(), asOf), claim.getDate(), asOf)
-                .map(Rate::getRate)
+        String grade = grades.gradeOn(person.getId(), claim.getDate(), asOf);
+        Optional<BigDecimal> inForce = override != null && override.grade().equals(grade) ? Optional.of(override.rate())
+                : rates.rateOn(sheetId, grade, claim.getDate(), asOf).map(Rate::getRate);
+        return inForce
                 .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, rounding))
                 .orElse(null);
+    }
+
+    /** A grade's rate taken to apply on every date in place of the rates set for it. */
+    private record RateOverride(String grade, BigDecimal rate) {
+    }
+
+    /** What a rate preview finds: how many claims would show a different due, and the sum of the
+     *  differences (new due minus current due). */
+    public record RatePreview(int count, BigDecimal diff) {
+    }
+
+    /** How the OPEN and PENDING claims of people on a grade (the grade in force on the claim's date)
+     *  would change were the rate given the grade's rate on every date: how many would show a different
+     *  due and the sum of the differences (a due of n/a counts as 0.00). A claim a statement binds keeps
+     *  its figure. Nothing is saved. */
+    @Transactional(readOnly = true)
+    public RatePreview previewRate(String sheetId, String grade, BigDecimal rate) {
+        RateOverride override = new RateOverride(grade, rate);
+        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .collect(Collectors.toMap(Person::getId, person -> person));
+        int count = 0;
+        BigDecimal diff = BigDecimal.ZERO.setScale(2);
+        for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
+            Person person = byId.get(claim.getPersonId());
+            if (person == null || !claim.getStatus().isOpen()
+                    || !grade.equals(grades.gradeOn(person.getId(), claim.getDate(), null))) {
+                continue;
+            }
+            BigDecimal now = dueOf(sheetId, person, claim, null);
+            BigDecimal then = dueOf(sheetId, person, claim, null, override);
+            BigDecimal was = now == null ? BigDecimal.ZERO : now;
+            BigDecimal will = then == null ? BigDecimal.ZERO : then;
+            if ((now == null) != (then == null) || was.compareTo(will) != 0) {
+                count++;
+                diff = diff.add(will.subtract(was));
+            }
+        }
+        return new RatePreview(count, diff.setScale(2, RoundingMode.HALF_UP));
     }
 
     /** The date a claim's live figures round by: its own, or for a correction the date of the claim

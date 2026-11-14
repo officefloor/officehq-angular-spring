@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.AsOf;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -45,12 +47,19 @@ public class RateController {
             LocalDate from, LocalDate to) {
     }
 
+    /** A rate preview as the screen shows it: how many claims would show a different due, and the
+     *  sum of the differences with two decimals. */
+    public record RatePreviewView(int count, String diff) {
+    }
+
     private final RateService service;
     private final RollupService rollups;
+    private final ClaimService claims;
 
-    public RateController(RateService service, RollupService rollups) {
+    public RateController(RateService service, RollupService rollups, ClaimService claims) {
         this.service = service;
         this.rollups = rollups;
+        this.claims = claims;
     }
 
     /** The sheet's rates by grade, each grade's from the earliest; a grade with no rate is not listed.
@@ -70,6 +79,16 @@ public class RateController {
         String by = SignedInUser.decode(user);
         return RateView.of(rollups.track(sheet, by, () -> service.set(sheet, by, grade, request.from(),
                 request.to(), request.rate())));
+    }
+
+    /** Preview a candidate rate for a grade (A, B or C): how the dues of the OPEN and PENDING claims of
+     *  people on the grade would change were it the grade's rate on every date. Nothing is saved. */
+    @GetMapping("/{grade}/preview")
+    public RatePreviewView preview(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestParam @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String rate) {
+        ClaimService.RatePreview preview = claims.previewRate(sheetId.trim(), grade, new BigDecimal(rate).setScale(2));
+        return new RatePreviewView(preview.count(), preview.diff().toPlainString());
     }
 
     /** A rate that is not a number or a from-date that is not a real date is refused. */
