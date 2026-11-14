@@ -73,13 +73,14 @@ function sharesOf(pool: Pool, byId: Map<number, PoolPerson>, today: string | nul
   }));
 }
 
-/** The shares added up, a retired member's and one its dates leave out counting as 0.00, in hundredths. */
+/** The shares added up, one its dates leave out counting as 0.00, in hundredths; a retired member's
+ *  counts as given. */
 function totalOf(list: Share[]): bigint {
-  return list.filter((m) => !m.retired && !m.out).reduce((sum, m) => sum + m.share, 0n);
+  return list.filter((m) => !m.out).reduce((sum, m) => sum + m.share, 0n);
 }
 
-/** Each pool's cuts in hundredths, in its members' order, by pool id; null when it is unbalanced or
- *  has no pot: a pool that is a member of none has the sheet's pot (blank for none), any other its cut
+/** Each pool's cuts in hundredths, in its members' order, by pool id; null when it is unbalanced,
+ *  every member is retired or it has no pot: a pool that is a member of none has the sheet's pot (blank for none), any other its cut
  *  in the pool above. Chains are short. */
 export function poolCuts(
   pools: Pool[],
@@ -95,6 +96,8 @@ export function poolCuts(
     if (seen.has(pool.id)) return null;
     const list = sharesOf(pool, byId, today);
     if (totalOf(list) !== 10000n) return null;
+    // A pool whose every member is retired shows no cuts.
+    if (list.every((m) => m.retired)) return null;
     const parent = above.get(pool.id);
     let from: bigint | null;
     if (parent) {
@@ -137,7 +140,7 @@ export function figure(hundredths: bigint): string {
 }
 
 /** Each member's cut of the pot in hundredths, in the members' order: a retired member's, a held
- *  member's and one its dates leave out 0; any other's the pot times their share divided by the shares of the members with a cut
+ *  member's and one its dates leave out 0, their shares spread over the others in proportion; any other's the pot times their share divided by the shares of the members with a cut
  *  added up, rounded half to even. The remainder, the pot minus the cuts added up, goes to the member
  *  with a cut with the largest share, the earliest added on a tie; with no such member every cut is 0. */
 function cuts(pot: bigint, members: Share[]): bigint[] {
