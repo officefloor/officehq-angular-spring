@@ -85,6 +85,9 @@ interface DescendantFigures {
   ownPeople?: number;
   ownDueTotal?: string;
   ownOverdueTotal?: string;
+  /** Per grade, the due-totals of the people on it not retired; per status, the claims with it. */
+  gradeDueTotals?: Record<string, string>;
+  statusCounts?: Record<string, number>;
 }
 
 /** What the people list can be sorted by on the screen. */
@@ -150,6 +153,8 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
       [consolidatedPeopleCount]="consolidatedPeople()"
       [consolidatedDueTotal]="consolidatedDue()"
       [consolidatedOverdueTotal]="consolidatedOverdue()"
+      [consolidatedGrades]="consolidatedGrades()"
+      [consolidatedStatuses]="consolidatedStatuses()"
     />
     <app-dashboard [counts]="dashboard()" />
     <app-settings />
@@ -1181,6 +1186,20 @@ export class People {
   protected readonly consolidatedOverdue = computed(() =>
     money(cents(this.overdueTotal()) + cents(this.descendantFigures().overdueTotal)),
   );
+  /** Per grade: the sheet's own due-total of the people on it not retired, as its summary shows it,
+   *  plus its descendants'. */
+  protected readonly consolidatedGrades = computed(() => {
+    const theirs = this.descendantFigures().gradeDueTotals ?? {};
+    return this.gradeSummary().map((g) => ({
+      grade: g.grade,
+      dueTotal: money(cents(g.dueTotal) + cents(theirs[g.grade] ?? '0.00')),
+    }));
+  });
+  /** Per status: the sheet's own claims with it plus its descendants'. */
+  protected readonly consolidatedStatuses = computed(() => {
+    const theirs = this.descendantFigures().statusCounts ?? {};
+    return this.statusSummary().map((s) => ({ status: s.status, count: s.count + (theirs[s.status] ?? 0) }));
+  });
   /** Every tag ever used on the sheet, as the store last told it. */
   private readonly usedTags = signal<string[]>([]);
   /** Per tag ever used on the sheet, sorted: the dues shown on the claims that count which carry it,

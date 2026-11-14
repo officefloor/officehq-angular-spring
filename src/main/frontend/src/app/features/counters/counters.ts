@@ -4,8 +4,8 @@ import { StatusSummary } from '../summary/summary';
 // The sheet's counters, shown at the top at all times; each repeats a figure shown elsewhere: the
 // people on the sheet (retired included), the summary's claims per status and the sheet's totals;
 // then the consolidated figures over the sheet and all its descendants (the sheets naming it as
-// their parent, theirs, and so on), each sheet's figures as that sheet shows them, added up; and the
-// signed-in user's own figures, when a person on the sheet has their name.
+// their parent, theirs, and so on), each sheet's figures as that sheet shows them, added up, also per
+// grade and per claim status; and the signed-in user's own figures, when a person on the sheet has their name.
 @Component({
   selector: 'app-counters',
   template: `
@@ -33,6 +33,14 @@ import { StatusSummary } from '../summary/summary';
         <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() }}</dd>
         <dt>Overdue in total with sub-sheets</dt>
         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
+        @for (g of consolidatedGrades(); track g.grade) {
+          <dt>Grade {{ g.grade }} due with sub-sheets</dt>
+          <dd [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</dd>
+        }
+        @for (s of consolidatedStatuses(); track s.status) {
+          <dt>{{ s.status }} claims with sub-sheets</dt>
+          <dd [attr.data-testid]="'consolidated-status-' + s.status + '-count'">{{ s.count }}</dd>
+        }
       </dl>
     </header>
   `,
@@ -50,4 +58,7 @@ export class Counters {
   readonly consolidatedPeopleCount = input.required<number>();
   readonly consolidatedDueTotal = input.required<string>();
   readonly consolidatedOverdueTotal = input.required<string>();
+  /** Per grade, the due-totals of the people on it not retired over the tree; per status, its claims. */
+  readonly consolidatedGrades = input.required<{ grade: string; dueTotal: string }[]>();
+  readonly consolidatedStatuses = input.required<StatusSummary[]>();
 }

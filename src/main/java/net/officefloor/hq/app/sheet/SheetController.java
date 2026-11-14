@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Map;
+import java.util.TreeMap;
 import net.officefloor.hq.app.AsOf;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.claim.ClaimService;
@@ -38,9 +40,11 @@ public class SheetController {
     }
 
     /** The figures of a sheet's descendants added up, each as that sheet shows it, and the sheet's own
-     *  figures: as they are now, or as they stood at the end of the screen's as-of date. */
+     *  figures: as they are now, or as they stood at the end of the screen's as-of date. Per grade, the
+     *  descendants' due-totals of the people on it not retired; per status, their claims with it. */
     public record DescendantFigures(int sheets, int people, String dueTotal, String overdueTotal, int ownPeople,
-            String ownDueTotal, String ownOverdueTotal) {
+            String ownDueTotal, String ownOverdueTotal, Map<String, String> gradeDueTotals,
+            Map<String, Integer> statusCounts) {
     }
 
     public record TodayRequest(@NotNull LocalDate today) {
@@ -87,16 +91,24 @@ public class SheetController {
         int people = 0;
         BigDecimal due = BigDecimal.ZERO.setScale(2);
         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
+        Map<String, BigDecimal> gradeDues = new TreeMap<>();
+        Map<String, Integer> statusCounts = new TreeMap<>();
         var descendants = service.descendants(id.trim());
         for (String sheet : descendants) {
             RollupService.Headline figures = rollups.headline(sheet, asOf);
             people += figures.people();
             due = due.add(figures.dueTotal());
             overdue = overdue.add(figures.overdueTotal());
+            RollupService.Breakdown breakdown = rollups.breakdown(sheet, asOf);
+            breakdown.gradeDueTotals().forEach((grade, total) -> gradeDues.merge(grade, total, BigDecimal::add));
+            breakdown.statusCounts().forEach((status, count) -> statusCounts.merge(status, count, Integer::sum));
         }
+        Map<String, String> gradeDueTotals = new TreeMap<>();
+        gradeDues.forEach((grade, total) -> gradeDueTotals.put(grade, total.toPlainString()));
         RollupService.Headline own = rollups.headline(id.trim(), asOf);
         return new DescendantFigures(descendants.size(), people, due.toPlainString(), overdue.toPlainString(),
-                own.people(), own.dueTotal().toPlainString(), own.overdueTotal().toPlainString());
+                own.people(), own.dueTotal().toPlainString(), own.overdueTotal().toPlainString(), gradeDueTotals,
+                statusCounts);
     }
 
     /** Change the sheet's today, closing the periods past their grace days and releasing every claim

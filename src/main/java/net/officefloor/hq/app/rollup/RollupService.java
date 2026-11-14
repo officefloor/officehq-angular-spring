@@ -151,6 +151,33 @@ public class RollupService {
         return new Headline(rollup.people().size(), rollup.dueTotal(), rollup.overdueTotal());
     }
 
+    /** A sheet's figures broken down: per grade, the due-totals of the people on it who are not
+     *  retired added up (skipping those with no figure); per status, how many of its claims have it. */
+    public record Breakdown(Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts) {
+    }
+
+    /** The sheet's figures broken down as it stood at the end of a day, that day standing in for the
+     *  sheet's today (null: as it shows them now). */
+    @Transactional(readOnly = true)
+    public Breakdown breakdown(String sheetId, LocalDate asOf) {
+        LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
+        Rollup rollup = rollup(sheetId, asOf);
+        Map<String, BigDecimal> gradeDues = new LinkedHashMap<>();
+        for (Person person : personService.list(sheetId, asOf)) {
+            Figures f = rollup.people().get(person.getId());
+            String grade = grades.gradeOn(person.getId(), today, asOf);
+            if (person.isRetired() || f == null || grade == null) {
+                continue;
+            }
+            gradeDues.merge(grade, f.due() == null ? NONE : f.due(), BigDecimal::add);
+        }
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDesc(sheetId);
+        Map<String, Integer> statusCounts = new LinkedHashMap<>();
+        (asOf == null ? sheetClaims : history.claims(sheetClaims, asOf))
+                .forEach(claim -> statusCounts.merge(claim.getStatus().name(), 1, Integer::sum));
+        return new Breakdown(gradeDues, statusCounts);
+    }
+
     /** Each person's due-total on the sheet as it shows it now ("n/a" for none), by person id in list order. */
     @Transactional(readOnly = true)
     public Map<Long, String> dueTotals(String sheetId) {
