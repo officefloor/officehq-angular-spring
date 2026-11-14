@@ -157,3 +157,8 @@ export function patronError(e: unknown): string {
 export function isStale(e: unknown): boolean {
   return e instanceof HttpErrorResponse && e.status === 412;
 }
+
+/** One CSV line ending in a line feed; a value holding a comma, a quote or a line break is quoted, its quotes doubled. */
+export function csvLine(values: string[]): string {
+  return values.map((v) => (/[",\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v)).join(',') + '\n';
+}
