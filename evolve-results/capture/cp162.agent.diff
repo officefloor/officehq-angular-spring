@@ -1,0 +1,173 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 7c20d1270..70c1fbe4b 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -325,6 +325,19 @@ const NUMBER = /^\S+$/;
+               <li data-testid="claim-log-line">{{ line }}</li>
+             }
+           </ol>
++          <button
++            type="button"
++            data-testid="claim-timeline"
++            [attr.aria-label]="'Show the timeline of claim ' + c.id"
++            (click)="showTimeline(c)"
++          >
++            Timeline
++          </button>
++          <ol data-testid="claim-timeline-lines" [attr.aria-label]="'Timeline of claim ' + c.id">
++            @for (line of timelines()[c.id] ?? []; track $index) {
++              <li data-testid="claim-timeline-line">{{ line }}</li>
++            }
++          </ol>
+           <button type="button" data-testid="claim-open" [attr.aria-label]="'Open claim ' + c.id" (click)="act(c, 'open')">
+             Open
+           </button>
+@@ -585,6 +598,10 @@ export class PersonClaims {
+ 
+   /** The person chosen on each claim's row to move it to, by claim id (a person id, or blank). */
+   protected readonly reassignTo = signal<Record<number, string>>({});
++  /** Each claim's timeline as last shown: the audit lines about it, newest first. */
++  protected readonly timelines = signal<Record<number, string[]>>({});
++  /** Counts timeline presses, so only the latest press's answer is shown. */
++  private timelineShows = 0;
+   /** The people a claim of this person can move to: everyone else on the sheet. */
+   protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
+   /** Whether the editor left open on a claim the user still locks has been looked for since the sheet loaded. */
+@@ -995,6 +1012,23 @@ export class PersonClaims {
+     if (this.rowError()?.id === id) this.rowError.set(null);
+   }
+ 
++  /** Show a claim's timeline: the audit lines about it, newest first, as the file holds them. */
++  protected async showTimeline(claim: Claim): Promise<void> {
++    this.rowError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const press = ++this.timelineShows;
++    this.timelines.update((t) => ({ ...t, [claim.id]: [] }));
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/timeline`;
++    try {
++      const lines = await firstValueFrom(this.http.get<string[]>(url));
++      if (press !== this.timelineShows || this.session.sheetId() !== sheet) return;
++      this.timelines.update((t) => ({ ...t, [claim.id]: lines }));
++    } catch {
++      if (press === this.timelineShows) this.rowError.set({ id: claim.id, message: 'The timeline could not be read.' });
++    }
++  }
++
+   /** Comment on a claim with the text typed on its row; an empty comment, or any comment by a viewer,
+    *  on an archived sheet or in the as-of view, is refused on the row. */
+   protected async addComment(claim: Claim): Promise<void> {
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditController.java b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+index ee24ba533..4cd321764 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+@@ -3,16 +3,20 @@ package net.officefloor.hq.app.audit;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Size;
+ import java.util.List;
++import java.util.NoSuchElementException;
++import org.springframework.http.HttpStatus;
++import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RequestParam;
++import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ @RestController
+ @Validated
+-@RequestMapping("/api/sheets/{sheetId}/audit")
++@RequestMapping("/api/sheets/{sheetId}")
+ public class AuditController {
+ 
+     private final AuditViewService service;
+@@ -22,9 +26,20 @@ public class AuditController {
+     }
+ 
+     /** The sheet's audit lines as the file holds them, newest first; with a name, only those about that person. */
+-    @GetMapping
++    @GetMapping("/audit")
+     public List<String> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+             @RequestParam(required = false) @Size(max = 200) String name) {
+         return service.lines(sheetId.trim(), name);
+     }
++
++    /** A claim's timeline: the audit lines about it as the file holds them, newest first. */
++    @GetMapping("/claims/{id}/timeline")
++    public List<String> timeline(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id) {
++        return service.claimLines(sheetId.trim(), id);
++    }
++
++    @ExceptionHandler(NoSuchElementException.class)
++    @ResponseStatus(HttpStatus.NOT_FOUND)
++    public void notFound() {
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java b/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
+index 1c7ca629e..c499974ae 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
+@@ -4,10 +4,14 @@ import java.util.ArrayList;
+ import java.util.Collections;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.NoSuchElementException;
+ import java.util.Optional;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+@@ -24,11 +28,45 @@ public class AuditViewService {
+     private final Audit audit;
+     private final PersonRepository people;
+     private final SheetService sheets;
++    private final ClaimRepository claims;
+ 
+-    public AuditViewService(Audit audit, PersonRepository people, SheetService sheets) {
++    public AuditViewService(Audit audit, PersonRepository people, SheetService sheets, ClaimRepository claims) {
+         this.audit = audit;
+         this.people = people;
+         this.sheets = sheets;
++        this.claims = claims;
++    }
++
++    /**
++     * A claim's timeline: the sheet's lines about it, newest first, as the file holds them. For a
++     * numbered claim, the lines whose number= is its number; for a claim with no number, the lines
++     * with no number whose person=, amount= and date= are its person's name, its amount and its date.
++     */
++    public List<String> claimLines(String sheetId, Long claimId) {
++        Claim claim = claims.findById(claimId).filter(c -> c.getSheetId().equals(sheetId))
++                .orElseThrow(NoSuchElementException::new);
++        String number = claim.getNumber();
++        String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse(null);
++        String amount = claim.getAmount().toPlainString();
++        String date = claim.getDate().toString();
++        List<String> found = new ArrayList<>();
++        for (String line : audit.lines()) {
++            if (!field(line, "sheet").filter(sheetId::equals).isPresent()) {
++                continue;
++            }
++            Optional<String> lineNumber = field(line, "number");
++            boolean about = number != null
++                    ? lineNumber.filter(number::equals).isPresent()
++                    : lineNumber.isEmpty() && person != null
++                            && field(line, "person").filter(person::equals).isPresent()
++                            && field(line, "amount").filter(amount::equals).isPresent()
++                            && field(line, "date").filter(date::equals).isPresent();
++            if (about) {
++                found.add(line);
++            }
++        }
++        Collections.reverse(found);
++        return found;
+     }
+ 
+     /**
