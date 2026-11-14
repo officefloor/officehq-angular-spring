@@ -12,7 +12,7 @@ import java.time.LocalDate;
 import net.officefloor.hq.app.history.HistoryListener;
 
 /** A value recorded for one of a sheet's dated settings (floor, late-pct, terms, terms-&lt;grade&gt;,
- *  clerk-limit, cap, proof-threshold, proof-threshold-&lt;grade&gt;, note-threshold, rounding): in force from its from-date
+ *  clerk-limit, clerk-limit-&lt;grade&gt;, cap, proof-threshold, proof-threshold-&lt;grade&gt;, note-threshold, rounding): in force from its from-date
  *  until the next one recorded for the key. A figure, but a word (its text) for the rounding mode. Null only for the clerk
  *  limit, the cap, a proof threshold, the note threshold or the rounding mode, where it means none. */
 @Entity

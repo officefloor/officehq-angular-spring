@@ -271,6 +271,17 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Set a grade's (A, B or C) clerk limit; blank leaves the sheet's to apply to the grade's claims. */
+    @PutMapping("/clerk-limit/{grade}")
+    public SettingsView setGradeClerkLimit(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated ClerkLimitRequest request) {
+        String sheet = sheetId.trim();
+        service.setGradeClerkLimit(sheet, SignedInUser.decode(user), grade, request.value(), request.from());
+        return view(sheet);
+    }
+
     /** Change the sheet's proof threshold. */
     @PutMapping("/proof-threshold")
     public SettingsView setProofThreshold(@PathVariable @NotBlank @Size(max = 200) String sheetId,

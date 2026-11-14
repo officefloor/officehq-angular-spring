@@ -37,6 +37,9 @@ public class SettingService {
     /** The key prefix of a grade's proof threshold: proof-threshold-A, proof-threshold-B, proof-threshold-C. */
     private static final String GRADE_PROOF_THRESHOLD = "proof-threshold-";
 
+    /** The key prefix of a grade's clerk limit: clerk-limit-A, clerk-limit-B, clerk-limit-C. */
+    private static final String GRADE_CLERK_LIMIT = "clerk-limit-";
+
     private final SheetService sheets;
     private final SheetRepository sheetRepository;
     private final SheetRoleRepository roles;
@@ -289,6 +292,19 @@ public class SettingService {
         return inForce(sheetId, "clerk-limit", sheets.today(sheetId)).map(SettingValue::getValue).orElse(null);
     }
 
+    /** The clerk limit in force on the sheet's today for a claim of the grade: the grade's own in force
+     *  then when one is set (not blank), else the sheet's; null when neither is. */
+    public BigDecimal clerkLimitFor(String sheetId, String grade) {
+        if (grade != null) {
+            BigDecimal own = inForce(sheetId, GRADE_CLERK_LIMIT + grade, sheets.today(sheetId))
+                    .map(SettingValue::getValue).orElse(null);
+            if (own != null) {
+                return own;
+            }
+        }
+        return clerkLimit(sheetId);
+    }
+
     /** The sheet's floor in force on a date: the least the live due of a claim of that date can be. */
     public BigDecimal floor(String sheetId, LocalDate on) {
         return floor(sheetId, on, null);
@@ -528,6 +544,13 @@ public class SettingService {
     @Transactional
     public SettingValue setClerkLimit(String sheetId, String by, BigDecimal limit, LocalDate from) {
         return record(sheetId, by, "clerk-limit", limit != null ? limit.setScale(2, RoundingMode.UNNECESSARY) : null, from);
+    }
+
+    /** Record a grade's clerk limit on the sheet from a date (null for the sheet's today); null
+     *  records none (blank: the sheet's applies). */
+    @Transactional
+    public SettingValue setGradeClerkLimit(String sheetId, String by, String grade, BigDecimal limit, LocalDate from) {
+        return record(sheetId, by, GRADE_CLERK_LIMIT + grade, limit != null ? limit.setScale(2, RoundingMode.UNNECESSARY) : null, from);
     }
 
     /** Record the sheet's floor from a date (null for the sheet's today). */

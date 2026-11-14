@@ -393,7 +393,7 @@ public class ClaimService {
             refuseUnnoted(sheetId, person, claim);
             refuseOverCap(sheetId, claim);
         }
-        if (to == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, due)) {
+        if (to == ClaimStatus.SETTLED && overClerkLimit(sheetId, person, user, due)) {
             to = ClaimStatus.PENDING;
         }
         if (to == ClaimStatus.OPEN && overReviewThreshold(sheetId, person, claim)) {
@@ -1139,10 +1139,12 @@ public class ClaimService {
         return settings.roundingOn(sheetId, roundsBy(sheetId, claim), asOf);
     }
 
-    /** Whether a clerk is settling a claim whose due is above the sheet's clerk limit; a due of n/a
-     *  is within any limit, and a steward settles anything. */
-    private boolean overClerkLimit(String sheetId, String user, BigDecimal due) {
-        BigDecimal limit = settings.clerkLimit(sheetId);
+    /** Whether a clerk is settling a claim whose due is above the clerk limit in force on the sheet's
+     *  today (its person's grade's then when one is set, else the sheet's); a due of n/a is within any
+     *  limit, and a steward settles anything. */
+    private boolean overClerkLimit(String sheetId, Person person, String user, BigDecimal due) {
+        String grade = grades.gradeOn(person.getId(), sheets.today(sheetId));
+        BigDecimal limit = settings.clerkLimitFor(sheetId, grade);
         if (limit == null || due == null || due.compareTo(limit) <= 0) {
             return false;
         }
