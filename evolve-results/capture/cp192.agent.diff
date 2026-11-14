@@ -1,0 +1,143 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 4f93a4f47..c3857e9a7 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -19,6 +19,8 @@ export interface Crew {
+ export interface CrewPerson {
+   id: number;
+   name: string;
++  /** The name as the screen shows it, with the grade in force on the sheet's today. */
++  label: string;
+   due: number | null;
+ }
+ 
+@@ -174,7 +176,7 @@ export class Crews {
+     return this.store.crews().map((crew) => {
+       return {
+         crew,
+-        lead: byId.get(crew.leadId)?.name ?? '',
++        lead: byId.get(crew.leadId)?.label ?? '',
+         members: crew.memberIds.map((id) => ({ id, name: byId.get(id)?.name ?? '' })),
+         dueTotal: money(crewDueCents(crew, byId)),
+       };
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0434c8d15..7988acd55 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -568,7 +568,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+                   (change)="selectPerson(p.id, checked($event))"
+                 />
+               </td>
+-              <td data-testid="person-name">{{ p.name }}</td>
++              <td data-testid="person-name">{{ labelOf(p) }}</td>
+               @if (columnShown('aliases')) {
+                 <td data-testid="person-aliases">{{ aliasesOf(p) }}</td>
+               }
+@@ -1135,7 +1135,7 @@ export class People {
+   );
+   /** The people as the crews show them: each with their due-total in cents, null when it is n/a. */
+   protected readonly crewPeople = computed(() =>
+-    this.people().map((p) => ({ id: p.id, name: p.name, due: this.dueCentsBy(p) })),
++    this.people().map((p) => ({ id: p.id, name: p.name, label: this.labelOf(p), due: this.dueCentsBy(p) })),
+   );
+   /** The signed-in user's own figures: those of the person whose name or an alias is the user's
+    *  name, as names are compared; null when there is no such person. */
+@@ -1795,13 +1795,13 @@ export class People {
+ 
+   /** A person's patrons, each as their name and share, sorted by name, comma and space separated. */
+   protected patronsOf(person: Person): string {
+-    const names = new Map(this.people().map((p) => [p.id, p.name]));
++    const byId = new Map(this.people().map((p) => [p.id, p]));
+     const shares = patronShares(person.patronIds.length);
+     return person.patronIds
+-      .map((id, i) => ({ name: names.get(id), share: shares[i] }))
+-      .filter((patron): patron is { name: string; share: number } => patron.name !== undefined)
+-      .sort((a, b) => a.name.localeCompare(b.name))
+-      .map((patron) => `${patron.name} ${money(patron.share)}`)
++      .map((id, i) => ({ patron: byId.get(id), share: shares[i] }))
++      .filter((p): p is { patron: Person; share: number } => p.patron !== undefined)
++      .sort((a, b) => a.patron.name.localeCompare(b.patron.name))
++      .map((p) => `${this.labelOf(p.patron)} ${money(p.share)}`)
+       .join(', ');
+   }
+ 
+@@ -1971,6 +1971,11 @@ export class People {
+   }
+ 
+   /** The grade in force on the sheet's today among a person's grades. */
++  /** A person's name as the screen shows it: "<name> (<grade in force on the sheet's today>)". */
++  protected labelOf(person: Person): string {
++    return `${person.name} (${this.gradeOf(person)})`;
++  }
++
+   protected gradeOf(person: Person): string {
+     const today = this.session.today();
+     return (today === null ? null : gradeOn(person.grades, today)) ?? person.grade;
+diff --git a/src/main/java/net/officefloor/hq/app/search/TreeSearchService.java b/src/main/java/net/officefloor/hq/app/search/TreeSearchService.java
+index 00100f95f..6f3b2f5a8 100644
+--- a/src/main/java/net/officefloor/hq/app/search/TreeSearchService.java
++++ b/src/main/java/net/officefloor/hq/app/search/TreeSearchService.java
+@@ -1,10 +1,12 @@
+ package net.officefloor.hq.app.search;
+ 
++import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Locale;
+ import java.util.Map;
+ import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonGradeService;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.person.PersonService;
+ import net.officefloor.hq.app.rollup.RollupService;
+@@ -16,7 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
+ @Service
+ public class TreeSearchService {
+ 
+-    /** A person found: the sheet they are on, their name and their due-total there ("n/a" for none). */
++    /** A person found: the sheet they are on, their name with the grade in force on that sheet's today,
++     *  as "<name> (<grade>)", and their due-total there ("n/a" for none). */
+     public record Found(String sheetId, String name, String dueTotal) {
+     }
+ 
+@@ -24,13 +27,15 @@ public class TreeSearchService {
+     private final PersonService personService;
+     private final RollupService rollups;
+     private final SheetService sheets;
++    private final PersonGradeService grades;
+ 
+     public TreeSearchService(PersonRepository people, PersonService personService, RollupService rollups,
+-            SheetService sheets) {
++            SheetService sheets, PersonGradeService grades) {
+         this.people = people;
+         this.personService = personService;
+         this.rollups = rollups;
+         this.sheets = sheets;
++        this.grades = grades;
+     }
+ 
+     /** Every person whose name or an alias contains the text, case ignored: the sheet's own in list
+@@ -46,16 +51,22 @@ public class TreeSearchService {
+         for (String sheet : order) {
+             Map<Long, List<String>> aliases = personService.aliases(sheet, null);
+             Map<Long, String> dues = rollups.dueTotals(sheet);
++            LocalDate today = sheets.today(sheet);
+             for (Person person : people.findBySheetIdOrderByIdAsc(sheet)) {
+                 if (contains(person.getName(), needle) || aliases.getOrDefault(person.getId(), List.of()).stream()
+                         .anyMatch(alias -> contains(alias, needle))) {
+-                    found.add(new Found(sheet, person.getName(), dues.getOrDefault(person.getId(), "n/a")));
++                    found.add(new Found(sheet, labelled(person, today), dues.getOrDefault(person.getId(), "n/a")));
+                 }
+             }
+         }
+         return found;
+     }
+ 
++    /** The person's name with the grade in force on the date: "<name> (<grade>)". */
++    private String labelled(Person person, LocalDate date) {
++        return person.getName() + " (" + grades.gradeOn(person.getId(), date) + ")";
++    }
++
+     private static boolean contains(String value, String needle) {
+         return value.toLowerCase(Locale.ROOT).contains(needle);
+     }
