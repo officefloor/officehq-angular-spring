@@ -6,6 +6,9 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.person.ContactInUseException;
+import net.officefloor.hq.app.person.NameInUseException;
+import net.officefloor.hq.app.person.StalePersonException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -33,10 +36,20 @@ public class GradeController {
     public record RetireRequest(@NotNull @Size(max = 10) String grade) {
     }
 
-    private final GradeService service;
+    /** A grade to merge into another. */
+    public record MergeRequest(@NotNull @Size(max = 10) String from, @NotNull @Size(max = 10) String into) {
+    }
 
-    public GradeController(GradeService service) {
+    /** How many people a merge gave the other grade. */
+    public record MergeView(int merged) {
+    }
+
+    private final GradeService service;
+    private final GradeMergeService merges;
+
+    public GradeController(GradeService service, GradeMergeService merges) {
         this.service = service;
+        this.merges = merges;
     }
 
     /** Every grade, in order, each with whether it is retired on the sheet. */
@@ -55,8 +68,19 @@ public class GradeController {
         return list(sheet);
     }
 
-    /** A grade that is not one, or is retired already, is refused. */
-    @ExceptionHandler({GradeRetiredException.class, DataIntegrityViolationException.class})
+    /** Merge a grade into another; how many people were given the other grade. */
+    @PostMapping("/merge")
+    public MergeView merge(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated MergeRequest request) {
+        return new MergeView(merges.merge(sheetId.trim(), SignedInUser.decode(user), request.from().trim(),
+                request.into().trim()).size());
+    }
+
+    /** A grade that is not one, or is retired already, is refused; so is a merge refused, or one that
+     *  could not give a person the grade as their editor would. */
+    @ExceptionHandler({GradeRetiredException.class, GradeMergeRefusedException.class,
+            DataIntegrityViolationException.class, StalePersonException.class, NameInUseException.class,
+            ContactInUseException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }

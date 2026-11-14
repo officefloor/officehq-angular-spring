@@ -2199,7 +2199,8 @@ export class People {
   protected excessOf(person: Person): string {
     const sum = this.uncappedCentsBy(person);
     const cap = this.cap();
-    return money(sum === null || cap === null ? 0 : Math.max(sum + this.cutCentsOf(person) - cap, 0));
+    // What the cap holds back: the uncapped sum less the due it leaves (a cut above the cap leaves none).
+    return money(sum === null || cap === null ? 0 : Math.max(sum - Math.max(cap - this.cutCentsOf(person), 0), 0));
   }
 
   private dueCentsBy(person: Person): number | null {

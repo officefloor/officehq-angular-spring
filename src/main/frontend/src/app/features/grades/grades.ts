@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, Injectable, effect, inject, signal } from '@angular/core';
+import { Component, Injectable, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { GRADES } from '../rates/rates';
@@ -39,6 +39,18 @@ export class GradeStore {
     this.grades.set(list);
   }
 
+  /** Merge a grade into another on the active sheet; how many people were given the other grade.
+   *  Everything on the screen is re-read, as the people merged changed. */
+  async merge(from: string, into: string): Promise<number> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const view = await firstValueFrom(
+      this.http.post<{ merged: number }>(`/api/sheets/${encodeURIComponent(sheet)}/grades/merge`, { from, into }),
+    );
+    if (this.session.sheetId() === sheet) this.session.reread();
+    return view.merged;
+  }
+
   private async read(sheet: string, load: number): Promise<void> {
     const list = await firstValueFrom(this.http.get<Grade[]>(`/api/sheets/${encodeURIComponent(sheet)}/grades`));
     if (this.session.loads() !== load) return;
@@ -66,10 +78,38 @@ export class GradeStore {
           }
         </select>
         <button type="submit" data-testid="grade-retire">Retire grade</button>
-        @if (error(); as message) {
-          <p role="alert" data-testid="grade-error">{{ message }}</p>
+      </form>
+      <form (submit)="merge($event)" aria-label="Merge a grade into another">
+        <label for="grade-merge-from">Merge grade</label>
+        <select
+          id="grade-merge-from"
+          data-testid="grade-merge-from"
+          [value]="mergeFrom()"
+          (change)="mergeFrom.set(value($event)); error.set(null)"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="mergeFrom() === g">{{ g }}</option>
+          }
+        </select>
+        <label for="grade-merge-into">into</label>
+        <select
+          id="grade-merge-into"
+          data-testid="grade-merge-into"
+          [value]="mergeInto()"
+          (change)="mergeInto.set(value($event)); error.set(null)"
+        >
+          @for (g of grades; track g) {
+            <option [value]="g" [selected]="mergeInto() === g">{{ g }}</option>
+          }
+        </select>
+        <button type="submit" data-testid="grade-merge">Merge grades</button>
+        @if (merged() !== null) {
+          Moved <strong data-testid="grade-merged">{{ merged() }}</strong>
         }
       </form>
+      @if (error(); as message) {
+        <p role="alert" data-testid="grade-error">{{ message }}</p>
+      }
       <table>
         <thead>
           <tr><th scope="col">Grade</th><th scope="col">Retired</th></tr>
@@ -90,6 +130,17 @@ export class Grades {
   protected readonly store = inject(GradeStore);
   protected readonly grades = GRADES;
   protected readonly grade = signal(GRADES[0]);
+  protected readonly mergeFrom = signal(GRADES[0]);
+  protected readonly mergeInto = signal(GRADES[1]);
+  private readonly session = inject(Session);
+  /** How many people the last merge gave the other grade, with the sheet load it was made on; null
+   *  while it runs or before one. */
+  private readonly lastMerge = signal<{ load: number; merged: number } | null>(null);
+  /** The last merge's count, shown until the sheet is loaded again. */
+  protected readonly merged = computed(() => {
+    const last = this.lastMerge();
+    return last && last.load === this.session.loads() ? last.merged : null;
+  });
   protected readonly error = signal<string | null>(null);
   /** Whether a retire is waiting for its answer; a second one meanwhile is dropped. */
   private readonly busy = signal(false);
@@ -109,6 +160,26 @@ export class Grades {
       await this.store.retire(grade);
     } catch {
       this.error.set(`The grade ${grade} could not be retired: it may be retired already.`);
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** Merge the chosen grade into the other; the same grade twice, or anyone but a steward, is
+   *  refused beside the entry. */
+  protected async merge(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.busy()) return;
+    this.error.set(null);
+    this.lastMerge.set(null);
+    const from = this.mergeFrom();
+    const into = this.mergeInto();
+    this.busy.set(true);
+    try {
+      const merged = await this.store.merge(from, into);
+      this.lastMerge.set({ load: this.session.loads(), merged });
+    } catch {
+      this.error.set(`The grade ${from} could not be merged into ${into}: only a steward merges two different grades.`);
     } finally {
       this.busy.set(false);
     }

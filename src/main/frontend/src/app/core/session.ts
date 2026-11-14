@@ -72,6 +72,11 @@ export class Session {
     this.loads.update((n) => n + 1);
   }
 
+  /** Re-read everything on the active sheet after a change that touched much of it. */
+  reread(): void {
+    this.loads.update((n) => n + 1);
+  }
+
   /** Show the sheet as of a date (yyyy-mm-dd) on this screen, re-reading everything as it stood then. */
   setAsOf(date: string): void {
     this.asOf.set(date);
