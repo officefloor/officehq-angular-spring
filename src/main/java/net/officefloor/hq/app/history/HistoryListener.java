@@ -15,7 +15,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  *  (see {@link History}). Written in the same transaction as the save itself. */
 public class HistoryListener {
 
-    private static final String CLAIM = "INSERT INTO claim_history (claim_id, sheet_id, person_id, amount,"
+    static final String CLAIM = "INSERT INTO claim_history (claim_id, sheet_id, person_id, amount,"
             + " claim_date, due_by, status, settled_due, stated, stated_due, corrects_number, deferred_until, claim_number,"
             + " opened_by, note, proofs, split_from, late_entry, complete, made_on)"
             + " SELECT c.id, c.sheet_id, c.person_id, c.amount, c.claim_date, c.due_by, c.status, c.settled_due,"
@@ -35,7 +35,7 @@ public class HistoryListener {
             + " setting_value, made_on) SELECT v.sheet_id, v.setting_key, v.from_date, v.setting_value, s.today"
             + " FROM sheet_setting_value v JOIN sheet s ON s.id = v.sheet_id WHERE v.id = ?";
 
-    private static final String PERSON = "INSERT INTO person_history (person_id, sheet_id, name, terms, retired_from,"
+    static final String PERSON = "INSERT INTO person_history (person_id, sheet_id, name, terms, retired_from,"
             + " contact, made_on) SELECT p.id, p.sheet_id, p.name, p.terms, p.retired_from, p.contact, s.today"
             + " FROM person p JOIN sheet s ON s.id = p.sheet_id WHERE p.id = ?";
 

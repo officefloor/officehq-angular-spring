@@ -686,6 +686,12 @@ public class ClaimService {
         return claim.getSettledDue() != null ? claim.getSettledDue().toPlainString() : NO_RATE;
     }
 
+    /** The number a claim brought onto the sheet takes, as one opened now would: the sheet's next
+     *  number for its due-by. Taken with the sheet locked. */
+    public String numberFor(String sheetId, LocalDate dueBy) {
+        return nextNumber(sheetId, dueBy);
+    }
+
     /** The number a claim opened now takes: under period numbering (set, and the sheet's today on or
      *  after it) the next within the period its due-by falls in, <period>-<n>, or X-<n> when it falls
      *  in none; otherwise the sheet's next sheet-wide number. Taken with the sheet locked. */

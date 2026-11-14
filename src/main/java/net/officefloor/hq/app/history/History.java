@@ -128,6 +128,16 @@ public class History {
         return watched;
     }
 
+    /** Keep the state a claim and a person are in now, with the sheet's today, as a save would: they
+     *  were brought onto the sheet. */
+    public void claimKept(Long claimId) {
+        jdbc.update(HistoryListener.CLAIM, claimId);
+    }
+
+    public void personKept(Long personId) {
+        jdbc.update(HistoryListener.PERSON, personId);
+    }
+
     /** Keep a user starting or stopping watching a person, with the sheet's today. */
     public void watchSet(String sheetId, Long personId, String user, boolean watched) {
         jdbc.update("INSERT INTO person_watch_history (sheet_id, person_id, user_name, watched, made_on)"

@@ -36,8 +36,10 @@ public class SheetController {
         }
     }
 
-    /** The figures of a sheet's descendants added up, each as that sheet shows it now. */
-    public record DescendantFigures(int sheets, int people, String dueTotal, String overdueTotal) {
+    /** The figures of a sheet's descendants added up, each as that sheet shows it now, and the sheet's
+     *  own figures as it shows them now (whatever day a screen is set to show it as of). */
+    public record DescendantFigures(int sheets, int people, String dueTotal, String overdueTotal, int ownPeople,
+            String ownDueTotal, String ownOverdueTotal) {
     }
 
     public record TodayRequest(@NotNull LocalDate today) {
@@ -65,7 +67,7 @@ public class SheetController {
     }
 
     /** The sheet's descendants' figures added up: how many people are on them, and each one's
-     *  due-total and overdue-total as that sheet shows it. The sheet's own figures are not included. */
+     *  due-total and overdue-total as that sheet shows it. The sheet's own figures now are given apart. */
     @GetMapping("/{id}/descendant-figures")
     public DescendantFigures descendantFigures(@PathVariable @NotBlank @Size(max = 200) String id) {
         int people = 0;
@@ -78,7 +80,9 @@ public class SheetController {
             due = due.add(figures.dueTotal());
             overdue = overdue.add(figures.overdueTotal());
         }
-        return new DescendantFigures(descendants.size(), people, due.toPlainString(), overdue.toPlainString());
+        RollupService.Headline own = rollups.headline(id.trim());
+        return new DescendantFigures(descendants.size(), people, due.toPlainString(), overdue.toPlainString(),
+                own.people(), own.dueTotal().toPlainString(), own.overdueTotal().toPlainString());
     }
 
     /** Change the sheet's today, closing the periods past their grace days and releasing every claim

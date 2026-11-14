@@ -125,6 +125,10 @@ public class PersonController {
     public record MergeRequest(@NotNull Long intoId) {
     }
 
+    /** A transfer: the id of the sheet to transfer the person to. */
+    public record TransferRequest(@Size(max = 200) String toSheetId) {
+    }
+
     private final PersonService service;
     private final StatementService statements;
     private final RollupService rollups;
@@ -132,9 +136,12 @@ public class PersonController {
     private final SheetService sheets;
     private final BulkGradeService bulkGrade;
     private final PersonMergeService merges;
+    private final PersonTransferService transfers;
 
     public PersonController(PersonService service, StatementService statements, RollupService rollups,
-            PersonGradeService grades, SheetService sheets, BulkGradeService bulkGrade, PersonMergeService merges) {
+            PersonGradeService grades, SheetService sheets, BulkGradeService bulkGrade, PersonMergeService merges,
+            PersonTransferService transfers) {
+        this.transfers = transfers;
         this.bulkGrade = bulkGrade;
         this.merges = merges;
         this.service = service;
@@ -238,6 +245,14 @@ public class PersonController {
         return withStatements(rollups.track(sheet, by, () -> merges.merge(sheet, by, id, request.intoId())), by);
     }
 
+    /** Transfer a person to another sheet by id: they leave this sheet. */
+    @PostMapping("/{id}/transfer")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void transfer(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated TransferRequest request) {
+        transfers.transfer(sheetId.trim(), SignedInUser.decode(user), id, request.toSheetId());
+    }
+
     /** Give a person an alias. */
     @PostMapping("/{id}/aliases")
     public PersonView addAlias(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
@@ -290,10 +305,10 @@ public class PersonController {
     }
 
     /** The name or contact is already in use on the sheet, the patron may not be named, or the merge may
-     *  not be made; a concurrent
+     *  not be made, or the transfer may not be made; a concurrent
      *  save is caught by the unique index. */
     @ExceptionHandler({NameInUseException.class, ContactInUseException.class, PatronRefusedException.class,
-            MergeRefusedException.class, DataIntegrityViolationException.class})
+            MergeRefusedException.class, TransferRefusedException.class, DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void nameInUse() {
     }

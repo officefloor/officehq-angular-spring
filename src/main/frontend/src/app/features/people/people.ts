@@ -53,11 +53,15 @@ interface Person {
   aliases: string[];
 }
 
-/** The figures of a sheet's descendants added up, each as that sheet shows it. */
+/** The figures of a sheet's descendants added up, each as that sheet shows it, and the sheet's own
+ *  figures as it shows them now (absent until read). */
 interface DescendantFigures {
   people: number;
   dueTotal: string;
   overdueTotal: string;
+  ownPeople?: number;
+  ownDueTotal?: string;
+  ownOverdueTotal?: string;
 }
 
 const NO_DESCENDANTS: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00' };
@@ -81,9 +85,9 @@ interface StatementTaken {
       [statuses]="statusSummary()"
       [dueTotal]="dueTotal()"
       [overdueTotal]="overdueTotal()"
-      [consolidatedPeopleCount]="people().length + descendantFigures().people"
-      [consolidatedDueTotal]="money(cents(dueTotal()) + cents(descendantFigures().dueTotal))"
-      [consolidatedOverdueTotal]="money(cents(overdueTotal()) + cents(descendantFigures().overdueTotal))"
+      [consolidatedPeopleCount]="consolidatedPeople()"
+      [consolidatedDueTotal]="consolidatedDue()"
+      [consolidatedOverdueTotal]="consolidatedOverdue()"
     />
     <app-settings />
     <app-rates />
@@ -532,6 +536,21 @@ interface StatementTaken {
                 >
                   Merge
                 </button>
+                <label [for]="'person-transfer-to-' + p.id">Transfer to sheet</label>
+                <input
+                  [id]="'person-transfer-to-' + p.id"
+                  data-testid="person-transfer-to"
+                  [value]="transferTargets()[p.id] ?? ''"
+                  (input)="setTransferTarget(p.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-transfer"
+                  [attr.aria-label]="'Transfer ' + p.name + ' to the sheet typed'"
+                  (click)="transfer(p)"
+                >
+                  Transfer
+                </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
                     <p role="alert" [attr.data-testid]="e.testId ?? 'person-error'">{{ e.message }}</p>
@@ -660,6 +679,22 @@ export class People {
   );
   /** The sheet's descendants' figures added up, as the store last told them. */
   protected readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
+  /** The consolidated figures: the sheet's own as it shows them now (read from the server while the
+   *  screen shows a past day) plus its descendants'. */
+  protected readonly consolidatedPeople = computed(() => {
+    const d = this.descendantFigures();
+    return (this.session.asOf() && d.ownPeople !== undefined ? d.ownPeople : this.people().length) + d.people;
+  });
+  protected readonly consolidatedDue = computed(() => {
+    const d = this.descendantFigures();
+    const own = this.session.asOf() && d.ownDueTotal !== undefined ? d.ownDueTotal : this.dueTotal();
+    return money(cents(own) + cents(d.dueTotal));
+  });
+  protected readonly consolidatedOverdue = computed(() => {
+    const d = this.descendantFigures();
+    const own = this.session.asOf() && d.ownOverdueTotal !== undefined ? d.ownOverdueTotal : this.overdueTotal();
+    return money(cents(own) + cents(d.overdueTotal));
+  });
   /** Every tag ever used on the sheet, as the store last told it. */
   private readonly usedTags = signal<string[]>([]);
   /** Per tag ever used on the sheet, sorted: the dues shown on the claims that count which carry it
@@ -865,6 +900,8 @@ export class People {
   protected readonly aliasInputs = signal<Record<number, string>>({});
   /** The person chosen on each person's row to merge them into (a person id, or blank), by person id. */
   protected readonly mergeChoices = signal<Record<number, string>>({});
+  /** The sheet id typed on each person's row to transfer them to, by person id. */
+  protected readonly transferTargets = signal<Record<number, string>>({});
 
   constructor() {
     effect(() => {
@@ -880,6 +917,7 @@ export class People {
       this.patronChoices.set({});
       this.aliasInputs.set({});
       this.mergeChoices.set({});
+      this.transferTargets.set({});
       this.selectedClaims.set(new Set());
       this.bulkOpenResult.set(null);
       this.bulkOpenError.set(null);
@@ -1029,6 +1067,34 @@ export class People {
     }
     if (this.session.sheetId() !== sheet) return;
     this.mergeChoices.update((choices) => ({ ...choices, [person.id]: '' }));
+    await this.read(sheet, this.session.loads());
+  }
+
+  protected setTransferTarget(personId: number, sheetId: string): void {
+    this.transferTargets.update((targets) => ({ ...targets, [personId]: sheetId }));
+    if (this.rowError()?.id === personId) this.rowError.set(null);
+  }
+
+  /** Transfer a person to the sheet typed: they leave this sheet, so the people and claims are read
+   *  again. */
+  protected async transfer(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const to = (this.transferTargets()[person.id] ?? '').trim();
+    if (!to) {
+      this.rowError.set({ id: person.id, message: 'Type a sheet id to transfer to.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/transfer`;
+    try {
+      await firstValueFrom(this.http.post<void>(url, { toSheetId: to }));
+    } catch {
+      this.rowError.set({ id: person.id, message: `${person.name} could not be transferred to ${to}.` });
+      return;
+    }
+    if (this.session.sheetId() !== sheet) return;
+    this.transferTargets.update((targets) => ({ ...targets, [person.id]: '' }));
     await this.read(sheet, this.session.loads());
   }
 
