@@ -124,7 +124,7 @@ public class ClaimService {
         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
         refuseClosed(sheetId, dueBy);
         refuseRetired(person, on);
-        refuseBadCorrection(sheetId, personId, amount, corrects);
+        refuseBadCorrection(sheetId, personId, amount, corrects, null);
         ref = refOf(ref);
         refuseRefInUse(sheetId, ref, null);
         Claim claim = new Claim(sheetId, personId, scaled(amount), on, dueBy, terms, noteOf(note), corrects);
@@ -184,7 +184,7 @@ public class ClaimService {
         LocalDate on = date != null ? date : settings.defaultClaimDate(sheetId);
         refuseClosed(sheetId, claim.getDueBy());
         refuseRetired(person, on);
-        refuseBadCorrection(sheetId, personId, amount, corrects);
+        refuseBadCorrection(sheetId, personId, amount, corrects, claim.getId());
         ref = refOf(ref);
         refuseRefInUse(sheetId, ref, claim.getId());
         refuseRelined(claim, scaled(amount));
@@ -1092,9 +1092,11 @@ public class ClaimService {
         }
     }
 
-    /** A negative amount (a correction) must name the number of a SETTLED claim of the same person;
-     *  any other amount names none. */
-    private void refuseBadCorrection(String sheetId, Long personId, BigDecimal amount, String corrects) {
+    /** A negative amount (a correction) must name the number of a SETTLED claim of the same person,
+     *  and may not exceed what remains of it: its amount less the corrections already made against it
+     *  (VOID or DELETED ones, and the claim being edited, left out); any other amount names none. */
+    private void refuseBadCorrection(String sheetId, Long personId, BigDecimal amount, String corrects,
+            Long editedId) {
         if (amount.signum() >= 0) {
             if (corrects != null) {
                 throw new CorrectionRefusedException("Only a negative amount corrects a claim");
@@ -1108,6 +1110,18 @@ public class ClaimService {
                 .map(c -> c.getStatus() == ClaimStatus.SETTLED).orElse(false);
         if (!settled) {
             throw new CorrectionRefusedException("No SETTLED claim " + corrects + " of this person to correct");
+        }
+        BigDecimal remains = claims.findBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects).orElseThrow()
+                .getAmount();
+        for (Claim made : claims.findBySheetIdAndPersonIdOrderByListedDesc(sheetId, personId)) {
+            if (corrects.equals(made.getCorrects()) && !made.getId().equals(editedId)
+                    && made.getStatus() != ClaimStatus.VOID && made.getStatus() != ClaimStatus.DELETED) {
+                remains = remains.add(made.getAmount());
+            }
+        }
+        if (amount.negate().compareTo(remains) > 0) {
+            throw new CorrectionRefusedException("A correction may not exceed the " + scaled(remains.max(BigDecimal.ZERO))
+                    .toPlainString() + " that remains of claim " + corrects);
         }
     }
 
