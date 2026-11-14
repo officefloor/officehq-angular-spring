@@ -122,7 +122,7 @@ public class ClaimController {
             @PathVariable long personId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         ClaimService.Statement s = service.statement(sheetId, user.trim(), personId);
-        return new StatementView(PersonView.of(s.person(), s.summary(), people.patronIds(s.person().getId())),
+        return new StatementView(PersonView.of(s.person(), people.today(sheetId), s.summary(), people.patronIds(s.person().getId())),
                 s.claims().stream().map(ClaimView::of).toList());
     }
 }

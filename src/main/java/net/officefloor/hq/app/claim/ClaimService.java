@@ -220,25 +220,21 @@ public class ClaimService {
     }
 
     /** A person's due-total: the sum of the dues their counting claims show (n/a ones skipped);
-     *  null (n/a) when their grade has no rate in force on the sheet's today, unless a claim keeps
-     *  a fixed or bound due. */
+     *  null (n/a) when their grade in force on the sheet's today has no rate then, unless a claim
+     *  shows a due (a fixed or bound one, or one at the rate of the grade they had on its date). */
     private BigDecimal dueTotalOf(List<Claim> counted, Person person, LocalDate today) {
-        boolean kept = counted.stream()
-                .anyMatch(c -> c.getSettledDue() != null || (c.isStated() && c.getStatedDue() != null));
-        if (rates.findInForce(person.getSheetId(), person.getGrade(), today).isEmpty() && !kept) {
+        List<BigDecimal> dues = counted.stream().map(c -> shownDueOf(c, person)).filter(d -> d != null).toList();
+        if (rates.findInForce(person.getSheetId(), person.gradeOn(today), today).isEmpty() && dues.isEmpty()) {
             return null;
         }
-        return counted.stream()
-                .map(c -> shownDueOf(c, person))
-                .filter(d -> d != null)
-                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        return dues.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** The claim's amount times its person's grade rate in force on the claim's date, divided by
+    /** The claim's amount times the rate, in force on the claim's date, of its person's grade then, divided by
      *  100, rounded half to even, raised to the sheet's floor; null with no rate in force then. */
     private BigDecimal dueOf(Claim claim, Person person) {
         BigDecimal floor = sheets.floor(claim.getSheetId());
-        return rates.findInForce(claim.getSheetId(), person.getGrade(), claim.getDate())
+        return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
                 .map(due -> due.max(floor))

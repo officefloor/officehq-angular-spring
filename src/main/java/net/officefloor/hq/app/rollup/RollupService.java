@@ -88,10 +88,9 @@ public class RollupService {
         }
         Map<Long, Figures> out = new LinkedHashMap<>();
         for (Person p : sheetPeople) {
-            List<Rate> theirRates = sheetRates.stream().filter(r -> r.getGrade().equals(p.getGrade())).toList();
             List<Claim> theirs = counted.getOrDefault(p.getId(), List.of());
             BigDecimal claimed = theirs.stream().map(Claim::getAmount).reduce(zero(), BigDecimal::add);
-            out.put(p.getId(), new Figures(p.getName(), claimed, dueTotalOf(theirs, theirRates, today, floor, late)));
+            out.put(p.getId(), new Figures(p.getName(), claimed, dueTotalOf(theirs, p, sheetRates, today, floor, late)));
         }
         return new Snapshot(out);
     }
@@ -105,14 +104,12 @@ public class RollupService {
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
         Set<Long> held = heldIds(sheetPeople);
-        Map<Long, List<Rate>> ratesByPerson = new LinkedHashMap<>();
-        for (Person p : sheetPeople) {
-            ratesByPerson.put(p.getId(), sheetRates.stream().filter(r -> r.getGrade().equals(p.getGrade())).toList());
-        }
+        Map<Long, Person> byId = sheetPeople.stream().collect(Collectors.toMap(Person::getId, p -> p));
         return claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .filter(c -> counts(c, held))
                 .filter(c -> !c.getDate().isBefore(from) && !c.getDate().isAfter(to))
-                .map(c -> shownDueOf(c, ratesByPerson.getOrDefault(c.getPersonId(), List.of()), floor, late))
+                .filter(c -> byId.containsKey(c.getPersonId()))
+                .map(c -> shownDueOf(c, byId.get(c.getPersonId()), sheetRates, floor, late))
                 .filter(Objects::nonNull)
                 .reduce(zero(), BigDecimal::add);
     }
@@ -146,46 +143,49 @@ public class RollupService {
     }
 
     /** A person's due-total: the sum of the dues their counting claims show (n/a ones skipped);
-     *  null (n/a) when their grade has no rate in force on the sheet's today, unless a claim keeps
-     *  a fixed or bound due. */
-    private static BigDecimal dueTotalOf(List<Claim> counted, List<Rate> theirRates, LocalDate today,
+     *  null (n/a) when their grade in force on the sheet's today has no rate then, unless a claim
+     *  shows a due (a fixed or bound one, or one at the rate of the grade they had on its date). */
+    private static BigDecimal dueTotalOf(List<Claim> counted, Person person, List<Rate> sheetRates, LocalDate today,
             BigDecimal floor, LateCharge late) {
-        boolean kept = counted.stream()
-                .anyMatch(c -> c.getSettledDue() != null || (c.isStated() && c.getStatedDue() != null));
-        if (inForce(theirRates, today).isEmpty() && !kept) {
+        List<BigDecimal> dues = counted.stream()
+                .map(c -> shownDueOf(c, person, sheetRates, floor, late))
+                .filter(Objects::nonNull)
+                .toList();
+        if (inForce(person, sheetRates, today).isEmpty() && dues.isEmpty()) {
             return null;
         }
-        return counted.stream()
-                .map(c -> shownDueOf(c, theirRates, floor, late))
-                .filter(Objects::nonNull)
-                .reduce(zero(), BigDecimal::add);
+        return dues.stream().reduce(zero(), BigDecimal::add);
     }
 
     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it
-     *  to (null: n/a), else its amount times the rate in force on its date, rounded half to even,
+     *  to (null: n/a), else its amount times the rate in force on its date of its person's grade
+     *  then, rounded half to even,
      *  raised to the sheet's floor; an unsettled one with its late charge on top. */
-    private static BigDecimal shownDueOf(Claim c, List<Rate> theirRates, BigDecimal floor, LateCharge late) {
+    private static BigDecimal shownDueOf(Claim c, Person person, List<Rate> sheetRates, BigDecimal floor,
+            LateCharge late) {
         if (c.getSettledDue() != null) {
             return c.getSettledDue();
         }
-        return late.addTo(c, figureOf(c, theirRates, floor));
+        return late.addTo(c, figureOf(c, person, sheetRates, floor));
     }
 
     /** A claim's figure before any late charge: the one a statement bound it to (null: n/a), else
      *  its live due. */
-    private static BigDecimal figureOf(Claim c, List<Rate> theirRates, BigDecimal floor) {
+    private static BigDecimal figureOf(Claim c, Person person, List<Rate> sheetRates, BigDecimal floor) {
         if (c.isStated()) {
             return c.getStatedDue();
         }
-        return inForce(theirRates, c.getDate())
+        return inForce(person, sheetRates, c.getDate())
                 .map(r -> c.getAmount().multiply(r.getPct()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
                 .map(due -> due.max(floor))
                 .orElse(null);
     }
 
-    private static Optional<Rate> inForce(List<Rate> theirRates, LocalDate on) {
-        return theirRates.stream()
-                .filter(r -> r.appliesOn(on))
+    /** The rate in force on a date for the person's grade in force then. */
+    private static Optional<Rate> inForce(Person person, List<Rate> sheetRates, LocalDate on) {
+        String grade = person.gradeOn(on);
+        return sheetRates.stream()
+                .filter(r -> r.getGrade().equals(grade) && r.appliesOn(on))
                 .max(Comparator.comparing(Rate::getFrom, Comparator.nullsFirst(Comparator.naturalOrder())));
     }
 

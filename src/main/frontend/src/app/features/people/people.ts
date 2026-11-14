@@ -7,7 +7,7 @@ import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { Lateness, Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
-import { GRADES, PeopleApi, Person, holdError, isStale, patronError, personError, retireError, statementError } from './people-api';
+import { GRADES, PeopleApi, Person, gradeOn, holdError, isStale, patronError, personError, retireError, statementError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total, their overdue claims, and their patrons and backing; the sheet's claimed-total,
@@ -31,6 +31,10 @@ import { GRADES, PeopleApi, Person, holdError, isStale, patronError, personError
             <option [value]="g">{{ g }}</option>
           }
         </select>
+        @if (editingId() !== null) {
+          <label for="person-form-grade-from">Grade from</label>
+          <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
+        }
         <button type="submit" data-testid="person-form-submit">{{ editingId() === null ? 'Add' : 'Save' }}</button>
         @if (editingId() !== null) {
           <button type="button" data-testid="person-form-cancel" (click)="cancel()">Cancel</button>
@@ -66,7 +70,7 @@ import { GRADES, PeopleApi, Person, holdError, isStale, patronError, personError
           @for (p of shownPeople(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
-              <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueOf(p) }}</td>
               <td>
@@ -112,7 +116,7 @@ import { GRADES, PeopleApi, Person, holdError, isStale, patronError, personError
                 }
               </td>
               <td>
-                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)" [periods]="periods()"
+                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rates()" [grades]="p.grades" [periods]="periods()"
                   (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -169,21 +173,22 @@ export class People {
     today: this.session.today(), terms: this.session.terms(), latePct: this.session.latePct(),
   }));
   /** Each person's due-total in cents, by person id: the sum of the dues their OPEN and SETTLED
-   *  claims show (each already rounded; a held person's OPEN ones left out). Null (n/a) when their grade has no rate in force on the
-   *  sheet's today, unless a settled claim keeps a fixed due or a stated claim a bound one: then
-   *  the sum of the dues there are. */
+   *  claims show (each already rounded; a held person's OPEN ones left out). Null (n/a) when their grade in force on the
+   *  sheet's today has no rate then, unless a claim shows a due (a settled claim's fixed one, a stated claim's bound one,
+   *  or one at the rate of the grade they had on its date): then the sum of the dues there are. */
   private readonly dueByPerson = computed(() => {
     const out = new Map<number, number | null>();
     const floor = cents(this.session.floor());
     const late = this.lateness();
     for (const p of this.people()) {
-      const rates = this.ratesOf(p.grade);
-      const counted = this.claimsOf(p.id).filter(this.countsLive());
-      if (pctOn(rates, this.session.today()) === null && !counted.some((c) => c.settledDue !== null || c.statedDue !== null)) {
+      const dues = this.claimsOf(p.id).filter(this.countsLive())
+        .map((c) => this.claimDueCents(p, c, floor, late))
+        .filter((d): d is number => d !== null);
+      if (pctOn(this.ratesOf(this.gradeOf(p)), this.session.today()) === null && dues.length === 0) {
         out.set(p.id, null);
         continue;
       }
-      out.set(p.id, counted.reduce((sum, c) => sum + (claimDueCents(rates, c, floor, late) ?? 0), 0));
+      out.set(p.id, dues.reduce((sum, d) => sum + d, 0));
     }
     return out;
   });
@@ -194,11 +199,10 @@ export class People {
     const floor = cents(this.session.floor());
     const late = this.lateness();
     for (const p of this.people()) {
-      const rates = this.ratesOf(p.grade);
       const overdueClaims = this.claimsOf(p.id).filter(this.countsLive()).filter((c) => overdue(c, late.terms, late.today));
       out.set(p.id, {
         count: overdueClaims.length,
-        cents: overdueClaims.reduce((sum, c) => sum + (claimDueCents(rates, c, floor, late) ?? 0), 0),
+        cents: overdueClaims.reduce((sum, c) => sum + (this.claimDueCents(p, c, floor, late) ?? 0), 0),
       });
     }
     return out;
@@ -217,11 +221,10 @@ export class People {
     const floor = cents(this.session.floor());
     const late = this.lateness();
     for (const p of this.people()) {
-      const rates = this.ratesOf(p.grade);
       for (const c of this.claimsOf(p.id).filter(this.countsLive())) {
         const period = periodOn(this.periods(), c.date);
         if (period === null) continue;
-        out.set(period.id, (out.get(period.id) ?? 0) + (claimDueCents(rates, c, floor, late) ?? 0));
+        out.set(period.id, (out.get(period.id) ?? 0) + (this.claimDueCents(p, c, floor, late) ?? 0));
       }
     }
     return out;
@@ -247,6 +250,8 @@ export class People {
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true, validators: Validators.required }),
     grade: new FormControl<string>('A', { nonNullable: true, validators: Validators.required }),
+    /** On an edit, the date the grade is in force from; blank takes the sheet's today. */
+    gradeFrom: new FormControl('', { nonNullable: true }),
   });
 
   /** The quick-add bar: a name and an amount make a DRAFT claim for that person. */
@@ -285,7 +290,7 @@ export class People {
     this.error.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
-    this.form.setValue({ name: p.name, grade: p.grade });
+    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '' });
   }
 
   protected claimsOf(personId: number): Claim[] {
@@ -298,6 +303,16 @@ export class People {
 
   protected claimedBy(personId: number): string {
     return money(this.byPerson().get(personId)?.cents ?? 0);
+  }
+
+  /** The grade the person shows: the one in force on the sheet's today. */
+  protected gradeOf(p: Person): string {
+    return gradeOn(p.grades, this.session.today());
+  }
+
+  /** A claim's due in cents, at the rate of the person's grade in force on the claim's date. */
+  private claimDueCents(p: Person, c: Claim, floor: number, late: Lateness): number | null {
+    return claimDueCents(this.ratesOf(gradeOn(p.grades, c.date)), c, floor, late);
   }
 
   /** Every rate the sheet has for a grade. */
@@ -434,10 +449,11 @@ export class People {
     this.submitting = true;
     try {
       if (editing === null) {
-        const added = await this.api.add(sheetId, value);
+        const added = await this.api.add(sheetId, { name: value.name, grade: value.grade });
         if (this.session.sheetId() === sheetId) this.people.update((ps) => [...ps, added]);
       } else {
-        const saved = await this.api.update(sheetId, editing, { ...value, version: this.editingVersion });
+        const saved = await this.api.update(sheetId, editing,
+          { ...value, gradeFrom: value.gradeFrom.trim() || null, version: this.editingVersion });
         if (this.session.sheetId() === sheetId) this.taken(saved);
       }
       this.reset();
@@ -493,7 +509,8 @@ export class People {
       if (this.session.sheetId() !== sheetId || this.editingId() !== id) return;
       this.taken(current);
       this.editingVersion = current.version;
-      this.form.setValue({ name: current.name, grade: current.grade }, { emitEvent: false });
+      this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: this.form.getRawValue().gradeFrom },
+        { emitEvent: false });
     } catch {
       // the error shown already says the save was refused
     }
@@ -501,7 +518,7 @@ export class People {
 
   private reset(): void {
     this.editingId.set(null);
-    this.form.reset({ name: '', grade: 'A' });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '' });
     this.error.set(null);
   }
 

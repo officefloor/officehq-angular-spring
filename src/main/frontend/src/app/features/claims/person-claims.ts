@@ -2,6 +2,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
+import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
 import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, dueBy, money, overdue, statusError } from './claims-api';
 
@@ -68,8 +69,10 @@ export class PersonClaims {
   readonly personName = input.required<string>();
   /** This person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
-  /** Every rate the sheet has for this person's grade, each from its from-date. */
+  /** Every rate the sheet has, each for a grade from its from-date. */
   readonly rates = input.required<Rate[]>();
+  /** Every grade this person has been given, each from its from-date. */
+  readonly grades = input.required<DatedGrade[]>();
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
   /** A claim added or saved, for the sheet's list to take in. */
@@ -93,12 +96,13 @@ export class PersonClaims {
     this.form.valueChanges.subscribe(() => this.error.set(null));
   }
 
-  /** The claim's amount times the rate in force on the claim's date, divided by 100, rounded half
+  /** The claim's amount times the rate in force on the claim's date for the person's grade then, divided by 100, rounded half
    *  to even, at least the sheet's floor; n/a with no rate in force then. A claim settled with a
    *  due shows the due fixed then, and one bound by a statement the due bound; an overdue OPEN
    *  claim gains its late charge on top. */
   protected dueOf(c: Claim): string {
-    const due = claimDueCents(this.rates(), c, cents(this.session.floor()), {
+    const grade = gradeOn(this.grades(), c.date);
+    const due = claimDueCents(this.rates().filter((r) => r.grade === grade), c, cents(this.session.floor()), {
       today: this.session.today(), terms: this.session.terms(), latePct: this.session.latePct(),
     });
     return due === null ? 'n/a' : money(due);

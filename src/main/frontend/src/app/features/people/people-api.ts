@@ -6,10 +6,31 @@ import { Claim } from '../claims/claims-api';
 
 export const GRADES = ['A', 'B', 'C'] as const;
 
+/** A grade a person was given, and the first date (yyyy-mm-dd) it is in force; null for their first
+ *  grade, in force from the beginning of time. */
+export interface DatedGrade {
+  grade: string;
+  from: string | null;
+}
+
+/** Of a person's grades, the one in force on a date (yyyy-mm-dd): the one with the latest from-date
+ *  on or before it, else their first. */
+export function gradeOn(grades: readonly DatedGrade[], date: string | null): string {
+  let best: DatedGrade | null = null;
+  for (const g of grades) {
+    if (g.from !== null && (date === null || g.from > date)) continue;
+    if (best === null || (best.from ?? '') < (g.from ?? '')) best = g;
+  }
+  return best?.grade ?? grades[0]?.grade ?? '';
+}
+
 export interface Person {
   id: number;
   name: string;
+  /** The grade in force on the sheet's today when the person was read. */
   grade: string;
+  /** Every grade the person has been given, by from-date, the first one (undated) leading. */
+  grades: DatedGrade[];
   /** Raised on every save. */
   version: number;
   /** How many statements have been taken of the person. */
@@ -37,6 +58,8 @@ export interface PersonForm {
   grade: string;
   /** On an edit, the version of the person the editor loaded. */
   version?: number;
+  /** On an edit, the date the grade is in force from (yyyy-mm-dd); null takes the sheet's today. */
+  gradeFrom?: string | null;
 }
 
 // The people kept on the active sheet, read and written through the server.
@@ -100,7 +123,7 @@ export class PeopleApi {
 }
 
 export function personError(e: unknown): string {
-  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name and choose a grade.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name, choose a grade and enter a from-date as yyyy-mm-dd or none.';
   if (isStale(e)) return 'Someone else saved this person since you opened it; the form now shows their values.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That name is already in use on this sheet.';
   return 'Something went wrong; try again.';

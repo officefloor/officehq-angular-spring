@@ -1,15 +1,25 @@
 package net.officefloor.hq.app.person;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
-/** A person on a sheet, with a name and a grade (A, B or C). */
+/** A person on a sheet, with a name and a dated grade (A, B or C). */
 @Entity
 @Table(name = "person")
 public class Person {
@@ -24,8 +34,16 @@ public class Person {
     @Column(name = "name", nullable = false)
     private String name;
 
+    /** The first grade the person was given: in force from the beginning of time until a later one. */
     @Column(name = "grade", nullable = false)
     private String grade;
+
+    /** The grades recorded since, by the date each is in force from. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_grade", joinColumns = @JoinColumn(name = "person_id"))
+    @MapKeyColumn(name = "from_date")
+    @Column(name = "grade", nullable = false)
+    private Map<LocalDate, String> datedGrades = new HashMap<>();
 
     /** The date the person is retired from; null while not retired. Set, they count as retired
      *  at once, whatever the date. */
@@ -66,12 +84,27 @@ public class Person {
         this.name = name;
     }
 
-    public String getGrade() {
-        return grade;
+    /** A grade and the date it is in force from (null: from the beginning of time). */
+    public record DatedGrade(String grade, LocalDate from) {
     }
 
-    public void setGrade(String grade) {
-        this.grade = grade;
+    /** The grade in force on a date: the one with the latest from-date on or before it, else the first. */
+    public String gradeOn(LocalDate on) {
+        Map.Entry<LocalDate, String> latest = new TreeMap<>(datedGrades).floorEntry(on);
+        return latest == null ? grade : latest.getValue();
+    }
+
+    /** Record a grade from a date, in place of any recorded from the same date. */
+    public void recordGrade(String grade, LocalDate from) {
+        datedGrades.put(from, grade);
+    }
+
+    /** Every grade the person has been given, by from-date, the first one (undated) leading. */
+    public List<DatedGrade> getGrades() {
+        List<DatedGrade> out = new ArrayList<>();
+        out.add(new DatedGrade(grade, null));
+        new TreeMap<>(datedGrades).forEach((from, g) -> out.add(new DatedGrade(g, from)));
+        return out;
     }
 
     public LocalDate getRetiredFrom() {

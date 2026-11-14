@@ -39,6 +39,12 @@ public class PersonService {
         return people.findBySheetIdOrderByIdAsc(sheetId);
     }
 
+    /** The sheet's today: the date the grade a person shows is in force on. */
+    @Transactional(readOnly = true)
+    public LocalDate today(String sheetId) {
+        return sheets.today(sheetId);
+    }
+
     @Transactional(readOnly = true)
     public Person get(String sheetId, long id) {
         return people.findByIdAndSheetId(id, sheetId)
@@ -108,14 +114,17 @@ public class PersonService {
         } catch (DataIntegrityViolationException e) {
             throw nameInUse(); // added by another user at the same moment
         }
-        record("PERSON_ADDED", sheetId, user, person);
+        record("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId));
         rollup.recordChanges(sheetId, user, before);
         return person;
     }
 
-    /** Save a person; refused when {@code version} (the one the editor loaded) is no longer the stored one. */
+    /** Save a person; refused when {@code version} (the one the editor loaded) is no longer the stored one.
+     *  The grade is recorded from {@code gradeFrom} (null: the sheet's today), keeping those already
+     *  recorded; with no from-date, a grade the same as the one in force on the sheet's today records nothing. */
     @Transactional
-    public Person update(String sheetId, String user, long id, Long version, String name, String grade) {
+    public Person update(String sheetId, String user, long id, Long version, String name, String grade,
+            LocalDate gradeFrom) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (version == null || version != person.getVersion()) {
@@ -125,7 +134,10 @@ public class PersonService {
         String trimmed = name.trim();
         requireUnusedName(sheetId, id, trimmed);
         person.setName(trimmed);
-        person.setGrade(grade);
+        LocalDate today = sheets.today(sheetId);
+        if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+            person.recordGrade(grade, gradeFrom != null ? gradeFrom : today);
+        }
         try {
             people.flush();
         } catch (DataIntegrityViolationException e) {
@@ -133,7 +145,7 @@ public class PersonService {
         } catch (ObjectOptimisticLockingFailureException e) {
             throw savedByAnother(); // saved by another user at the same moment
         }
-        record("PERSON_EDITED", sheetId, user, person);
+        record("PERSON_EDITED", sheetId, user, person, today);
         rollup.recordChanges(sheetId, user, before);
         return person;
     }
@@ -170,9 +182,10 @@ public class PersonService {
         return person;
     }
 
-    private void record(String event, String sheetId, String user, Person person) {
+    /** Written with the grade in force on {@code today}, the sheet's today. */
+    private void record(String event, String sheetId, String user, Person person, LocalDate today) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
-                + " name=" + person.getName() + " grade=" + person.getGrade());
+                + " name=" + person.getName() + " grade=" + person.gradeOn(today));
     }
 
     /** Refuse a name another person on the sheet already has (ignoring case). */

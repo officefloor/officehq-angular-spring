@@ -74,8 +74,10 @@ export class Settings {
   protected readonly sortedGrants = computed(() => [...this.grants()].sort((a, b) => a.user.localeCompare(b.user)));
   protected readonly settingsErr = signal<string | null>(null);
   protected readonly roleErr = signal<string | null>(null);
-  /** Whether a submit is waiting for its answer; a second submit meanwhile is ignored. */
+  /** Whether a save is waiting for its answer; a second one meanwhile runs once it is answered. */
   private savingSettings = false;
+  /** Whether a save was submitted while another was waiting; it runs once that one is answered. */
+  private resaveSettings = false;
   private savingRole = false;
   /** Guards against a slower, older read landing over a newer one. */
   private readSeq = 0;
@@ -110,7 +112,10 @@ export class Settings {
   }
 
   protected async saveSettings(): Promise<void> {
-    if (this.savingSettings) return;
+    if (this.savingSettings) {
+      this.resaveSettings = true;
+      return;
+    }
     this.settingsErr.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
@@ -135,28 +140,32 @@ export class Settings {
     try {
       if (saveLimit) {
         const saved = await this.api.setClerkLimit(sheetId, limitValue);
-        clerkLimit.markAsPristine();
+        if (clerkLimit.value.trim() === limitValue) clerkLimit.markAsPristine();
         if (this.session.sheetId() === sheetId) this.clerkLimit.set(saved.clerkLimit);
       }
       if (saveFloor) {
         const saved = await this.api.setFloor(sheetId, floorValue);
-        floor.markAsPristine();
+        if (floor.value.trim() === floorValue) floor.markAsPristine();
         if (this.session.sheetId() === sheetId) this.session.floor.set(saved.floor);
       }
       if (saveTerms) {
         const saved = await this.api.setTerms(sheetId, termsValue);
-        terms.markAsPristine();
+        if (terms.value.trim() === termsValue) terms.markAsPristine();
         if (this.session.sheetId() === sheetId) this.session.terms.set(saved.terms);
       }
       if (saveLatePct) {
         const saved = await this.api.setLatePct(sheetId, latePctValue);
-        latePct.markAsPristine();
+        if (latePct.value.trim() === latePctValue) latePct.markAsPristine();
         if (this.session.sheetId() === sheetId) this.session.latePct.set(saved.latePct);
       }
     } catch (e) {
       this.settingsErr.set(settingsError(e));
     } finally {
       this.savingSettings = false;
+    }
+    if (this.resaveSettings) {
+      this.resaveSettings = false;
+      if (this.settingsForm.dirty) await this.saveSettings();
     }
   }
 
