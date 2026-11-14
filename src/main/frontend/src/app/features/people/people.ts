@@ -589,6 +589,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
             <th scope="col">Past retirements</th>
             <th scope="col">Snapshots</th>
             <th scope="col">Statement lines</th>
+            <th scope="col">Timeline</th>
             <th scope="col">Active</th>
             @if (columnShown('hold')) {
               <th scope="col">On hold</th>
@@ -693,6 +694,13 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
                 <ul [attr.aria-label]="'Statements of ' + p.name">
                   @for (st of p.statements; track $index) {
                     <li data-testid="person-statement-line-line">{{ st.date }} {{ st.dueTotal }}</li>
+                  }
+                </ul>
+              </td>
+              <td>
+                <ul [attr.aria-label]="'Timeline of ' + p.name">
+                  @for (line of timelineOf(p); track $index) {
+                    <li data-testid="person-timeline-line">{{ line }}</li>
                   }
                 </ul>
               </td>
@@ -2301,6 +2309,32 @@ export class People {
 
   protected claimedBy(personId: number): string {
     return money((this.countedByPerson().get(personId) ?? []).reduce((sum, c) => sum + claimedCents(c), 0));
+  }
+
+  /** A person's timeline: one line per dated thing about them, by date, and within a date their
+   *  grade changes, then claims, then holds, then retirements, then unretirements, and lines of
+   *  one kind on one date by their text. The grade they were first given, which has no date, is
+   *  not on it. */
+  protected timelineOf(person: Person): string[] {
+    const lines: { date: string; kind: number; text: string }[] = [];
+    for (const g of person.grades) {
+      if (g.from) lines.push({ date: g.from, kind: 0, text: `grade ${g.grade}` });
+    }
+    for (const c of this.claimsOf(person.id)) {
+      lines.push({ date: c.date, kind: 1, text: `claim ${c.amount} ${c.status}` });
+    }
+    for (const h of person.holds) {
+      lines.push({ date: h.from, kind: 2, text: h.to ? `hold to ${h.to}` : 'hold' });
+    }
+    for (const r of person.retirements) {
+      lines.push({ date: r.from, kind: 3, text: 'retired' });
+      lines.push({ date: r.to, kind: 4, text: 'unretired' });
+    }
+    if (person.retiredFrom) lines.push({ date: person.retiredFrom, kind: 3, text: 'retired' });
+    const order = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+    return lines
+      .sort((a, b) => order(a.date, b.date) || a.kind - b.kind || order(a.text, b.text))
+      .map((l) => `${l.date} ${l.text}`);
   }
 
   /** The grade in force on the sheet's today among a person's grades. */

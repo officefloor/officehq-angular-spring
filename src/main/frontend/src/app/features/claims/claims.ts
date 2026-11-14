@@ -1635,6 +1635,12 @@ export class PersonClaims {
       this.reset();
     } catch {
       const what = negative ? 'correction' : 'claim';
+      if (id !== null && this.session.sheetId() === sheet) {
+        // A refused save changes nothing: the editor closes, releasing the claim, so the form is
+        // back to adding.
+        this.reset();
+        void this.unlock(sheet, id);
+      }
       this.error.set(
         id === null
           ? `The ${what} could not be added: its reference may already be used on the sheet.`
