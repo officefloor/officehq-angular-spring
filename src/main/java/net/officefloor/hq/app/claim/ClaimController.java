@@ -404,6 +404,24 @@ public class ClaimController {
                 () -> service.changeStatus(sheet, by, personId, id, ClaimStatus.VOID, reason)));
     }
 
+    /** Delete a DRAFT claim: it counts nowhere until restored. */
+    @PostMapping("/people/{personId}/claims/{id}/delete")
+    public ClaimView delete(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, rollups.track(sheet, by, () -> service.delete(sheet, by, personId, id)));
+    }
+
+    /** Restore a DELETED claim to a DRAFT, on the sheet's today it was deleted. */
+    @PostMapping("/people/{personId}/claims/{id}/restore")
+    public ClaimView restore(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, rollups.track(sheet, by, () -> service.restore(sheet, by, personId, id)));
+    }
+
     private ClaimView changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
@@ -425,12 +443,13 @@ public class ClaimController {
      *  void without a reason from the sheet's list while it has one, or a
      *  re-date of a claim that is not OPEN or PENDING, or opening or saving the editor of a claim
      *  another user's editor locks, or a reminder of a claim that is not OPEN or PENDING or was already
-     *  reminded on the sheet's today, or an empty comment, is refused. */
+     *  reminded on the sheet's today, or an empty comment, or a delete of a claim that is not a DRAFT or
+     *  a restore of one not deleted on the sheet's today, is refused. */
     @ExceptionHandler({VoidRefusedException.class, StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
             DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class, NoteRequiredException.class,
             SplitRefusedException.class, RedateRefusedException.class, ClaimLockedException.class,
-            RemindRefusedException.class, CommentRefusedException.class, RefInUseException.class, DataIntegrityViolationException.class})
+            RemindRefusedException.class, CommentRefusedException.class, DeleteRefusedException.class, RefInUseException.class, DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }

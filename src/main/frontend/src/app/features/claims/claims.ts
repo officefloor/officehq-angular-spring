@@ -10,11 +10,12 @@ import { ClaimTemplateStore } from '../claim-templates/claim-templates';
 /** Where a claim is in its life: DRAFT, then OPEN, then SETTLED; an OPEN claim a clerk settles above
  *  the clerk limit is PENDING until a steward approves it (SETTLED) or rejects it (OPEN again); a
  *  DRAFT, OPEN or PENDING claim can be VOID, and a steward may void a SETTLED one within 7 days of
- *  its settlement. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+ *  its settlement. A DRAFT can be DELETED, counting nowhere, and restored to a DRAFT on the same
+ *  sheet-today. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
 
 /** A status change a claim's buttons ask for. */
-type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void' | 'resettle';
+type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void' | 'resettle' | 'delete' | 'restore';
 
 export interface Claim {
   id: number;
@@ -193,6 +194,8 @@ const PAST: Record<ClaimAction, string> = {
   reject: 'rejected',
   void: 'voided',
   resettle: 're-settled',
+  delete: 'deleted',
+  restore: 'restored',
 };
 
 /** An amount of 0.00 or more with up to two decimals. */
@@ -400,6 +403,12 @@ const NUMBER = /^\S+$/;
           </select>
           <button type="button" data-testid="claim-void" [attr.aria-label]="'Void claim ' + c.id" (click)="act(c, 'void')">
             Void
+          </button>
+          <button type="button" data-testid="claim-delete" [attr.aria-label]="'Delete claim ' + c.id" (click)="act(c, 'delete')">
+            Delete
+          </button>
+          <button type="button" data-testid="claim-restore" [attr.aria-label]="'Restore claim ' + c.id" (click)="act(c, 'restore')">
+            Restore
           </button>
           <button
             type="button"
@@ -1021,6 +1030,10 @@ export class PersonClaims {
             ? 'The claim could not be settled: whoever opened it cannot settle it, and your role must be allowed to settle.'
             : !forbidden && (action === 'settle' || action === 'approve')
               ? `The claim could not be ${PAST[action]}: one due above the proof threshold needs a proof first, and its status must allow it.`
+            : !forbidden && action === 'delete'
+              ? 'The claim could not be deleted: only a draft outside a closed period can.'
+            : !forbidden && action === 'restore'
+              ? 'The claim could not be restored: only a deleted claim can, on the same day it was deleted.'
             : !forbidden && action === 'open'
               ? 'The claim could not be opened: one due above the note threshold needs a note first, and its status and period must allow it.'
             : forbidden && action === 'resettle'
@@ -1030,7 +1043,7 @@ export class PersonClaims {
               : !forbidden && action === 'void' && claim.status === 'SETTLED'
                 ? 'The claim could not be voided: only a steward voids a settled claim, within 7 days of its settlement and outside a closed period.'
               : forbidden
-                ? action === 'open' || action === 'void'
+                ? action === 'open' || action === 'void' || action === 'delete' || action === 'restore'
                   ? `The claim could not be ${PAST[action]}: your role may not ${action} a claim on this sheet.`
                   : `The claim could not be ${PAST[action]}: only a steward who did not open it can.`
               : `The claim could not be ${PAST[action]}.`,
