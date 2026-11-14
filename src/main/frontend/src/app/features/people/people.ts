@@ -532,6 +532,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
             @if (columnShown('overdue-total')) {
               <th scope="col">Overdue due</th>
             }
+            <th scope="col">Score</th>
             <th scope="col">Due aged 0–30</th>
             <th scope="col">Due aged 31–60</th>
             <th scope="col">Due aged 61+</th>
@@ -618,6 +619,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
               @if (columnShown('overdue-total')) {
                 <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
               }
+              <td data-testid="person-score">{{ scoreOf(p) }}</td>
               @let aged = agedOf(p);
               <td data-testid="person-aged-0-30">{{ aged[0] }}</td>
               <td data-testid="person-aged-31-60">{{ aged[1] }}</td>
@@ -1066,13 +1068,15 @@ export class People {
     return this.showRetired() ? visible : visible.filter((p) => !p.retired);
   });
   /** The people the signed-in user may see on the list: everyone, except for a restricted user, who sees
-   *  only the people of the crews their person leads or belongs to and their person themselves. Every
+   *  only the people of the crews their person leads or belongs to, their person themselves and anyone
+   *  they quick-added since the sheet was loaded. Every
    *  other figure stays over everyone on the sheet. */
   private readonly visiblePeople = computed(() => {
     if (!this.restricted()) return this.people();
     const me = this.me();
-    if (!me) return [];
-    const ids = new Set<number>([me.id]);
+    const ids = new Set<number>(this.quickAddedPeople());
+    if (!me) return this.people().filter((p) => ids.has(p.id));
+    ids.add(me.id);
     for (const crew of this.crewStore.crews()) {
       if (crew.leadId === me.id || crew.memberIds.includes(me.id)) {
         ids.add(crew.leadId);
@@ -1504,6 +1508,9 @@ export class People {
   /** Whether a quick-add is waiting for its answer; a second one meanwhile is dropped. */
   private readonly quickBusy = signal(false);
   protected readonly quickError = signal<string | null>(null);
+  /** The people a quick-add put on the sheet since it was loaded: they show to the user who added
+   *  them until the sheet is loaded again, even if their role would not list them. */
+  private readonly quickAddedPeople = signal<ReadonlySet<number>>(new Set());
   protected readonly importText = signal('');
   /** How many people the last import added; null while it runs or before one. */
   protected readonly importAdded = signal<number | null>(null);
@@ -1603,6 +1610,7 @@ export class People {
       const sheet = this.session.sheetId();
       const load = this.session.loads();
       this.people.set([]);
+      this.quickAddedPeople.set(new Set());
       this.claims.set([]);
       this.usedTags.set([]);
       this.descendantFigures.set(NO_DESCENDANTS);
@@ -2184,6 +2192,17 @@ export class People {
     return money(this.overdueCentsOf(person));
   }
 
+  /** A person's score: their settled figures divided by 100, minus 5 for each overdue claim of theirs
+   *  that counts, rounded half to even to a whole number. */
+  protected scoreOf(person: Person): string {
+    // In ten-thousandths of a point: a cent of settled figures is one, an overdue claim 50,000.
+    const scaled = this.settledCentsOf(person) - 50_000 * this.overdueOf(person.id).length;
+    let whole = Math.floor(scaled / 10_000);
+    const rest = scaled - whole * 10_000;
+    if (rest > 5_000 || (rest === 5_000 && whole % 2 !== 0)) whole += 1;
+    return String(whole === 0 ? 0 : whole);
+  }
+
   /** The dues of a person's OPEN and PENDING claims that count added up by the claim's age on the
    *  sheet's today, the days from its date: 0 to 30 (a claim dated after today too), 31 to 60, and 61
    *  or more (a claim with no figure adds nothing). */
@@ -2660,6 +2679,9 @@ export class People {
         ),
       );
       if (this.session.sheetId() !== sheet) return;
+      if (!this.people().some((p) => p.id === added.person.id)) {
+        this.quickAddedPeople.update((ids) => new Set(ids).add(added.person.id));
+      }
       this.people.update((list) =>
         list.some((p) => p.id === added.person.id)
           ? list.map((p) => (p.id === added.person.id ? added.person : p))
