@@ -14,6 +14,9 @@ export interface PeriodSummary {
   name: string;
   /** The due-total the period's row shows (two decimals). */
   dueTotal: string;
+  /** This period's due-total minus that of the period before it by start date (two decimals);
+   *  blank for the earliest period. */
+  change: string;
 }
 
 export interface StatusSummary {
@@ -62,6 +65,7 @@ export interface VoidReasonSummary {
           <tr>
             <th scope="col">Period</th>
             <th scope="col">Due</th>
+            <th scope="col">Change</th>
           </tr>
         </thead>
         <tbody>
@@ -69,6 +73,7 @@ export interface VoidReasonSummary {
             <tr>
               <th scope="row">{{ p.name }}</th>
               <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ p.change }}</td>
             </tr>
           }
         </tbody>

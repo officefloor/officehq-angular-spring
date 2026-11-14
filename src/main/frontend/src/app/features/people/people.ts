@@ -911,13 +911,21 @@ export class People {
       return { grade, count: on.length, dueTotal: money(due), active };
     });
   });
-  /** Per period: the due-total its row shows, the sum of the people's figures for it. */
+  /** Per period: the due-total its row shows, the sum of the people's figures for it, and its
+   *  change from the period before it by start date (blank for the earliest). */
   protected readonly periodSummary = computed(() => {
     const live = this.periodDueTotals();
-    return this.periods.periods().map((p) => ({
-      name: p.name,
-      dueTotal: live.get(p.id) ?? '0.00',
-    }));
+    const periods = this.periods.periods();
+    const byStart = [...periods].sort((a, b) => a.from.localeCompare(b.from));
+    const dueOf = (id: number) => live.get(id) ?? '0.00';
+    return periods.map((p) => {
+      const previous = byStart[byStart.indexOf(p) - 1];
+      return {
+        name: p.name,
+        dueTotal: dueOf(p.id),
+        change: previous ? money(cents(dueOf(p.id)) - cents(dueOf(previous.id))) : '',
+      };
+    });
   });
   /** Per status: how many of the sheet's claims have it. */
   protected readonly statusSummary = computed(() => {
