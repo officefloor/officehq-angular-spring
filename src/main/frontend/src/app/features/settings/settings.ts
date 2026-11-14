@@ -63,6 +63,10 @@ interface SettingsView {
   /** The review SLA: a REVIEW claim whose review day plus this many days is before the sheet's
    *  today is late for review; null for none. */
   reviewSla: number | null;
+  /** The score thresholds, whole numbers: while both are set each person shows a band; null for
+   *  blank. */
+  scoreMid: number | null;
+  scoreHigh: number | null;
   /** The fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it. */
   fiscalStartMonth: number;
   /** The pot (two decimals): each member of a balanced pool shows a cut of it; null for none. */
@@ -109,6 +113,8 @@ const LATE_PCT = '0.00';
 
 /** Terms of 0 or more whole days. */
 const DAYS = /^\d{1,5}$/;
+/** A score threshold: a whole number, which may be below zero. */
+const SCORE = /^-?\d{1,9}$/;
 /** A month of the year, 1 to 12. */
 const MONTH = /^(?:0?[1-9]|1[0-2])$/;
 
@@ -210,6 +216,9 @@ export class SettingStore {
   readonly defaultGrade = signal('');
   /** The review SLA as text: whole days, blank for none. */
   readonly reviewSla = signal('');
+  /** The score thresholds as text: whole numbers, blank for none. */
+  readonly scoreMid = signal('');
+  readonly scoreHigh = signal('');
   /** The fiscal year start month, 1 to 12; 1 unless set. */
   readonly fiscalStartMonth = signal(1);
   /** The pot as text: two decimals, blank for none. */
@@ -240,6 +249,8 @@ export class SettingStore {
       this.proofKinds.set('');
       this.defaultGrade.set('');
       this.reviewSla.set('');
+      this.scoreMid.set('');
+      this.scoreHigh.set('');
       this.fiscalStartMonth.set(1);
       this.pot.set('');
       this.alertThreshold.set('');
@@ -543,6 +554,17 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Change one of the active sheet's score thresholds, mid or high; null leaves it blank. */
+  async setScoreThreshold(which: 'mid' | 'high', value: number | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/score-${which}`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   /** Change the active sheet's fiscal year start month (1 to 12); the server refuses any other. */
   async setFiscalStartMonth(value: number): Promise<void> {
     const sheet = this.session.sheetId();
@@ -623,6 +645,8 @@ export class SettingStore {
     this.proofKinds.set(settings.proofKinds);
     this.defaultGrade.set(settings.defaultGrade);
     this.reviewSla.set(settings.reviewSla === null ? '' : String(settings.reviewSla));
+    this.scoreMid.set(settings.scoreMid === null ? '' : String(settings.scoreMid));
+    this.scoreHigh.set(settings.scoreHigh === null ? '' : String(settings.scoreHigh));
     this.fiscalStartMonth.set(settings.fiscalStartMonth);
     this.pot.set(settings.pot ?? '');
     this.alertThreshold.set(settings.alertThreshold ?? '');
@@ -1036,6 +1060,24 @@ export class SettingStore {
           (focus)="reviewSlaTyped.set(true)"
           (input)="reviewSla.set(value($event)); reviewSlaTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-score-mid">Score mid threshold</label>
+        <input
+          id="setting-score-mid"
+          data-testid="setting-score-mid"
+          inputmode="numeric"
+          [value]="scoreMid()"
+          (focus)="scoreMidTyped.set(true)"
+          (input)="scoreMid.set(value($event)); scoreMidTyped.set(true); settingsError.set(null)"
+        />
+        <label for="setting-score-high">Score high threshold</label>
+        <input
+          id="setting-score-high"
+          data-testid="setting-score-high"
+          inputmode="numeric"
+          [value]="scoreHigh()"
+          (focus)="scoreHighTyped.set(true)"
+          (input)="scoreHigh.set(value($event)); scoreHighTyped.set(true); settingsError.set(null)"
+        />
         <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
         <input
           id="setting-fiscal-start-month"
@@ -1237,6 +1279,20 @@ export class SettingStore {
         }
       </p>
       <p>
+        Score mid threshold:
+        <strong data-testid="setting-score-mid-current">{{ store.scoreMid() }}</strong>
+        @if (store.scoreMid() === '') {
+          <span>none</span>
+        }
+      </p>
+      <p>
+        Score high threshold:
+        <strong data-testid="setting-score-high-current">{{ store.scoreHigh() }}</strong>
+        @if (store.scoreHigh() === '') {
+          <span>none</span>
+        }
+      </p>
+      <p>
         Fiscal year start month:
         <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() }}</strong>
       </p>
@@ -1345,6 +1401,10 @@ export class Settings {
   protected readonly defaultGradeTyped = signal(false);
   protected readonly reviewSla = signal('');
   protected readonly reviewSlaTyped = signal(false);
+  protected readonly scoreMid = signal('');
+  protected readonly scoreMidTyped = signal(false);
+  protected readonly scoreHigh = signal('');
+  protected readonly scoreHighTyped = signal(false);
   protected readonly fiscalStartMonth = signal('');
   protected readonly fiscalStartMonthTyped = signal(false);
   protected readonly pot = signal('');
@@ -1511,6 +1571,10 @@ export class Settings {
     const saveDefaultGrade = this.defaultGradeTyped();
     const reviewSla = this.reviewSla().trim();
     const saveReviewSla = this.reviewSlaTyped();
+    const scoreMid = this.scoreMid().trim();
+    const saveScoreMid = this.scoreMidTyped();
+    const scoreHigh = this.scoreHigh().trim();
+    const saveScoreHigh = this.scoreHighTyped();
     const fiscalStartMonth = this.fiscalStartMonth().trim();
     const saveFiscalStartMonth = this.fiscalStartMonthTyped();
     const pot = this.pot().trim();
@@ -1651,6 +1715,14 @@ export class Settings {
       this.settingsError.set('Type a review SLA of 0 or more whole days, or leave it blank for none.');
       return;
     }
+    if (saveScoreMid && scoreMid !== '' && !SCORE.test(scoreMid)) {
+      this.settingsError.set('Type a score mid threshold as a whole number, or leave it blank for none.');
+      return;
+    }
+    if (saveScoreHigh && scoreHigh !== '' && !SCORE.test(scoreHigh)) {
+      this.settingsError.set('Type a score high threshold as a whole number, or leave it blank for none.');
+      return;
+    }
     if (saveFiscalStartMonth && !MONTH.test(fiscalStartMonth)) {
       this.settingsError.set('Type a fiscal year start month of 1 to 12.');
       return;
@@ -1690,6 +1762,8 @@ export class Settings {
     this.proofKindsTyped.set(false);
     this.defaultGradeTyped.set(false);
     this.reviewSlaTyped.set(false);
+    this.scoreMidTyped.set(false);
+    this.scoreHighTyped.set(false);
     this.fiscalStartMonthTyped.set(false);
     this.potTyped.set(false);
     this.alertThresholdTyped.set(false);
@@ -1730,6 +1804,8 @@ export class Settings {
         if (saveProofKinds) await this.store.setProofKinds(proofKinds === '' ? null : proofKinds);
         if (saveDefaultGrade) await this.store.setDefaultGrade(defaultGrade === '' ? null : defaultGrade);
         if (saveReviewSla) await this.store.setReviewSla(reviewSla === '' ? null : Number(reviewSla));
+        if (saveScoreMid) await this.store.setScoreThreshold('mid', scoreMid === '' ? null : Number(scoreMid));
+        if (saveScoreHigh) await this.store.setScoreThreshold('high', scoreHigh === '' ? null : Number(scoreHigh));
         if (saveFiscalStartMonth) await this.store.setFiscalStartMonth(Number(fiscalStartMonth));
         if (savePot) await this.store.setPot(pot === '' ? null : pot);
         if (saveAlertThreshold) await this.store.setAlertThreshold(alertThreshold === '' ? null : alertThreshold);
@@ -1758,6 +1834,8 @@ export class Settings {
         if (saveProofKinds) this.proofKindsTyped.set(true);
         if (saveDefaultGrade) this.defaultGradeTyped.set(true);
         if (saveReviewSla) this.reviewSlaTyped.set(true);
+        if (saveScoreMid) this.scoreMidTyped.set(true);
+        if (saveScoreHigh) this.scoreHighTyped.set(true);
         if (saveFiscalStartMonth) this.fiscalStartMonthTyped.set(true);
         if (savePot) this.potTyped.set(true);
         if (saveAlertThreshold) this.alertThresholdTyped.set(true);

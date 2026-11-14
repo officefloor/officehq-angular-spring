@@ -72,6 +72,14 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The score thresholds, whole numbers: while both are set each person shows a band; null for
+     *  blank. */
+    @Column(name = "score_mid")
+    private Integer scoreMid;
+
+    @Column(name = "score_high")
+    private Integer scoreHigh;
+
     /** The default grade, A, B or C: a person added by a quick-add, or by an import line with a blank
      *  grade, is given it; null for blank (A). */
     @Column(name = "default_grade")
@@ -182,6 +190,22 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public Integer getScoreMid() {
+        return scoreMid;
+    }
+
+    public void setScoreMid(Integer scoreMid) {
+        this.scoreMid = scoreMid;
+    }
+
+    public Integer getScoreHigh() {
+        return scoreHigh;
+    }
+
+    public void setScoreHigh(Integer scoreHigh) {
+        this.scoreHigh = scoreHigh;
     }
 
     public int getFiscalStartMonth() {

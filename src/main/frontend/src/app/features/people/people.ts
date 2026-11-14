@@ -533,6 +533,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
               <th scope="col">Overdue due</th>
             }
             <th scope="col">Score</th>
+            <th scope="col">Band</th>
             <th scope="col">Due aged 0–30</th>
             <th scope="col">Due aged 31–60</th>
             <th scope="col">Due aged 61+</th>
@@ -620,6 +621,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
                 <td data-testid="person-overdue-total">{{ overdueTotalOf(p) }}</td>
               }
               <td data-testid="person-score">{{ scoreOf(p) }}</td>
+              <td data-testid="person-band">{{ bandOf(p) }}</td>
               @let aged = agedOf(p);
               <td data-testid="person-aged-0-30">{{ aged[0] }}</td>
               <td data-testid="person-aged-31-60">{{ aged[1] }}</td>
@@ -2201,6 +2203,16 @@ export class People {
     const rest = scaled - whole * 10_000;
     if (rest > 5_000 || (rest === 5_000 && whole % 2 !== 0)) whole += 1;
     return String(whole === 0 ? 0 : whole);
+  }
+
+  /** The person's score band while both score thresholds are set: HIGH at or above the high one,
+   *  MID at or above the mid one, else LOW; blank while either is blank. */
+  protected bandOf(person: Person): string {
+    const mid = this.settings.scoreMid();
+    const high = this.settings.scoreHigh();
+    if (mid === '' || high === '') return '';
+    const score = Number(this.scoreOf(person));
+    return score >= Number(high) ? 'HIGH' : score >= Number(mid) ? 'MID' : 'LOW';
   }
 
   /** The dues of a person's OPEN and PENDING claims that count added up by the claim's age on the

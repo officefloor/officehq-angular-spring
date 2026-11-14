@@ -71,6 +71,8 @@ public class SettingService {
     private static final String PROOF_KINDS = "proof-kinds";
     private static final String DEFAULT_GRADE = "default-grade";
     private static final String REVIEW_SLA = "review-sla";
+    private static final String SCORE_MID = "score-mid";
+    private static final String SCORE_HIGH = "score-high";
     private static final String ENTRY_DATE = "entry-date";
     private static final String POT = "pot";
     private static final String ALERT_THRESHOLD = "alert-threshold";
@@ -86,7 +88,7 @@ public class SettingService {
             int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
             Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent,
             int fiscalStartMonth, BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla,
-            List<String> proofKinds, String defaultGrade) {
+            List<String> proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh) {
     }
 
     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
@@ -120,6 +122,8 @@ public class SettingService {
         String defaultGrade = kept.contains(DEFAULT_GRADE) ? then.get(DEFAULT_GRADE)
                 : sheets.load(sheetId).getDefaultGrade();
         String sla = kept.contains(REVIEW_SLA) ? then.get(REVIEW_SLA) : Objects.toString(reviewSla(sheetId), null);
+        String scoreMid = kept.contains(SCORE_MID) ? then.get(SCORE_MID) : Objects.toString(scoreMid(sheetId), null);
+        String scoreHigh = kept.contains(SCORE_HIGH) ? then.get(SCORE_HIGH) : Objects.toString(scoreHigh(sheetId), null);
         BigDecimal potNow = pot(sheetId);
         String pot = kept.contains(POT) ? then.get(POT) : potNow != null ? potNow.toPlainString() : null;
         BigDecimal alertNow = alertThreshold(sheetId);
@@ -147,7 +151,8 @@ public class SettingService {
                 entry != null ? LocalDate.parse(entry) : null, pot != null ? new BigDecimal(pot) : null, parent,
                 fiscal != null ? Integer.parseInt(fiscal) : 1, alert != null ? new BigDecimal(alert) : null,
                 escalate != null ? Integer.valueOf(escalate) : null, sla != null ? Integer.valueOf(sla) : null,
-                kindsOf(kinds), defaultGrade);
+                kindsOf(kinds), defaultGrade, scoreMid != null ? Integer.valueOf(scoreMid) : null,
+                scoreHigh != null ? Integer.valueOf(scoreHigh) : null);
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -499,6 +504,16 @@ public class SettingService {
         return sheets.load(sheetId).getReviewSla();
     }
 
+    /** The sheet's mid score threshold; null when it is blank. */
+    public Integer scoreMid(String sheetId) {
+        return sheets.load(sheetId).getScoreMid();
+    }
+
+    /** The sheet's high score threshold; null when it is blank. */
+    public Integer scoreHigh(String sheetId) {
+        return sheets.load(sheetId).getScoreHigh();
+    }
+
     /** The rounding modes a sheet may set, by the word that names them. */
     private static final Map<String, RoundingMode> ROUNDING_MODES = Map.of(
             "half-up", RoundingMode.HALF_UP, "half-even", RoundingMode.HALF_EVEN);
@@ -777,6 +792,32 @@ public class SettingService {
         history.settingSet(sheetId, REVIEW_SLA, days != null ? days.toString() : null);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=review-sla value="
                 + (days != null ? days.toString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's mid score threshold; null leaves it blank. */
+    @Transactional
+    public Sheet setScoreMid(String sheetId, String by, Integer value) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setScoreMid(value);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, SCORE_MID, value != null ? value.toString() : null);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=score-mid value="
+                + (value != null ? value.toString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's high score threshold; null leaves it blank. */
+    @Transactional
+    public Sheet setScoreHigh(String sheetId, String by, Integer value) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setScoreHigh(value);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, SCORE_HIGH, value != null ? value.toString() : null);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=score-high value="
+                + (value != null ? value.toString() : ""));
         return saved;
     }
 
