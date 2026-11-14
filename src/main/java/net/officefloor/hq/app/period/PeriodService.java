@@ -22,6 +22,7 @@ import net.officefloor.hq.app.person.PersonHold;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.setting.Permission;
+import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
@@ -326,7 +327,8 @@ public class PeriodService {
     }
 
     /** Reopen a closed or soft-closed period, making its due-total live again. Only a role the sheet's
-     *  permission matrix allows may (by the standing rule a steward); a period that is not closed is refused. */
+     *  permission matrix allows may (by the standing rule a steward); a period that is not closed, or is
+     *  locked, is refused. */
     @Transactional
     public Period reopen(String sheetId, String user, String name) {
         sheets.lock(sheetId);
@@ -338,9 +340,42 @@ public class PeriodService {
         if (!period.isClosed() && !period.isSoftClosed()) {
             throw new PeriodRefusedException("The period " + name + " is not closed");
         }
+        if (period.isLocked()) {
+            throw new PeriodRefusedException("The period " + name + " is locked");
+        }
         period.reopen();
         Period saved = save(period);
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + name);
+        return saved;
+    }
+
+    /** A steward locks a period so it cannot be reopened. Anyone else, or a period already locked, is
+     *  refused. */
+    @Transactional
+    public Period lock(String sheetId, String user, String name) {
+        return setLocked(sheetId, user, name, true);
+    }
+
+    /** A steward unlocks a locked period. Anyone else, or a period not locked, is refused. */
+    @Transactional
+    public Period unlock(String sheetId, String user, String name) {
+        return setLocked(sheetId, user, name, false);
+    }
+
+    private Period setLocked(String sheetId, String user, String name, boolean locked) {
+        sheets.lock(sheetId);
+        Period period = periods.findBySheetIdAndName(sheetId, name)
+                .orElseThrow(() -> new NoSuchElementException("No period " + name + " on sheet " + sheetId));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new PeriodRefusedException(user + " is not a steward: only a steward locks or unlocks a period");
+        }
+        if (period.isLocked() == locked) {
+            throw new PeriodRefusedException("The period " + name + " is already " + (locked ? "locked" : "unlocked"));
+        }
+        period.setLocked(locked);
+        Period saved = periods.saveAndFlush(period);
+        audit.recordOnCommit((locked ? "PERIOD_LOCKED" : "PERIOD_UNLOCKED") + " sheet=" + sheetId + " by=" + user
+                + " period=" + name);
         return saved;
     }
 }

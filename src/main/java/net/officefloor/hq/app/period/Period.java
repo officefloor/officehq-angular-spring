@@ -76,6 +76,10 @@ public class Period {
     @Column(name = "claim_cap")
     private Integer cap;
 
+    /** Whether a steward has locked the period: a locked period cannot be reopened. */
+    @Column(name = "locked", nullable = false)
+    private boolean locked;
+
     protected Period() {
     }
 
@@ -121,6 +125,15 @@ public class Period {
 
     public boolean isSoftClosed() {
         return softClosed;
+    }
+
+    public boolean isLocked() {
+        return locked;
+    }
+
+    /** Lock or unlock the period. */
+    public void setLocked(boolean locked) {
+        this.locked = locked;
     }
 
     public BigDecimal getClosedTotal() {

@@ -29,6 +29,8 @@ export interface Period {
   /** Each person's opening balance for the period (two decimals), by person id: added to their
    *  carried figure for it while it is open. */
   openings: Record<string, string>;
+  /** Whether a steward has locked the period: a locked period cannot be reopened. */
+  locked: boolean;
 }
 
 /** The period whose dates contain a date; null when none does. Periods never overlap, so at most
@@ -155,6 +157,21 @@ export class PeriodStore {
     const saved = await firstValueFrom(
       this.http.post<Period>(
         `/api/sheets/${encodeURIComponent(sheet)}/periods/${encodeURIComponent(name)}/reopen`,
+        null,
+      ),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+  }
+
+  /** Lock (or unlock) a period on the active sheet; the server refuses anyone but a steward, and a
+   *  period already locked (or not locked). */
+  async setLocked(name: string, locked: boolean): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.post<Period>(
+        `/api/sheets/${encodeURIComponent(sheet)}/periods/${encodeURIComponent(name)}/${locked ? 'lock' : 'unlock'}`,
         null,
       ),
     );
@@ -292,6 +309,7 @@ export class PeriodStore {
             <th scope="col">Due</th>
             <th scope="col">Closed</th>
             <th scope="col">Cap</th>
+            <th scope="col">Locked</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -305,6 +323,7 @@ export class PeriodStore {
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
+              <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
               <td>
                 <button
                   type="button"
@@ -329,6 +348,22 @@ export class PeriodStore {
                   (click)="reopen(p)"
                 >
                   Reopen
+                </button>
+                <button
+                  type="button"
+                  data-testid="period-lock"
+                  [attr.aria-label]="'Lock period ' + p.name"
+                  (click)="setLocked(p, true)"
+                >
+                  Lock
+                </button>
+                <button
+                  type="button"
+                  data-testid="period-unlock"
+                  [attr.aria-label]="'Unlock period ' + p.name"
+                  (click)="setLocked(p, false)"
+                >
+                  Unlock
                 </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
@@ -448,7 +483,22 @@ export class Periods {
     } catch {
       this.rowError.set({
         id: period.id,
-        message: `The period ${period.name} could not be reopened: it must be closed, and your role allowed to reopen a period.`,
+        message: `The period ${period.name} could not be reopened: it must be closed and not locked, and your role allowed to reopen a period.`,
+      });
+    }
+  }
+
+  /** Lock or unlock a period; anyone but a steward, or a period already so, is refused on its row. */
+  protected async setLocked(period: Period, locked: boolean): Promise<void> {
+    this.rowError.set(null);
+    try {
+      await this.store.setLocked(period.name, locked);
+    } catch {
+      this.rowError.set({
+        id: period.id,
+        message: locked
+          ? `The period ${period.name} could not be locked: it may be locked already, and only a steward may lock a period.`
+          : `The period ${period.name} could not be unlocked: it must be locked, and only a steward may unlock a period.`,
       });
     }
   }

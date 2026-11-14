@@ -40,19 +40,20 @@ public class PeriodController {
      *  person id, added to their carried figure while it is open. */
     public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed,
             boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals, Integer cap,
-            Map<Long, String> closedPersonCarried, Map<Long, String> openings) {
+            Map<Long, String> closedPersonCarried, Map<Long, String> openings, boolean locked) {
         static PeriodView of(Period period) {
             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
                     period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() != null ? period.getClosedTotal().toPlainString() : null,
                     texts(period.getPersonTotals()), period.getCap(), texts(period.getPersonCarried()),
-                    texts(period.getPersonOpenings()));
+                    texts(period.getPersonOpenings()), period.isLocked());
         }
 
-        static PeriodView of(History.PeriodThen period, Integer cap, Map<Long, BigDecimal> openings) {
+        static PeriodView of(History.PeriodThen period, Integer cap, Map<Long, BigDecimal> openings,
+                boolean locked) {
             return new PeriodView(period.id(), period.name(), period.from(), period.to(), period.closed(),
                     period.softClosed(), period.closedTotal() != null ? period.closedTotal().toPlainString() : null,
-                    texts(period.personTotals()), cap, texts(period.personCarried()), texts(openings));
+                    texts(period.personTotals()), cap, texts(period.personCarried()), texts(openings), locked);
         }
 
         private static Map<Long, String> texts(Map<Long, BigDecimal> figures) {
@@ -82,14 +83,15 @@ public class PeriodController {
         LocalDate asOf = AsOf.parse(asOfHeader);
         if (asOf != null) {
             // A period's cap is fixed when it is added, so the period as it stood then has the cap it has now;
-            // its opening balances are those it holds now.
+            // its opening balances are those it holds now, and it is locked as it is now.
             Map<Long, Period> now = new HashMap<>();
             service.list(sheetId.trim()).forEach(period -> now.put(period.getId(), period));
             return service.listAsOf(sheetId.trim(), asOf).stream()
                     .map(period -> {
                         Period current = now.get(period.id());
                         return PeriodView.of(period, current != null ? current.getCap() : null,
-                                current != null ? current.getPersonOpenings() : Map.of());
+                                current != null ? current.getPersonOpenings() : Map.of(),
+                                current != null && current.isLocked());
                     }).toList();
         }
         return service.list(sheetId.trim()).stream().map(PeriodView::of).toList();
@@ -173,6 +175,20 @@ public class PeriodController {
         return PeriodView.of(service.reopen(sheetId.trim(), SignedInUser.decode(user), name));
     }
 
+    /** Lock a period so it cannot be reopened; only a steward may. */
+    @PostMapping("/{name}/lock")
+    public PeriodView lock(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable String name,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return PeriodView.of(service.lock(sheetId.trim(), SignedInUser.decode(user), name));
+    }
+
+    /** Unlock a locked period; only a steward may. */
+    @PostMapping("/{name}/unlock")
+    public PeriodView unlock(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable String name,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return PeriodView.of(service.unlock(sheetId.trim(), SignedInUser.decode(user), name));
+    }
+
     /** A period already closed is refused. */
     @ExceptionHandler(PeriodClosedException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
@@ -185,7 +201,8 @@ public class PeriodController {
     }
 
     /** A name taken, dates running backwards, a period overlapping another, a reopen by other than a
-     *  steward or of a period not closed, or a pasted opening line naming no person or period on the
+     *  steward or of a period not closed or locked, a lock or unlock by other than a steward or of a period
+     *  already so, or a pasted opening line naming no person or period on the
      *  sheet or an amount below 0.00 or with more than two decimals is refused. */
     @ExceptionHandler({PeriodRefusedException.class, OpeningRefusedException.class,
             DataIntegrityViolationException.class})
