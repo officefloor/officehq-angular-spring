@@ -40,6 +40,10 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** The person's contact, trimmed and lower-cased; null for none. */
+    @Column(name = "contact")
+    private String contact;
+
     /** The sheet's today when the person was added; null for one added before it was kept. */
     @Column(name = "added_on", updatable = false)
     private LocalDate addedOn;
@@ -53,14 +57,15 @@ public class Person {
         this.addedOn = addedOn;
     }
 
-    /** The person as they stood at the end of a past day, with the name, own terms and retirement
-     *  date they had then: a copy that is never saved. */
-    public Person asItWas(String name, Integer terms, LocalDate retiredFrom) {
+    /** The person as they stood at the end of a past day, with the name, own terms, retirement
+     *  date and contact they had then: a copy that is never saved. */
+    public Person asItWas(String name, Integer terms, LocalDate retiredFrom, String contact) {
         Person was = new Person(sheetId, name, addedOn);
         was.id = id;
         was.version = version;
         was.terms = terms;
         was.retiredFrom = retiredFrom;
+        was.contact = contact;
         return was;
     }
 
@@ -108,6 +113,14 @@ public class Person {
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    public String getContact() {
+        return contact;
+    }
+
+    public void setContact(String contact) {
+        this.contact = contact;
     }
 
     /** Whether the person is retired: any retirement date set counts, even one after the sheet's today. */

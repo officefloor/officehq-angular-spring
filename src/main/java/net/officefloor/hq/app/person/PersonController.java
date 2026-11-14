@@ -57,16 +57,17 @@ public class PersonController {
      *  grade they were given from the earliest, how many statements were taken for them and the
      *  last one's due-total and date (null when none was), and whether they are retired and from
      *  when (null when not), and the holds put on them in the order they were, and the ids of their patrons in the order
-     *  they were named, and whether the signed-in user watches them, and their own terms (null for none). */
+     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none). */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
-            List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms) {
+            List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact) {
         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
                 StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched) {
             return new PersonView(person.getId(), person.getName(), PersonGradeService.gradeOn(grades, today),
                     grades.stream().map(GradeView::of).toList(), person.getVersion(), statements.count(),
                     statements.lastDueTotal(), statements.lastDate(), person.isRetired(), person.getRetiredFrom(),
-                    holds.stream().map(HoldView::of).toList(), patronIds, watched, person.getTerms());
+                    holds.stream().map(HoldView::of).toList(), patronIds, watched, person.getTerms(),
+                    person.getContact());
         }
     }
 
@@ -75,7 +76,8 @@ public class PersonController {
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
-            @Min(0) @Max(36500) Integer terms) {
+            @Min(0) @Max(36500) Integer terms,
+            @Size(max = 200) String contact) {
     }
 
     /** A person's fields as saved from an editor: the grade applies from its from-date (blank takes
@@ -85,6 +87,7 @@ public class PersonController {
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             LocalDate gradeFrom,
             @Min(0) @Max(36500) Integer terms,
+            @Size(max = 200) String contact,
             @NotNull Long version) {
     }
 
@@ -159,7 +162,7 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.add(sheet, by, request.name(),
-                request.grade(), request.terms())), by);
+                request.grade(), request.terms(), request.contact())), by);
     }
 
     /** Change a person's name and give them a grade from a date; refused when the person was saved since the editor loaded them. */
@@ -169,7 +172,7 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.update(sheet, by, id, request.version(),
-                request.name(), request.grade(), request.gradeFrom(), request.terms())), by);
+                request.name(), request.grade(), request.gradeFrom(), request.terms(), request.contact())), by);
     }
 
     /** Give the selected people a grade from a date, in list order, each as its editor would; the
@@ -251,9 +254,10 @@ public class PersonController {
     public void notFound() {
     }
 
-    /** The name is already in use on the sheet, or the patron may not be named; a concurrent save is
-     *  caught by the unique index. */
-    @ExceptionHandler({NameInUseException.class, PatronRefusedException.class, DataIntegrityViolationException.class})
+    /** The name or contact is already in use on the sheet, or the patron may not be named; a concurrent
+     *  save is caught by the unique index. */
+    @ExceptionHandler({NameInUseException.class, ContactInUseException.class, PatronRefusedException.class,
+            DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void nameInUse() {
     }

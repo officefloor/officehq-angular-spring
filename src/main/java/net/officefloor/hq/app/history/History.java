@@ -73,6 +73,9 @@ public class History {
                         was.setRef(is.getRef());
                         was.setTags(is.getTags());
                         was.setBatch(is.getBatch());
+                        if (was.getStatus() == ClaimStatus.VOID) {
+                            was.setVoidReason(is.getVoidReason());
+                        }
                     }
                     return was;
                 },
@@ -80,8 +83,8 @@ public class History {
         return current.keySet().stream().filter(then::containsKey).map(then::get).toList();
     }
 
-    /** A person as they stood at the end of a day: their name, own terms and retirement date. */
-    public record PersonThen(String name, Integer terms, LocalDate retiredFrom) {
+    /** A person as they stood at the end of a day: their name, own terms, retirement date and contact. */
+    public record PersonThen(String name, Integer terms, LocalDate retiredFrom, String contact) {
     }
 
     /** The sheet's people as they stood at the end of a day, by person id; a person saved only after
@@ -90,7 +93,8 @@ public class History {
         Map<Long, PersonThen> then = new LinkedHashMap<>();
         jdbc.query("SELECT * FROM person_history WHERE sheet_id = ? AND made_on <= ? ORDER BY id",
                 (rs, n) -> Map.entry(rs.getLong("person_id"), new PersonThen(rs.getString("name"),
-                        (Integer) rs.getObject("terms"), rs.getObject("retired_from", LocalDate.class))),
+                        (Integer) rs.getObject("terms"), rs.getObject("retired_from", LocalDate.class),
+                        rs.getString("contact"))),
                 sheetId, day).forEach(entry -> then.put(entry.getKey(), entry.getValue()));
         return then;
     }

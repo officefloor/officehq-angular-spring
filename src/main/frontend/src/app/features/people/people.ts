@@ -28,6 +28,8 @@ interface Person {
   version: number;
   /** The person's own terms in business days, which fix the due-by of their claims; null for none. */
   terms: number | null;
+  /** The person's contact, trimmed and lower-cased; null for none. */
+  contact: string | null;
   /** How many statements were taken for the person. */
   statementCount: number;
   /** The last statement's due-total (two decimals, or n/a); null when none was taken. */
@@ -114,6 +116,13 @@ interface StatementTaken {
           inputmode="numeric"
           [value]="terms()"
           (input)="terms.set(value($event)); error.set(null)"
+        />
+        <label for="person-form-contact">Contact</label>
+        <input
+          id="person-form-contact"
+          data-testid="person-form-contact"
+          [value]="contact()"
+          (input)="contact.set(value($event)); error.set(null)"
         />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
@@ -271,6 +280,7 @@ interface StatementTaken {
             <th scope="col">Name</th>
             <th scope="col">Grade</th>
             <th scope="col">Terms</th>
+            <th scope="col">Contact</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
             <th scope="col">Settled due</th>
@@ -314,6 +324,7 @@ interface StatementTaken {
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueBy(p) }}</td>
               <td data-testid="person-settled-total">{{ money(settledCentsOf(p)) }}</td>
@@ -731,6 +742,8 @@ export class People {
   protected readonly gradeFrom = signal('');
   /** The person's own terms in whole days; blank for none. */
   protected readonly terms = signal('');
+  /** The person's contact; blank for none. */
+  protected readonly contact = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private readonly editingVersion = signal(0);
@@ -1323,6 +1336,7 @@ export class People {
     this.grade.set(this.gradeOf(person));
     this.gradeFrom.set('');
     this.terms.set(person.terms === null ? '' : String(person.terms));
+    this.contact.set(person.contact ?? '');
     this.error.set(null);
   }
 
@@ -1332,6 +1346,7 @@ export class People {
     this.grade.set('A');
     this.gradeFrom.set('');
     this.terms.set('');
+    this.contact.set('');
     this.error.set(null);
   }
 
@@ -1342,7 +1357,13 @@ export class People {
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const terms = this.terms().trim();
-    const body = { name: this.name().trim(), grade: this.grade(), terms: terms === '' ? null : Number(terms) };
+    const contact = this.contact().trim().toLowerCase();
+    const body = {
+      name: this.name().trim(),
+      grade: this.grade(),
+      terms: terms === '' ? null : Number(terms),
+      contact: contact === '' ? null : contact,
+    };
     if (!body.name) {
       this.error.set('Type a name for the person.');
       return;
@@ -1376,7 +1397,7 @@ export class People {
         await this.showCurrent(sheet, id, e.error as Person | null);
         this.error.set('Someone else saved this person since you opened the editor; their values are shown.');
       } else if (e instanceof HttpErrorResponse && e.status === 409) {
-        this.error.set(`Another person on the sheet is already named ${body.name}.`);
+        this.error.set(`Another person on the sheet is already named ${body.name}, or already has that contact.`);
       } else {
         this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
       }

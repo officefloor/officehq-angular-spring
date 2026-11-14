@@ -49,7 +49,7 @@ public class BulkGradeService {
         }
         for (Person person : selected) {
             graded.add(rollups.track(sheetId, user, () -> service.update(sheetId, user, person.getId(),
-                    person.getVersion(), person.getName(), grade, from, person.getTerms())));
+                    person.getVersion(), person.getName(), grade, from, person.getTerms(), person.getContact())));
         }
         return graded;
     }

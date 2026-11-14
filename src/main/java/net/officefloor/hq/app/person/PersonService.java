@@ -4,6 +4,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -58,23 +59,34 @@ public class PersonService {
      *  applies from the beginning of time. */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms) {
+        return add(sheetId, user, name, grade, terms, null);
+    }
+
+    /** Add a person to the sheet with their own terms (null for none) and a contact (blank for none);
+     *  the grade they are given applies from the beginning of time. */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         LocalDate today = sheets.today(sheetId);
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, null);
+        String key = contactKey(contact);
+        requireFreeContact(sheetId, key, null);
         Person person = new Person(sheetId, trimmed, today);
         person.setTerms(terms);
+        person.setContact(key);
         Person added = people.saveAndFlush(person);
         grades.give(added, grade, null);
-        record("PERSON_ADDED", sheetId, user, added, grade, terms != null ? " terms=" + terms : "");
+        record("PERSON_ADDED", sheetId, user, added, grade, (terms != null ? " terms=" + terms : "")
+                + (key != null ? " contact=" + key : ""));
         return added;
     }
 
     /** Change a person's name, and give them the grade from a date (blank takes the sheet's today),
-     *  keeping the grades already given, and set their own terms (null for none), from an editor that loaded the given version of them. A
+     *  keeping the grades already given, and set their own terms (null for none) and contact (blank for none), from an editor that loaded the given version of them. A
      *  blank from-date with the grade in force on the sheet's today gives no grade. */
     @Transactional
     public Person update(String sheetId, String user, Long id, long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms) {
+            LocalDate gradeFrom, Integer terms, String contact) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
         if (person.getVersion() != version) {
@@ -82,9 +94,13 @@ public class PersonService {
         }
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, id);
+        String key = contactKey(contact);
+        requireFreeContact(sheetId, key, id);
         person.setName(trimmed);
         Integer before = person.getTerms();
         person.setTerms(terms);
+        String contactBefore = person.getContact();
+        person.setContact(key);
         LocalDate today = sheets.today(sheetId);
         if (gradeFrom != null || !grade.equals(grades.gradeOn(id, today))) {
             grades.give(person, grade, gradeFrom != null ? gradeFrom : today);
@@ -93,7 +109,8 @@ public class PersonService {
         }
         Person saved = people.saveAndFlush(person);
         record("PERSON_EDITED", sheetId, user, saved, grades.gradeOn(id, today),
-                Objects.equals(before, terms) ? "" : " terms=" + (terms != null ? terms : ""));
+                (Objects.equals(before, terms) ? "" : " terms=" + (terms != null ? terms : ""))
+                + (Objects.equals(contactBefore, key) ? "" : " contact=" + (key != null ? key : "")));
         return saved;
     }
 
@@ -176,7 +193,7 @@ public class PersonService {
     }
 
     /** The sheet's people as they stood at the end of a day, in the order they were added: those added
-     *  by then, each with the name, own terms and retirement they had then (null: as they stand now). */
+     *  by then, each with the name, own terms, retirement and contact they had then (null: as they stand now). */
     public List<Person> list(String sheetId, LocalDate asOf) {
         if (asOf == null) {
             return list(sheetId);
@@ -184,7 +201,7 @@ public class PersonService {
         Map<Long, History.PersonThen> then = history.people(sheetId, asOf);
         return list(sheetId).stream().filter(person -> person.onSheetAsOf(asOf)).map(person -> {
             History.PersonThen was = then.get(person.getId());
-            return was == null ? person : person.asItWas(was.name(), was.terms(), was.retiredFrom());
+            return was == null ? person : person.asItWas(was.name(), was.terms(), was.retiredFrom(), was.contact());
         }).toList();
     }
 
@@ -252,6 +269,20 @@ public class PersonService {
     private void record(String event, String sheetId, String user, Person person, String grade, String terms) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " grade=" + grade + terms);
+    }
+
+    /** A contact as kept: trimmed and lower-cased; null for a blank one. */
+    private static String contactKey(String contact) {
+        if (contact == null || contact.isBlank()) {
+            return null;
+        }
+        return contact.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void requireFreeContact(String sheetId, String contact, Long exceptId) {
+        if (contact != null && people.contactInUse(sheetId, contact, exceptId)) {
+            throw new ContactInUseException(contact);
+        }
     }
 
     private void requireFreeName(String sheetId, String name, Long exceptId) {

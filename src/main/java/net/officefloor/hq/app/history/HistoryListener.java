@@ -36,7 +36,7 @@ public class HistoryListener {
             + " FROM sheet_setting_value v JOIN sheet s ON s.id = v.sheet_id WHERE v.id = ?";
 
     private static final String PERSON = "INSERT INTO person_history (person_id, sheet_id, name, terms, retired_from,"
-            + " made_on) SELECT p.id, p.sheet_id, p.name, p.terms, p.retired_from, s.today"
+            + " contact, made_on) SELECT p.id, p.sheet_id, p.name, p.terms, p.retired_from, p.contact, s.today"
             + " FROM person p JOIN sheet s ON s.id = p.sheet_id WHERE p.id = ?";
 
     private final ObjectProvider<JdbcTemplate> jdbc;
