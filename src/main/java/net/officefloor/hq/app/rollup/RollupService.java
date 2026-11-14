@@ -27,20 +27,22 @@ import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
 
 /**
- * The sheet's figures as the screen shows them: each person's claimed and due-total, and the
- * sheet's claimed-total and due-total. A change takes a {@link #snapshot} before it and passes it
+ * The sheet's figures as the screen shows them: each person's claimed, due-total and overdue-total,
+ * and the sheet's claimed-total, due-total and overdue-total. A change takes a {@link #snapshot} before it and passes it
  * to {@link #recordChanges} after its own audit lines, which then records a ROLLUP line for each
  * person whose figures moved (people in the order they were added; a person new to the sheet
- * counts as moved) and a TOTALS line when the sheet's totals moved.
+ * counts as moved) and a TOTALS line when any of the sheet's totals moved.
  */
 @Service
 public class RollupService {
 
-    /** A person's figures: claimed, and due-total held to the sheet's cap (null: n/a). */
-    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal) {
+    /** A person's figures: claimed, due-total held to the sheet's cap (null: n/a), and
+     *  overdue-total (the dues their overdue counting claims show, n/a ones skipped, not capped). */
+    public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal) {
         boolean sameAs(Figures other) {
             return other != null && claimed.compareTo(other.claimed) == 0
-                    && Objects.equals(text(dueTotal), text(other.dueTotal));
+                    && Objects.equals(text(dueTotal), text(other.dueTotal))
+                    && overdueTotal.compareTo(other.overdueTotal) == 0;
         }
     }
 
@@ -54,6 +56,10 @@ public class RollupService {
         BigDecimal dueTotal() {
             return people.values().stream().map(Figures::dueTotal).filter(Objects::nonNull)
                     .reduce(zero(), BigDecimal::add);
+        }
+
+        BigDecimal overdueTotal() {
+            return people.values().stream().map(Figures::overdueTotal).reduce(zero(), BigDecimal::add);
         }
     }
 
@@ -94,8 +100,13 @@ public class RollupService {
         for (Person p : sheetPeople) {
             List<Claim> theirs = counted.getOrDefault(p.getId(), List.of());
             BigDecimal claimed = theirs.stream().map(Claim::getAmount).reduce(zero(), BigDecimal::add);
+            BigDecimal overdue = theirs.stream()
+                    .filter(c -> c.getStatus().isOpen() && c.getDueBy().isBefore(today))
+                    .map(c -> shownDueOf(c, p, sheetRates, floor, late, rounding))
+                    .filter(Objects::nonNull)
+                    .reduce(zero(), BigDecimal::add);
             out.put(p.getId(), new Figures(p.getName(), claimed,
-                    Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding), cap)));
+                    Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding), cap), overdue));
         }
         return new Snapshot(out);
     }
@@ -128,13 +139,15 @@ public class RollupService {
         after.people().forEach((id, now) -> {
             if (!now.sameAs(before.people().get(id))) {
                 audit.recordOnCommit("ROLLUP sheet=" + sheetId + " by=" + user + " person=" + now.name()
-                        + " claimed=" + text(now.claimed()) + " due-total=" + text(now.dueTotal()));
+                        + " claimed=" + text(now.claimed()) + " due-total=" + text(now.dueTotal()) + " overdue-total=" + text(now.overdueTotal()));
             }
         });
         if (after.claimedTotal().compareTo(before.claimedTotal()) != 0
-                || after.dueTotal().compareTo(before.dueTotal()) != 0) {
+                || after.dueTotal().compareTo(before.dueTotal()) != 0
+                || after.overdueTotal().compareTo(before.overdueTotal()) != 0) {
             audit.recordOnCommit("TOTALS sheet=" + sheetId + " by=" + user + " claimed-total="
-                    + text(after.claimedTotal()) + " due-total=" + text(after.dueTotal()));
+                    + text(after.claimedTotal()) + " due-total=" + text(after.dueTotal())
+                    + " overdue-total=" + text(after.overdueTotal()));
         }
     }
 
