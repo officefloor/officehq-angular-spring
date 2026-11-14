@@ -158,6 +158,23 @@ interface StatementTaken {
       @if (error(); as message) {
         <p role="alert" data-testid="person-form-error">{{ message }}</p>
       }
+      <form (submit)="importPeople($event)" aria-label="Import people">
+        <label for="import-people">Import people, one per line as name,grade,terms,contact (terms and contact may be left out)</label>
+        <textarea
+          id="import-people"
+          data-testid="import-people"
+          rows="4"
+          [value]="importText()"
+          (input)="importText.set(value($event)); importError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="import-submit">Import people</button>
+        @if (importAdded() !== null) {
+          Added <strong data-testid="import-added">{{ importAdded() }}</strong>
+        }
+      </form>
+      @if (importError(); as message) {
+        <p role="alert" data-testid="import-error">{{ message }}</p>
+      }
       <form (submit)="quickAdd($event)" aria-label="Quick add a claim">
         <label for="quick-name">Quick add for</label>
         <input
@@ -852,6 +869,12 @@ export class People {
   /** Whether a quick-add is waiting for its answer; a second one meanwhile is dropped. */
   private readonly quickBusy = signal(false);
   protected readonly quickError = signal<string | null>(null);
+  protected readonly importText = signal('');
+  /** How many people the last import added; null while it runs or before one. */
+  protected readonly importAdded = signal<number | null>(null);
+  /** Whether an import is waiting for its answer; a second one meanwhile is dropped. */
+  private readonly importBusy = signal(false);
+  protected readonly importError = signal<string | null>(null);
   protected readonly pasteText = signal('');
   /** How many claims the last paste added; null while it runs or before one. */
   protected readonly pasteAdded = signal<number | null>(null);
@@ -942,6 +965,9 @@ export class People {
       this.pasteText.set('');
       this.pasteAdded.set(null);
       this.pasteError.set(null);
+      this.importText.set('');
+      this.importAdded.set(null);
+      this.importError.set(null);
       if (sheet) void this.read(sheet, load);
     });
   }
@@ -1657,6 +1683,40 @@ export class People {
       );
     } finally {
       this.quickBusy.set(false);
+    }
+  }
+
+  /** Add a person per pasted line of name,grade,terms,contact, each as the person form would; when
+   *  any line is refused nobody is added. The added people then show, and how many were. */
+  protected async importPeople(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.importBusy()) return;
+    this.importError.set(null);
+    this.importAdded.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const text = this.importText();
+    if (!text.trim()) {
+      this.importError.set('Paste at least one line of name,grade,terms,contact.');
+      return;
+    }
+    this.importBusy.set(true);
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ added: Person[] }>(`/api/sheets/${encodeURIComponent(sheet)}/people/import`, { text }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => [...list, ...result.added]);
+      this.importAdded.set(result.added.length);
+      this.importText.set('');
+    } catch {
+      this.importError.set(
+        'The people could not be imported: every line needs a name not already a name or alias on the sheet ' +
+          'or its tree, a grade of A, B or C, terms of a whole number of days (or blank) and a contact no one ' +
+          'else has (or blank); no name or contact may be repeated in the paste.',
+      );
+    } finally {
+      this.importBusy.set(false);
     }
   }
 

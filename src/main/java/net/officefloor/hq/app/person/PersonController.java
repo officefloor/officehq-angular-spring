@@ -121,6 +121,14 @@ public class PersonController {
     public record PatronRequest(@NotNull Long patronId) {
     }
 
+    /** Pasted lines of name,grade,terms,contact, one person per line. */
+    public record ImportRequest(@NotNull @Size(max = 1_000_000) String text) {
+    }
+
+    /** The people an import added, in the order of their lines. */
+    public record ImportView(List<PersonView> added) {
+    }
+
     /** A merge: the id of the other person on the sheet to merge into. */
     public record MergeRequest(@NotNull Long intoId) {
     }
@@ -137,10 +145,12 @@ public class PersonController {
     private final BulkGradeService bulkGrade;
     private final PersonMergeService merges;
     private final PersonTransferService transfers;
+    private final PersonImportService imports;
 
     public PersonController(PersonService service, StatementService statements, RollupService rollups,
             PersonGradeService grades, SheetService sheets, BulkGradeService bulkGrade, PersonMergeService merges,
-            PersonTransferService transfers) {
+            PersonTransferService transfers, PersonImportService imports) {
+        this.imports = imports;
         this.transfers = transfers;
         this.bulkGrade = bulkGrade;
         this.merges = merges;
@@ -196,6 +206,17 @@ public class PersonController {
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.update(sheet, by, id, request.version(),
                 request.name(), request.grade(), request.gradeFrom(), request.terms(), request.contact())), by);
+    }
+
+    /** Add a person per pasted line, in order, each as the form would; none when any line is refused. */
+    @PostMapping("/import")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ImportView importPeople(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated ImportRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return new ImportView(imports.importPeople(sheet, by, request.text()).stream()
+                .map(person -> withStatements(person, by)).toList());
     }
 
     /** Give the selected people a grade from a date, in list order, each as its editor would; the
@@ -275,7 +296,7 @@ public class PersonController {
 
     /** A date that is not a real yyyy-mm-dd date, or a hold that ends before it starts, is refused. */
     @ExceptionHandler({HttpMessageNotReadableException.class, HoldRefusedException.class,
-            AliasRefusedException.class})
+            AliasRefusedException.class, ImportRefusedException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public void unreadable() {
     }
