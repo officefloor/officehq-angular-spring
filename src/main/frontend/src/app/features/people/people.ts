@@ -44,6 +44,9 @@ interface Person {
   retired: boolean;
   /** The date the person is retired from; null when they are not retired. */
   retiredFrom: string | null;
+  /** The person's past retirements, from the date they were retired from to the day they were
+   *  unretired, in the order they ended. */
+  retirements: { from: string; to: string }[];
   /** The holds put on the person, in the order they were: their OPEN claims dated within one, unless
    *  bound by a statement, count in no live total. */
   holds: Hold[];
@@ -362,6 +365,7 @@ interface StatementTaken {
             <th scope="col">Stated on</th>
             <th scope="col">Retired</th>
             <th scope="col">Retired from</th>
+            <th scope="col">Past retirements</th>
             <th scope="col">Active</th>
             <th scope="col">On hold</th>
             <th scope="col">Holds</th>
@@ -411,6 +415,13 @@ interface StatementTaken {
               <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               <td data-testid="person-retired">{{ p.retired ? 'yes' : 'no' }}</td>
               <td data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</td>
+              <td>
+                <ul [attr.aria-label]="'Past retirements of ' + p.name">
+                  @for (r of p.retirements; track $index) {
+                    <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                  }
+                </ul>
+              </td>
               <td data-testid="person-active">{{ activeIds().has(p.id) ? 'yes' : 'no' }}</td>
               <td data-testid="person-hold">{{ p.holds.length > 0 ? 'yes' : 'no' }}</td>
               <td>
@@ -520,6 +531,14 @@ interface StatementTaken {
                   (click)="retire(p)"
                 >
                   Retire
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-unretire"
+                  [attr.aria-label]="'Unretire ' + p.name"
+                  (click)="unretire(p)"
+                >
+                  Unretire
                 </button>
                 <label [for]="'person-hold-from-' + p.id">Hold from</label>
                 <input
@@ -1073,6 +1092,22 @@ export class People {
       this.retireDates.update((dates) => ({ ...dates, [person.id]: '' }));
     } catch {
       this.rowError.set({ id: person.id, message: `${person.name} could not be retired.` });
+    }
+  }
+
+  /** Unretire a retired person on the sheet's today; their row then shows the retirement as a past one.
+   *  Anyone not retired is refused on the row. */
+  protected async unretire(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/unretire`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, {}));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+    } catch {
+      this.rowError.set({ id: person.id, message: `${person.name} could not be unretired: only a retired person can be.` });
     }
   }
 

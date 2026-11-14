@@ -26,6 +26,7 @@ public class PersonService {
     private final PersonHoldRepository holds;
     private final PersonWatchRepository watches;
     private final PersonAliasRepository aliases;
+    private final PersonRetirementRepository retirements;
     private final SheetService sheets;
     private final EntityManager entityManager;
     private final History history;
@@ -33,7 +34,9 @@ public class PersonService {
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonGradeService grades,
             PersonHoldRepository holds, PersonWatchRepository watches, PersonAliasRepository aliases,
-            SheetService sheets, EntityManager entityManager, History history, Audit audit) {
+            PersonRetirementRepository retirements, SheetService sheets, EntityManager entityManager,
+            History history, Audit audit) {
+        this.retirements = retirements;
         this.aliases = aliases;
         this.history = history;
         this.people = people;
@@ -160,6 +163,37 @@ public class PersonService {
         audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
                 + " from=" + on);
         return saved;
+    }
+
+    /** Unretire a retired person on the sheet's today: they are no longer retired, and the retirement
+     *  is kept as a past one from its from-date to that today. Anyone not retired is refused. */
+    @Transactional
+    public Person unretire(String sheetId, String user, Long id) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+        if (!person.isRetired()) {
+            throw new UnretireRefusedException(person.getName() + " is not retired");
+        }
+        LocalDate today = sheets.today(sheetId);
+        retirements.saveAndFlush(new PersonRetirement(sheetId, id, person.getRetiredFrom(), today));
+        person.setRetiredFrom(null);
+        Person saved = people.saveAndFlush(person);
+        audit.recordOnCommit("PERSON_UNRETIRED sheet=" + sheetId + " by=" + user + " name=" + saved.getName()
+                + " on=" + today);
+        return saved;
+    }
+
+    /** A person's past retirements, in the order they ended. */
+    public List<PersonRetirement> retirements(Long personId) {
+        return retirements.findByPersonIdOrderByIdAsc(personId);
+    }
+
+    /** Each person's past retirements on the sheet that had ended by the end of a day (null: now), in
+     *  the order they ended, by person id; a person with none is absent. */
+    public Map<Long, List<PersonRetirement>> retirements(String sheetId, LocalDate asOf) {
+        return retirements.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(r -> asOf == null || !r.getTo().isAfter(asOf))
+                .collect(Collectors.groupingBy(PersonRetirement::getPersonId));
     }
 
     /** Put a hold on a person from a date (a missing date takes the sheet's today) to an optional

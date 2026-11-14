@@ -23,6 +23,8 @@ import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonGradeService;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonRetiredException;
+import net.officefloor.hq.app.person.PersonRetirement;
+import net.officefloor.hq.app.person.PersonRetirementRepository;
 import net.officefloor.hq.app.person.PersonWatch;
 import net.officefloor.hq.app.person.PersonWatchRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -58,13 +60,16 @@ public class ClaimService {
     private final PeriodRepository periods;
     private final SettingService settings;
     private final PersonWatchRepository watches;
+    private final PersonRetirementRepository retirements;
     private final HolidayService holidays;
     private final VoidReasonService voidReasons;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RateService rates,
             PersonGradeService grades, SheetService sheets, PeriodRepository periods, SettingService settings, PersonWatchRepository watches,
-            HolidayService holidays, VoidReasonService voidReasons, ClaimCommentRepository comments, Audit audit) {
+            HolidayService holidays, VoidReasonService voidReasons, ClaimCommentRepository comments, PersonRetirementRepository retirements,
+            Audit audit) {
+        this.retirements = retirements;
         this.comments = comments;
         this.holidays = holidays;
         this.voidReasons = voidReasons;
@@ -1008,10 +1013,16 @@ public class ClaimService {
         }
     }
 
-    /** A claim dated after its person's retirement date cannot be added or moved there. */
-    private static void refuseRetired(Person person, LocalDate date) {
+    /** A claim dated after its person's retirement date, or after the from and before the to of a past
+     *  retirement of theirs, cannot be added or moved there. */
+    private void refuseRetired(Person person, LocalDate date) {
         if (person.isRetired() && date.isAfter(person.getRetiredFrom())) {
             throw new PersonRetiredException(person.getName(), person.getRetiredFrom(), date);
+        }
+        for (PersonRetirement past : retirements.findByPersonIdOrderByIdAsc(person.getId())) {
+            if (past.covers(date)) {
+                throw new PersonRetiredException(person.getName(), past.getFrom(), date);
+            }
         }
     }
 

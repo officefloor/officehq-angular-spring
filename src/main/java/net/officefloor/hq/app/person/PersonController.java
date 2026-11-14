@@ -53,23 +53,31 @@ public class PersonController {
         }
     }
 
+    /** A past retirement of a person: from the date they were retired from to the day they were unretired. */
+    public record RetirementView(LocalDate from, LocalDate to) {
+        public static RetirementView of(PersonRetirement retirement) {
+            return new RetirementView(retirement.getFrom(), retirement.getTo());
+        }
+    }
+
     /** A person as the screen shows them, with the grade in force on the sheet's today and every
      *  grade they were given from the earliest, how many statements were taken for them and the
      *  last one's due-total and date (null when none was), and whether they are retired and from
      *  when (null when not), and the holds put on them in the order they were, and the ids of their patrons in the order
-     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none), and their aliases sorted as names are compared, and the sheet they were transferred from (null for none). */
+     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none), and their aliases sorted as names are compared, and the sheet they were transferred from (null for none), and their past retirements in the order they ended. */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
             List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
-            List<String> aliases, boolean clashing, String origin) {
+            List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements) {
         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
                 StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched,
-                List<String> aliases, boolean clashing) {
+                List<String> aliases, boolean clashing, List<PersonRetirement> retirements) {
             return new PersonView(person.getId(), person.getName(), PersonGradeService.gradeOn(grades, today),
                     grades.stream().map(GradeView::of).toList(), person.getVersion(), statements.count(),
                     statements.lastDueTotal(), statements.lastDate(), person.isRetired(), person.getRetiredFrom(),
                     holds.stream().map(HoldView::of).toList(), patronIds, watched, person.getTerms(),
-                    person.getContact(), aliases, clashing, person.getOriginSheetId());
+                    person.getContact(), aliases, clashing, person.getOriginSheetId(),
+                    retirements.stream().map(RetirementView::of).toList());
         }
     }
 
@@ -187,6 +195,7 @@ public class PersonController {
         Map<Long, List<PersonGrade>> given = grades.bySheet(sheet, asOf);
         Map<Long, List<PersonHold>> holds = service.holds(sheet, asOf);
         Map<Long, List<String>> aliases = service.aliases(sheet, asOf);
+        Map<Long, List<PersonRetirement>> retirements = service.retirements(sheet, asOf);
         LocalDate today = asOf != null ? asOf : sheets.today(sheet);
         List<Person> them = service.list(sheet, asOf);
         Set<Long> clashing = service.clashingIds(sheet, them, aliases);
@@ -195,7 +204,8 @@ public class PersonController {
                         summaries.getOrDefault(p.getId(), StatementSummary.NONE),
                         holds.getOrDefault(p.getId(), List.of()),
                         patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId()),
-                        aliases.getOrDefault(p.getId(), List.of()), clashing.contains(p.getId())))
+                        aliases.getOrDefault(p.getId(), List.of()), clashing.contains(p.getId()),
+                        retirements.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
 
@@ -261,6 +271,15 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.retire(sheet, by, id, request.from())), by);
+    }
+
+    /** Unretire a retired person on the sheet's today. */
+    @PostMapping("/{id}/unretire")
+    public PersonView unretire(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return withStatements(rollups.track(sheet, by, () -> service.unretire(sheet, by, id)), by);
     }
 
     /** Put a hold on a person from a date to an optional to-date. */
@@ -346,7 +365,7 @@ public class PersonController {
         return PersonView.of(person, grades.of(person.getId()), sheets.today(person.getSheetId()),
                 statements.summary(person.getSheetId(), person.getId()), service.holds(person.getId()),
                 service.patronIds(person.getId()), user != null && service.watches(person.getId(), user),
-                service.aliases(person.getId()), service.clashing(person));
+                service.aliases(person.getId()), service.clashing(person), service.retirements(person.getId()));
     }
 
     /** A save that raced another to the same version; the editor re-reads the person. */
@@ -364,7 +383,8 @@ public class PersonController {
      *  not be made, or the transfer may not be made; a concurrent
      *  save is caught by the unique index. */
     @ExceptionHandler({NameInUseException.class, ContactInUseException.class, PatronRefusedException.class,
-            MergeRefusedException.class, TransferRefusedException.class, MoveRefusedException.class, DataIntegrityViolationException.class})
+            MergeRefusedException.class, TransferRefusedException.class, MoveRefusedException.class,
+            UnretireRefusedException.class, DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void nameInUse() {
     }
