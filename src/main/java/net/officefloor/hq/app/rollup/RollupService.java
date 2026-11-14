@@ -224,7 +224,7 @@ public class RollupService {
         });
     }
 
-    /** A person's score: their settled figures divided by 100, minus 5 for each overdue claim of theirs
+    /** A person's score: their settled figures (corrections left out) divided by 100, minus 5 for each overdue claim of theirs
      *  that counts, rounded half to even to a whole number. */
     private static BigDecimal score(Figures figures) {
         BigDecimal score = figures.settled().movePointLeft(2).subtract(BigDecimal.valueOf(5L * figures.overdueCount()))
@@ -277,7 +277,8 @@ public class RollupService {
      *  that correct another claim, and the sum of the
      *  figures they show (a held one's included), or none when the grade in force on the sheet's today has no rate in force
      *  then and no claim of theirs shows a figure; the sum is held to the sheet's cap. The overdue-total
-     *  sums the dues of those that are OPEN or PENDING with a due-by plus their grace before the sheet's today. */
+     *  sums the dues of those that are OPEN or PENDING with a due-by plus their grace before the sheet's today.
+     *  The settled figures, for the score, sum those of SETTLED claims that correct nothing. */
     private Figures figuresOf(String sheetId, LocalDate today, LocalDate asOf, Person person, List<Claim> counted) {
         BigDecimal claimed = NONE;
         BigDecimal due = NONE;
@@ -295,7 +296,7 @@ public class RollupService {
             if (late) {
                 overdueCount++;
             }
-            if (figure != null && claim.getStatus() == ClaimStatus.SETTLED) {
+            if (figure != null && claim.getStatus() == ClaimStatus.SETTLED && claim.getCorrects() == null) {
                 settled = settled.add(figure);
             }
             if (figure != null) {

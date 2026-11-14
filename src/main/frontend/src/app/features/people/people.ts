@@ -2194,11 +2194,12 @@ export class People {
     return money(this.overdueCentsOf(person));
   }
 
-  /** A person's score: their settled figures divided by 100, minus 5 for each overdue claim of theirs
-   *  that counts, rounded half to even to a whole number. */
+  /** A person's score: their settled figures, corrections left out, divided by 100, minus 5 for each
+   *  overdue claim of theirs that counts, rounded half to even to a whole number. */
   protected scoreOf(person: Person): string {
     // In ten-thousandths of a point: a cent of settled figures is one, an overdue claim 50,000.
-    const scaled = this.settledCentsOf(person) - 50_000 * this.overdueOf(person.id).length;
+    const settled = this.dueCentsWhere(person, (c) => c.status === 'SETTLED' && c.corrects === null);
+    const scaled = settled - 50_000 * this.overdueOf(person.id).length;
     let whole = Math.floor(scaled / 10_000);
     const rest = scaled - whole * 10_000;
     if (rest > 5_000 || (rest === 5_000 && whole % 2 !== 0)) whole += 1;
