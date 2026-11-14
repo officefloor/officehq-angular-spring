@@ -351,6 +351,29 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
         <p role="alert" data-testid="bulk-settle-error">{{ message }}</p>
       }
       <p>
+        @if (voidReasons.reasons().length > 0) {
+          <label for="bulk-void-reason">Void reason</label>
+          <select
+            id="bulk-void-reason"
+            data-testid="bulk-void-reason"
+            (change)="bulkVoidReason.set(value($event)); bulkVoidError.set(null)"
+          >
+            <option value="" [selected]="!bulkVoidReason()">Choose a reason</option>
+            @for (r of voidReasons.reasons(); track r.id) {
+              <option [value]="r.reason" [selected]="bulkVoidReason() === r.reason">{{ r.reason }}</option>
+            }
+          </select>
+        }
+        <button type="button" data-testid="bulk-void" (click)="voidSelected()">Void selected claims</button>
+        @if (bulkVoidResult(); as r) {
+          Voided <strong data-testid="bulk-voided">{{ r.voided }}</strong>, refused
+          <strong data-testid="bulk-void-refused">{{ r.refused }}</strong>
+        }
+      </p>
+      @if (bulkVoidError(); as message) {
+        <p role="alert" data-testid="bulk-void-error">{{ message }}</p>
+      }
+      <p>
         <label for="bulk-reassign-to">Move the selected claims to</label>
         <select
           id="bulk-reassign-to"
@@ -909,7 +932,7 @@ export class People {
   private readonly crewStore = inject(CrewStore);
   protected readonly rates = inject(RateStore);
   protected readonly periods = inject(PeriodStore);
-  private readonly voidReasons = inject(VoidReasonStore);
+  protected readonly voidReasons = inject(VoidReasonStore);
   protected readonly money = money;
   protected readonly cents = cents;
   protected readonly settings = inject(SettingStore);
@@ -1422,6 +1445,14 @@ export class People {
   });
   /** Whether a bulk settle is waiting for its answer; a second press meanwhile is dropped. */
   private readonly bulkSettleBusy = signal(false);
+  /** The reason (or blank, for none) the selected claims are to be voided with. */
+  protected readonly bulkVoidReason = signal('');
+  /** How many claims the last bulk void voided and refused; null while it runs or before one. */
+  protected readonly bulkVoidResult = signal<{ voided: number; refused: number } | null>(null);
+  /** Why the last bulk void could not be done at all; null when it was. */
+  protected readonly bulkVoidError = signal<string | null>(null);
+  /** Whether a bulk void is waiting for its answer; a second press meanwhile is dropped. */
+  private readonly bulkVoidBusy = signal(false);
   /** The person (an id, or blank) the selected claims are to move to. */
   protected readonly bulkReassignTo = signal('');
   /** How many claims the last bulk move moved and refused; null while it runs or before one. */
@@ -1492,6 +1523,9 @@ export class People {
       this.bulkOpenError.set(null);
       this.bulkSettleResult.set(null);
       this.bulkSettleError.set(null);
+      this.bulkVoidReason.set('');
+      this.bulkVoidResult.set(null);
+      this.bulkVoidError.set(null);
       this.bulkReassignTo.set('');
       this.bulkReassignResult.set(null);
       this.bulkReassignError.set(null);
@@ -2117,6 +2151,36 @@ export class People {
       this.bulkSettleError.set('The selected claims could not be settled.');
     } finally {
       this.bulkSettleBusy.set(false);
+    }
+  }
+
+  /** Void the selected claims together, in list order, each by the rules of voiding one with the
+   *  chosen reason, and each that cannot be voided left as it is; the screen shows how many were
+   *  voided and refused. */
+  protected async voidSelected(): Promise<void> {
+    if (this.bulkVoidBusy()) return;
+    this.bulkVoidResult.set(null);
+    this.bulkVoidError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const ids = [...this.selectedClaims()];
+    const reason = this.bulkVoidReason();
+    this.bulkVoidBusy.set(true);
+    try {
+      const result = await firstValueFrom(
+        this.http.post<{ voided: Claim[]; refused: number }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/claims/void`,
+          { claimIds: ids, reason: reason === '' ? null : reason },
+        ),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      for (const c of result.voided) this.claimSaved(c);
+      this.selectedClaims.set(new Set());
+      this.bulkVoidResult.set({ voided: result.voided.length, refused: result.refused });
+    } catch {
+      this.bulkVoidError.set('The selected claims could not be voided.');
+    } finally {
+      this.bulkVoidBusy.set(false);
     }
   }
 

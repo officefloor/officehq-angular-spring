@@ -162,6 +162,16 @@ public class ClaimController {
     public record BulkSettleView(List<ClaimView> settled, int refused, Long batch) {
     }
 
+    /** The claims selected to void together, and the reason each is voided with, chosen from the
+     *  sheet's list; blank or absent for none. */
+    public record BulkVoidRequest(@NotNull @Size(max = 10000) Set<@NotNull Long> claimIds, @Size(max = 255) String reason) {
+    }
+
+    /** What a bulk void did: the claims it voided, in list order, and how many of the selected claims
+     *  it refused. */
+    public record BulkVoidView(List<ClaimView> voided, int refused) {
+    }
+
     /** The claims selected to move together, and the person on the sheet they move to. */
     public record BulkReassignRequest(@NotNull @Size(max = 10000) Set<@NotNull Long> claimIds, @NotNull Long toPersonId) {
     }
@@ -187,12 +197,14 @@ public class ClaimController {
     private final PartSettleService partSettle;
     private final BulkReassignService bulkReassign;
     private final BulkRedateService bulkRedate;
+    private final BulkVoidService bulkVoid;
     private final History history;
     private final ClaimTemplateService templates;
 
     public ClaimController(ClaimService service, RollupService rollups, BulkOpenService bulkOpen,
             BulkSettleService bulkSettle, PartSettleService partSettle, BulkReassignService bulkReassign,
-            BulkRedateService bulkRedate, History history, ClaimTemplateService templates) {
+            BulkRedateService bulkRedate, BulkVoidService bulkVoid, History history, ClaimTemplateService templates) {
+        this.bulkVoid = bulkVoid;
         this.partSettle = partSettle;
         this.bulkRedate = bulkRedate;
         this.templates = templates;
@@ -505,6 +517,17 @@ public class ClaimController {
         String reason = request == null ? null : request.reason();
         return view(sheet, rollups.track(sheet, by,
                 () -> service.changeStatus(sheet, by, personId, id, ClaimStatus.VOID, reason)));
+    }
+
+    /** Void the selected claims that can be voided, in list order, each by the rules of voiding one
+     *  with the reason given; the rest are refused and left as they are. */
+    @PostMapping("/claims/void")
+    public BulkVoidView voidAll(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated BulkVoidRequest request) {
+        String sheet = sheetId.trim();
+        BulkVoidService.Result result = bulkVoid.voidAll(sheet, SignedInUser.decode(user), request.claimIds(),
+                request.reason());
+        return new BulkVoidView(result.voided().stream().map(claim -> view(sheet, claim)).toList(), result.refused());
     }
 
     /** Delete a DRAFT claim: it counts nowhere until restored. */
