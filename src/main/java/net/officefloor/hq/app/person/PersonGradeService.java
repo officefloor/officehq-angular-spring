@@ -81,4 +81,14 @@ public class PersonGradeService {
                 .orElseGet(() -> new PersonGrade(person.getSheetId(), person.getId(), grade, from));
         return grades.saveAndFlush(given);
     }
+
+    /** Make every grade a person was given of one grade the other, whatever its from-date. */
+    public void regrade(Long personId, String from, String into) {
+        grades.findByPersonId(personId).stream()
+                .filter(g -> from.equals(g.getGrade()))
+                .forEach(g -> {
+                    g.setGrade(into);
+                    grades.saveAndFlush(g);
+                });
+    }
 }

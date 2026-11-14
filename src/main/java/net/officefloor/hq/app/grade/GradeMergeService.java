@@ -15,7 +15,8 @@ import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Merges one grade into another: everyone on the merged grade today is given the other. */
+/** Merges one grade into another: everyone on the merged grade today is given the other, and every
+ *  grade of theirs on the merged grade, whatever its from-date, becomes the other. */
 @Service
 public class GradeMergeService {
 
@@ -43,7 +44,9 @@ public class GradeMergeService {
     /** A steward merges a grade into another: every person whose grade in force on the sheet's today
      *  is the merged grade is given the other from the sheet's today, in list order, exactly as saving
      *  them from the editor with their name and terms unchanged would, each followed by the figures it
-     *  moved, and the merge as a whole is followed by the figures it moved. Anyone but a steward, the same grade twice, or a grade that is not one, is refused, as is
+     *  moved; then every grade record of theirs on the merged grade becomes the other, so all their
+     *  claims, whatever their date, use the other grade, and the merge as a whole is followed by the
+     *  figures it moved. Anyone but a steward, the same grade twice, or a grade that is not one, is refused, as is
      *  the merge as a whole when any person cannot be given the grade (a retired one). Returns the
      *  people given the grade, in that order. */
     @Transactional
@@ -70,6 +73,7 @@ public class GradeMergeService {
                         person.getVersion(), person.getName(), into, today, service.termsOn(person, today),
                         person.getContact())));
             }
+            merged.forEach(person -> grades.regrade(person.getId(), from, into));
             return merged;
         });
     }
