@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, Injectable, effect, inject, input, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { SettingStore } from '../settings/settings';
 
 export interface Period {
   id: number;
@@ -28,7 +29,16 @@ export function periodOf(periods: Period[], date: string): Period | null {
   return periods.find((p) => p.from <= date && date <= p.to) ?? null;
 }
 
+/** The fiscal year a date (yyyy-mm-dd) falls in, FY<yyyy>, named by the calendar year its first
+ *  day falls in: a fiscal year runs twelve months from the first of the start month (1 to 12). */
+export function fiscalYearOf(date: string, startMonth: number): string {
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  return 'FY' + String(month >= startMonth ? year : year - 1).padStart(4, '0');
+}
+
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const YEAR = /^\d{4}$/;
 
 // The active sheet's periods, the earliest first, re-read whenever a sheet is loaded.
 @Injectable({ providedIn: 'root' })
@@ -72,6 +82,22 @@ export class PeriodStore {
         from: from || null,
         to: to || null,
       }),
+    );
+    if (this.session.sheetId() !== sheet) return result.made;
+    const list = await firstValueFrom(
+      this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`),
+    );
+    if (this.session.sheetId() === sheet) this.periods.set(list);
+    return result.made;
+  }
+
+  /** Generate the twelve monthly periods of fiscal year FY<year> on the active sheet, as generate
+   *  does. Resolves to how many were made. */
+  async generateFiscalYear(year: number): Promise<number> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const result = await firstValueFrom(
+      this.http.post<{ made: number }>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate-fy`, { year }),
     );
     if (this.session.sheetId() !== sheet) return result.made;
     const list = await firstValueFrom(
@@ -193,6 +219,17 @@ export class PeriodStore {
           <output data-testid="period-generated" aria-live="polite">{{ generated() }}</output>
         }
       </form>
+      <form (submit)="generateFiscalYear($event)">
+        <label for="period-generate-fy-year">Fiscal year (yyyy)</label>
+        <input
+          id="period-generate-fy-year"
+          data-testid="period-generate-fy-year"
+          inputmode="numeric"
+          [value]="fiscalYear()"
+          (input)="fiscalYear.set(value($event)); generateError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
+      </form>
       @if (generateError(); as message) {
         <p role="alert" data-testid="period-generate-error">{{ message }}</p>
       }
@@ -202,6 +239,7 @@ export class PeriodStore {
             <th scope="col">Period</th>
             <th scope="col">From</th>
             <th scope="col">To</th>
+            <th scope="col">Fiscal year</th>
             <th scope="col">Due</th>
             <th scope="col">Closed</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
@@ -213,6 +251,7 @@ export class PeriodStore {
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
+              <td data-testid="period-fy">{{ fiscalYearOf(p.from, settings.fiscalStartMonth()) }}</td>
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td>
@@ -255,6 +294,8 @@ export class PeriodStore {
 })
 export class Periods {
   protected readonly store = inject(PeriodStore);
+  protected readonly settings = inject(SettingStore);
+  protected readonly fiscalYearOf = fiscalYearOf;
   /** Each period's due-total (two decimals), by period id: the sum of the people's figures for it. */
   readonly dueTotals = input.required<Map<number, string>>();
 
@@ -264,6 +305,7 @@ export class Periods {
   protected readonly error = signal<string | null>(null);
   protected readonly generateFrom = signal('');
   protected readonly generateTo = signal('');
+  protected readonly fiscalYear = signal('');
   /** How many periods the last generate made; null while one runs or before any. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateError = signal<string | null>(null);
@@ -336,6 +378,27 @@ export class Periods {
       this.generated.set(await this.store.generate(from, to));
     } catch {
       this.generateError.set('The periods could not be generated: the to-date must not be before the from-date.');
+    } finally {
+      this.generating.set(false);
+    }
+  }
+
+  /** Generate the twelve monthly periods of the fiscal year typed (yyyy), as generate does. */
+  protected async generateFiscalYear(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.generating()) return;
+    this.generateError.set(null);
+    this.generated.set(null);
+    const year = this.fiscalYear().trim();
+    if (!YEAR.test(year) || Number(year) < 1 || Number(year) > 9998) {
+      this.generateError.set('Type the fiscal year (yyyy) to generate the periods of.');
+      return;
+    }
+    this.generating.set(true);
+    try {
+      this.generated.set(await this.store.generateFiscalYear(Number(year)));
+    } catch {
+      this.generateError.set(`The periods of FY${year} could not be generated.`);
     } finally {
       this.generating.set(false);
     }

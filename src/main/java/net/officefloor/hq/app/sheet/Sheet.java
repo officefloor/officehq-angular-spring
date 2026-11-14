@@ -43,6 +43,10 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** The fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it. */
+    @Column(name = "fiscal_start_month", nullable = false)
+    private int fiscalStartMonth = 1;
+
     /** The entry date: while set, a new claim given no date is dated it rather than the sheet's
      *  today; null for off. */
     @Column(name = "entry_date")
@@ -103,6 +107,14 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public int getFiscalStartMonth() {
+        return fiscalStartMonth;
+    }
+
+    public void setFiscalStartMonth(int fiscalStartMonth) {
+        this.fiscalStartMonth = fiscalStartMonth;
     }
 
     public LocalDate getEntryDate() {

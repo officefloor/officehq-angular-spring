@@ -128,6 +128,15 @@ public class PeriodService {
         return made;
     }
 
+    /** Generate the twelve monthly periods of fiscal year FY<year>, the one whose first day is the first
+     *  of the sheet's fiscal year start month in that year, exactly as {@link #generate} does. Returns
+     *  how many were made. */
+    @Transactional
+    public int generateFiscalYear(String sheetId, String user, int year) {
+        LocalDate first = LocalDate.of(year, settings.fiscalStartMonth(sheetId), 1);
+        return generate(sheetId, user, first, first.plusMonths(11));
+    }
+
     /** Close a period (one soft-closed too, fixing its figures afresh), fixing each person's due-total for it, for everyone on the sheet, and its own
      *  due-total, their sum: the figures shown on the claims due by a day in it that counted at the end of its last day (by the
      *  status each had then, as its status log records it)

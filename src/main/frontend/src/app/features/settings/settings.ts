@@ -51,6 +51,8 @@ interface SettingsView {
   /** The grace days: when the sheet's today is changed, every open period whose to-date plus them is
    *  before the new today is closed; null for off. */
   graceDays: number | null;
+  /** The fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it. */
+  fiscalStartMonth: number;
   /** The pot (two decimals): each member of a balanced pool shows a cut of it; null for none. */
   pot: string | null;
   /** The parent sheet's id: a grade with no rate in force on a date takes the parent's (then its
@@ -89,6 +91,8 @@ const LATE_PCT = '0.00';
 
 /** Terms of 0 or more whole days. */
 const DAYS = /^\d{1,5}$/;
+/** A month of the year, 1 to 12. */
+const MONTH = /^(?:0?[1-9]|1[0-2])$/;
 
 /** A date, yyyy-mm-dd. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -170,6 +174,8 @@ export class SettingStore {
   readonly entryDate = signal('');
   /** The grace days as text: whole days, blank for off. */
   readonly graceDays = signal('');
+  /** The fiscal year start month, 1 to 12; 1 unless set. */
+  readonly fiscalStartMonth = signal(1);
   /** The pot as text: two decimals, blank for none. */
   readonly pot = signal('');
   /** The parent sheet's id; blank for none. */
@@ -192,6 +198,7 @@ export class SettingStore {
       this.periodNumberingFrom.set('');
       this.entryDate.set('');
       this.graceDays.set('');
+      this.fiscalStartMonth.set(1);
       this.pot.set('');
       this.parent.set('');
       this.permissions.set({});
@@ -405,6 +412,17 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Change the active sheet's fiscal year start month (1 to 12); the server refuses any other. */
+  async setFiscalStartMonth(value: number): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/fiscal-start-month`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   /** Change the active sheet's pot; null leaves it blank (none). */
   async setPot(value: string | null): Promise<void> {
     const sheet = this.session.sheetId();
@@ -459,6 +477,7 @@ export class SettingStore {
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
     this.entryDate.set(settings.entryDate);
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
+    this.fiscalStartMonth.set(settings.fiscalStartMonth);
     this.pot.set(settings.pot ?? '');
     this.parent.set(settings.parent);
     this.permissions.set(settings.permissions);
@@ -778,6 +797,14 @@ export class SettingStore {
           (focus)="graceDaysTyped.set(true)"
           (input)="graceDays.set(value($event)); graceDaysTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
+        <input
+          id="setting-fiscal-start-month"
+          data-testid="setting-fiscal-start-month"
+          inputmode="numeric"
+          [value]="fiscalStartMonth()"
+          (input)="fiscalStartMonth.set(value($event)); fiscalStartMonthTyped.set(true); settingsError.set(null)"
+        />
         <label for="setting-pot">Pot</label>
         <input
           id="setting-pot"
@@ -911,6 +938,10 @@ export class SettingStore {
         }
       </p>
       <p>
+        Fiscal year start month:
+        <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() }}</strong>
+      </p>
+      <p>
         Pot:
         <strong data-testid="setting-pot-current">{{ store.pot() }}</strong>
         @if (store.pot() === '') {
@@ -990,6 +1021,8 @@ export class Settings {
   protected readonly entryDateTyped = signal(false);
   protected readonly graceDays = signal('');
   protected readonly graceDaysTyped = signal(false);
+  protected readonly fiscalStartMonth = signal('');
+  protected readonly fiscalStartMonthTyped = signal(false);
   protected readonly pot = signal('');
   protected readonly potTyped = signal(false);
   protected readonly parent = signal('');
@@ -1125,6 +1158,8 @@ export class Settings {
     const saveEntryDate = this.entryDateTyped();
     const graceDays = this.graceDays().trim();
     const saveGraceDays = this.graceDaysTyped();
+    const fiscalStartMonth = this.fiscalStartMonth().trim();
+    const saveFiscalStartMonth = this.fiscalStartMonthTyped();
     const pot = this.pot().trim();
     const savePot = this.potTyped();
     const parent = this.parent().trim();
@@ -1224,6 +1259,10 @@ export class Settings {
       this.settingsError.set('Type grace days of 0 or more whole days, or leave them blank for off.');
       return;
     }
+    if (saveFiscalStartMonth && !MONTH.test(fiscalStartMonth)) {
+      this.settingsError.set('Type a fiscal year start month of 1 to 12.');
+      return;
+    }
     if (savePot && pot !== '' && !AMOUNT.test(pot)) {
       this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
@@ -1248,6 +1287,7 @@ export class Settings {
     this.periodNumberingFromTyped.set(false);
     this.entryDateTyped.set(false);
     this.graceDaysTyped.set(false);
+    this.fiscalStartMonthTyped.set(false);
     this.potTyped.set(false);
     this.parentTyped.set(false);
     this.permissions.set({});
@@ -1275,6 +1315,7 @@ export class Settings {
         if (saveNumberingFrom) await this.store.setPeriodNumberingFrom(numberingFrom === '' ? null : numberingFrom);
         if (saveEntryDate) await this.store.setEntryDate(entryDate === '' ? null : entryDate);
         if (saveGraceDays) await this.store.setGraceDays(graceDays === '' ? null : Number(graceDays));
+        if (saveFiscalStartMonth) await this.store.setFiscalStartMonth(Number(fiscalStartMonth));
         if (savePot) await this.store.setPot(pot === '' ? null : pot);
         if (saveParent) await this.store.setParent(parent === '' ? null : parent);
         for (const [action, roles] of permissions) await this.store.setPermission(action, roles);
@@ -1294,6 +1335,7 @@ export class Settings {
         if (saveNumberingFrom) this.periodNumberingFromTyped.set(true);
         if (saveEntryDate) this.entryDateTyped.set(true);
         if (saveGraceDays) this.graceDaysTyped.set(true);
+        if (saveFiscalStartMonth) this.fiscalStartMonthTyped.set(true);
         if (savePot) this.potTyped.set(true);
         if (saveParent) this.parentTyped.set(true);
         this.permissions.update((typed) => ({ ...Object.fromEntries(permissions), ...typed }));

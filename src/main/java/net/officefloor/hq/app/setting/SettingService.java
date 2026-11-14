@@ -65,13 +65,15 @@ public class SettingService {
     private static final String GRACE_DAYS = "grace-days";
     private static final String ENTRY_DATE = "entry-date";
     private static final String POT = "pot";
+    private static final String FISCAL_START_MONTH = "fiscal-start-month";
 
     /** The sheet's settings as they stood at the end of a past day: each value as it stood set then,
      *  the day standing in for the sheet's today in those in force on a date. */
     public record AsOfView(Map<String, String> roles, Map<String, String> permissions, LocalDate periodNumberingFrom,
             Integer graceDays, List<Delegation> delegations, BigDecimal clerkLimit, BigDecimal floor, BigDecimal cap,
             int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
-            Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent) {
+            Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent,
+            int fiscalStartMonth) {
     }
 
     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
@@ -102,6 +104,8 @@ public class SettingService {
         BigDecimal potNow = pot(sheetId);
         String pot = kept.contains(POT) ? then.get(POT) : potNow != null ? potNow.toPlainString() : null;
         String parent = parent(sheetId);
+        String fiscal = kept.contains(FISCAL_START_MONTH) ? then.get(FISCAL_START_MONTH)
+                : String.valueOf(fiscalStartMonth(sheetId));
         Map<String, List<SettingValue>> dated = history.dated(sheetId, day);
         Map<String, Integer> gradeTerms = new LinkedHashMap<>();
         dated.forEach((key, recorded) -> {
@@ -118,7 +122,8 @@ public class SettingService {
                 inForce(sheetId, "cap", day, day).map(SettingValue::getValue).orElse(null),
                 inForce(sheetId, "terms", day, day).map(v -> v.getValue().intValue()).orElse(START_TERMS),
                 latePct(sheetId, day, day), history.policyDate(sheetId, day), gradeTerms, dated,
-                entry != null ? LocalDate.parse(entry) : null, pot != null ? new BigDecimal(pot) : null, parent);
+                entry != null ? LocalDate.parse(entry) : null, pot != null ? new BigDecimal(pot) : null, parent,
+                fiscal != null ? Integer.parseInt(fiscal) : 1);
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -404,6 +409,11 @@ public class SettingService {
         return sheets.load(sheetId).getParentId();
     }
 
+    /** The sheet's fiscal year start month, 1 to 12; 1 unless set. */
+    public int fiscalStartMonth(String sheetId) {
+        return sheets.load(sheetId).getFiscalStartMonth();
+    }
+
     /** The sheet's grace days; null when they are blank (off). */
     public Integer graceDays(String sheetId) {
         return sheets.load(sheetId).getGraceDays();
@@ -580,6 +590,22 @@ public class SettingService {
         history.settingSet(sheetId, GRACE_DAYS, days != null ? days.toString() : null);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=grace-days value="
                 + (days != null ? days.toString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's fiscal year start month; one not 1 to 12 is refused. */
+    @Transactional
+    public Sheet setFiscalStartMonth(String sheetId, String by, int month) {
+        if (month < 1 || month > 12) {
+            throw new IllegalArgumentException("The fiscal year start month is 1 to 12");
+        }
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setFiscalStartMonth(month);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, FISCAL_START_MONTH, String.valueOf(month));
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=fiscal-start-month value="
+                + month);
         return saved;
     }
 

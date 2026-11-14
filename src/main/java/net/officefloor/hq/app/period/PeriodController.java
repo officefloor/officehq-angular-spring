@@ -1,5 +1,7 @@
 package net.officefloor.hq.app.period;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -99,6 +101,19 @@ public class PeriodController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody GenerateRequest request) {
         return new GenerateView(service.generate(sheetId.trim(), SignedInUser.decode(user), request.from(),
                 request.to()));
+    }
+
+    /** A fiscal year to generate the monthly periods of: FY<year>. */
+    public record GenerateFiscalYearRequest(@NotNull @Min(1) @Max(9998) Integer year) {
+    }
+
+    /** Generate the twelve monthly periods of a fiscal year, leaving out months taken. */
+    @PostMapping("/generate-fy")
+    public GenerateView generateFiscalYear(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated GenerateFiscalYearRequest request) {
+        return new GenerateView(service.generateFiscalYear(sheetId.trim(), SignedInUser.decode(user),
+                request.year()));
     }
 
     /** Close a period, fixing its due-total. */
