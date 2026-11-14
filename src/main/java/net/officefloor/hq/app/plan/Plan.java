@@ -53,11 +53,17 @@ public class Plan {
     @Column(name = "made_on", nullable = false, updatable = false)
     private LocalDate madeOn;
 
+    /** The descendant sheet the plan makes its claims on, for the person of the same name there; null
+     *  for one that makes them on its own sheet. */
+    @Column(name = "target_sheet_id")
+    private String targetSheetId;
+
     protected Plan() {
     }
 
     public Plan(String sheetId, Long personId, BigDecimal amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, LocalDate madeOn) {
+            LocalDate end, LocalDate madeOn, String targetSheetId) {
+        this.targetSheetId = targetSheetId;
         this.sheetId = sheetId;
         this.personId = personId;
         this.amount = amount;
@@ -102,6 +108,10 @@ public class Plan {
 
     public LocalDate getMadeOn() {
         return madeOn;
+    }
+
+    public String getTargetSheetId() {
+        return targetSheetId;
     }
 
     /** The plan's dates up to its end and the day given, those skipped left out, the earliest first. */

@@ -14,6 +14,8 @@ export interface Plan {
   /** The day of the month (1 to 31) a monthly plan runs on; null for one that runs every so many days. */
   day: number | null;
   end: string;
+  /** The descendant sheet the plan makes its claims on, for the person of the same name there; null for this sheet. */
+  sheet: string | null;
   /** How many claims the plan has made so far. */
   generated: number;
   /** The first five plan dates after the sheet's today and on or before the end, the earliest first. */
@@ -45,11 +47,18 @@ export class PlanStore {
     });
   }
 
-  /** Add a plan for a person; the server refuses a bad amount, interval or day of the month, or an end
-   *  before the start. */
+  /** Add a plan for a person; the server refuses a bad amount, interval or day of the month, an end
+   *  before the start, or a sheet that is not a descendant of this one. */
   async add(
     personId: number,
-    fields: { amount: string; start: string | null; every: string | null; day: string | null; end: string },
+    fields: {
+      amount: string;
+      start: string | null;
+      every: string | null;
+      day: string | null;
+      end: string;
+      sheet: string | null;
+    },
   ): Promise<void> {
     const sheet = this.session.sheetId();
     if (!sheet) throw new Error('No sheet loaded.');
@@ -120,6 +129,9 @@ export class PlanStore {
             every <span data-testid="plan-every">{{ pl.every }}</span> days
           }
           to <span data-testid="plan-end">{{ pl.end }}</span>;
+          @if (pl.sheet) {
+            on sheet <span data-testid="plan-sheet">{{ pl.sheet }}</span>;
+          }
           made <span data-testid="plan-generated">{{ pl.generated }}</span>;
           next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>;
           paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
@@ -178,6 +190,13 @@ export class PlanStore {
         [value]="day()"
         (input)="day.set(value($event)); error.set(null)"
       />
+      <label [for]="'plan-form-sheet-' + personId()">On descendant sheet</label>
+      <input
+        [id]="'plan-form-sheet-' + personId()"
+        data-testid="plan-form-sheet"
+        [value]="sheet()"
+        (input)="sheet.set(value($event)); error.set(null)"
+      />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input
         type="date"
@@ -203,6 +222,7 @@ export class PersonPlans {
   protected readonly every = signal('');
   protected readonly day = signal('');
   protected readonly end = signal('');
+  protected readonly sheet = signal('');
   protected readonly error = signal<string | null>(null);
   /** The refusal of the last pause or resume on each plan's row, by plan id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
@@ -261,10 +281,11 @@ export class PersonPlans {
     const every = this.every().trim();
     const day = this.day().trim();
     const end = this.end().trim();
+    const sheet = this.sheet().trim();
     const refused =
       'The plan could not be added: it needs an amount of 0.00 or more with up to two decimals, ' +
       'either every so many days (a whole number, at least 1) or a day of the month (1 to 31), ' +
-      'and an end on or after its start.';
+      'an end on or after its start, and any sheet named one of this sheet\'s descendants.';
     const runs =
       day !== ''
         ? every === '' && DAY.test(day) && Number(day) >= 1 && Number(day) <= 31
@@ -281,12 +302,14 @@ export class PersonPlans {
         every: day === '' ? every : null,
         day: day === '' ? null : day,
         end,
+        sheet: sheet || null,
       });
       this.amount.set('');
       this.start.set('');
       this.every.set('');
       this.day.set('');
       this.end.set('');
+      this.sheet.set('');
     } catch {
       this.error.set(refused);
     } finally {

@@ -147,10 +147,11 @@ public class PlanService {
 
     /** Add a plan for a person: an amount of 0.00 or more with up to two decimals, a start (blank: the
      *  sheet's today), either every so many days (a whole number, at least 1) or monthly on a day of the
-     *  month (1 to 31), and an end on or after the start. */
+     *  month (1 to 31), and an end on or after the start. A sheet named (blank: none) must be one of the
+     *  sheet's descendants: the plan then makes its claims there, for the person of the same name. */
     @Transactional
     public Plan add(String sheetId, String user, Long personId, String amount, LocalDate start, String every,
-            String day, LocalDate end) {
+            String day, LocalDate end, String sheet) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + personId + " on sheet " + sheetId));
         BigDecimal figure = amountOf(amount);
@@ -165,16 +166,24 @@ public class PlanService {
         if (end == null || end.isBefore(from)) {
             throw new PlanRefusedException("A plan must end on or after its start");
         }
-        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, figure, from, days, dayOfMonth, end, today));
+        String target = sheet == null || sheet.isBlank() ? null : sheet.trim();
+        if (target != null && !sheets.descendants(sheetId).contains(target)) {
+            throw new PlanRefusedException("The sheet " + target + " is not a descendant of this sheet");
+        }
+        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, figure, from, days, dayOfMonth, end, today,
+                target));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " amount=" + saved.getAmount().toPlainString() + " start=" + saved.getStart()
-                + (monthly ? " day=" + saved.getDay() : " every=" + saved.getEvery()) + " end=" + saved.getEnd());
+                + (monthly ? " day=" + saved.getDay() : " every=" + saved.getEvery()) + " end=" + saved.getEnd()
+                + (target != null ? " sheet=" + target : ""));
         return saved;
     }
 
     /** For every plan on the sheet, in the order they were added, add a DRAFT claim of its amount (that of its latest change, if any) with
      *  an empty note for each plan date up to its end and the sheet's today it has made none for yet,
      *  as the claim form would, a date a pause skips left out; a date the form refuses is passed over, to be tried again next time.
+     *  A plan naming a descendant sheet makes its claims there instead, for the person of the same name
+     *  on it (none when there is no such person, or the user is a viewer there), by that sheet's rules and in its audit.
      *  The claims made, in the order they were; a viewer makes none. */
     @Transactional
     public List<Claim> generate(String sheetId, String user) {
@@ -191,15 +200,28 @@ public class PlanService {
         Map<Long, List<PlanPause>> paused = pauses(them, null);
         Map<Long, List<PlanChange>> changed = changes(them, null);
         List<Claim> added = new ArrayList<>();
+        Set<String> locked = new HashSet<>(Set.of(sheetId));
         for (Plan plan : them) {
+            String on = plan.getTargetSheetId() != null ? plan.getTargetSheetId() : sheetId;
+            Long personId = plan.getPersonId();
+            if (!on.equals(sheetId)) {
+                Optional<Person> own = people.findByIdAndSheetId(plan.getPersonId(), sheetId);
+                Optional<Person> there = own.flatMap(p -> people.findByName(on, p.getName()));
+                if (there.isEmpty() || settings.isViewer(on, user)) {
+                    continue;
+                }
+                personId = there.get().getId();
+                if (locked.add(on)) {
+                    sheets.lock(on);
+                }
+            }
             List<PlanPause> its = paused.getOrDefault(plan.getId(), List.of());
             BigDecimal amount = amountAfter(plan, changed.getOrDefault(plan.getId(), List.of()));
             for (LocalDate date : plan.datesUpTo(today, d -> skipped(its, d))) {
-                if (done.contains(plan.getId() + "@" + date)
-                        || !claims.accepts(sheetId, plan.getPersonId(), date)) {
+                if (done.contains(plan.getId() + "@" + date) || !claims.accepts(on, personId, date)) {
                     continue;
                 }
-                Claim claim = claims.add(sheetId, user, plan.getPersonId(), amount, date, "", null);
+                Claim claim = claims.add(on, user, personId, amount, date, "", null);
                 made.saveAndFlush(new PlanClaim(plan.getId(), date, claim.getId(), today));
                 added.add(claim);
             }

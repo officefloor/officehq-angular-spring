@@ -38,13 +38,13 @@ public class PlanController {
      *  first five plan dates after the sheet's today and on or before its end, those a pause skips left
      *  out, and whether it is paused now. */
     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every,
-            Integer day, LocalDate end, int generated, List<LocalDate> nextDates, boolean paused,
+            Integer day, LocalDate end, String sheet, int generated, List<LocalDate> nextDates, boolean paused,
             List<ChangeView> changes) {
         static PlanView of(Plan plan, int generated, List<PlanPause> pauses, List<PlanChange> changes,
                 LocalDate today) {
             return new PlanView(plan.getId(), plan.getPersonId(),
                     PlanService.amountAfter(plan, changes).toPlainString(), plan.getStart(),
-                    plan.getEvery(), plan.getDay(), plan.getEnd(), generated,
+                    plan.getEvery(), plan.getDay(), plan.getEnd(), plan.getTargetSheetId(), generated,
                     plan.datesAfter(today, NEXT_DATES, d -> PlanService.skipped(pauses, d)),
                     pauses.stream().anyMatch(PlanPause::isOpen),
                     changes.stream().map(c -> new ChangeView(c.getChangedOn(), c.getAmount().toPlainString()))
@@ -64,9 +64,11 @@ public class PlanController {
     private static final int NEXT_DATES = 5;
 
     /** A plan's fields as typed: the amount, interval and day of the month are checked by the service;
-     *  a blank start takes the sheet's today. */
+     *  a blank start takes the sheet's today; a blank sheet makes the claims on this sheet, else it names
+     *  the descendant they are made on. */
     public record PlanRequest(@NotNull Long personId, @Size(max = 50) String amount, LocalDate start,
-            @Size(max = 50) String every, @Size(max = 50) String day, LocalDate end) {
+            @Size(max = 50) String every, @Size(max = 50) String day, LocalDate end,
+            @Size(max = 200) String sheet) {
     }
 
     /** The claims a generate made, in the order it made them, and the sheet's plans after it. */
@@ -101,7 +103,7 @@ public class PlanController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return PlanView.of(service.add(sheet, by, request.personId(), request.amount(), request.start(),
-                request.every(), request.day(), request.end()), 0, List.of(), List.of(), sheets.today(sheet));
+                request.every(), request.day(), request.end(), request.sheet()), 0, List.of(), List.of(), sheets.today(sheet));
     }
 
     /** Pause the plan from the sheet's today; refused when it is paused already. */
@@ -141,7 +143,7 @@ public class PlanController {
         String by = SignedInUser.decode(user);
         List<Claim> made = rollups.track(sheet, by, () -> service.generate(sheet, by));
         return new GenerateView(made.stream()
-                .map(c -> ClaimView.of(c, claims.roundsBy(sheet, c), claims.logOf(c.getId()), List.of()))
+                .map(c -> ClaimView.of(c, claims.roundsBy(c.getSheetId(), c), claims.logOf(c.getId()), List.of()))
                 .toList(), views(sheet, null));
     }
 
@@ -156,7 +158,8 @@ public class PlanController {
                 .toList();
     }
 
-    /** A bad amount (added or changed), interval or day of the month, an end before the start, pausing a paused plan or
+    /** A bad amount (added or changed), interval or day of the month, an end before the start, a sheet
+     *  that is not a descendant, pausing a paused plan or
      *  resuming a running one, or a date that is not a real yyyy-mm-dd date. */
     @ExceptionHandler({PlanRefusedException.class, HttpMessageNotReadableException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)

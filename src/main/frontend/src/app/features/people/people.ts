@@ -2256,9 +2256,11 @@ export class People {
     );
   }
 
-  /** The claims the plans made, in the order they were made: each listed first, as its person's newest. */
+  /** The claims the plans made, in the order they were made: each listed first, as its person's newest;
+   *  those made on a descendant sheet are not listed here. */
   protected plansGenerated(made: Claim[]): void {
-    for (const c of made) this.claimSaved(c);
+    const here = new Set(this.people().map((p) => p.id));
+    for (const c of made) if (here.has(c.personId)) this.claimSaved(c);
   }
 
   /** A claim moved to another person: listed first, as their newest. */
