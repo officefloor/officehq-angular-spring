@@ -1,0 +1,314 @@
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index e5bac68c2..dd7833e49 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -3,6 +3,7 @@ import { Figures } from '../../core/figures';
+ import { LOCALES, Locale, Session } from '../../core/session';
+ import { AuditViewer } from '../audit/audit-viewer';
+ import { Duplicates } from '../duplicates/duplicates';
++import { PolicyViewer } from '../policy/policy-viewer';
+ import { SnapshotCompare } from '../snapshot-compare/snapshot-compare';
+ import { People } from '../people/people';
+ import { TreeSearch } from '../search/tree-search';
+@@ -11,7 +12,7 @@ import { SettingStore } from '../settings/settings';
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [AuditViewer, Duplicates, Figures, People, SnapshotCompare, TreeSearch],
++  imports: [AuditViewer, Duplicates, Figures, People, PolicyViewer, SnapshotCompare, TreeSearch],
+   template: `
+     <div appFigures>
+     @if (session.user(); as user) {
+@@ -117,6 +118,7 @@ import { SettingStore } from '../settings/settings';
+         }
+         <app-people />
+         <app-duplicates />
++        <app-policy-viewer />
+         <app-snapshot-compare />
+         <app-tree-search />
+         <app-audit-viewer />
+diff --git a/src/main/frontend/src/app/features/policy/policy-viewer.ts b/src/main/frontend/src/app/features/policy/policy-viewer.ts
+new file mode 100644
+index 000000000..50d3166af
+--- /dev/null
++++ b/src/main/frontend/src/app/features/policy/policy-viewer.ts
+@@ -0,0 +1,63 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, effect, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++/** A policy version: its number, its from-date (yyyy-mm-dd, or start), the setting it changed and the
++ *  value given, and how many claims it is the policy version of. */
++interface PolicyLine {
++  number: number;
++  from: string;
++  key: string;
++  value: string;
++  claims: number;
++}
++
++// The sheet's policy versions, read afresh on each press, oldest first.
++@Component({
++  selector: 'app-policy-viewer',
++  template: `
++    <section aria-labelledby="policy-heading">
++      <h2 id="policy-heading">Policy versions</h2>
++      <button type="button" data-testid="policy-show" (click)="show()">Show policy versions</button>
++      @if (error(); as message) {
++        <p role="alert" data-testid="policy-error">{{ message }}</p>
++      }
++      <ul>
++        @for (l of lines(); track l.number) {
++          <li data-testid="policy-line">{{ l.number }} {{ l.from }} {{ l.key }}={{ l.value }} {{ l.claims }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class PolicyViewer {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++  protected readonly lines = signal<PolicyLine[]>([]);
++  protected readonly error = signal<string | null>(null);
++
++  constructor() {
++    // A sheet load clears the list shown for the sheet before.
++    effect(() => {
++      this.session.loads();
++      this.lines.set([]);
++      this.error.set(null);
++    });
++  }
++
++  protected async show(): Promise<void> {
++    this.error.set(null);
++    this.lines.set([]);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    try {
++      const lines = await firstValueFrom(
++        this.http.get<PolicyLine[]>(`/api/sheets/${encodeURIComponent(sheet)}/policy-versions`),
++      );
++      if (this.session.sheetId() === sheet) this.lines.set(lines);
++    } catch {
++      this.error.set('The policy versions could not be read.');
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/policy/PolicyViewController.java b/src/main/java/net/officefloor/hq/app/policy/PolicyViewController.java
+new file mode 100644
+index 000000000..30798df99
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/policy/PolicyViewController.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app.policy;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/policy-versions")
++public class PolicyViewController {
++
++    private final PolicyViewService service;
++
++    public PolicyViewController(PolicyViewService service) {
++        this.service = service;
++    }
++
++    /** The sheet's policy versions, oldest first, each with the claims it is the policy version of. */
++    @GetMapping
++    public List<PolicyViewService.Line> lines(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
++        return service.lines(sheetId.trim());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/policy/PolicyViewService.java b/src/main/java/net/officefloor/hq/app/policy/PolicyViewService.java
+new file mode 100644
+index 000000000..383cefdfa
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/policy/PolicyViewService.java
+@@ -0,0 +1,46 @@
++package net.officefloor.hq.app.policy;
++
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.setting.PolicyVersion;
++import net.officefloor.hq.app.setting.PolicyVersionRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Lists a sheet's policy versions with what each changed and how many claims it is the policy of. */
++@Service
++public class PolicyViewService {
++
++    /** A policy version: its number, its from-date (yyyy-mm-dd), the key and value it changed, and how
++     *  many of the sheet's claims (DELETED ones left out) it is the policy version of. */
++    public record Line(int number, String from, String key, String value, int claims) {
++    }
++
++    private final PolicyVersionRepository versions;
++    private final ClaimRepository claims;
++
++    public PolicyViewService(PolicyVersionRepository versions, ClaimRepository claims) {
++        this.versions = versions;
++        this.claims = claims;
++    }
++
++    /** The sheet's policy versions, oldest first. A claim's policy version is the number of versions in
++     *  force on its date (one with no from-date is in force always). */
++    @Transactional(readOnly = true)
++    public List<Line> lines(String sheetId) {
++        List<PolicyVersion> all = versions.findBySheetIdOrderByNumberAsc(sheetId);
++        int[] counts = new int[all.size() + 1];
++        for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
++            if (claim.getStatus() != ClaimStatus.DELETED) {
++                LocalDate date = claim.getDate();
++                counts[(int) all.stream().filter(v -> v.inForceOn(date)).count()]++;
++            }
++        }
++        return all.stream().map(v -> new Line(v.getNumber(), v.getFrom() != null ? v.getFrom().toString() : "start",
++                v.getKey() != null ? v.getKey() : "", v.getValue() != null ? v.getValue() : "",
++                counts[v.getNumber()])).toList();
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/setting/PolicyVersion.java b/src/main/java/net/officefloor/hq/app/setting/PolicyVersion.java
+index 53ac39e8d..c3b29764d 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/PolicyVersion.java
++++ b/src/main/java/net/officefloor/hq/app/setting/PolicyVersion.java
+@@ -28,6 +28,14 @@ public class PolicyVersion {
+     @Column(name = "from_date")
+     private LocalDate from;
+ 
++    /** The key of the policy setting whose change made the version; null for one made before this was kept. */
++    @Column(name = "setting_key")
++    private String key;
++
++    /** The value the change gave it, as the audit shows it; blank for none. */
++    @Column(name = "setting_value")
++    private String value;
++
+     /** The sheet's today when the version was made. */
+     @Column(name = "made_on", nullable = false, updatable = false)
+     private LocalDate madeOn;
+@@ -35,10 +43,12 @@ public class PolicyVersion {
+     protected PolicyVersion() {
+     }
+ 
+-    public PolicyVersion(String sheetId, int number, LocalDate from, LocalDate madeOn) {
++    public PolicyVersion(String sheetId, int number, LocalDate from, String key, String value, LocalDate madeOn) {
+         this.sheetId = sheetId;
+         this.number = number;
+         this.from = from;
++        this.key = key;
++        this.value = value;
+         this.madeOn = madeOn;
+     }
+ 
+@@ -50,6 +60,14 @@ public class PolicyVersion {
+         return from;
+     }
+ 
++    public String getKey() {
++        return key;
++    }
++
++    public String getValue() {
++        return value;
++    }
++
+     public LocalDate getMadeOn() {
+         return madeOn;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index ca5b240cd..c0aa51279 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -693,7 +693,7 @@ public class SettingService {
+                 })
+                 .orElseGet(() -> new SettingValue(sheetId, "rounding", on, null, mode));
+         saved = values.saveAndFlush(saved);
+-        newPolicyVersion(sheetId, "rounding", on);
++        newPolicyVersion(sheetId, "rounding", mode != null ? mode : "", on);
+         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=rounding value="
+                 + (mode != null ? mode : "") + (from != null ? " from=" + from : ""));
+         return saved;
+@@ -711,9 +711,9 @@ public class SettingService {
+                 })
+                 .orElseGet(() -> new SettingValue(sheetId, key, on, value));
+         saved = values.saveAndFlush(saved);
+-        newPolicyVersion(sheetId, key, on);
+-        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=" + key + " value="
+-                + (value != null ? (wholeDays(key) ? String.valueOf(value.intValue()) : value.toPlainString()) : "")
++        String shown = value != null ? (wholeDays(key) ? String.valueOf(value.intValue()) : value.toPlainString()) : "";
++        newPolicyVersion(sheetId, key, shown, on);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=" + key + " value=" + shown
+                 + (from != null ? " from=" + from : ""));
+         return saved;
+     }
+@@ -721,10 +721,11 @@ public class SettingService {
+     /** The keys of the policy settings, versioned together. */
+     private static final List<String> POLICY_KEYS = List.of("rounding", "floor", "cap", "terms", "late-pct", "clerk-limit");
+ 
+-    /** Make the next policy version, in force from a from-date, when the key is a policy setting's. */
+-    private void newPolicyVersion(String sheetId, String key, LocalDate from) {
++    /** Make the next policy version, in force from a from-date, when the key is a policy setting's; it
++     *  keeps the value given as the audit shows it. */
++    private void newPolicyVersion(String sheetId, String key, String value, LocalDate from) {
+         if (POLICY_KEYS.contains(key)) {
+-            versions.saveAndFlush(new PolicyVersion(sheetId, (int) versions.countBySheetId(sheetId) + 1, from,
++            versions.saveAndFlush(new PolicyVersion(sheetId, (int) versions.countBySheetId(sheetId) + 1, from, key, value,
+                     sheets.today(sheetId)));
+         }
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index b14fa0287..928df9ad2 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -108,8 +108,9 @@ public class SheetCloneService {
+         jdbc.update("INSERT INTO sheet_setting_history (sheet_id, setting_key, setting_value, made_on)"
+                 + " SELECT ?, setting_key, setting_value, ? FROM sheet_setting_history WHERE sheet_id = ? ORDER BY id",
+                 to, today, from);
+-        jdbc.update("INSERT INTO policy_version (sheet_id, version_number, from_date, made_on)"
+-                + " SELECT ?, version_number, from_date, ? FROM policy_version WHERE sheet_id = ? ORDER BY id",
++        jdbc.update("INSERT INTO policy_version (sheet_id, version_number, from_date, setting_key,"
++                + " setting_value, made_on) SELECT ?, version_number, from_date, setting_key, setting_value, ?"
++                + " FROM policy_version WHERE sheet_id = ? ORDER BY id",
+                 to, today, from);
+ 
+         // People, in list order, then what each one has.
+diff --git a/src/main/resources/db/migration/V130__policy_version_change.sql b/src/main/resources/db/migration/V130__policy_version_change.sql
+new file mode 100644
+index 000000000..d8ef6bfe4
+--- /dev/null
++++ b/src/main/resources/db/migration/V130__policy_version_change.sql
+@@ -0,0 +1,19 @@
++-- What each policy version changed: the setting's key and the value it was given, as the audit shows
++-- it (two decimals, whole days for the terms, the word for the rounding mode; blank for none).
++ALTER TABLE policy_version ADD COLUMN setting_key VARCHAR(40);
++ALTER TABLE policy_version ADD COLUMN setting_value VARCHAR(40);
++
++-- The versions already kept take the change they were made from, in the order made.
++UPDATE policy_version v SET
++    setting_key = (SELECT h.setting_key FROM (
++        SELECT sheet_id, setting_key, ROW_NUMBER() OVER (PARTITION BY sheet_id ORDER BY id) AS n
++        FROM sheet_setting_value_history
++        WHERE setting_key IN ('rounding', 'floor', 'cap', 'terms', 'late-pct', 'clerk-limit')) h
++        WHERE h.sheet_id = v.sheet_id AND h.n = v.version_number),
++    setting_value = (SELECT h.shown FROM (
++        SELECT sheet_id, ROW_NUMBER() OVER (PARTITION BY sheet_id ORDER BY id) AS n,
++            COALESCE(setting_text, CASE WHEN setting_key = 'terms' THEN CAST(CAST(setting_value AS INT) AS VARCHAR)
++                ELSE CAST(setting_value AS VARCHAR) END, '') AS shown
++        FROM sheet_setting_value_history
++        WHERE setting_key IN ('rounding', 'floor', 'cap', 'terms', 'late-pct', 'clerk-limit')) h
++        WHERE h.sheet_id = v.sheet_id AND h.n = v.version_number);
