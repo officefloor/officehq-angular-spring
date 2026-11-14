@@ -151,6 +151,23 @@ public class RollupService {
         return new Headline(rollup.people().size(), rollup.dueTotal(), rollup.overdueTotal());
     }
 
+    /** A person's figures on a sheet as it shows them: their name and aliases, their due-total (null
+     *  when they have none) and their overdue-total. */
+    public record PersonFigures(String name, List<String> aliases, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    }
+
+    /** Each person's figures on the sheet as it stood at the end of a day, that day standing in for
+     *  the sheet's today (null: as it shows them now), in list order. */
+    @Transactional(readOnly = true)
+    public List<PersonFigures> personFigures(String sheetId, LocalDate asOf) {
+        Rollup rollup = rollup(sheetId, asOf);
+        Map<Long, List<String>> aliases = personService.aliases(sheetId, asOf);
+        List<PersonFigures> list = new ArrayList<>();
+        rollup.people().forEach((personId, f) -> list.add(new PersonFigures(f.name(),
+                aliases.getOrDefault(personId, List.of()), f.due(), f.overdue())));
+        return list;
+    }
+
     /** A sheet's figures broken down: per grade, the due-totals of the people on it who are not
      *  retired added up (skipping those with no figure); per status, how many of its claims have it. */
     public record Breakdown(Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts) {

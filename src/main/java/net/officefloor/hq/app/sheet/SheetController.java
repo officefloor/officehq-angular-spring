@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.AsOf;
@@ -44,7 +46,12 @@ public class SheetController {
      *  descendants' due-totals of the people on it not retired; per status, their claims with it. */
     public record DescendantFigures(int sheets, int people, String dueTotal, String overdueTotal, int ownPeople,
             String ownDueTotal, String ownOverdueTotal, Map<String, String> gradeDueTotals,
-            Map<String, Integer> statusCounts) {
+            Map<String, Integer> statusCounts, List<PersonFiguresView> personFigures) {
+    }
+
+    /** A descendant's person as that sheet shows them: their name and aliases, their due-total (null
+     *  when they have none) and their overdue-total. */
+    public record PersonFiguresView(String name, List<String> aliases, String dueTotal, String overdueTotal) {
     }
 
     public record TodayRequest(@NotNull LocalDate today) {
@@ -93,8 +100,12 @@ public class SheetController {
         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
         Map<String, BigDecimal> gradeDues = new TreeMap<>();
         Map<String, Integer> statusCounts = new TreeMap<>();
+        List<PersonFiguresView> personFigures = new ArrayList<>();
         var descendants = service.descendants(id.trim());
         for (String sheet : descendants) {
+            rollups.personFigures(sheet, asOf).forEach(p -> personFigures.add(new PersonFiguresView(p.name(),
+                    p.aliases(), p.dueTotal() == null ? null : p.dueTotal().toPlainString(),
+                    p.overdueTotal().toPlainString())));
             RollupService.Headline figures = rollups.headline(sheet, asOf);
             people += figures.people();
             due = due.add(figures.dueTotal());
@@ -108,7 +119,7 @@ public class SheetController {
         RollupService.Headline own = rollups.headline(id.trim(), asOf);
         return new DescendantFigures(descendants.size(), people, due.toPlainString(), overdue.toPlainString(),
                 own.people(), own.dueTotal().toPlainString(), own.overdueTotal().toPlainString(), gradeDueTotals,
-                statusCounts);
+                statusCounts, personFigures);
     }
 
     /** Change the sheet's today, closing the periods past their grace days and releasing every claim

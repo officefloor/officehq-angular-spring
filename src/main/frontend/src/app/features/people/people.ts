@@ -88,6 +88,17 @@ interface DescendantFigures {
   /** Per grade, the due-totals of the people on it not retired; per status, the claims with it. */
   gradeDueTotals?: Record<string, string>;
   statusCounts?: Record<string, number>;
+  /** Each person on the descendants as their sheet shows them (absent until read). */
+  personFigures?: DescendantPerson[];
+}
+
+/** A person on a descendant sheet: their name and aliases, their due-total (null when they have
+ *  none) and their overdue-total. */
+interface DescendantPerson {
+  name: string;
+  aliases: string[];
+  dueTotal: string | null;
+  overdueTotal: string;
 }
 
 /** What the people list can be sorted by on the screen. */
@@ -1179,12 +1190,34 @@ export class People {
   protected readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
   /** The consolidated figures: the sheet's own as it shows them plus its descendants', each as of the
    *  screen's as-of date while one is set. */
-  protected readonly consolidatedPeople = computed(() => this.people().length + this.descendantFigures().people);
+  /** The people count counts each person once across the tree: those whose names or aliases match, as
+   *  names are compared, are one person. The due-total and overdue-total are every person's figure
+   *  over the tree added up, trimmed once over the whole tree. */
+  protected readonly consolidatedPeople = computed(() =>
+    distinctPeople([
+      ...this.people().map((p) => [p.name, ...p.aliases]),
+      ...(this.descendantFigures().personFigures ?? []).map((p) => [p.name, ...p.aliases]),
+    ]),
+  );
   protected readonly consolidatedDue = computed(() =>
-    money(cents(this.dueTotal()) + cents(this.descendantFigures().dueTotal)),
+    money(
+      trimmedSum([
+        ...this.people()
+          .map((p) => this.dueCentsBy(p))
+          .filter((due) => due !== null),
+        ...(this.descendantFigures().personFigures ?? [])
+          .filter((p) => p.dueTotal !== null)
+          .map((p) => cents(p.dueTotal!)),
+      ]),
+    ),
   );
   protected readonly consolidatedOverdue = computed(() =>
-    money(cents(this.overdueTotal()) + cents(this.descendantFigures().overdueTotal)),
+    money(
+      trimmedSum([
+        ...this.people().map((p) => this.overdueCentsOf(p)),
+        ...(this.descendantFigures().personFigures ?? []).map((p) => cents(p.overdueTotal)),
+      ]),
+    ),
   );
   /** Per grade: the sheet's own due-total of the people on it not retired, as its summary shows it,
    *  plus its descendants'. */
@@ -2756,6 +2789,23 @@ function halfEven(numerator: number, divisor: number): number {
   const whole = Math.floor(numerator / divisor);
   const rest = numerator - whole * divisor;
   return 2 * rest > divisor || (2 * rest === divisor && whole % 2 !== 0) ? whole + 1 : whole;
+}
+
+/** How many distinct people there are among these, each given by their name and aliases: those
+ *  sharing a name or alias, as names are compared, are one person. */
+function distinctPeople(people: string[][]): number {
+  const parent = people.map((_, i) => i);
+  const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+  const byKey = new Map<string, number>();
+  people.forEach((keys, i) => {
+    for (const key of keys) {
+      const k = key.toLowerCase();
+      const seen = byKey.get(k);
+      if (seen === undefined) byKey.set(k, i);
+      else parent[root(i)] = root(seen);
+    }
+  });
+  return people.filter((_, i) => root(i) === i).length;
 }
 
 function trimmedSum(figures: number[]): number {
