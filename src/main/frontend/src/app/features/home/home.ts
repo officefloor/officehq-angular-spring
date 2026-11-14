@@ -1,5 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
-import { Session } from '../../core/session';
+import { Figures } from '../../core/figures';
+import { LOCALES, Locale, Session } from '../../core/session';
 import { AuditViewer } from '../audit/audit-viewer';
 import { People } from '../people/people';
 import { TreeSearch } from '../search/tree-search';
@@ -8,10 +9,30 @@ import { SettingStore } from '../settings/settings';
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [AuditViewer, People, TreeSearch],
+  imports: [AuditViewer, Figures, People, TreeSearch],
   template: `
+    <div appFigures>
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+
+      <form (submit)="saveLocale($event)">
+        <label for="user-locale">Locale</label>
+        <select
+          id="user-locale"
+          data-testid="user-locale"
+          [value]="localeInput() ?? session.locale()"
+          (change)="localeInput.set(locale($event)); localeError.set(null)"
+        >
+          @for (l of locales; track l) {
+            <option [value]="l">{{ l }}</option>
+          }
+        </select>
+        <button type="submit" data-testid="user-locale-save">Save locale</button>
+        Locale <strong data-testid="user-locale-current">{{ session.locale() }}</strong>
+      </form>
+      @if (localeError(); as error) {
+        <p role="alert" data-testid="user-locale-error">{{ error }}</p>
+      }
 
       <form (submit)="load($event)">
         <label for="sheet-id">Sheet id</label>
@@ -97,6 +118,7 @@ import { SettingStore } from '../settings/settings';
         <p role="alert" data-testid="signin-error">{{ error }}</p>
       }
     }
+    </div>
   `,
 })
 export class Home {
@@ -113,6 +135,26 @@ export class Home {
   /** The id of the last clone this screen made of the active sheet. */
   protected readonly clonedTo = signal('');
   protected readonly asOfError = signal<string | null>(null);
+
+  protected readonly locales = LOCALES;
+  /** The locale chosen in the select and not yet saved; null shows the saved one. */
+  protected readonly localeInput = signal<Locale | null>(null);
+  protected readonly localeError = signal<string | null>(null);
+
+  protected locale(event: Event): Locale {
+    return (event.target as HTMLSelectElement).value as Locale;
+  }
+
+  protected async saveLocale(event: Event): Promise<void> {
+    event.preventDefault();
+    this.localeError.set(null);
+    try {
+      await this.session.saveLocale(this.localeInput() ?? this.session.locale());
+      this.localeInput.set(null);
+    } catch {
+      this.localeError.set('The locale could not be saved.');
+    }
+  }
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;

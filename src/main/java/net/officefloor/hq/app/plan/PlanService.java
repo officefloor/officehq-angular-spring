@@ -14,6 +14,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,15 +28,17 @@ public class PlanService {
     private final PersonRepository people;
     private final ClaimService claims;
     private final SheetService sheets;
+    private final SettingService settings;
     private final Audit audit;
 
     public PlanService(PlanRepository plans, PlanClaimRepository made, PersonRepository people, ClaimService claims,
-            SheetService sheets, Audit audit) {
+            SheetService sheets, SettingService settings, Audit audit) {
         this.plans = plans;
         this.made = made;
         this.people = people;
         this.claims = claims;
         this.sheets = sheets;
+        this.settings = settings;
         this.audit = audit;
     }
 
@@ -88,9 +91,12 @@ public class PlanService {
     /** For every plan on the sheet, in the order they were added, add a DRAFT claim of its amount with
      *  an empty note for each plan date up to its end and the sheet's today it has made none for yet,
      *  as the claim form would; a date the form refuses is passed over, to be tried again next time.
-     *  The claims made, in the order they were. */
+     *  The claims made, in the order they were; a viewer makes none. */
     @Transactional
     public List<Claim> generate(String sheetId, String user) {
+        if (settings.isViewer(sheetId, user)) {
+            return List.of();
+        }
         sheets.lock(sheetId);
         LocalDate today = sheets.today(sheetId);
         List<Plan> them = plans.findBySheetIdOrderByIdAsc(sheetId);

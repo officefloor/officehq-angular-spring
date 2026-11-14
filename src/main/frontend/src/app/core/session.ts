@@ -2,6 +2,10 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
+/** The locales a user can choose for how figures are shown. */
+export const LOCALES = ['en', 'de'] as const;
+export type Locale = (typeof LOCALES)[number];
+
 interface SheetView {
   id: string;
   today: string;
@@ -30,6 +34,8 @@ export class Session {
   readonly archived = signal(false);
   /** The number of the active sheet's last settle batch; null when there has been none. */
   readonly lastBatch = signal<number | null>(null);
+  /** The signed-in user's locale, which decides how the screen shows figures; en until read. */
+  readonly locale = signal<Locale>('en');
   /** Counts sheet loads, so features re-read their data even when the same id is loaded again. */
   readonly loads = signal(0);
 
@@ -37,14 +43,31 @@ export class Session {
     const trimmed = name.trim();
     if (!trimmed) return false;
     this.user.set(trimmed);
+    this.locale.set('en');
+    void this.loadLocale().catch(() => undefined);
     return true;
+  }
+
+  /** Re-read the signed-in user's locale from the store. */
+  async loadLocale(): Promise<void> {
+    const user = this.user();
+    const view = await firstValueFrom(this.http.get<{ locale: Locale }>('/api/me/locale'));
+    if (this.user() === user) this.locale.set(view.locale);
+  }
+
+  /** Save the signed-in user's locale. */
+  async saveLocale(locale: Locale): Promise<void> {
+    const view = await firstValueFrom(this.http.put<{ locale: Locale }>('/api/me/locale', { locale }));
+    this.locale.set(view.locale);
   }
 
   /** Load a sheet by id; a sheet never loaded before starts empty. */
   async loadSheet(id: string): Promise<void> {
+    const locale = this.loadLocale().catch(() => undefined);
     const sheet = await firstValueFrom(
       this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null),
     );
+    await locale;
     this.show(sheet);
     this.loads.update((n) => n + 1);
   }

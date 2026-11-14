@@ -17,7 +17,8 @@ import org.springframework.web.servlet.HandlerInterceptor;
  * A viewer sees every screen and figure and can change nothing: every request that would change a
  * sheet is refused (403) before it reaches its controller, so it writes nothing to the store or the
  * audit. Loading a sheet changes nothing and is let through; so are the bulk actions, which a
- * viewer takes with nothing done (every selected item refused, see the bulk services).
+ * viewer takes with nothing done (every selected item refused, see the bulk services), and the
+ * plans' generate, which makes nothing for a viewer (see the plan service).
  */
 @Component
 public class ViewerGuard implements HandlerInterceptor {
@@ -25,14 +26,16 @@ public class ViewerGuard implements HandlerInterceptor {
     /** The sheet-scoped requests the guard watches. */
     public static final String PATTERN = "/api/sheets/{sheetId}/**";
 
-    /** The requests a viewer may make: loading a sheet, and the bulk actions that refuse every item. */
+    /** The requests a viewer may make: loading a sheet, the bulk actions that refuse every item, and
+     *  generating plans' claims, which makes none for a viewer. */
     private static final Set<String> LET_THROUGH = Set.of(
             "/api/sheets/{sheetId}/load",
             "/api/sheets/{sheetId}/claims/open",
             "/api/sheets/{sheetId}/claims/settle",
             "/api/sheets/{sheetId}/claims/reassign",
             "/api/sheets/{sheetId}/people/grade",
-            "/api/sheets/{sheetId}/people/retire");
+            "/api/sheets/{sheetId}/people/retire",
+            "/api/sheets/{sheetId}/plans/generate");
 
     private final AntPathMatcher paths = new AntPathMatcher();
     private final SettingService settings;
