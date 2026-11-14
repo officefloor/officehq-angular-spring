@@ -2,12 +2,12 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { cents, money } from '../claims/claims-api';
-import { Period, PeriodsApi, closeError, periodError } from './periods-api';
+import { Period, PeriodsApi, closeError, periodError, reopenError } from './periods-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The sheet's periods, by from-date, each with its due-total and whether it is closed (with the
-// button that closes it), and the form that adds a period.
+// buttons that close and reopen it), and the form that adds a period.
 @Component({
   selector: 'app-periods',
   imports: [ReactiveFormsModule],
@@ -41,6 +41,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                   [attr.aria-label]="'Close period ' + p.name">Close</button>
+                <button type="button" data-testid="period-reopen" (click)="reopen(p)"
+                  [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
                 @if (rowErrors()[p.id]; as err) {
                   <p role="alert" data-testid="period-error">{{ err }}</p>
                 }
@@ -95,6 +97,19 @@ export class Periods {
       if (this.session.sheetId() === sheetId) this.saved.emit(closed);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [p.id]: closeError(e) }));
+    }
+  }
+
+  /** Reopen a closed period, its due-total live again; a refusal shows an error on the period. */
+  protected async reopen(p: Period): Promise<void> {
+    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const reopened = await this.api.reopen(sheetId, p.id);
+      if (this.session.sheetId() === sheetId) this.saved.emit(reopened);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: reopenError(e) }));
     }
   }
 
