@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -35,11 +36,22 @@ public class PoolController {
         }
     }
 
-    /** A pool as the screen shows it, with its members in the order they were added. */
-    public record PoolView(Long id, String name, List<PoolMemberView> members) {
+    /** A pool as the screen shows it, with its members in the order they were added. A crew shows as a
+     *  pool too (crew true), its id the crew's negated so it is told apart from the sheet's pools; its
+     *  members are its lead's and its members' and none is added through the pool. */
+    public record PoolView(Long id, String name, List<PoolMemberView> members, boolean crew) {
         static PoolView of(PoolService.PoolWithMembers pool) {
             return new PoolView(pool.pool().getId(), pool.pool().getName(),
-                    pool.members().stream().map(PoolMemberView::of).toList());
+                    pool.members().stream().map(PoolMemberView::of).toList(), false);
+        }
+
+        static PoolView of(PoolService.CrewPool pool) {
+            List<PoolMemberView> members = new ArrayList<>();
+            for (int i = 0; i < pool.personIds().size(); i++) {
+                members.add(new PoolMemberView(pool.personIds().get(i), null, pool.shares().get(i).toPlainString(),
+                        null, null));
+            }
+            return new PoolView(-pool.crew().getId(), pool.crew().getName(), members, true);
         }
     }
 
@@ -59,10 +71,12 @@ public class PoolController {
         this.service = service;
     }
 
-    /** The sheet's pools, in the order they were added. */
+    /** The sheet's pools, in the order they were added, then its crews as pools, in the order they were added. */
     @GetMapping
     public List<PoolView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
-        return service.list(sheetId.trim()).stream().map(PoolView::of).toList();
+        List<PoolView> list = new ArrayList<>(service.list(sheetId.trim()).stream().map(PoolView::of).toList());
+        service.crewPools(sheetId.trim()).stream().map(PoolView::of).forEach(list::add);
+        return list;
     }
 
     /** Add a pool to the sheet. */

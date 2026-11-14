@@ -9,6 +9,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewMember;
+import net.officefloor.hq.app.crew.CrewMemberRepository;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -29,17 +33,26 @@ public class PoolService {
     public record PoolWithMembers(Pool pool, List<PoolMember> members) {
     }
 
+    /** A crew as a pool: its name, and its lead's then its members' person ids, in the order they were
+     *  added, each with its share, in the same order. */
+    public record CrewPool(Crew crew, List<Long> personIds, List<BigDecimal> shares) {
+    }
+
     private final PoolRepository pools;
     private final PoolMemberRepository members;
     private final PersonRepository people;
+    private final CrewRepository crews;
+    private final CrewMemberRepository crewMembers;
     private final SheetService sheets;
     private final Audit audit;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
-            SheetService sheets, Audit audit) {
+            CrewRepository crews, CrewMemberRepository crewMembers, SheetService sheets, Audit audit) {
         this.pools = pools;
         this.members = members;
         this.people = people;
+        this.crews = crews;
+        this.crewMembers = crewMembers;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -53,7 +66,33 @@ public class PoolService {
         return list.stream().map(p -> new PoolWithMembers(p, byPool.getOrDefault(p.getId(), List.of()))).toList();
     }
 
-    /** Add a pool, its name trimmed. Refused when the name is blank or already a pool's on the sheet.
+    /** The sheet's crews as pools, in the order they were added: each the lead and the members at equal
+     *  shares, 100.00 split as patrons' shares are (each rounded half to even), the remainder on the lead. */
+    public List<CrewPool> crewPools(String sheetId) {
+        List<Crew> list = crews.findBySheetIdOrderByIdAsc(sheetId);
+        Map<Long, List<CrewMember>> byCrew = crewMembers
+                .findByCrewIdInOrderByIdAsc(list.stream().map(Crew::getId).toList()).stream()
+                .collect(Collectors.groupingBy(CrewMember::getCrewId));
+        return list.stream().map(crew -> {
+            List<Long> ids = new ArrayList<>();
+            ids.add(crew.getLeadId());
+            byCrew.getOrDefault(crew.getId(), List.of()).forEach(m -> ids.add(m.getPersonId()));
+            return new CrewPool(crew, ids, equalShares(ids.size()));
+        }).toList();
+    }
+
+    /** 100.00 split equally over this many, each rounded half to even, the remainder on the first. */
+    private static List<BigDecimal> equalShares(int count) {
+        BigDecimal each = HUNDRED.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_EVEN);
+        List<BigDecimal> shares = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            shares.add(each);
+        }
+        shares.set(0, each.add(HUNDRED.subtract(each.multiply(BigDecimal.valueOf(count)))));
+        return shares;
+    }
+
+    /** Add a pool, its name trimmed. Refused when the name is blank or already a pool's or a crew's on the sheet.
      *  The sheet is held locked so the same name added at the same moment is checked against itself. */
     @Transactional
     public PoolWithMembers add(String sheetId, String user, String name) {
@@ -64,6 +103,9 @@ public class PoolService {
         sheets.lock(sheetId);
         if (pools.existsBySheetIdAndName(sheetId, key)) {
             throw new PoolRefusedException("The pool " + key + " is on the sheet already");
+        }
+        if (crews.existsBySheetIdAndName(sheetId, key)) {
+            throw new PoolRefusedException("The crew " + key + " is a pool on the sheet already");
         }
         Pool saved = pools.saveAndFlush(new Pool(sheetId, key));
         audit.recordOnCommit("POOL_ADDED sheet=" + sheetId + " by=" + user + " name=" + key);

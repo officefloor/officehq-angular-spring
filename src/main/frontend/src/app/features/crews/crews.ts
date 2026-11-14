@@ -3,6 +3,7 @@ import { Component, Injectable, computed, effect, inject, input, signal } from '
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims';
+import { PoolStore } from '../pools/pools';
 
 export interface Crew {
   id: number;
@@ -26,6 +27,7 @@ export interface CrewPerson {
 export class CrewStore {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  private readonly pools = inject(PoolStore);
 
   readonly crews = signal<Crew[]>([]);
 
@@ -38,12 +40,13 @@ export class CrewStore {
     });
   }
 
-  /** Add a crew led by a person; the server refuses a blank name or one already a crew's. */
+  /** Add a crew led by a person; the server refuses a blank name or one already a crew's or a pool's. */
   async add(name: string, leadId: number): Promise<void> {
     const sheet = this.session.sheetId();
     if (!sheet) throw new Error('No sheet loaded.');
     const saved = await firstValueFrom(this.http.post<Crew>(this.base(sheet), { name, leadId }));
     this.keep(sheet, saved);
+    void this.pools.reload();
   }
 
   /** Add a person to a crew; the server refuses the crew's lead or a person in it already. */
@@ -52,6 +55,7 @@ export class CrewStore {
     if (!sheet) throw new Error('No sheet loaded.');
     const saved = await firstValueFrom(this.http.post<Crew>(`${this.base(sheet)}/${crewId}/members`, { personId }));
     this.keep(sheet, saved);
+    void this.pools.reload();
   }
 
   private base(sheet: string): string {
@@ -210,7 +214,7 @@ export class Crews {
     try {
       await this.store.add(name, lead);
     } catch {
-      this.error.set(`The crew ${name} could not be added: the name may be a crew's already.`);
+      this.error.set(`The crew ${name} could not be added: the name may be a crew's or a pool's already.`);
     } finally {
       this.busy.set(false);
     }

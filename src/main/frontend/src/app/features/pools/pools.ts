@@ -23,6 +23,8 @@ export interface Pool {
   name: string;
   /** The pool's members, in the order they were added. */
   members: PoolMember[];
+  /** Whether the pool is a crew: its lead and members at equal shares, none added through the pool. */
+  crew: boolean;
 }
 
 /** A person as a pool shows them: their name, whether a retirement date is set, and their holds,
@@ -202,7 +204,13 @@ export class PoolStore {
     });
   }
 
-  /** Add a pool to the active sheet; the server refuses a blank name or one already a pool's. */
+  /** Re-read the active sheet's pools: a crew is a pool too, so a crew added or changed shows here. */
+  async reload(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (sheet) await this.read(sheet, this.session.loads());
+  }
+
+  /** Add a pool to the active sheet; the server refuses a blank name or one already a pool's or a crew's. */
   async add(name: string): Promise<void> {
     const sheet = this.session.sheetId();
     if (!sheet) throw new Error('No sheet loaded.');
@@ -289,46 +297,48 @@ interface PoolRow {
                 </li>
               }
             </ul>
-            <label [for]="'pool-member-select-' + row.pool.id">Member</label>
-            <select
-              [id]="'pool-member-select-' + row.pool.id"
-              data-testid="pool-member-select"
-              (change)="setMember(row.pool.id, value($event))"
-            >
-              <option value="" [selected]="!entries()[row.pool.id]?.member">Choose a person or pool</option>
-              @for (p of people(); track p.id) {
-                <option [value]="p.id" [selected]="entries()[row.pool.id]?.member === '' + p.id">{{ p.name }}</option>
+            @if (!row.pool.crew) {
+              <label [for]="'pool-member-select-' + row.pool.id">Member</label>
+              <select
+                [id]="'pool-member-select-' + row.pool.id"
+                data-testid="pool-member-select"
+                (change)="setMember(row.pool.id, value($event))"
+              >
+                <option value="" [selected]="!entries()[row.pool.id]?.member">Choose a person or pool</option>
+                @for (p of people(); track p.id) {
+                  <option [value]="p.id" [selected]="entries()[row.pool.id]?.member === '' + p.id">{{ p.name }}</option>
+                }
+                @for (other of memberPools(); track other.id) {
+                  <option [value]="'pool:' + other.id" [selected]="entries()[row.pool.id]?.member === 'pool:' + other.id">{{ 'pool:' + other.name }}</option>
+                }
+              </select>
+              <label [for]="'pool-member-share-' + row.pool.id">Share %</label>
+              <input
+                [id]="'pool-member-share-' + row.pool.id"
+                data-testid="pool-member-share"
+                [value]="entries()[row.pool.id]?.share ?? ''"
+                (input)="setShare(row.pool.id, value($event))"
+              />
+              <label [for]="'pool-member-from-' + row.pool.id">From</label>
+              <input
+                type="date"
+                [id]="'pool-member-from-' + row.pool.id"
+                data-testid="pool-member-from"
+                [value]="entries()[row.pool.id]?.from ?? ''"
+                (input)="setDate(row.pool.id, 'from', value($event))"
+              />
+              <label [for]="'pool-member-to-' + row.pool.id">To</label>
+              <input
+                type="date"
+                [id]="'pool-member-to-' + row.pool.id"
+                data-testid="pool-member-to"
+                [value]="entries()[row.pool.id]?.to ?? ''"
+                (input)="setDate(row.pool.id, 'to', value($event))"
+              />
+              <button type="button" data-testid="pool-member-add" (click)="addMember(row.pool)">Add member</button>
+              @if (memberErrors()[row.pool.id]; as message) {
+                <p role="alert" data-testid="pool-error">{{ message }}</p>
               }
-              @for (other of store.pools(); track other.id) {
-                <option [value]="'pool:' + other.id" [selected]="entries()[row.pool.id]?.member === 'pool:' + other.id">{{ 'pool:' + other.name }}</option>
-              }
-            </select>
-            <label [for]="'pool-member-share-' + row.pool.id">Share %</label>
-            <input
-              [id]="'pool-member-share-' + row.pool.id"
-              data-testid="pool-member-share"
-              [value]="entries()[row.pool.id]?.share ?? ''"
-              (input)="setShare(row.pool.id, value($event))"
-            />
-            <label [for]="'pool-member-from-' + row.pool.id">From</label>
-            <input
-              type="date"
-              [id]="'pool-member-from-' + row.pool.id"
-              data-testid="pool-member-from"
-              [value]="entries()[row.pool.id]?.from ?? ''"
-              (input)="setDate(row.pool.id, 'from', value($event))"
-            />
-            <label [for]="'pool-member-to-' + row.pool.id">To</label>
-            <input
-              type="date"
-              [id]="'pool-member-to-' + row.pool.id"
-              data-testid="pool-member-to"
-              [value]="entries()[row.pool.id]?.to ?? ''"
-              (input)="setDate(row.pool.id, 'to', value($event))"
-            />
-            <button type="button" data-testid="pool-member-add" (click)="addMember(row.pool)">Add member</button>
-            @if (memberErrors()[row.pool.id]; as message) {
-              <p role="alert" data-testid="pool-error">{{ message }}</p>
             }
           </li>
         }
@@ -351,6 +361,9 @@ export class Pools {
   protected readonly memberErrors = signal<Record<number, string | null>>({});
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
+
+  /** The pools that may be chosen as a member of another: the sheet's own, not its crews. */
+  protected readonly memberPools = computed(() => this.store.pools().filter((p) => !p.crew));
 
   protected readonly rows = computed<PoolRow[]>(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
@@ -425,7 +438,7 @@ export class Pools {
     try {
       await this.store.add(name);
     } catch {
-      this.error.set(`The pool ${name} could not be added: the name may be a pool's already.`);
+      this.error.set(`The pool ${name} could not be added: the name may be a pool's or a crew's already.`);
     } finally {
       this.busy.set(false);
     }

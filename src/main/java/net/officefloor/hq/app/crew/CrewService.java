@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,14 +22,16 @@ public class CrewService {
     private final CrewRepository crews;
     private final CrewMemberRepository members;
     private final PersonRepository people;
+    private final PoolRepository pools;
     private final SheetService sheets;
     private final Audit audit;
 
     public CrewService(CrewRepository crews, CrewMemberRepository members, PersonRepository people,
-            SheetService sheets, Audit audit) {
+            PoolRepository pools, SheetService sheets, Audit audit) {
         this.crews = crews;
         this.members = members;
         this.people = people;
+        this.pools = pools;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -43,7 +46,7 @@ public class CrewService {
     }
 
     /** Add a crew, its name trimmed, led by a person of the sheet. Refused when the name is blank or
-     *  already a crew's on the sheet, or the lead is not a person of the sheet. The sheet is held
+     *  already a crew's or a pool's on the sheet (a crew is a pool too), or the lead is not a person of the sheet. The sheet is held
      *  locked so the same name added at the same moment is checked against itself. */
     @Transactional
     public CrewWithMembers add(String sheetId, String user, String name, Long leadId) {
@@ -59,6 +62,9 @@ public class CrewService {
                 .orElseThrow(() -> new CrewRefusedException("No such person on the sheet"));
         if (crews.existsBySheetIdAndName(sheetId, key)) {
             throw new CrewRefusedException("The crew " + key + " is on the sheet already");
+        }
+        if (pools.existsBySheetIdAndName(sheetId, key)) {
+            throw new CrewRefusedException("The pool " + key + " is on the sheet already");
         }
         Crew saved = crews.saveAndFlush(new Crew(sheetId, key, lead.getId()));
         audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user + " name=" + key + " lead="
