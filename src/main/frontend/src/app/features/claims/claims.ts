@@ -372,6 +372,14 @@ const NUMBER = /^\S+$/;
           <button type="button" data-testid="claim-review" [attr.aria-label]="'Review claim ' + c.id" (click)="act(c, 'review')">
             Review
           </button>
+          <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
+          <input
+            [id]="'claim-settle-date-' + c.id"
+            type="date"
+            data-testid="claim-settle-date"
+            [value]="settleDates()[c.id] ?? ''"
+            (input)="setSettleDate(c.id, value($event))"
+          />
           <button type="button" data-testid="claim-settle" [attr.aria-label]="'Settle claim ' + c.id" (click)="act(c, 'settle')">
             Settle
           </button>
@@ -643,6 +651,9 @@ export class PersonClaims {
   /** The proof kind chosen on each claim's row, by claim id (receipt, photo, or blank for none chosen). */
   protected readonly proofKindChoice = signal<Record<number, string>>({});
 
+  /** The date typed on each claim's row to settle it as of, by claim id (blank: as of now). */
+  protected readonly settleDates = signal<Record<number, string>>({});
+
   /** The defer-until date typed on each claim's row, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
 
@@ -849,6 +860,11 @@ export class PersonClaims {
 
   protected setReassignTo(id: number, personId: string): void {
     this.reassignTo.update((chosen) => ({ ...chosen, [id]: personId }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  protected setSettleDate(id: number, date: string): void {
+    this.settleDates.update((dates) => ({ ...dates, [id]: date }));
     if (this.rowError()?.id === id) this.rowError.set(null);
   }
 
@@ -1293,12 +1309,21 @@ export class PersonClaims {
       this.rowError.set({ id: claim.id, message: 'Choose the reason the claim is voided.' });
       return;
     }
+    const settleOn = (this.settleDates()[claim.id] ?? '').trim();
+    // A settle date is used for this settle only: it never carries into the next one.
+    if (action === 'settle') this.setSettleDate(claim.id, '');
     const url =
       `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/${action}`;
     try {
       const saved = await firstValueFrom(this.http.post<Claim>(
           url,
-          action === 'reject' ? { reason } : action === 'void' ? { reason: voidReason || null } : null,
+          action === 'reject'
+            ? { reason }
+            : action === 'void'
+              ? { reason: voidReason || null }
+              : action === 'settle' && settleOn !== ''
+                ? { on: settleOn }
+                : null,
         ),
       );
       if (this.session.sheetId() !== sheet) return;
@@ -1309,7 +1334,9 @@ export class PersonClaims {
       this.rowError.set({
         id: claim.id,
         message:
-          forbidden && action === 'settle'
+          !forbidden && action === 'settle' && settleOn !== ''
+            ? `The claim could not be settled as of ${settleOn}: the date must be on or before the sheet's today and the claim must have existed then, and its status must allow it.`
+            : forbidden && action === 'settle'
             ? 'The claim could not be settled: whoever opened it cannot settle it, and your role must be allowed to settle.'
             : !forbidden && (action === 'settle' || action === 'approve')
               ? `The claim could not be ${PAST[action]}: one due above the proof threshold needs a proof first, and its status must allow it.`

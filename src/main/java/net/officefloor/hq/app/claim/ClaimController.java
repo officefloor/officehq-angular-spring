@@ -115,6 +115,10 @@ public class ClaimController {
     public record DeferRequest(@NotNull LocalDate until) {
     }
 
+    /** The date a claim is settled as of, on or before the sheet's today; absent for now. */
+    public record SettleRequest(LocalDate on) {
+    }
+
     /** The reason a claim is voided with, chosen from the sheet's list; blank or absent for none. */
     public record VoidRequest(@Size(max = 255) String reason) {
     }
@@ -308,11 +312,16 @@ public class ClaimController {
     }
 
     /** Settle an OPEN claim; the user who opened it cannot. A clerk settling one whose due is above
-     *  the clerk limit leaves it PENDING a steward's approval. */
+     *  the clerk limit leaves it PENDING a steward's approval. With a date, the due frozen is the
+     *  claim's due as it stood at the end of that day. */
     @PostMapping("/people/{personId}/claims/{id}/settle")
     public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
-            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
-        return changeStatus(sheetId, user, personId, id, ClaimStatus.SETTLED);
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody(required = false) SettleRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        LocalDate on = request == null ? null : request.on();
+        return view(sheet, rollups.track(sheet, by, () -> service.settle(sheet, by, personId, id, on)));
     }
 
     /** Settle the selected claims that can be settled, in list order, each by the rules of settling

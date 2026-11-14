@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.holiday.HolidayService;
 import net.officefloor.hq.app.person.Person;
@@ -67,12 +68,14 @@ public class ClaimService {
     private final PersonRetirementRepository retirements;
     private final HolidayService holidays;
     private final VoidReasonService voidReasons;
+    private final History history;
     private final Audit audit;
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RateService rates,
             PersonGradeService grades, SheetService sheets, PeriodRepository periods, SettingService settings, PersonWatchRepository watches,
             HolidayService holidays, VoidReasonService voidReasons, ClaimCommentRepository comments, PersonRetirementRepository retirements,
-            ClaimLineRepository lines, PersonTermsService personTerms, Audit audit) {
+            ClaimLineRepository lines, PersonTermsService personTerms, History history, Audit audit) {
+        this.history = history;
         this.personTerms = personTerms;
         this.lines = lines;
         this.retirements = retirements;
@@ -338,6 +341,15 @@ public class ClaimService {
         refuseUnproved(sheetId, person, claim, dueOf(sheetId, person, claim));
     }
 
+    /** Settle a claim as of a date on or before the sheet's today (null: as of now), by the rules of
+     *  settling it: the due frozen is the claim's due as it stood at the end of that day, that day
+     *  standing in for the sheet's today, and CLAIM_SETTLED ends with on=<date>. A date after the
+     *  sheet's today, or one the claim had not been added by, is refused. */
+    @Transactional
+    public Claim settle(String sheetId, String user, Long personId, Long id, LocalDate on) {
+        return changeStatus(sheetId, user, personId, id, ClaimStatus.SETTLED, null, false, on);
+    }
+
     /** Settle a claim just split off another for the user, as settling it would, save that the
      *  four-eyes rules and the proof rule were judged on the claim it was split from. */
     @Transactional
@@ -347,6 +359,11 @@ public class ClaimService {
 
     private Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to,
             String voidReason, boolean judgedOnOriginal) {
+        return changeStatus(sheetId, user, personId, id, to, voidReason, judgedOnOriginal, null);
+    }
+
+    private Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to,
+            String voidReason, boolean judgedOnOriginal, LocalDate settledOn) {
         Person person = person(sheetId, personId);
         // Lock the sheet first, so a claim opened at the same moment elsewhere waits and the claim
         // read below is its latest state.
@@ -385,7 +402,7 @@ public class ClaimService {
         }
         // Taken while the claim is still OPEN, so a settled due freezes in the late charge it has
         // gathered by then.
-        BigDecimal due = to == ClaimStatus.SETTLED ? dueOf(sheetId, person, claim) : null;
+        BigDecimal due = to == ClaimStatus.SETTLED ? settleDueOf(sheetId, person, claim, settledOn) : null;
         if (to == ClaimStatus.SETTLED && !judgedOnOriginal) {
             refuseUnproved(sheetId, person, claim, due);
         }
@@ -428,6 +445,9 @@ public class ClaimService {
         String line = line(event, sheetId, user, person, saved, saved.getNumber());
         if (to == ClaimStatus.SETTLED) {
             line += " due=" + settledDueText(saved);
+            if (settledOn != null) {
+                line += " on=" + settledOn;
+            }
         } else if (reversing) {
             line += " reversed=" + settledDueText(saved);
         }
@@ -439,6 +459,20 @@ public class ClaimService {
             notifyWatchers(sheetId, user, person, saved);
         }
         return saved;
+    }
+
+    /** The due a claim is settled at: as it stands now, or (a date given) as it stood at the end of
+     *  that day; a date after the sheet's today, or one the claim had not been added by, is refused. */
+    private BigDecimal settleDueOf(String sheetId, Person person, Claim claim, LocalDate on) {
+        if (on == null) {
+            return dueOf(sheetId, person, claim);
+        }
+        if (on.isAfter(sheets.today(sheetId))) {
+            throw new StatusChangeRefusedException(claim.getStatus(), ClaimStatus.SETTLED);
+        }
+        Claim then = history.claim(claim.getId(), on)
+                .orElseThrow(() -> new StatusChangeRefusedException(claim.getStatus(), ClaimStatus.SETTLED));
+        return dueOf(sheetId, person, then, on);
     }
 
     /** Delete a DRAFT claim: it is DELETED, counts nowhere and cannot be edited, opened or voided;
