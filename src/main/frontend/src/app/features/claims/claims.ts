@@ -240,6 +240,19 @@ export function reviewLate(claim: Claim, today: string | null, sla: string): boo
   return reviewDay !== null && plusDays(reviewDay, Number(sla)) < today;
 }
 
+/** Whether a claim is late pending: it is PENDING, a pending SLA is set, and its pending day (the
+ *  sheet's today when it last went to PENDING, as its status log records it) plus the SLA days is
+ *  before the sheet's today. */
+export function pendingLate(claim: Claim, today: string | null, sla: string): boolean {
+  if (claim.status !== 'PENDING' || sla === '' || today === null) return false;
+  let pendingDay: string | null = null;
+  for (const line of claim.log) {
+    const match = /^PENDING by .* on (\d{4}-\d{2}-\d{2}) due=\S+$/.exec(line);
+    if (match) pendingDay = match[1];
+  }
+  return pendingDay !== null && plusDays(pendingDay, Number(sla)) < today;
+}
+
 /** Cents shown with two decimals. */
 export function money(total: number): string {
   return (total / 100).toFixed(2);
@@ -369,6 +382,7 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-review-assigned">{{ c.reviewAssignee ?? '' }}</span>
           <span data-testid="claim-review-late">{{ isReviewLate(c) ? 'yes' : 'no' }}</span>
+          <span data-testid="claim-pending-late">{{ isPendingLate(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
           <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span>
@@ -676,6 +690,8 @@ export class PersonClaims {
   readonly graceOn = input.required<(grade: string | null, date: string) => number>();
   /** The sheet's review SLA in whole days; blank for none. */
   readonly reviewSla = input('');
+  /** The sheet's pending SLA in whole days; blank for none. */
+  readonly pendingSla = input('');
   /** The ids of the claims selected to act on together. */
   readonly selectedIds = input.required<ReadonlySet<number>>();
   /** The people on the sheet, in the order they were added: a claim can move to any other. */
@@ -808,6 +824,10 @@ export class PersonClaims {
 
   protected isReviewLate(claim: Claim): boolean {
     return reviewLate(claim, this.session.today(), this.reviewSla());
+  }
+
+  protected isPendingLate(claim: Claim): boolean {
+    return pendingLate(claim, this.session.today(), this.pendingSla());
   }
 
   /** Whether the row shows the claim deferred: the date it was deferred until is still after the

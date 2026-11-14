@@ -60,7 +60,7 @@ public class SettingController {
             Map<String, List<DatedView>> dated, Map<String, String> permissions, List<DelegationView> delegations,
             String entryDate, String pot, String parent, int fiscalStartMonth,
             String alertThreshold, Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade,
-            Integer scoreMid, Integer scoreHigh, String scoreLog, Integer maxOpen) {
+            Integer scoreMid, Integer scoreHigh, String scoreLog, Integer maxOpen, Integer pendingSla) {
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
@@ -184,6 +184,10 @@ public class SettingController {
     public record ReviewSlaRequest(@Min(0) @Max(36500) Integer value) {
     }
 
+    /** A pending SLA in whole days, 0 or more; null leaves it blank (none). */
+    public record PendingSlaRequest(@Min(0) @Max(36500) Integer value) {
+    }
+
     /** A maximum of open claims per person, a whole number of 0 or more; null leaves it blank (none). */
     public record MaxOpenRequest(@Min(0) @Max(1_000_000) Integer value) {
     }
@@ -231,7 +235,7 @@ public class SettingController {
                 then.fiscalStartMonth(), then.alertThreshold() != null ? then.alertThreshold().toPlainString() : null,
                 then.escalateAfter(), then.reviewSla(), String.join(",", then.proofKinds()),
                 then.defaultGrade() != null ? then.defaultGrade() : "", then.scoreMid(), then.scoreHigh(),
-                then.scoreLog() ? "on" : "", then.maxOpen());
+                then.scoreLog() ? "on" : "", then.maxOpen(), then.pendingSla());
     }
 
     /** Assign a user name a role; a role other than clerk or steward is refused. */
@@ -501,6 +505,16 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Change the sheet's pending SLA; a PENDING claim is late pending only when it is set. */
+    @PutMapping("/pending-sla")
+    public SettingsView setPendingSla(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated PendingSlaRequest request) {
+        String sheet = sheetId.trim();
+        service.setPendingSla(sheet, SignedInUser.decode(user), request.value());
+        return view(sheet);
+    }
+
     /** Change the sheet's maximum of open claims per person; opening a claim is refused only when it is set. */
     @PutMapping("/max-open")
     public SettingsView setMaxOpen(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -611,7 +625,7 @@ public class SettingController {
                 alert != null ? alert.toPlainString() : null, service.escalateAfter(sheet),
                 service.reviewSla(sheet), String.join(",", service.proofKinds(sheet)),
                 defaultGrade != null ? defaultGrade : "", service.scoreMid(sheet), service.scoreHigh(sheet),
-                service.scoreLog(sheet) ? "on" : "", service.maxOpen(sheet));
+                service.scoreLog(sheet) ? "on" : "", service.maxOpen(sheet), service.pendingSla(sheet));
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */

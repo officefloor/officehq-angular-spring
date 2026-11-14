@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, plusDays, reviewLate, sharePartCents, statusAsOf } from '../claims/claims';
+import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, pendingLate, plusDays, reviewLate, sharePartCents, statusAsOf } from '../claims/claims';
 import { GradeStore, Grades } from '../grades/grades';
 import { Holidays } from '../holidays/holidays';
 import { Notes } from '../notes/notes';
@@ -190,6 +190,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
       [statuses]="statusSummary()"
       [voids]="voidReasonSummary()"
       [reviewLateCount]="reviewLateCount()"
+      [pendingLateCount]="pendingLateCount()"
       [classicPeriods]="classicPeriodSummary()"
       [classicDueTotal]="classicDueTotal()"
     />
@@ -711,6 +712,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
                   [roundingOn]="settings.roundingOn()"
                   [graceOn]="settings.graceOn()"
                   [reviewSla]="settings.reviewSla()"
+                  [pendingSla]="settings.pendingSla()"
                   [selectedIds]="selectedClaims()"
                   [people]="people()"
                   [viewer]="viewer()"
@@ -1537,6 +1539,12 @@ export class People {
     const today = this.session.today();
     const sla = this.settings.reviewSla();
     return this.claims().filter((c) => reviewLate(c, today, sla)).length;
+  });
+  /** How many of the sheet's claims are late pending. */
+  protected readonly pendingLateCount = computed(() => {
+    const today = this.session.today();
+    const sla = this.settings.pendingSla();
+    return this.claims().filter((c) => pendingLate(c, today, sla)).length;
   });
   /** Per reason on the sheet's list: how many of its VOID claims were voided with it. */
   protected readonly voidReasonSummary = computed(() => {

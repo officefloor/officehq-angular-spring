@@ -77,6 +77,7 @@ public class SettingService {
     private static final String PROOF_KINDS = "proof-kinds";
     private static final String DEFAULT_GRADE = "default-grade";
     private static final String REVIEW_SLA = "review-sla";
+    private static final String PENDING_SLA = "pending-sla";
     private static final String MAX_OPEN = "max-open";
     private static final String SCORE_MID = "score-mid";
     private static final String SCORE_HIGH = "score-high";
@@ -97,7 +98,7 @@ public class SettingService {
             Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent,
             int fiscalStartMonth, BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla,
             List<String> proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh, boolean scoreLog,
-            Integer maxOpen) {
+            Integer maxOpen, Integer pendingSla) {
     }
 
     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
@@ -131,6 +132,8 @@ public class SettingService {
         String defaultGrade = kept.contains(DEFAULT_GRADE) ? then.get(DEFAULT_GRADE)
                 : sheets.load(sheetId).getDefaultGrade();
         String sla = kept.contains(REVIEW_SLA) ? then.get(REVIEW_SLA) : Objects.toString(reviewSla(sheetId), null);
+        String pendingSla = kept.contains(PENDING_SLA) ? then.get(PENDING_SLA)
+                : Objects.toString(pendingSla(sheetId), null);
         String maxOpen = kept.contains(MAX_OPEN) ? then.get(MAX_OPEN) : Objects.toString(maxOpen(sheetId), null);
         String scoreMid = kept.contains(SCORE_MID) ? then.get(SCORE_MID) : Objects.toString(scoreMid(sheetId), null);
         String scoreHigh = kept.contains(SCORE_HIGH) ? then.get(SCORE_HIGH) : Objects.toString(scoreHigh(sheetId), null);
@@ -164,7 +167,8 @@ public class SettingService {
                 escalate != null ? Integer.valueOf(escalate) : null, sla != null ? Integer.valueOf(sla) : null,
                 kindsOf(kinds), defaultGrade, scoreMid != null ? Integer.valueOf(scoreMid) : null,
                 scoreHigh != null ? Integer.valueOf(scoreHigh) : null, scoreLog,
-                maxOpen != null ? Integer.valueOf(maxOpen) : null);
+                maxOpen != null ? Integer.valueOf(maxOpen) : null,
+                pendingSla != null ? Integer.valueOf(pendingSla) : null);
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -521,6 +525,11 @@ public class SettingService {
         return sheets.load(sheetId).getReviewSla();
     }
 
+    /** The sheet's pending SLA in days; null when it is blank (none). */
+    public Integer pendingSla(String sheetId) {
+        return sheets.load(sheetId).getPendingSla();
+    }
+
     /** The most OPEN or PENDING claims a person on the sheet may have; null when it is blank (none). */
     public Integer maxOpen(String sheetId) {
         return sheets.load(sheetId).getMaxOpen();
@@ -818,6 +827,19 @@ public class SettingService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         history.settingSet(sheetId, REVIEW_SLA, days != null ? days.toString() : null);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=review-sla value="
+                + (days != null ? days.toString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's pending SLA; null leaves it blank (none). */
+    @Transactional
+    public Sheet setPendingSla(String sheetId, String by, Integer days) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setPendingSla(days);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, PENDING_SLA, days != null ? days.toString() : null);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=pending-sla value="
                 + (days != null ? days.toString() : ""));
         return saved;
     }
