@@ -18,6 +18,8 @@ export interface Plan {
   generated: number;
   /** The first five plan dates after the sheet's today and on or before the end, the earliest first. */
   nextDates: string[];
+  /** Whether the plan is paused now; its dates from the day it was paused to the day it is resumed are skipped. */
+  paused: boolean;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -56,6 +58,21 @@ export class PlanStore {
     this.plans.update((list) => [...list.filter((p) => p.id !== saved.id), saved]);
   }
 
+  /** Pause the plan from the sheet's today, or resume it; the server refuses pausing a paused plan or
+   *  resuming a running one. */
+  async pause(planId: number, on: boolean): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.post<Plan>(
+        `/api/sheets/${encodeURIComponent(sheet)}/plans/${planId}/${on ? 'pause' : 'resume'}`,
+        {},
+      ),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.plans.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+  }
+
   /** Make every plan's claims due by the sheet's today; gives back the claims made. */
   async generate(): Promise<Claim[]> {
     const sheet = this.session.sheetId();
@@ -91,7 +108,13 @@ export class PlanStore {
           }
           to <span data-testid="plan-end">{{ pl.end }}</span>;
           made <span data-testid="plan-generated">{{ pl.generated }}</span>;
-          next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>
+          next <span data-testid="plan-next-dates">{{ pl.nextDates.join(', ') }}</span>;
+          paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
+          <button type="button" data-testid="plan-pause" (click)="pause(pl.id, true)">Pause</button>
+          <button type="button" data-testid="plan-resume" (click)="pause(pl.id, false)">Resume</button>
+          @if (rowErrors()[pl.id]; as message) {
+            <p role="alert" data-testid="plan-error">{{ message }}</p>
+          }
         </li>
       }
     </ul>
@@ -154,11 +177,26 @@ export class PersonPlans {
   protected readonly day = signal('');
   protected readonly end = signal('');
   protected readonly error = signal<string | null>(null);
+  /** The refusal of the last pause or resume on each plan's row, by plan id. */
+  protected readonly rowErrors = signal<Record<number, string>>({});
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  /** Pause or resume the plan; pausing a paused plan or resuming a running one is refused on its row. */
+  protected async pause(planId: number, on: boolean): Promise<void> {
+    this.rowErrors.update(({ [planId]: _, ...rest }) => rest);
+    try {
+      await this.store.pause(planId, on);
+    } catch {
+      this.rowErrors.update((errors) => ({
+        ...errors,
+        [planId]: on ? 'The plan could not be paused: it is paused already.' : 'The plan could not be resumed: it is not paused.',
+      }));
+    }
   }
 
   /** Add the typed plan, monthly when a day of the month is typed; a bad amount, interval or day, both

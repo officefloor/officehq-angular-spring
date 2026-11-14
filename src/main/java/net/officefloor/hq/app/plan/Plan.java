@@ -12,6 +12,7 @@ import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 /** A person's plan: a DRAFT claim of its amount (two decimals) for every plan date up to its end. The
  *  plan dates are its start and then every so many days, or, for a monthly plan, its day of the month
@@ -103,33 +104,36 @@ public class Plan {
         return madeOn;
     }
 
-    /** The plan's dates up to its end and the day given, the earliest first. */
-    public List<LocalDate> datesUpTo(LocalDate upTo) {
+    /** The plan's dates up to its end and the day given, those skipped left out, the earliest first. */
+    public List<LocalDate> datesUpTo(LocalDate upTo, Predicate<LocalDate> skipped) {
         LocalDate last = end.isBefore(upTo) ? end : upTo;
         List<LocalDate> dates = new ArrayList<>();
         if (day != null) {
             for (YearMonth m = YearMonth.from(start); !m.atDay(1).isAfter(last); m = m.plusMonths(1)) {
                 LocalDate d = m.atDay(Math.min(day, m.lengthOfMonth()));
-                if (!d.isBefore(start) && !d.isAfter(last)) {
+                if (!d.isBefore(start) && !d.isAfter(last) && !skipped.test(d)) {
                     dates.add(d);
                 }
             }
             return dates;
         }
         for (LocalDate d = start; !d.isAfter(last); d = d.plusDays(every)) {
-            dates.add(d);
+            if (!skipped.test(d)) {
+                dates.add(d);
+            }
         }
         return dates;
     }
 
-    /** The first so many plan dates after the day given and on or before its end, the earliest first. */
-    public List<LocalDate> datesAfter(LocalDate after, int count) {
+    /** The first so many plan dates after the day given and on or before its end, those skipped left
+     *  out, the earliest first. */
+    public List<LocalDate> datesAfter(LocalDate after, int count, Predicate<LocalDate> skipped) {
         List<LocalDate> dates = new ArrayList<>();
         if (day != null) {
             YearMonth m = YearMonth.from(after.isBefore(start) ? start : after);
             for (; dates.size() < count && !m.atDay(1).isAfter(end); m = m.plusMonths(1)) {
                 LocalDate d = m.atDay(Math.min(day, m.lengthOfMonth()));
-                if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end)) {
+                if (!d.isBefore(start) && d.isAfter(after) && !d.isAfter(end) && !skipped.test(d)) {
                     dates.add(d);
                 }
             }
@@ -140,7 +144,9 @@ public class Plan {
             d = start.plusDays((ChronoUnit.DAYS.between(start, after) / every + 1) * every);
         }
         for (; dates.size() < count && !d.isAfter(end); d = d.plusDays(every)) {
-            dates.add(d);
+            if (!skipped.test(d)) {
+                dates.add(d);
+            }
         }
         return dates;
     }

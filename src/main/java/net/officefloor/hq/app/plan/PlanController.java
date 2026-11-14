@@ -35,12 +35,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class PlanController {
 
     /** A plan as the screen shows it, with how many claims it has made so far and its next dates: the
-     *  first five plan dates after the sheet's today and on or before its end. */
+     *  first five plan dates after the sheet's today and on or before its end, those a pause skips left
+     *  out, and whether it is paused now. */
     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every,
-            Integer day, LocalDate end, int generated, List<LocalDate> nextDates) {
-        static PlanView of(Plan plan, int generated, LocalDate today) {
+            Integer day, LocalDate end, int generated, List<LocalDate> nextDates, boolean paused) {
+        static PlanView of(Plan plan, int generated, List<PlanPause> pauses, LocalDate today) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
-                    plan.getEvery(), plan.getDay(), plan.getEnd(), generated, plan.datesAfter(today, NEXT_DATES));
+                    plan.getEvery(), plan.getDay(), plan.getEnd(), generated,
+                    plan.datesAfter(today, NEXT_DATES, d -> PlanService.skipped(pauses, d)),
+                    pauses.stream().anyMatch(PlanPause::isOpen));
         }
     }
 
@@ -85,7 +88,27 @@ public class PlanController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return PlanView.of(service.add(sheet, by, request.personId(), request.amount(), request.start(),
-                request.every(), request.day(), request.end()), 0, sheets.today(sheet));
+                request.every(), request.day(), request.end()), 0, List.of(), sheets.today(sheet));
+    }
+
+    /** Pause the plan from the sheet's today; refused when it is paused already. */
+    @PostMapping("/{planId}/pause")
+    public PlanView pause(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long planId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return paused(sheetId, planId, user, true);
+    }
+
+    /** Resume the paused plan on the sheet's today; refused when it is running. */
+    @PostMapping("/{planId}/resume")
+    public PlanView resume(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long planId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        return paused(sheetId, planId, user, false);
+    }
+
+    private PlanView paused(String sheetId, Long planId, String user, boolean on) {
+        String sheet = sheetId.trim();
+        Plan plan = service.pause(sheet, SignedInUser.decode(user), planId, on);
+        return views(sheet, null).stream().filter(v -> v.id().equals(plan.getId())).findFirst().orElseThrow();
     }
 
     /** Make the plans' claims due by the sheet's today, then record the figures they moved. */
@@ -103,11 +126,14 @@ public class PlanController {
     private List<PlanView> views(String sheet, LocalDate asOf) {
         List<Plan> them = service.list(sheet, asOf);
         Map<Long, Integer> generated = service.generated(them, asOf);
+        Map<Long, List<PlanPause>> pauses = service.pauses(them, asOf);
         LocalDate today = sheets.today(sheet);
-        return them.stream().map(p -> PlanView.of(p, generated.getOrDefault(p.getId(), 0), today)).toList();
+        return them.stream().map(p -> PlanView.of(p, generated.getOrDefault(p.getId(), 0),
+                pauses.getOrDefault(p.getId(), List.of()), today)).toList();
     }
 
-    /** A bad amount, interval or day of the month, an end before the start, or a date that is not a real yyyy-mm-dd date. */
+    /** A bad amount, interval or day of the month, an end before the start, pausing a paused plan or
+     *  resuming a running one, or a date that is not a real yyyy-mm-dd date. */
     @ExceptionHandler({PlanRefusedException.class, HttpMessageNotReadableException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public void refused() {
