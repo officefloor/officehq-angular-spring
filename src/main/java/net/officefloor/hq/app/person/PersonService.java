@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -18,13 +19,15 @@ public class PersonService {
     private final PersonRepository people;
     private final PersonStatementRepository statements;
     private final SheetService sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonStatementRepository statements, SheetService sheets,
-            Audit audit) {
+            RollupService rollup, Audit audit) {
         this.people = people;
         this.statements = statements;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -56,6 +59,7 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String user, String name, String grade) {
         sheets.load(sheetId, user);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         String trimmed = name.trim();
         requireUnusedName(sheetId, null, trimmed);
         Person person;
@@ -65,6 +69,7 @@ public class PersonService {
             throw nameInUse(); // added by another user at the same moment
         }
         record("PERSON_ADDED", sheetId, user, person);
+        rollup.recordChanges(sheetId, user, before);
         return person;
     }
 
@@ -76,6 +81,7 @@ public class PersonService {
         if (version == null || version != person.getVersion()) {
             throw savedByAnother();
         }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         String trimmed = name.trim();
         requireUnusedName(sheetId, id, trimmed);
         person.setName(trimmed);
@@ -88,6 +94,7 @@ public class PersonService {
             throw savedByAnother(); // saved by another user at the same moment
         }
         record("PERSON_EDITED", sheetId, user, person);
+        rollup.recordChanges(sheetId, user, before);
         return person;
     }
 

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -16,11 +17,13 @@ public class RateService {
 
     private final RateRepository rates;
     private final SheetService sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
-    public RateService(RateRepository rates, SheetService sheets, Audit audit) {
+    public RateService(RateRepository rates, SheetService sheets, RollupService rollup, Audit audit) {
         this.rates = rates;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -34,6 +37,7 @@ public class RateService {
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal pct) {
         sheets.load(sheetId, user);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal scaled = pct.setScale(2);
         Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from).orElse(null);
         try {
@@ -49,6 +53,7 @@ public class RateService {
         }
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
                 + " grade=" + grade + " rate=" + scaled.toPlainString() + (from != null ? " from=" + from : ""));
+        rollup.recordChanges(sheetId, user, before);
         return rate;
     }
 }

@@ -12,6 +12,7 @@ import net.officefloor.hq.app.person.PersonStatementRepository;
 import net.officefloor.hq.app.person.StatementSummary;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ public class ClaimService {
     private final PersonStatementRepository statements;
     private final RateRepository rates;
     private final SheetService sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
     /** A statement just taken: the person, their statement summary now, and their claims, newest first. */
@@ -33,12 +35,13 @@ public class ClaimService {
     }
 
     public ClaimService(ClaimRepository claims, PersonRepository people, PersonStatementRepository statements,
-            RateRepository rates, SheetService sheets, Audit audit) {
+            RateRepository rates, SheetService sheets, RollupService rollup, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.statements = statements;
         this.rates = rates;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -52,15 +55,18 @@ public class ClaimService {
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate on = date != null ? date : sheets.today(sheetId);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, noteOf(note)));
         record("CLAIM_ADDED", user, person, claim);
+        rollup.recordChanges(sheetId, user, before);
         return claim;
     }
 
     /** Change a claim's amount, date and note; a missing date takes the sheet's today. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         claim.setAmount(amount);
@@ -70,6 +76,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         record("CLAIM_EDITED", user, person, claim);
+        rollup.recordChanges(sheetId, user, before);
         return claim;
     }
 
@@ -89,6 +96,7 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         // the VOIDED record carries the number the claim had
         Integer number = claim.getNumber();
         claim.setStatus(to);
@@ -115,6 +123,7 @@ public class ClaimService {
         } else {
             record(event, user, person, claim, number);
         }
+        rollup.recordChanges(sheetId, user, before);
         return claim;
     }
 
@@ -126,6 +135,7 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate today = sheets.today(sheetId);
         List<Claim> theirs = claims.findByPersonForUpdate(personId, sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         List<Claim> counted = theirs.stream().filter(ClaimService::counts).toList();
         BigDecimal dueTotal = dueTotalOf(counted, person, today);
         for (Claim c : theirs) {
@@ -139,6 +149,7 @@ public class ClaimService {
         statements.saveAndFlush(new PersonStatement(sheetId, personId, dueTotal, counted.size(), today, user));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counted.size());
+        rollup.recordChanges(sheetId, user, before);
         return new Statement(person, StatementSummary.of(statements.findByPersonIdOrderByIdAsc(personId)), theirs);
     }
 
