@@ -32,19 +32,20 @@ public class RateService {
         return rates.findBySheetIdOrderByGradeAsc(sheetId);
     }
 
-    /** Set a grade's rate from a date (null: from the beginning of time) on the sheet, replacing the
-     *  rate it had for that from-date (the sheet is created first if it was never loaded). */
+    /** Set a grade's rate from a date (null: from the beginning of time) through a date (null: for
+     *  good) on the sheet, replacing the rate it had for that from-date (the sheet is created first if it was never loaded). */
     @Transactional
-    public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal pct) {
+    public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
         sheets.load(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal scaled = pct.setScale(2);
         Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from).orElse(null);
         try {
             if (rate == null) {
-                rate = rates.saveAndFlush(new Rate(sheetId, grade, from, scaled));
+                rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, scaled));
             } else {
                 rate.setPct(scaled);
+                rate.setTo(to);
                 rates.flush();
             }
         } catch (DataIntegrityViolationException e) {
@@ -52,7 +53,8 @@ public class RateService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Rate changed at the same moment");
         }
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
-                + " grade=" + grade + " rate=" + scaled.toPlainString() + (from != null ? " from=" + from : ""));
+                + " grade=" + grade + " rate=" + scaled.toPlainString() + (from != null ? " from=" + from : "")
+                + (to != null ? " to=" + to : ""));
         rollup.recordChanges(sheetId, user, before);
         return rate;
     }

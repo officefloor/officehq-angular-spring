@@ -11,18 +11,22 @@ export interface Rate {
   grade: string;
   /** The first date (yyyy-mm-dd) the rate is in force; null when it applies from the beginning of time. */
   from: string | null;
+  /** The last date (yyyy-mm-dd) the rate applies; null when it applies for good. */
+  to: string | null;
   /** Always with two decimals, as the server formats it. */
   pct: string;
 }
 
 /** Of one grade's rates, the one in force on a date (yyyy-mm-dd): the one with the latest from-date
- *  on or before it, an undated rate applying from the beginning of time; null when none applies yet. */
+ *  on or before it, an undated rate applying from the beginning of time; null when none applies yet,
+ *  or when that one's to-date has passed by then. */
 export function pctOn(rates: readonly Rate[], date: string | null): string | null {
   let best: Rate | null = null;
   for (const r of rates) {
     if (r.from !== null && (date === null || r.from > date)) continue;
     if (best === null || (best.from ?? '') < (r.from ?? '')) best = r;
   }
+  if (best?.to != null && date !== null && best.to < date) return null;
   return best?.pct ?? null;
 }
 
@@ -36,9 +40,9 @@ export class RatesApi {
     return firstValueFrom(this.http.get<Rate[]>(this.url(sheetId), { headers: this.headers() }));
   }
 
-  set(sheetId: string, grade: string, pct: string, from: string | null): Promise<Rate> {
+  set(sheetId: string, grade: string, pct: string, from: string | null, to: string | null): Promise<Rate> {
     return firstValueFrom(
-      this.http.put<Rate>(`${this.url(sheetId)}/${encodeURIComponent(grade)}`, { pct, from }, { headers: this.headers() }),
+      this.http.put<Rate>(`${this.url(sheetId)}/${encodeURIComponent(grade)}`, { pct, from, to }, { headers: this.headers() }),
     );
   }
 
@@ -52,7 +56,7 @@ export class RatesApi {
 }
 
 export function rateError(e: unknown): string {
-  if (e instanceof HttpErrorResponse && e.status === 400) return 'Choose a grade, enter a percent of 0.00 or more with up to two decimals and a from-date as yyyy-mm-dd or none.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Choose a grade, enter a percent of 0.00 or more with up to two decimals and a from-date and to-date as yyyy-mm-dd or none, the to-date not before the from-date.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The rate was changed at the same moment; try again.';
   return 'Something went wrong; try again.';
 }

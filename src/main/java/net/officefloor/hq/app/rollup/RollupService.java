@@ -209,12 +209,14 @@ public class RollupService {
                 : numbered.getOrDefault(c.getPersonId() + "/" + c.getCorrects(), c.getDate()));
     }
 
-    /** The rate in force on a date for the person's grade in force then. */
+    /** The rate in force on a date for the person's grade in force then; none when that one's
+     *  to-date has passed by then. */
     private static Optional<Rate> inForce(Person person, List<Rate> sheetRates, LocalDate on) {
         String grade = person.gradeOn(on);
         return sheetRates.stream()
                 .filter(r -> r.getGrade().equals(grade) && r.appliesOn(on))
-                .max(Comparator.comparing(Rate::getFrom, Comparator.nullsFirst(Comparator.naturalOrder())));
+                .max(Comparator.comparing(Rate::getFrom, Comparator.nullsFirst(Comparator.naturalOrder())))
+                .filter(r -> r.runsThrough(on));
     }
 
     private static BigDecimal floorOf(Optional<Sheet> sheet) {

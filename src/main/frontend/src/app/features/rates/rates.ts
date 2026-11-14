@@ -5,7 +5,7 @@ import { GRADES } from '../people/people-api';
 import { PCT_PATTERN, Rate, RatesApi, pctOn, rateError } from './rates-api';
 
 // The rate in force on the sheet's today for each grade, every rate the sheet has for each grade by
-// from-date, and the form that sets a grade's rate from a date.
+// from-date, and the form that sets a grade's rate from a date, optionally through a date.
 @Component({
   selector: 'app-rates',
   imports: [ReactiveFormsModule],
@@ -23,6 +23,8 @@ import { PCT_PATTERN, Rate, RatesApi, pctOn, rateError } from './rates-api';
         <input id="rate-form-pct" data-testid="rate-form-pct" formControlName="pct" inputmode="decimal" autocomplete="off" />
         <label for="rate-form-from">From (blank: always)</label>
         <input id="rate-form-from" type="date" data-testid="rate-form-from" formControlName="from" />
+        <label for="rate-form-to">To (blank: for good)</label>
+        <input id="rate-form-to" type="date" data-testid="rate-form-to" formControlName="to" />
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as err) {
           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
@@ -45,13 +47,14 @@ import { PCT_PATTERN, Rate, RatesApi, pctOn, rateError } from './rates-api';
       <table data-testid="rates-list">
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
         </thead>
         <tbody>
           @for (r of sorted(); track r.grade + '-' + (r.from ?? 'start')) {
             <tr [attr.data-testid]="'rate-row-' + r.grade + '-' + (r.from ?? 'start')">
               <th scope="row" data-testid="rate-grade">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? '' }}</td>
+              <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
             </tr>
           }
@@ -81,6 +84,7 @@ export class Rates {
     grade: new FormControl<string>('A', { nonNullable: true }),
     pct: new FormControl('', { nonNullable: true }),
     from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -97,7 +101,7 @@ export class Rates {
     this.error.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    const { grade, pct, from } = this.form.getRawValue();
+    const { grade, pct, from, to } = this.form.getRawValue();
     if (!(GRADES as readonly string[]).includes(grade)) {
       this.error.set('Choose a grade.');
       return;
@@ -112,11 +116,20 @@ export class Rates {
       this.error.set('Enter a from-date as yyyy-mm-dd, or leave it blank.');
       return;
     }
+    const toDate = to.trim();
+    if (toDate !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(toDate)) {
+      this.error.set('Enter a to-date as yyyy-mm-dd, or leave it blank.');
+      return;
+    }
+    if (fromDate !== '' && toDate !== '' && toDate < fromDate) {
+      this.error.set('The to-date cannot be before the from-date.');
+      return;
+    }
     this.submitting = true;
     try {
-      const rate = await this.api.set(sheetId, grade, value, fromDate || null);
+      const rate = await this.api.set(sheetId, grade, value, fromDate || null, toDate || null);
       if (this.session.sheetId() === sheetId) this.saved.emit(rate);
-      this.form.reset({ grade, pct: '', from: '' }, { emitEvent: false });
+      this.form.reset({ grade, pct: '', from: '', to: '' }, { emitEvent: false });
     } catch (e) {
       this.error.set(rateError(e));
     } finally {
