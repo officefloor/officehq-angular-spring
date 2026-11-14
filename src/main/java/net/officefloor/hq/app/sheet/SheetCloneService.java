@@ -174,10 +174,10 @@ public class SheetCloneService {
                 Long is = insert("INSERT INTO claim (sheet_id, person_id, amount, claim_date, note, status,"
                         + " settled_due, opened_by, stated, corrects_number, due_by, deferred_until, proofs, split_from,"
                         + " late_entry, reminded_on, ref, ref_key, tags, void_reason, edited_by, escalated, waived,"
-                        + " proofs_receipt, proofs_photo)"
+                        + " proofs_receipt, proofs_photo, held)"
                         + " SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by, FALSE, corrects_number,"
                         + " due_by, deferred_until, proofs, split_from, late_entry, reminded_on, ref, ref_key, tags,"
-                        + " void_reason, edited_by, escalated, waived, proofs_receipt, proofs_photo FROM claim WHERE id = ?", to, person.getValue(), id);
+                        + " void_reason, edited_by, escalated, waived, proofs_receipt, proofs_photo, held FROM claim WHERE id = ?", to, person.getValue(), id);
                 jdbc.update("INSERT INTO claim_status_log (sheet_id, claim_id, status, changed_by, changed_on, due)"
                         + " SELECT ?, ?, status, changed_by, changed_on, due FROM claim_status_log WHERE claim_id = ?"
                         + " ORDER BY id", to, is, id);

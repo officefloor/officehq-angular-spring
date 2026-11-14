@@ -80,6 +80,9 @@ export interface Claim {
   lines: string[];
   /** Whether a steward waived the claim's late charge: it bears none from then on. */
   waived: boolean;
+  /** Whether the claim itself is held: while OPEN or PENDING it counts in no live total, unless bound
+   *  by a statement. */
+  held: boolean;
 }
 
 /** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
@@ -332,6 +335,7 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-number">{{ c.number ?? '' }}</span>
           <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
+          <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span>
           <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span>
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           <span data-testid="claim-period">{{ periodNameOf(c) }}</span>
@@ -386,6 +390,9 @@ const NUMBER = /^\S+$/;
           </button>
           <button type="button" data-testid="claim-remind" [attr.aria-label]="'Remind claim ' + c.id" (click)="remind(c)">
             Remind
+          </button>
+          <button type="button" data-testid="claim-hold" [attr.aria-label]="(c.held ? 'Release claim ' : 'Hold claim ') + c.id" (click)="toggleHold(c)">
+            {{ c.held ? 'Release' : 'Hold' }}
           </button>
           <button type="button" data-testid="claim-waive" [attr.aria-label]="'Waive the late charge of claim ' + c.id" (click)="waive(c)">
             Waive late charge
@@ -870,6 +877,25 @@ export class PersonClaims {
       this.rowError.set({
         id: claim.id,
         message: 'The claim could not be reminded: only an open or pending claim can be, once a day.',
+      });
+    }
+  }
+
+  /** Hold an OPEN or PENDING claim, or release it when it is held; a claim in any other status is
+   *  refused on the row. */
+  protected async toggleHold(claim: Claim): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/hold`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, {}));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(saved);
+    } catch {
+      this.rowError.set({
+        id: claim.id,
+        message: 'The claim could not be held or released: only an open or pending claim can be.',
       });
     }
   }

@@ -601,6 +601,23 @@ public class ClaimService {
         return saved;
     }
 
+    /** Hold an OPEN or PENDING claim, or release it when it is held: while held it is left out of the
+     *  live totals as a held person's claims are, and CLAIM_HELD or CLAIM_RELEASED is written. A claim
+     *  in any other status, or one dated in a closed period, is refused. */
+    @Transactional
+    public Claim toggleHold(String sheetId, String user, Long personId, Long id) {
+        Person person = person(sheetId, personId);
+        Claim claim = claim(sheetId, personId, id);
+        if (!claim.getStatus().isOpen()) {
+            throw new HoldRefusedException("A " + claim.getStatus() + " claim cannot be held or released");
+        }
+        refuseClosed(sheetId, claim.getDueBy());
+        claim.toggleHeld();
+        Claim saved = claims.saveAndFlush(claim);
+        record(saved.isHeld() ? "CLAIM_HELD" : "CLAIM_RELEASED", sheetId, user, person, saved);
+        return saved;
+    }
+
     /** Remind an OPEN or PENDING claim: REMIND is written and the claim's reminded date is the sheet's
      *  today. A claim in any other status, or one already reminded on the sheet's today, is refused. When
      *  the sheet has an escalation gap and the claim's previous reminder was at least that many days before

@@ -116,6 +116,11 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
+    /** Whether the claim itself is held: while OPEN or PENDING it is left out of the live totals as a
+     *  held person's claims are. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     /** How many proofs have been added to the claim. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -182,6 +187,7 @@ public class Claim {
         split.splitFrom = from.number;
         split.tags = from.tags;
         split.waived = from.waived;
+        split.held = from.held;
         return split;
     }
 
@@ -217,6 +223,12 @@ public class Claim {
      *  {@link #asItWas}. */
     public Claim withWaived(boolean waived) {
         this.waived = waived;
+        return this;
+    }
+
+    /** Whether the claim, as it was once saved, was held itself; on a copy made by {@link #asItWas}. */
+    public Claim withHeld(boolean held) {
+        this.held = held;
         return this;
     }
 
@@ -427,6 +439,15 @@ public class Claim {
         this.waived = true;
     }
 
+    public boolean isHeld() {
+        return held;
+    }
+
+    /** Hold the claim, or release it when it is held. */
+    public void toggleHeld() {
+        this.held = !held;
+    }
+
     public int getProofs() {
         return proofs;
     }
@@ -496,9 +517,10 @@ public class Claim {
         return status.counts();
     }
 
-    /** Whether the claim is held: it is OPEN or PENDING and dated within one of its person's holds. */
+    /** Whether the claim is held: it is OPEN or PENDING and held itself, or dated within one of its
+     *  person's holds. */
     public boolean heldBy(List<PersonHold> holds) {
-        return status.isOpen() && holds.stream().anyMatch(hold -> hold.contains(date));
+        return status.isOpen() && (held || holds.stream().anyMatch(hold -> hold.contains(date)));
     }
 
     /** Whether the claim is left out for its person's retirement: it is OPEN or PENDING and the

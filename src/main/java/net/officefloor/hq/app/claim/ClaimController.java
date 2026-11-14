@@ -60,13 +60,13 @@ public class ClaimController {
      *  is the number of the settle batch that settled it (null when a bulk settle did not); lines are
      *  its lines, oldest first, each as <label> <qty> x <unit> (empty when it has none); waived is
      *  whether a steward waived its late charge; proofsReceipt and proofsPhoto are how many of its
-     *  proofs are receipts and photos. */
+     *  proofs are receipts and photos; held is whether the claim itself is held. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry,
             LocalDate remindedOn, String ref, List<String> tags, String voidReason, List<String> comments,
-            Long batch, List<String> lines, boolean waived, int proofsReceipt, int proofsPhoto) {
+            Long batch, List<String> lines, boolean waived, int proofsReceipt, int proofsPhoto, boolean held) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log, List<String> comments) {
             return of(claim, roundsBy, log, comments, List.of());
         }
@@ -82,7 +82,7 @@ public class ClaimController {
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
                     claim.getRemindedOn(), claim.getRef(), claim.getTags(),
                     claim.getVoidReason(), comments, claim.getBatch(), lines, claim.isWaived(),
-                    claim.getProofsReceipt(), claim.getProofsPhoto());
+                    claim.getProofsReceipt(), claim.getProofsPhoto(), claim.isHeld());
         }
     }
 
@@ -399,6 +399,15 @@ public class ClaimController {
         return view(sheet, rollups.track(sheet, by, () -> service.waive(sheet, by, personId, id)));
     }
 
+    /** Hold an OPEN or PENDING claim, or release it when it is held. */
+    @PostMapping("/people/{personId}/claims/{id}/hold")
+    public ClaimView hold(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, rollups.track(sheet, by, () -> service.toggleHold(sheet, by, personId, id)));
+    }
+
     /** Re-date an OPEN or PENDING claim: a steward only. */
     @PostMapping("/people/{personId}/claims/{id}/redate")
     public ClaimView redate(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
@@ -525,13 +534,13 @@ public class ClaimController {
      *  reminded on the sheet's today, or an empty comment, or a delete of a claim that is not a DRAFT or
      *  a restore of one not deleted on the sheet's today, or a line on a correction, or an edit typing
      *  an amount other than the one a claim's lines add up to, or a waiver of a claim that is not OPEN or
-     *  PENDING or is already waived, is refused. */
+     *  PENDING or is already waived, or a hold or release of a claim that is not OPEN or PENDING, is refused. */
     @ExceptionHandler({VoidRefusedException.class, StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
             DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class, NoteRequiredException.class,
             SplitRefusedException.class, RedateRefusedException.class, PeriodCapException.class, ClaimLockedException.class,
             RemindRefusedException.class, CommentRefusedException.class, DeleteRefusedException.class, RefInUseException.class, LinedAmountException.class,
-            WaiveRefusedException.class, DataIntegrityViolationException.class})
+            WaiveRefusedException.class, HoldRefusedException.class, DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }

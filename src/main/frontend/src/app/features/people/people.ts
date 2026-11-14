@@ -1037,7 +1037,7 @@ export class People {
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   /** The sheet's claims that count in live totals: OPEN, PENDING and SETTLED ones, except one deferred
-   *  on the sheet's today, and, unless bound by a statement, an OPEN or PENDING one dated within one of its
+   *  on the sheet's today, and, unless bound by a statement, an OPEN or PENDING one held itself or dated within one of its
    *  person's holds or an OPEN or PENDING one whose person is retired by the sheet's today. */
   private readonly live = computed(() => this.claims().filter((c) => counts(c) && this.liveRulesKeep()(c)));
   /** Whether the live rules leave a claim in: it is not deferred on the sheet's today, and, unless bound
@@ -1049,7 +1049,7 @@ export class People {
     const today = this.session.today();
     const held = (c: Claim) =>
       isOpen(c) &&
-      (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
+      (c.held || (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to)));
     const retired = (c: Claim) => {
       const from = retiredFrom.get(c.personId) ?? null;
       return isOpen(c) && from !== null && today !== null && from <= today;
