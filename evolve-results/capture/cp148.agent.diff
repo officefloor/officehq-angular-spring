@@ -1,0 +1,56 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c8cedddd3..bb8903c48 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -859,7 +859,7 @@ export class People {
+     return map;
+   });
+   protected readonly claimedTotal = computed(() =>
+-    money(this.live().reduce((sum, c) => sum + cents(c.amount), 0)),
++    money(this.live().reduce((sum, c) => sum + claimedCents(c), 0)),
+   );
+   /** Everyone's due-total added up, skipping those whose grade has no rate, trimmed. */
+   protected readonly dueTotal = computed(() =>
+@@ -1570,7 +1570,7 @@ export class People {
+   }
+ 
+   protected claimedBy(personId: number): string {
+-    return money(this.countedOf(personId).reduce((sum, c) => sum + cents(c.amount), 0));
++    return money(this.countedOf(personId).reduce((sum, c) => sum + claimedCents(c), 0));
+   }
+ 
+   /** The grade in force on the sheet's today among a person's grades. */
+@@ -2241,3 +2241,8 @@ function trimmedSum(figures: number[]): number {
+   const sum = figures.reduce((total, figure) => total + figure, 0);
+   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
+ }
++
++/** What a claim adds to what is claimed, in cents: its amount, or nothing when it corrects another. */
++function claimedCents(claim: Claim): number {
++  return claim.corrects === null ? cents(claim.amount) : 0;
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index cb665934b..bd335b8de 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -192,7 +192,8 @@ public class RollupService {
+         return sum.subtract(Collections.max(figures)).subtract(Collections.min(figures));
+     }
+ 
+-    /** A person's figures from their claims that count: the sum of their amounts, and the sum of the
++    /** A person's figures from their claims that count: the sum of their amounts, leaving out those
++     *  that correct another claim, and the sum of the
+      *  figures they show, or none when the grade in force on the sheet's today has no rate in force
+      *  then and no claim of theirs shows a figure; the sum is held to the sheet's cap. The overdue-total
+      *  sums the dues of those that are OPEN or PENDING with a due-by plus their grace before the sheet's today. */
+@@ -202,7 +203,9 @@ public class RollupService {
+         BigDecimal overdue = NONE;
+         boolean anyFigure = false;
+         for (Claim claim : counted) {
+-            claimed = claimed.add(claim.getAmount());
++            if (claim.getCorrects() == null) {
++                claimed = claimed.add(claim.getAmount());
++            }
+             BigDecimal figure = claimService.dueOf(sheetId, person, claim);
+             if (figure != null) {
+                 due = due.add(figure);
