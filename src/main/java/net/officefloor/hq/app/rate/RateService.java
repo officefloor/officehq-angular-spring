@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.rate;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -28,15 +29,16 @@ public class RateService {
         return rates.findBySheetIdOrderByGradeAsc(sheetId);
     }
 
-    /** Set a grade's rate on the sheet, replacing the rate it had (the sheet is created first if it was never loaded). */
+    /** Set a grade's rate from a date (null: from the beginning of time) on the sheet, replacing the
+     *  rate it had for that from-date (the sheet is created first if it was never loaded). */
     @Transactional
-    public Rate set(String sheetId, String user, String grade, BigDecimal pct) {
+    public Rate set(String sheetId, String user, String grade, LocalDate from, BigDecimal pct) {
         sheets.load(sheetId, user);
         BigDecimal scaled = pct.setScale(2);
-        Rate rate = rates.findBySheetIdAndGrade(sheetId, grade).orElse(null);
+        Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from).orElse(null);
         try {
             if (rate == null) {
-                rate = rates.saveAndFlush(new Rate(sheetId, grade, scaled));
+                rate = rates.saveAndFlush(new Rate(sheetId, grade, from, scaled));
             } else {
                 rate.setPct(scaled);
                 rates.flush();
@@ -46,7 +48,7 @@ public class RateService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Rate changed at the same moment");
         }
         audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
-                + " grade=" + grade + " rate=" + scaled.toPlainString());
+                + " grade=" + grade + " rate=" + scaled.toPlainString() + (from != null ? " from=" + from : ""));
         return rate;
     }
 }

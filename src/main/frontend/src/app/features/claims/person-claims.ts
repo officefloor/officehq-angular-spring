@@ -1,7 +1,7 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { dueCents } from '../rates/rates-api';
+import { Rate, dueCents, pctOn } from '../rates/rates-api';
 import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, money, statusError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
@@ -62,8 +62,8 @@ export class PersonClaims {
   readonly personName = input.required<string>();
   /** This person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
-  /** The rate for this person's grade (a percent with two decimals), or null when it has none. */
-  readonly pct = input.required<string | null>();
+  /** Every rate the sheet has for this person's grade, each from its from-date. */
+  readonly rates = input.required<Rate[]>();
   /** A claim added or saved, for the sheet's list to take in. */
   readonly saved = output<Claim>();
 
@@ -83,11 +83,11 @@ export class PersonClaims {
     this.form.valueChanges.subscribe(() => this.error.set(null));
   }
 
-  /** The claim's amount times the rate, divided by 100, rounded half up; n/a with no rate.
-   *  A claim settled with a due shows the due fixed then. */
+  /** The claim's amount times the rate in force on the claim's date, divided by 100, rounded half
+   *  up; n/a with no rate in force then. A claim settled with a due shows the due fixed then. */
   protected dueOf(c: Claim): string {
     if (c.settledDue !== null) return c.settledDue;
-    const pct = this.pct();
+    const pct = pctOn(this.rates(), c.date);
     return pct === null ? 'n/a' : money(dueCents(cents(c.amount), cents(pct)));
   }
 

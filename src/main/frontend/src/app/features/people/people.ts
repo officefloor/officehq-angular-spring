@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Claim, ClaimsApi, cents, counts, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Rates } from '../rates/rates';
-import { Rate, RatesApi, dueCents } from '../rates/rates-api';
+import { Rate, RatesApi, dueCents, pctOn } from '../rates/rates-api';
 import { GRADES, PeopleApi, Person, personError } from './people-api';
 
 // The sheet's rates; the people on the active sheet, in the order they were added, each with their
@@ -49,7 +49,7 @@ import { GRADES, PeopleApi, Person, personError } from './people-api';
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueOf(p) }}</td>
               <td>
-                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [pct]="pctOf(p.grade)"
+                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)"
                   (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -84,9 +84,10 @@ export class People {
     }
     return out;
   });
-  /** The sheet's rate (a percent with two decimals) by grade; a grade with none has no entry. */
+  /** The sheet's rates (a percent with two decimals), each for a grade from a from-date. */
   protected readonly rates = signal<Rate[]>([]);
-  /** Each person's due-total in cents, by person id; null (n/a) when their grade has no rate. */
+  /** Each person's due-total in cents, by person id, at their grade's rate in force on the sheet's
+   *  today; null (n/a) when it has none then. */
   private readonly dueByPerson = computed(() => {
     const out = new Map<number, number | null>();
     for (const p of this.people()) {
@@ -140,9 +141,14 @@ export class People {
     return money(this.byPerson().get(personId)?.cents ?? 0);
   }
 
-  /** The rate for a grade, or null when the sheet has none for it. */
+  /** The rate for a grade in force on the sheet's today, or null when it has none then. */
   protected pctOf(grade: string): string | null {
-    return this.rates().find((r) => r.grade === grade)?.pct ?? null;
+    return pctOn(this.ratesOf(grade), this.session.today());
+  }
+
+  /** Every rate the sheet has for a grade. */
+  protected ratesOf(grade: string): Rate[] {
+    return this.rates().filter((r) => r.grade === grade);
   }
 
   protected dueOf(p: Person): string {
@@ -150,9 +156,9 @@ export class People {
     return due === null || due === undefined ? 'n/a' : money(due);
   }
 
-  /** Take in a rate just set, in place of the grade's old one. */
+  /** Take in a rate just set, in place of the grade's old one for the same from-date. */
   protected rateSaved(rate: Rate): void {
-    this.rates.update((rs) => [...rs.filter((r) => r.grade !== rate.grade), rate]);
+    this.rates.update((rs) => [...rs.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
   }
 
   /** Take in a claim just added (listed first, as the newest) or saved (in its place). */

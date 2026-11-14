@@ -8,8 +8,21 @@ export const PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 
 export interface Rate {
   grade: string;
+  /** The first date (yyyy-mm-dd) the rate is in force; null when it applies from the beginning of time. */
+  from: string | null;
   /** Always with two decimals, as the server formats it. */
   pct: string;
+}
+
+/** Of one grade's rates, the one in force on a date (yyyy-mm-dd): the one with the latest from-date
+ *  on or before it, an undated rate applying from the beginning of time; null when none applies yet. */
+export function pctOn(rates: readonly Rate[], date: string | null): string | null {
+  let best: Rate | null = null;
+  for (const r of rates) {
+    if (r.from !== null && (date === null || r.from > date)) continue;
+    if (best === null || (best.from ?? '') < (r.from ?? '')) best = r;
+  }
+  return best?.pct ?? null;
 }
 
 // The sheet's rate for each grade, read and written through the server.
@@ -22,9 +35,9 @@ export class RatesApi {
     return firstValueFrom(this.http.get<Rate[]>(this.url(sheetId), { headers: this.headers() }));
   }
 
-  set(sheetId: string, grade: string, pct: string): Promise<Rate> {
+  set(sheetId: string, grade: string, pct: string, from: string | null): Promise<Rate> {
     return firstValueFrom(
-      this.http.put<Rate>(`${this.url(sheetId)}/${encodeURIComponent(grade)}`, { pct }, { headers: this.headers() }),
+      this.http.put<Rate>(`${this.url(sheetId)}/${encodeURIComponent(grade)}`, { pct, from }, { headers: this.headers() }),
     );
   }
 
@@ -38,7 +51,7 @@ export class RatesApi {
 }
 
 export function rateError(e: unknown): string {
-  if (e instanceof HttpErrorResponse && e.status === 400) return 'Choose a grade and enter a percent of 0.00 or more with up to two decimals.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Choose a grade, enter a percent of 0.00 or more with up to two decimals and a from-date as yyyy-mm-dd or none.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The rate was changed at the same moment; try again.';
   return 'Something went wrong; try again.';
 }
