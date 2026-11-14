@@ -1,0 +1,64 @@
+{
+  "checkpoint": 7,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp07_rates-and-due",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a rate for each grade: a percent with two decimals, set on the screen (RATE_SET\ngrade=<grade> rate=<rate> in the audit). A claim's due is its amount times the rate for its\nperson's grade, divided by 100, rounded half up to two decimals (a half rounds away from zero:\n1.025 becomes 1.03). Show due on each claim. Show each person's due-total: their claimed times\ntheir grade's rate, divided by 100, rounded the same way. Show the sheet's due-total: everyone's\ndue-total added up. A grade with no rate makes its claims' due and its people's due-total n/a,\nand a total skips n/a.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a rate for each grade: a percent with two decimals, set on the screen (RATE_SET\ngrade=<grade> rate=<rate> in the audit). A claim's due is its amount times the rate for its\nperson's grade, divided by 100, rounded half up to two decimals (a half rounds away from zero:\n1.025 becomes 1.03). Show due on each claim. Show each person's due-total: their claimed times\ntheir grade's rate, divided by 100, rounded the same way. Show the sheet's due-total: everyone's\ndue-total added up. A grade with no rate makes its claims' due and its people's due-total n/a,\nand a total skips n/a.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e321140c19eb7a5ff0ab68158012c83237ee9269",
+  "reset_sha": "",
+  "preagent_sha": "2b873e295ca984dc1d6bdd78d8f63e0de35abbf4",
+  "prev_sha": "2b873e295ca984dc1d6bdd78d8f63e0de35abbf4",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8921468,
+    "input_tokens": 30,
+    "output_tokens": 12354,
+    "cache_read_tokens": 588334,
+    "cache_creation_tokens": 65910,
+    "num_turns": 16,
+    "duration_ms": 184387,
+    "duration_api_ms": 110044,
+    "model": "claude-opus-5-5",
+    "session_id": "1879f09c-c34e-4278-8c18-c3e73249ef86",
+    "stop_reason": "success",
+    "result_text": "Rates by grade and due amounts are now in the app. All 4 tests in the acceptance spec pass under `bin/e2e`, including the audit lines.\n\n**What it does**\n- **Setting a rate:** the screen has a Rates form where you pick a grade (A, B or C) and enter a percent with up to two decimals. Setting a rate replaces that grade's old one, and each set writes `RATE_SET sheet=<id> by=<user> grade=<g> rate=<x.xx>` to the audit file. A bad value shows the form's error and saves nothing.\n- **Rates table:** shows each grade's current rate, or `n/a` if it has none.\n- **Due on each claim:** amount \u00d7 the rate for the person's grade \u00f7 100, rounded half up to two decimals (1.025 \u2192 1.03). It shows `n/a` if the grade has no rate.\n- **Each person's due-total:** their claimed total \u00d7 their grade's rate \u00f7 100, rounded the same way. This is not the sum of the claims' rounded dues, so it can differ by a cent: two claims of 10.25 at 10% show 1.03 each, but the person's due-total is 2.05.\n- **Sheet due-total:** everyone's due-total added up, skipping `n/a`.\n\n**How it's built**\n- **Stored data:** a new migration, `V6__rate.sql`, adds a `rate` table with one row per sheet and grade.\n- **Server:** a new `rate` package (`Rate`, `RateRepository`, `RateService`, `RateController`) serves `GET /api/sheets/{id}/rates` and `PUT /api/sheets/{id}/rates/{grade}`.\n- **Front end:** new files under `features/rates/` hold the API, the due calculation and the Rates form. `People` loads the rates along with people and claims and works out the due-totals. `PersonClaims` shows each claim's due. The due maths uses exact whole-cent integers, so large amounts don't pick up floating-point errors.\n\n**Choices you may want to change**\n- A rate can be anything from 0.00 to 999.99, so rates over 100% are allowed. The request didn't say whether to cap it.\n- Setting a grade to the rate it already has still writes a `RATE_SET` line. One test does exactly that and expects the line.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8921468,
+        "num_turns": 16,
+        "duration_ms": 184387,
+        "duration_api_ms": 110044,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp07.agent.jsonl",
+  "agent_diff_file": "cp07.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

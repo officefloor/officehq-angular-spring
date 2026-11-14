@@ -1,0 +1,543 @@
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 051182b07..032017f21 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -1,7 +1,8 @@
+ import { Component, inject, input, output, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Session } from '../../core/session';
+-import { AMOUNT_PATTERN, Claim, ClaimsApi, claimError } from './claims-api';
++import { dueCents } from '../rates/rates-api';
++import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, claimError, money } from './claims-api';
+ 
+ // One person's claims, newest first, and the one form that adds a claim or, with a claim's
+ // editor open, saves that claim.
+@@ -30,6 +31,7 @@ import { AMOUNT_PATTERN, Claim, ClaimsApi, claimError } from './claims-api';
+             <span data-testid="claim-amount">{{ c.amount }}</span>
+             <span data-testid="claim-date">{{ c.date }}</span>
+             <span data-testid="claim-note">{{ c.note }}</span>
++            <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+             <button type="button" data-testid="claim-edit" (click)="edit(c)"
+               [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
+             @if (editingId() === c.id) {
+@@ -49,6 +51,8 @@ export class PersonClaims {
+   readonly personName = input.required<string>();
+   /** This person's claims, newest first. */
+   readonly claims = input.required<Claim[]>();
++  /** The rate for this person's grade (a percent with two decimals), or null when it has none. */
++  readonly pct = input.required<string | null>();
+   /** A claim added or saved, for the sheet's list to take in. */
+   readonly saved = output<Claim>();
+ 
+@@ -66,6 +70,12 @@ export class PersonClaims {
+     this.form.valueChanges.subscribe(() => this.error.set(null));
+   }
+ 
++  /** The claim's amount times the rate, divided by 100, rounded half up; n/a with no rate. */
++  protected dueOf(c: Claim): string {
++    const pct = this.pct();
++    return pct === null ? 'n/a' : money(dueCents(cents(c.amount), cents(pct)));
++  }
++
+   protected edit(c: Claim): void {
+     this.error.set(null);
+     this.editingId.set(c.id);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 45df56eb9..a39102462 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,15 +3,19 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
+ import { Session } from '../../core/session';
+ import { Claim, ClaimsApi, cents, money } from '../claims/claims-api';
+ import { PersonClaims } from '../claims/person-claims';
++import { Rates } from '../rates/rates';
++import { Rate, RatesApi, dueCents } from '../rates/rates-api';
+ import { GRADES, PeopleApi, Person, personError } from './people-api';
+ 
+-// The people on the active sheet, in the order they were added, each with their claims and what
+-// they have claimed; the sheet's claimed-total; and the one form that adds a person or, with a
++// The sheet's rates; the people on the active sheet, in the order they were added, each with their
++// claims, what they have claimed and their due-total; the sheet's claimed-total and due-total; and
++// the one form that adds a person or, with a
+ // person's editor open, saves that person.
+ @Component({
+   selector: 'app-people',
+-  imports: [ReactiveFormsModule, PersonClaims],
++  imports: [ReactiveFormsModule, PersonClaims, Rates],
+   template: `
++    <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+       <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
+@@ -32,9 +36,10 @@ import { GRADES, PeopleApi, Person, personError } from './people-api';
+         }
+       </form>
+       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
++      <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+       <table data-testid="people-list">
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of people(); track p.id) {
+@@ -42,8 +47,9 @@ import { GRADES, PeopleApi, Person, personError } from './people-api';
+               <td data-testid="person-name">{{ p.name }}</td>
+               <td data-testid="person-grade">{{ p.grade }}</td>
+               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
++              <td data-testid="person-due-total">{{ dueOf(p) }}</td>
+               <td>
+-                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"
++                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [pct]="pctOf(p.grade)"
+                   (saved)="claimSaved($event)" />
+               </td>
+               <td>
+@@ -61,6 +67,7 @@ export class People {
+   private readonly session = inject(Session);
+   private readonly api = inject(PeopleApi);
+   private readonly claimsApi = inject(ClaimsApi);
++  private readonly ratesApi = inject(RatesApi);
+ 
+   protected readonly grades = GRADES;
+   protected readonly people = signal<Person[]>([]);
+@@ -77,6 +84,20 @@ export class People {
+     }
+     return out;
+   });
++  /** The sheet's rate (a percent with two decimals) by grade; a grade with none has no entry. */
++  protected readonly rates = signal<Rate[]>([]);
++  /** Each person's due-total in cents, by person id; null (n/a) when their grade has no rate. */
++  private readonly dueByPerson = computed(() => {
++    const out = new Map<number, number | null>();
++    for (const p of this.people()) {
++      const pct = this.pctOf(p.grade);
++      out.set(p.id, pct === null ? null : dueCents(this.byPerson().get(p.id)?.cents ?? 0, cents(pct)));
++    }
++    return out;
++  });
++  /** Everyone's due-total added up, skipping n/a. */
++  protected readonly dueTotal = computed(() =>
++    money([...this.dueByPerson().values()].reduce<number>((sum, d) => sum + (d ?? 0), 0)));
+   protected readonly claimedTotal = computed(() =>
+     money(this.people().reduce((sum, p) => sum + (this.byPerson().get(p.id)?.cents ?? 0), 0)));
+   protected readonly editingId = signal<number | null>(null);
+@@ -99,6 +120,7 @@ export class People {
+         this.reset();
+         this.people.set([]);
+         this.claims.set([]);
++        this.rates.set([]);
+         if (id) void this.read(id);
+       });
+     });
+@@ -118,6 +140,21 @@ export class People {
+     return money(this.byPerson().get(personId)?.cents ?? 0);
+   }
+ 
++  /** The rate for a grade, or null when the sheet has none for it. */
++  protected pctOf(grade: string): string | null {
++    return this.rates().find((r) => r.grade === grade)?.pct ?? null;
++  }
++
++  protected dueOf(p: Person): string {
++    const due = this.dueByPerson().get(p.id);
++    return due === null || due === undefined ? 'n/a' : money(due);
++  }
++
++  /** Take in a rate just set, in place of the grade's old one. */
++  protected rateSaved(rate: Rate): void {
++    this.rates.update((rs) => [...rs.filter((r) => r.grade !== rate.grade), rate]);
++  }
++
+   /** Take in a claim just added (listed first, as the newest) or saved (in its place). */
+   protected claimSaved(claim: Claim): void {
+     this.claims.update((cs) => cs.some((c) => c.id === claim.id)
+@@ -166,8 +203,10 @@ export class People {
+   private async read(sheetId: string): Promise<void> {
+     const seq = ++this.readSeq;
+     try {
+-      const [people, claims] = await Promise.all([this.api.list(sheetId), this.claimsApi.list(sheetId)]);
++      const [people, claims, rates] = await Promise.all([
++        this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId)]);
+       if (seq === this.readSeq) {
++        this.rates.set(rates);
+         this.claims.set(claims);
+         this.people.set(people);
+       }
+diff --git a/src/main/frontend/src/app/features/rates/rates-api.ts b/src/main/frontend/src/app/features/rates/rates-api.ts
+new file mode 100644
+index 000000000..f5d134a59
+--- /dev/null
++++ b/src/main/frontend/src/app/features/rates/rates-api.ts
+@@ -0,0 +1,51 @@
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++/** A percent of 0.00 or more with up to two decimals. */
++export const PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
++
++export interface Rate {
++  grade: string;
++  /** Always with two decimals, as the server formats it. */
++  pct: string;
++}
++
++// The sheet's rate for each grade, read and written through the server.
++@Injectable({ providedIn: 'root' })
++export class RatesApi {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  list(sheetId: string): Promise<Rate[]> {
++    return firstValueFrom(this.http.get<Rate[]>(this.url(sheetId), { headers: this.headers() }));
++  }
++
++  set(sheetId: string, grade: string, pct: string): Promise<Rate> {
++    return firstValueFrom(
++      this.http.put<Rate>(`${this.url(sheetId)}/${encodeURIComponent(grade)}`, { pct }, { headers: this.headers() }),
++    );
++  }
++
++  private url(sheetId: string): string {
++    return `/api/sheets/${encodeURIComponent(sheetId)}/rates`;
++  }
++
++  private headers(): Record<string, string> {
++    return { 'X-User': this.session.user() ?? '' };
++  }
++}
++
++export function rateError(e: unknown): string {
++  if (e instanceof HttpErrorResponse && e.status === 400) return 'Choose a grade and enter a percent of 0.00 or more with up to two decimals.';
++  if (e instanceof HttpErrorResponse && e.status === 409) return 'The rate was changed at the same moment; try again.';
++  return 'Something went wrong; try again.';
++}
++
++/** Whole cents times a percent (in hundredths of a percent), divided by 100, in whole cents,
++ *  rounded half up (away from zero). Worked in BigInt so large amounts stay exact. */
++export function dueCents(cents: number, pctHundredths: number): number {
++  const product = BigInt(cents) * BigInt(pctHundredths);
++  return Number((product + 5000n) / 10000n);
++}
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+new file mode 100644
+index 000000000..825bd2f86
+--- /dev/null
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -0,0 +1,98 @@
++import { Component, inject, input, output, signal } from '@angular/core';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { Session } from '../../core/session';
++import { GRADES } from '../people/people-api';
++import { PCT_PATTERN, Rate, RatesApi, rateError } from './rates-api';
++
++// The sheet's rate for each grade, and the form that sets a grade's rate.
++@Component({
++  selector: 'app-rates',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="rates-heading">
++      <h2 id="rates-heading">Rates</h2>
++      <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Set rate">
++        <label for="rate-form-grade">Grade</label>
++        <select id="rate-form-grade" data-testid="rate-form-grade" formControlName="grade">
++          @for (g of grades; track g) {
++            <option [value]="g">{{ g }}</option>
++          }
++        </select>
++        <label for="rate-form-pct">Rate (%)</label>
++        <input id="rate-form-pct" data-testid="rate-form-pct" formControlName="pct" inputmode="decimal" autocomplete="off" />
++        <button type="submit" data-testid="rate-form-submit">Set rate</button>
++        @if (error(); as err) {
++          <p role="alert" data-testid="rate-form-error">{{ err }}</p>
++        }
++      </form>
++      <table data-testid="rates-list">
++        <thead>
++          <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th></tr>
++        </thead>
++        <tbody>
++          @for (g of grades; track g) {
++            @if (rateOf(g); as r) {
++              <tr [attr.data-testid]="'rate-row-' + g + '-start'">
++                <th scope="row" data-testid="rate-grade">{{ g }}</th>
++                <td [attr.data-testid]="'rate-current-' + g"><span data-testid="rate-pct">{{ r.pct }}</span></td>
++              </tr>
++            } @else {
++              <tr>
++                <th scope="row">{{ g }}</th>
++                <td [attr.data-testid]="'rate-current-' + g">n/a</td>
++              </tr>
++            }
++          }
++        </tbody>
++      </table>
++    </section>
++  `,
++})
++export class Rates {
++  private readonly session = inject(Session);
++  private readonly api = inject(RatesApi);
++
++  /** The sheet's rates, one per grade that has one. */
++  readonly rates = input.required<Rate[]>();
++  /** A rate just set, for the sheet to take in. */
++  readonly saved = output<Rate>();
++
++  protected readonly grades = GRADES;
++  protected readonly error = signal<string | null>(null);
++
++  protected readonly form = new FormGroup({
++    grade: new FormControl<string>('A', { nonNullable: true }),
++    pct: new FormControl('', { nonNullable: true }),
++  });
++
++  constructor() {
++    this.form.valueChanges.subscribe(() => this.error.set(null));
++  }
++
++  protected rateOf(grade: string): Rate | undefined {
++    return this.rates().find((r) => r.grade === grade);
++  }
++
++  protected async submit(): Promise<void> {
++    this.error.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    const { grade, pct } = this.form.getRawValue();
++    if (!(GRADES as readonly string[]).includes(grade)) {
++      this.error.set('Choose a grade.');
++      return;
++    }
++    const value = pct.trim();
++    if (!PCT_PATTERN.test(value)) {
++      this.error.set('Enter a percent of 0.00 or more with up to two decimals.');
++      return;
++    }
++    try {
++      const rate = await this.api.set(sheetId, grade, value);
++      if (this.session.sheetId() === sheetId) this.saved.emit(rate);
++      this.form.reset({ grade, pct: '' }, { emitEvent: false });
++    } catch (e) {
++      this.error.set(rateError(e));
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+new file mode 100644
+index 000000000..6d4b3ac3b
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -0,0 +1,57 @@
++package net.officefloor.hq.app.rate;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++
++/** The sheet's rate for a grade: a percent with two decimals. */
++@Entity
++@Table(name = "rate")
++public class Rate {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "grade", nullable = false)
++    private String grade;
++
++    @Column(name = "pct", nullable = false, precision = 5, scale = 2)
++    private BigDecimal pct;
++
++    protected Rate() {
++    }
++
++    public Rate(String sheetId, String grade, BigDecimal pct) {
++        this.sheetId = sheetId;
++        this.grade = grade;
++        this.pct = pct;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getGrade() {
++        return grade;
++    }
++
++    public BigDecimal getPct() {
++        return pct;
++    }
++
++    public void setPct(BigDecimal pct) {
++        this.pct = pct;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+new file mode 100644
+index 000000000..07e86b7b7
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -0,0 +1,57 @@
++package net.officefloor.hq.app.rate;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++import java.util.List;
++import net.officefloor.hq.app.session.CurrentUser;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets/{sheetId}/rates")
++@Validated
++public class RateController {
++
++    /** A grade's rate as the screen shows it: the percent always with two decimals. */
++    public record RateView(String grade, String pct) {
++        static RateView of(Rate r) {
++            return new RateView(r.getGrade(), r.getPct().setScale(2).toPlainString());
++        }
++    }
++
++    /** A rate as the form submits it: a percent of 0.00 or more with up to two decimals. */
++    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct) {
++    }
++
++    private final RateService service;
++
++    public RateController(RateService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<RateView> list(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
++        return service.list(sheetId).stream().map(RateView::of).toList();
++    }
++
++    @PutMapping("/{grade}")
++    public RateView set(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @PathVariable @Pattern(regexp = "[ABC]") String grade,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody RateForm body) {
++        return RateView.of(service.set(sheetId, user.trim(), grade, new BigDecimal(body.pct())));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateRepository.java b/src/main/java/net/officefloor/hq/app/rate/RateRepository.java
+new file mode 100644
+index 000000000..72e7d4a14
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateRepository.java
+@@ -0,0 +1,13 @@
++package net.officefloor.hq.app.rate;
++
++import java.util.List;
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface RateRepository extends JpaRepository<Rate, Long> {
++
++    /** The sheet's rates, by grade. */
++    List<Rate> findBySheetIdOrderByGradeAsc(String sheetId);
++
++    Optional<Rate> findBySheetIdAndGrade(String sheetId, String grade);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+new file mode 100644
+index 000000000..c39721e47
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -0,0 +1,52 @@
++package net.officefloor.hq.app.rate;
++
++import java.math.BigDecimal;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class RateService {
++
++    private final RateRepository rates;
++    private final SheetService sheets;
++    private final Audit audit;
++
++    public RateService(RateRepository rates, SheetService sheets, Audit audit) {
++        this.rates = rates;
++        this.sheets = sheets;
++        this.audit = audit;
++    }
++
++    @Transactional(readOnly = true)
++    public List<Rate> list(String sheetId) {
++        return rates.findBySheetIdOrderByGradeAsc(sheetId);
++    }
++
++    /** Set a grade's rate on the sheet, replacing the rate it had (the sheet is created first if it was never loaded). */
++    @Transactional
++    public Rate set(String sheetId, String user, String grade, BigDecimal pct) {
++        sheets.load(sheetId, user);
++        BigDecimal scaled = pct.setScale(2);
++        Rate rate = rates.findBySheetIdAndGrade(sheetId, grade).orElse(null);
++        try {
++            if (rate == null) {
++                rate = rates.saveAndFlush(new Rate(sheetId, grade, scaled));
++            } else {
++                rate.setPct(scaled);
++                rates.flush();
++            }
++        } catch (DataIntegrityViolationException e) {
++            // set by another user at the same moment
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "Rate changed at the same moment");
++        }
++        audit.recordOnCommit("RATE_SET sheet=" + sheetId + " by=" + user
++                + " grade=" + grade + " rate=" + scaled.toPlainString());
++        return rate;
++    }
++}
+diff --git a/src/main/resources/db/migration/V6__rate.sql b/src/main/resources/db/migration/V6__rate.sql
+new file mode 100644
+index 000000000..51324ed45
+--- /dev/null
++++ b/src/main/resources/db/migration/V6__rate.sql
+@@ -0,0 +1,8 @@
++-- The sheet's rate for each grade: a percent with two decimals. A grade with no row has no rate.
++CREATE TABLE rate (
++    id       BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    grade    VARCHAR(1)   NOT NULL CHECK (grade IN ('A', 'B', 'C')),
++    pct      DECIMAL(5, 2) NOT NULL CHECK (pct >= 0)
++);
++CREATE UNIQUE INDEX rate_sheet_grade ON rate (sheet_id, grade);
