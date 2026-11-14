@@ -401,6 +401,7 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span>
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           <span data-testid="claim-period">{{ periodNameOf(c) }}</span>
+          <span data-testid="claim-policy">{{ policyOn()(c.date) }}</span>
           <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-review-assigned">{{ c.reviewAssignee ?? '' }}</span>
           <span data-testid="claim-review-late">{{ isReviewLate(c) ? 'yes' : 'no' }}</span>
@@ -721,6 +722,8 @@ export class PersonClaims {
   readonly roundingOn = input.required<(date: string) => string | null>();
   /** The grace days in force on a date for a grade (0 for none). */
   readonly graceOn = input.required<(grade: string | null, date: string) => number>();
+  /** The policy version in force on a date (0 for none). */
+  readonly policyOn = input.required<(date: string) => number>();
   /** The sheet's review SLA in whole days; blank for none. */
   readonly reviewSla = input('');
   /** The sheet's pending SLA in whole days; blank for none. */

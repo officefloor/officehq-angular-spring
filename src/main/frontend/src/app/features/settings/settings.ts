@@ -28,6 +28,13 @@ export interface DatedValue {
   value: string | null;
 }
 
+/** A policy version: its number, from 1 in the order made, and its from-date (yyyy-mm-dd; null for
+ *  none, in force always). */
+export interface PolicyVersion {
+  number: number;
+  from: string | null;
+}
+
 interface SettingsView {
   roles: RoleView[];
   /** The delegations of the steward role, in the order made. */
@@ -96,6 +103,9 @@ interface SettingsView {
   /** The permission matrix: the roles each action allows, comma separated, by action; blank keeps
    *  the standing rule. */
   permissions: Record<string, string>;
+  /** The policy versions, in the order made: every change to the rounding mode, the floor, the cap,
+   *  the terms, the late percent or the clerk limit is a new one. */
+  policyVersions: PolicyVersion[];
 }
 
 /** The value recorded that is in force on a date: the one with the latest from-date on or before
@@ -165,6 +175,22 @@ export class SettingStore {
   readonly floor = computed(() => this.onToday('floor') ?? FLOOR);
   /** The cap in force on the sheet's today; null when there is none. */
   readonly cap = computed(() => this.onToday('cap') ?? null);
+  /** The cap in force on a date: a person's is the one on the date of their latest claim that counts;
+   *  null when there is none. */
+  readonly capOn = computed(() => {
+    const recorded = this.dated()['cap'];
+    return (date: string) => valueOn(recorded, date) ?? null;
+  });
+  /** The policy versions, in the order made. */
+  readonly policyVersions = signal<PolicyVersion[]>([]);
+  /** The current policy version's number: how many versions have been made; 0 for none. */
+  readonly policyVersion = computed(() => this.policyVersions().length);
+  /** The policy version in force on a date: how many versions have a from-date on or before it (one
+   *  with no from-date counts always). */
+  readonly policyOn = computed(() => {
+    const versions = this.policyVersions();
+    return (date: string) => versions.filter((v) => v.from === null || v.from <= date).length;
+  });
   /** The proof threshold in force on the sheet's today; null when there is none. */
   readonly proofThreshold = computed(() => this.onToday('proof-threshold') ?? null);
   /** The note threshold in force on the sheet's today; null when there is none. */
@@ -691,6 +717,7 @@ export class SettingStore {
     this.roles.set(settings.roles);
     this.delegations.set(settings.delegations);
     this.dated.set(settings.dated);
+    this.policyVersions.set(settings.policyVersions);
     this.policyDate.set(settings.policyDate);
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
     this.entryDate.set(settings.entryDate);
@@ -1223,6 +1250,10 @@ export class SettingStore {
       <p>
         Floor in force:
         <strong data-testid="setting-floor-current">{{ store.floor() }}</strong>
+      </p>
+      <p>
+        Policy version:
+        <strong data-testid="policy-version">{{ store.policyVersion() }}</strong>
       </p>
       <p>
         Cap in force:

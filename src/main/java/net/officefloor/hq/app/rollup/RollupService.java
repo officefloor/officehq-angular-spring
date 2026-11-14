@@ -369,7 +369,8 @@ public class RollupService {
     /** A person's figures from their claims that count: the sum of their amounts, leaving out those
      *  that correct another claim, and the sum of the
      *  figures they show (a held one's included), or none when the grade in force on the sheet's today has no rate in force
-     *  then and no claim of theirs shows a figure; the sum is held to the sheet's cap less their cut total. The overdue-total
+     *  then and no claim of theirs shows a figure; the sum is held to the cap in force on the date of the latest of them
+     *  less their cut total. The overdue-total
      *  sums the dues of those that are OPEN or PENDING with a due-by plus their grace before the sheet's today.
      *  The settled figures, for the score, sum those of SETTLED claims that correct nothing. The
      *  due-total takes in what the shares of claims move (null: none moves it): a holder's parts, less
@@ -420,7 +421,9 @@ public class RollupService {
             anyFigure = true;
         }
         boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), today, asOf), today, asOf).isPresent();
-        return new Figures(person.getName(), claimed, hasRate || anyFigure ? settings.capped(sheetId, due, cutTotal, asOf) : null,
+        LocalDate latest = counted.stream().map(Claim::getDate).max(LocalDate::compareTo).orElse(null);
+        return new Figures(person.getName(), claimed,
+                hasRate || anyFigure ? settings.capped(sheetId, due, cutTotal, latest, asOf) : null,
                 overdue, settled, overdueCount, settledTotal, openTotal, cutTotal);
     }
 

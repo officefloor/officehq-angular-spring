@@ -25,8 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 /** A sheet's settings: the role each user name has on it, and its clerk limit, its floor, its cap, its proof threshold, its terms
  *  (and any grade's own terms) and its late percent, its policy date, its period numbering from, its grace days and its entry date. The
  *  settings that carry a figure are dated: each value recorded is in force from its from-date. A claim's
- *  floor, late percent, terms and proof threshold are those in force on its date; the clerk limit and the cap those in
- *  force on the sheet's today. */
+ *  floor, late percent, terms, proof threshold and clerk limit are those in force on its date; a person's cap the one
+ *  in force on the date of their latest claim that counts. The policy settings (the rounding mode, the floor, the
+ *  cap, the terms, the late percent and the clerk limit) are versioned together: every change to one of them is a
+ *  new policy version. */
 @Service
 public class SettingService {
 
@@ -52,10 +54,13 @@ public class SettingService {
     private final Audit audit;
     private final SheetGradeRepository addedGrades;
     private final RetiredGradeRepository retiredGrades;
+    private final PolicyVersionRepository versions;
 
     public SettingService(SheetService sheets, SheetRepository sheetRepository, SheetRoleRepository roles,
             SettingValueRepository values, SheetPermissionRepository permissions, DelegationRepository delegations,
-            History history, Audit audit, RetiredGradeRepository retiredGrades, SheetGradeRepository addedGrades) {
+            History history, Audit audit, RetiredGradeRepository retiredGrades, SheetGradeRepository addedGrades,
+            PolicyVersionRepository versions) {
+        this.versions = versions;
         this.retiredGrades = retiredGrades;
         this.addedGrades = addedGrades;
         this.history = history;
@@ -98,7 +103,7 @@ public class SettingService {
             Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent,
             int fiscalStartMonth, BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla,
             List<String> proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh, boolean scoreLog,
-            Integer maxOpen, Integer pendingSla) {
+            Integer maxOpen, Integer pendingSla, List<PolicyVersion> policyVersions) {
     }
 
     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
@@ -168,7 +173,7 @@ public class SettingService {
                 kindsOf(kinds), defaultGrade, scoreMid != null ? Integer.valueOf(scoreMid) : null,
                 scoreHigh != null ? Integer.valueOf(scoreHigh) : null, scoreLog,
                 maxOpen != null ? Integer.valueOf(maxOpen) : null,
-                pendingSla != null ? Integer.valueOf(pendingSla) : null);
+                pendingSla != null ? Integer.valueOf(pendingSla) : null, policyVersions(sheetId, day));
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -310,20 +315,24 @@ public class SettingService {
 
     /** The sheet's clerk limit in force on its today; null when there is none. */
     public BigDecimal clerkLimit(String sheetId) {
-        return inForce(sheetId, "clerk-limit", sheets.today(sheetId)).map(SettingValue::getValue).orElse(null);
+        return clerkLimit(sheetId, sheets.today(sheetId));
     }
 
-    /** The clerk limit in force on the sheet's today for a claim of the grade: the grade's own in force
+    /** The sheet's clerk limit in force on a date; null when there is none. */
+    public BigDecimal clerkLimit(String sheetId, LocalDate on) {
+        return inForce(sheetId, "clerk-limit", on).map(SettingValue::getValue).orElse(null);
+    }
+
+    /** The clerk limit in force on a claim's date for a claim of the grade: the grade's own in force
      *  then when one is set (not blank), else the sheet's; null when neither is. */
-    public BigDecimal clerkLimitFor(String sheetId, String grade) {
+    public BigDecimal clerkLimitFor(String sheetId, String grade, LocalDate on) {
         if (grade != null) {
-            BigDecimal own = inForce(sheetId, GRADE_CLERK_LIMIT + grade, sheets.today(sheetId))
-                    .map(SettingValue::getValue).orElse(null);
+            BigDecimal own = inForce(sheetId, GRADE_CLERK_LIMIT + grade, on).map(SettingValue::getValue).orElse(null);
             if (own != null) {
                 return own;
             }
         }
-        return clerkLimit(sheetId);
+        return clerkLimit(sheetId, on);
     }
 
     /** The sheet's floor in force on a date: the least the live due of a claim of that date can be. */
@@ -371,18 +380,13 @@ public class SettingService {
         return inForce(sheetId, "review-threshold", on).map(SettingValue::getValue).orElse(null);
     }
 
-    /** A person's due-total held to the sheet's cap less their cut total (not below 0.00); a due-total
-     *  of none (n/a) is not capped. */
-    public BigDecimal capped(String sheetId, BigDecimal dueTotal, BigDecimal cutTotal) {
-        return capped(sheetId, dueTotal, cutTotal, null);
-    }
-
-    /** A person's due-total held to the cap in force at the end of a day, as it stood then, less their
-     *  cut total (not below 0.00), the day standing in for the sheet's today (null: the cap in force on
-     *  the sheet's today now). */
-    public BigDecimal capped(String sheetId, BigDecimal dueTotal, BigDecimal cutTotal, LocalDate asOf) {
-        BigDecimal cap = asOf == null ? cap(sheetId)
-                : inForce(sheetId, "cap", asOf, asOf).map(SettingValue::getValue).orElse(null);
+    /** A person's due-total held to the cap in force on the date of their latest claim that counts (null:
+     *  they have none, the sheet's today), as the caps stood at the end of a day, less their cut total (not
+     *  below 0.00), the day standing in for the sheet's today (null: as the caps stand now); a due-total of
+     *  none (n/a) is not capped. */
+    public BigDecimal capped(String sheetId, BigDecimal dueTotal, BigDecimal cutTotal, LocalDate latest, LocalDate asOf) {
+        LocalDate on = latest != null ? latest : asOf != null ? asOf : sheets.today(sheetId);
+        BigDecimal cap = inForce(sheetId, "cap", on, asOf).map(SettingValue::getValue).orElse(null);
         if (dueTotal == null || cap == null) {
             return dueTotal;
         }
@@ -689,6 +693,7 @@ public class SettingService {
                 })
                 .orElseGet(() -> new SettingValue(sheetId, "rounding", on, null, mode));
         saved = values.saveAndFlush(saved);
+        newPolicyVersion(sheetId, "rounding", on);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=rounding value="
                 + (mode != null ? mode : "") + (from != null ? " from=" + from : ""));
         return saved;
@@ -706,10 +711,29 @@ public class SettingService {
                 })
                 .orElseGet(() -> new SettingValue(sheetId, key, on, value));
         saved = values.saveAndFlush(saved);
+        newPolicyVersion(sheetId, key, on);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=" + key + " value="
                 + (value != null ? (wholeDays(key) ? String.valueOf(value.intValue()) : value.toPlainString()) : "")
                 + (from != null ? " from=" + from : ""));
         return saved;
+    }
+
+    /** The keys of the policy settings, versioned together. */
+    private static final List<String> POLICY_KEYS = List.of("rounding", "floor", "cap", "terms", "late-pct", "clerk-limit");
+
+    /** Make the next policy version, in force from a from-date, when the key is a policy setting's. */
+    private void newPolicyVersion(String sheetId, String key, LocalDate from) {
+        if (POLICY_KEYS.contains(key)) {
+            versions.saveAndFlush(new PolicyVersion(sheetId, (int) versions.countBySheetId(sheetId) + 1, from,
+                    sheets.today(sheetId)));
+        }
+    }
+
+    /** The sheet's policy versions, in the order made, as they stood at the end of a day (null: as they
+     *  stand now): those made while the sheet's today was on or before it. */
+    public List<PolicyVersion> policyVersions(String sheetId, LocalDate asOf) {
+        return versions.findBySheetIdOrderByNumberAsc(sheetId).stream()
+                .filter(v -> asOf == null || !v.getMadeOn().isAfter(asOf)).toList();
     }
 
     /** Whether a dated setting's values are whole days: the terms, a grade's terms and a grade's grace. */

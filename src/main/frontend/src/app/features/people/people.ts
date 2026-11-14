@@ -756,6 +756,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
                   [policyDate]="settings.policyDate()"
                   [roundingOn]="settings.roundingOn()"
                   [graceOn]="settings.graceOn()"
+                  [policyOn]="settings.policyOn()"
                   [reviewSla]="settings.reviewSla()"
                   [pendingSla]="settings.pendingSla()"
                   [selectedIds]="selectedClaims()"
@@ -1110,10 +1111,16 @@ export class People {
     const floorOn = this.settings.floorOn();
     return (date: string) => cents(floorOn(date));
   });
-  /** The sheet's cap in cents in force on its today; null when there is none. */
-  private readonly cap = computed(() => {
-    const cap = this.settings.cap();
-    return cap === null ? null : cents(cap);
+  /** A person's cap in cents: the one in force on the date of their latest claim that counts (the
+   *  sheet's today when they have none); null when there is none. */
+  private readonly capOf = computed(() => {
+    const capOn = this.settings.capOn();
+    const today = this.session.today() ?? '';
+    return (person: Person) => {
+      const latest = this.countedOf(person.id).reduce((d, c) => (c.date > d ? c.date : d), '');
+      const cap = capOn(latest || today);
+      return cap === null ? null : cents(cap);
+    };
   });
   /** What late charges work from: the sheet's late percent in force on a date and today; and the policy date
    *  figures round by. */
@@ -2412,7 +2419,7 @@ export class People {
     return (today === null ? null : gradeOn(person.grades, today)) ?? person.grade;
   }
 
-  /** The sum of the dues shown on a person's claims that count held to the sheet's cap less their cut
+  /** The sum of the dues shown on a person's claims that count held to their cap less their cut
    *  total (not below 0.00), or n/a when the grade in force on the sheet's today has no rate in force
    *  then and no claim of theirs shows a figure. */
   protected dueBy(person: Person): string {
@@ -2420,18 +2427,18 @@ export class People {
     return due === null ? NO_RATE : money(due);
   }
 
-  /** How far the sum of the dues on a person's claims that count plus their cut total is above the
-   *  sheet's cap; 0.00 when it is not, there is no cap or the due-total is n/a. */
+  /** How far the sum of the dues on a person's claims that count plus their cut total is above their
+   *  cap; 0.00 when it is not, there is no cap or the due-total is n/a. */
   protected excessOf(person: Person): string {
     const sum = this.uncappedCentsBy(person);
-    const cap = this.cap();
+    const cap = this.capOf()(person);
     // What the cap holds back: the uncapped sum less the due it leaves (a cut above the cap leaves none).
     return money(sum === null || cap === null ? 0 : Math.max(sum - Math.max(cap - this.cutCentsOf(person), 0), 0));
   }
 
   private dueCentsBy(person: Person): number | null {
     const sum = this.uncappedCentsBy(person);
-    const cap = this.cap();
+    const cap = this.capOf()(person);
     return sum === null || cap === null ? sum : Math.min(sum, Math.max(cap - this.cutCentsOf(person), 0));
   }
 

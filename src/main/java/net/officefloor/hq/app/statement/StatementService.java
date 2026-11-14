@@ -116,6 +116,7 @@ public class StatementService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         boolean anyFigure = false;
         int counted = 0;
+        LocalDate latest = null;
         for (Claim claim : theirs) {
             // The claim as it stood at the end of the day; one not yet theirs then is left out.
             Claim then = asOf == null ? claim
@@ -136,6 +137,9 @@ public class StatementService {
             }
             claim.bind(due);
             counted++;
+            if (latest == null || then.getDate().isAfter(latest)) {
+                latest = then.getDate();
+            }
         }
         if (sharedPart != null) {
             total = total.add(sharedPart);
@@ -145,7 +149,7 @@ public class StatementService {
         boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), day, asOf), day, asOf).isPresent();
         BigDecimal cutTotal = cuts.cutTotals(sheetId, asOf, personService.list(sheetId, asOf))
                 .getOrDefault(personId, BigDecimal.ZERO.setScale(2));
-        String dueTotal = hasRate || anyFigure ? settings.capped(sheetId, total, cutTotal, asOf).toPlainString()
+        String dueTotal = hasRate || anyFigure ? settings.capped(sheetId, total, cutTotal, latest, asOf).toPlainString()
                 : NO_RATE;
         statements.saveAndFlush(new Statement(sheetId, personId, day, dueTotal, counted, today));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()

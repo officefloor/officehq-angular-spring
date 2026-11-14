@@ -54,13 +54,22 @@ public class SettingController {
      *  rounding); and
      *  the permission matrix, the roles each action allows by action (blank for the standing rule); and the
      *  proof kinds, comma separated (blank for none); and the default grade (blank for A); and the score
-     *  thresholds, mid and high (null for blank); and the score log, on or blank. */
+     *  thresholds, mid and high (null for blank); and the score log, on or blank; and the policy versions, in the
+     *  order made. */
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
             String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
             Map<String, List<DatedView>> dated, Map<String, String> permissions, List<DelegationView> delegations,
             String entryDate, String pot, String parent, int fiscalStartMonth,
             String alertThreshold, Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade,
-            Integer scoreMid, Integer scoreHigh, String scoreLog, Integer maxOpen, Integer pendingSla) {
+            Integer scoreMid, Integer scoreHigh, String scoreLog, Integer maxOpen, Integer pendingSla,
+            List<PolicyVersionView> policyVersions) {
+    }
+
+    /** A policy version: its number, and its from-date (yyyy-mm-dd; null for none, in force always). */
+    public record PolicyVersionView(int number, String from) {
+        static PolicyVersionView of(PolicyVersion v) {
+            return new PolicyVersionView(v.getNumber(), v.getFrom() != null ? v.getFrom().toString() : null);
+        }
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
@@ -235,7 +244,8 @@ public class SettingController {
                 then.fiscalStartMonth(), then.alertThreshold() != null ? then.alertThreshold().toPlainString() : null,
                 then.escalateAfter(), then.reviewSla(), String.join(",", then.proofKinds()),
                 then.defaultGrade() != null ? then.defaultGrade() : "", then.scoreMid(), then.scoreHigh(),
-                then.scoreLog() ? "on" : "", then.maxOpen(), then.pendingSla());
+                then.scoreLog() ? "on" : "", then.maxOpen(), then.pendingSla(),
+                then.policyVersions().stream().map(PolicyVersionView::of).toList());
     }
 
     /** Assign a user name a role; a role other than clerk or steward is refused. */
@@ -625,7 +635,8 @@ public class SettingController {
                 alert != null ? alert.toPlainString() : null, service.escalateAfter(sheet),
                 service.reviewSla(sheet), String.join(",", service.proofKinds(sheet)),
                 defaultGrade != null ? defaultGrade : "", service.scoreMid(sheet), service.scoreHigh(sheet),
-                service.scoreLog(sheet) ? "on" : "", service.maxOpen(sheet), service.pendingSla(sheet));
+                service.scoreLog(sheet) ? "on" : "", service.maxOpen(sheet), service.pendingSla(sheet),
+                service.policyVersions(sheet, null).stream().map(PolicyVersionView::of).toList());
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */
