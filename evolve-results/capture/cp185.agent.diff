@@ -1,0 +1,215 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 59a379603..59676f959 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -430,6 +430,22 @@ const NUMBER = /^\S+$/;
+           <button type="button" data-testid="claim-split" [attr.aria-label]="'Split claim ' + c.id" (click)="split(c)">
+             Split
+           </button>
++          <label [for]="'claim-settle-part-amount-' + c.id">Settle part</label>
++          <input
++            [id]="'claim-settle-part-amount-' + c.id"
++            data-testid="claim-settle-part-amount"
++            inputmode="decimal"
++            [value]="settlePartAmounts()[c.id] ?? ''"
++            (input)="setSettlePartAmount(c.id, value($event))"
++          />
++          <button
++            type="button"
++            data-testid="claim-settle-part"
++            [attr.aria-label]="'Settle part of claim ' + c.id"
++            (click)="settlePart(c)"
++          >
++            Settle part
++          </button>
+           <ol data-testid="claim-lines" [attr.aria-label]="'Lines of claim ' + c.id">
+             @for (line of c.lines; track $index) {
+               <li data-testid="claim-lines-line">{{ line }}</li>
+@@ -636,6 +652,9 @@ export class PersonClaims {
+   /** The amount typed on each claim's row to split off it, by claim id. */
+   protected readonly splitAmounts = signal<Record<number, string>>({});
+ 
++  /** The amount typed on each claim's row to settle part of it, by claim id. */
++  protected readonly settlePartAmounts = signal<Record<number, string>>({});
++
+   /** The comment typed on each claim's row, by claim id. */
+   protected readonly commentTexts = signal<Record<number, string>>({});
+ 
+@@ -1042,6 +1061,42 @@ export class PersonClaims {
+     }
+   }
+ 
++  protected setSettlePartAmount(id: number, amount: string): void {
++    this.settlePartAmounts.update((amounts) => ({ ...amounts, [id]: amount }));
++    if (this.rowError()?.id === id) this.rowError.set(null);
++  }
++
++  /** Settle part of an OPEN claim: split the amount typed on its row off it, as splitting does, and
++   *  settle the new claim at once, as settling does (PENDING when the clerk limit says so). The
++   *  four-eyes rules and the proof rule are judged on the original claim; a split or a settle that
++   *  would be refused refuses the whole of it on the row. */
++  protected async settlePart(claim: Claim): Promise<void> {
++    this.rowError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const amount = (this.settlePartAmounts()[claim.id] ?? '').trim();
++    if (!AMOUNT.test(amount) || cents(amount) <= 0 || cents(amount) >= cents(claim.amount)) {
++      this.rowError.set({ id: claim.id, message: "Type an amount above 0.00 and below the claim's to settle." });
++      return;
++    }
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/settle-part`;
++    try {
++      const result = await firstValueFrom(this.http.post<Split>(url, { amount }));
++      if (this.session.sheetId() !== sheet) return;
++      this.setSettlePartAmount(claim.id, '');
++      this.saved.emit(result.kept);
++      this.saved.emit(result.added);
++    } catch (e) {
++      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
++      this.rowError.set({
++        id: claim.id,
++        message: forbidden
++          ? 'Part of the claim could not be settled: whoever opened it cannot settle it, and your role must be allowed to open and settle.'
++          : 'Part of the claim could not be settled: only an open claim outside a closed period, not deferred, with the proofs it needs, can be.',
++      });
++    }
++  }
++
+   /** Add a proof of the kind chosen on its row (a receipt when none is) to a claim, raising its proofs
+    *  count, and its count of the kind, by one; a SETTLED or VOID claim, or one dated in a closed
+    *  period, is refused on the row. Once added, the row's kind goes back to none chosen. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 09bb6df32..f8d94180b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -184,14 +184,16 @@ public class ClaimController {
+     private final RollupService rollups;
+     private final BulkOpenService bulkOpen;
+     private final BulkSettleService bulkSettle;
++    private final PartSettleService partSettle;
+     private final BulkReassignService bulkReassign;
+     private final BulkRedateService bulkRedate;
+     private final History history;
+     private final ClaimTemplateService templates;
+ 
+     public ClaimController(ClaimService service, RollupService rollups, BulkOpenService bulkOpen,
+-            BulkSettleService bulkSettle, BulkReassignService bulkReassign, BulkRedateService bulkRedate,
+-            History history, ClaimTemplateService templates) {
++            BulkSettleService bulkSettle, PartSettleService partSettle, BulkReassignService bulkReassign,
++            BulkRedateService bulkRedate, History history, ClaimTemplateService templates) {
++        this.partSettle = partSettle;
+         this.bulkRedate = bulkRedate;
+         this.templates = templates;
+         this.bulkReassign = bulkReassign;
+@@ -443,6 +445,19 @@ public class ClaimController {
+         return new SplitView(view(sheet, split.kept()), view(sheet, split.added()));
+     }
+ 
++    /** Settle part of an OPEN claim: split the amount off it and settle the new claim at once, the
++     *  four-eyes rules and the proof rule judged on the original claim; all or nothing. */
++    @PostMapping("/people/{personId}/claims/{id}/settle-part")
++    @ResponseStatus(HttpStatus.CREATED)
++    public SplitView settlePart(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
++            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
++            @RequestBody @Validated SplitRequest request) {
++        String sheet = sheetId.trim();
++        ClaimService.Split split = partSettle.settlePart(sheet, SignedInUser.decode(user), personId, id,
++                request.amount());
++        return new SplitView(view(sheet, split.kept()), view(sheet, split.added()));
++    }
++
+     /** The kind of a proof being added: receipt or photo; null or blank when none is chosen (a receipt). */
+     public record ProofRequest(@Size(max = 20) String kind) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 9b90309ae..d32e23ccc 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -323,6 +323,30 @@ public class ClaimService {
+     @Transactional
+     public Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to,
+             String voidReason) {
++        return changeStatus(sheetId, user, personId, id, to, voidReason, false);
++    }
++
++    /** Refuse the user settling part of a claim when settling the claim itself would be refused by the
++     *  four-eyes rules (whoever opened or last edited it cannot) or the proof rule (its due now). */
++    @Transactional
++    public void refusePartSettle(String sheetId, String user, Long personId, Long id) {
++        Person person = person(sheetId, personId);
++        Claim claim = claim(sheetId, personId, id);
++        if (claim.openedOrEditedBy(user)) {
++            throw new OwnClaimSettleRefusedException(user);
++        }
++        refuseUnproved(sheetId, person, claim, dueOf(sheetId, person, claim));
++    }
++
++    /** Settle a claim just split off another for the user, as settling it would, save that the
++     *  four-eyes rules and the proof rule were judged on the claim it was split from. */
++    @Transactional
++    public Claim settleSplitOff(String sheetId, String user, Long personId, Long id) {
++        return changeStatus(sheetId, user, personId, id, ClaimStatus.SETTLED, null, true);
++    }
++
++    private Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to,
++            String voidReason, boolean judgedOnOriginal) {
+         Person person = person(sheetId, personId);
+         // Lock the sheet first, so a claim opened at the same moment elsewhere waits and the claim
+         // read below is its latest state.
+@@ -353,7 +377,7 @@ public class ClaimService {
+         if (to == ClaimStatus.VOID) {
+             refuseUnreasonedVoid(sheetId, reason);
+         }
+-        if (to == ClaimStatus.SETTLED && claim.openedOrEditedBy(user)) {
++        if (to == ClaimStatus.SETTLED && !judgedOnOriginal && claim.openedOrEditedBy(user)) {
+             throw new OwnClaimSettleRefusedException(user);
+         }
+         if (to == ClaimStatus.SETTLED && claim.deferredOn(sheets.today(sheetId))) {
+@@ -362,7 +386,7 @@ public class ClaimService {
+         // Taken while the claim is still OPEN, so a settled due freezes in the late charge it has
+         // gathered by then.
+         BigDecimal due = to == ClaimStatus.SETTLED ? dueOf(sheetId, person, claim) : null;
+-        if (to == ClaimStatus.SETTLED) {
++        if (to == ClaimStatus.SETTLED && !judgedOnOriginal) {
+             refuseUnproved(sheetId, person, claim, due);
+         }
+         if (to == ClaimStatus.OPEN) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/PartSettleService.java b/src/main/java/net/officefloor/hq/app/claim/PartSettleService.java
+new file mode 100644
+index 000000000..4d9c8c5df
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/PartSettleService.java
+@@ -0,0 +1,33 @@
++package net.officefloor.hq.app.claim;
++
++import java.math.BigDecimal;
++import net.officefloor.hq.app.rollup.RollupService;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Settles part of an OPEN claim: splits the part off and settles it at once. */
++@Service
++public class PartSettleService {
++
++    private final ClaimService service;
++    private final RollupService rollups;
++
++    public PartSettleService(ClaimService service, RollupService rollups) {
++        this.service = service;
++        this.rollups = rollups;
++    }
++
++    /** Split an amount off an OPEN claim exactly as a split does, then settle the new claim for the
++     *  user exactly as settling it does (PENDING when the clerk limit says so), all or nothing. The
++     *  four-eyes rules and the proof rule are judged on the original claim, not on the new one the
++     *  user opened by splitting it. A split or settle that would be refused refuses the whole of it. */
++    @Transactional
++    public ClaimService.Split settlePart(String sheetId, String user, Long personId, Long id, BigDecimal amount) {
++        service.refusePartSettle(sheetId, user, personId, id);
++        ClaimService.Split split = rollups.track(sheetId, user,
++                () -> service.split(sheetId, user, personId, id, amount));
++        Claim settled = rollups.track(sheetId, user,
++                () -> service.settleSplitOff(sheetId, user, personId, split.added().getId()));
++        return new ClaimService.Split(split.kept(), settled);
++    }
++}

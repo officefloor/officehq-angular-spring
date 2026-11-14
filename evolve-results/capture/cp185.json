@@ -1,0 +1,64 @@
+{
+  "checkpoint": 185,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp185_partial-settle",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN claim can be part-settled: an amount and a button on the claim. The amount is split off\nexactly as the split button does, and the new claim is settled at once by the signed-in user exactly\nas the settle button does (going to PENDING when the clerk limit says so); a split or a settle that\nwould be refused refuses the whole action with an error on the claim and changes nothing; the\nfour-eyes rules and the proof rule are judged on the original claim (the new claim's opener is the\nsigned-in user, as with the split button, who may still part-settle).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN claim can be part-settled: an amount and a button on the claim. The amount is split off\nexactly as the split button does, and the new claim is settled at once by the signed-in user exactly\nas the settle button does (going to PENDING when the clerk limit says so); a split or a settle that\nwould be refused refuses the whole action with an error on the claim and changes nothing; the\nfour-eyes rules and the proof rule are judged on the original claim (the new claim's opener is the\nsigned-in user, as with the split button, who may still part-settle).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "03152f514d2d08dd61c28f68808ea6fc4c902a30",
+  "reset_sha": "",
+  "preagent_sha": "40cec4efb78e763fac08e7dc62e3f7ec1d12b355",
+  "prev_sha": "40cec4efb78e763fac08e7dc62e3f7ec1d12b355",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8862538000000001,
+    "input_tokens": 36,
+    "output_tokens": 10411,
+    "cache_read_tokens": 799049,
+    "cache_creation_tokens": 64760,
+    "num_turns": 18,
+    "duration_ms": 351623,
+    "duration_api_ms": 103772,
+    "model": "claude-opus-5-5",
+    "session_id": "aaa55f3c-6a21-4e23-894f-8217433cac50",
+    "stop_reason": "success",
+    "result_text": "Part-settle is in, and `bin/e2e` passes all 4 tests: the partial-settle test and the three other scenarios in the spec.\n\n**How it works**\n- Each claim row now has an amount field and a \"Settle part\" button (`claim-settle-part-amount`, `claim-settle-part`).\n- Pressing it calls a new server endpoint, `POST \u2026/claims/{id}/settle-part`. In one transaction it:\n  1. Checks the rules on the original claim: whoever opened or last edited it can't do this, and its proofs must meet the proof threshold.\n  2. Splits the amount off using the existing split code.\n  3. Settles the new claim using the existing settle code. It goes to PENDING when the clerk limit says so.\n- The new claim's four-eyes and proof checks are skipped. That's why the user who just split it off can still settle it.\n- If any step is refused, nothing is saved and nothing goes to the audit file. The claim row shows an error, as split and settle already do.\n- The split and the settle are recorded as two separate changes, so the audit file comes out in the order the test expects: split, opened, rollup, totals, settled.\n\n**One choice to check:** the proof rule uses the original claim's due *before* the split, not the smaller due it keeps afterwards. The request didn't say which, and the test passes either way. Only the stricter reading refuses a part-settle that leaves the original's due under the threshold, which is when the choice matters.\n\n**Changes**\n- New file `PartSettleService.java`, which runs the steps above.\n- `ClaimService.java`: added `refusePartSettle` and `settleSplitOff`. `changeStatus` gets a private variant that can skip the four-eyes and proof checks. Every existing caller works as before.\n- `ClaimController.java`: the new endpoint.\n- `claims.ts`: the field, the button and its handler.\n\nThe database schema is unchanged: the split-off claim already records the claim it came from.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8862538000000001,
+        "num_turns": 18,
+        "duration_ms": 351623,
+        "duration_api_ms": 103772,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp185.agent.jsonl",
+  "agent_diff_file": "cp185.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
