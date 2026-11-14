@@ -1,7 +1,8 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { AMOUNT_PATTERN, Claim, ClaimsApi, claimError } from './claims-api';
+import { dueCents } from '../rates/rates-api';
+import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, claimError, money } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -30,6 +31,7 @@ import { AMOUNT_PATTERN, Claim, ClaimsApi, claimError } from './claims-api';
             <span data-testid="claim-amount">{{ c.amount }}</span>
             <span data-testid="claim-date">{{ c.date }}</span>
             <span data-testid="claim-note">{{ c.note }}</span>
+            <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
             <button type="button" data-testid="claim-edit" (click)="edit(c)"
               [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
             @if (editingId() === c.id) {
@@ -49,6 +51,8 @@ export class PersonClaims {
   readonly personName = input.required<string>();
   /** This person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
+  /** The rate for this person's grade (a percent with two decimals), or null when it has none. */
+  readonly pct = input.required<string | null>();
   /** A claim added or saved, for the sheet's list to take in. */
   readonly saved = output<Claim>();
 
@@ -64,6 +68,12 @@ export class PersonClaims {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(null));
+  }
+
+  /** The claim's amount times the rate, divided by 100, rounded half up; n/a with no rate. */
+  protected dueOf(c: Claim): string {
+    const pct = this.pct();
+    return pct === null ? 'n/a' : money(dueCents(cents(c.amount), cents(pct)));
   }
 
   protected edit(c: Claim): void {
