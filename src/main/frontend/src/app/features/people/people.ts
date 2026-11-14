@@ -568,7 +568,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
                   (change)="selectPerson(p.id, checked($event))"
                 />
               </td>
-              <td data-testid="person-name">{{ p.name }}</td>
+              <td data-testid="person-name">{{ labelOf(p) }}</td>
               @if (columnShown('aliases')) {
                 <td data-testid="person-aliases">{{ aliasesOf(p) }}</td>
               }
@@ -1135,7 +1135,7 @@ export class People {
   );
   /** The people as the crews show them: each with their due-total in cents, null when it is n/a. */
   protected readonly crewPeople = computed(() =>
-    this.people().map((p) => ({ id: p.id, name: p.name, due: this.dueCentsBy(p) })),
+    this.people().map((p) => ({ id: p.id, name: p.name, label: this.labelOf(p), due: this.dueCentsBy(p) })),
   );
   /** The signed-in user's own figures: those of the person whose name or an alias is the user's
    *  name, as names are compared; null when there is no such person. */
@@ -1795,13 +1795,13 @@ export class People {
 
   /** A person's patrons, each as their name and share, sorted by name, comma and space separated. */
   protected patronsOf(person: Person): string {
-    const names = new Map(this.people().map((p) => [p.id, p.name]));
+    const byId = new Map(this.people().map((p) => [p.id, p]));
     const shares = patronShares(person.patronIds.length);
     return person.patronIds
-      .map((id, i) => ({ name: names.get(id), share: shares[i] }))
-      .filter((patron): patron is { name: string; share: number } => patron.name !== undefined)
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((patron) => `${patron.name} ${money(patron.share)}`)
+      .map((id, i) => ({ patron: byId.get(id), share: shares[i] }))
+      .filter((p): p is { patron: Person; share: number } => p.patron !== undefined)
+      .sort((a, b) => a.patron.name.localeCompare(b.patron.name))
+      .map((p) => `${this.labelOf(p.patron)} ${money(p.share)}`)
       .join(', ');
   }
 
@@ -1971,6 +1971,11 @@ export class People {
   }
 
   /** The grade in force on the sheet's today among a person's grades. */
+  /** A person's name as the screen shows it: "<name> (<grade in force on the sheet's today>)". */
+  protected labelOf(person: Person): string {
+    return `${person.name} (${this.gradeOf(person)})`;
+  }
+
   protected gradeOf(person: Person): string {
     const today = this.session.today();
     return (today === null ? null : gradeOn(person.grades, today)) ?? person.grade;

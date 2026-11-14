@@ -1,10 +1,12 @@
 package net.officefloor.hq.app.search;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import net.officefloor.hq.app.person.Person;
+import net.officefloor.hq.app.person.PersonGradeService;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -16,7 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class TreeSearchService {
 
-    /** A person found: the sheet they are on, their name and their due-total there ("n/a" for none). */
+    /** A person found: the sheet they are on, their name with the grade in force on that sheet's today,
+     *  as "<name> (<grade>)", and their due-total there ("n/a" for none). */
     public record Found(String sheetId, String name, String dueTotal) {
     }
 
@@ -24,13 +27,15 @@ public class TreeSearchService {
     private final PersonService personService;
     private final RollupService rollups;
     private final SheetService sheets;
+    private final PersonGradeService grades;
 
     public TreeSearchService(PersonRepository people, PersonService personService, RollupService rollups,
-            SheetService sheets) {
+            SheetService sheets, PersonGradeService grades) {
         this.people = people;
         this.personService = personService;
         this.rollups = rollups;
         this.sheets = sheets;
+        this.grades = grades;
     }
 
     /** Every person whose name or an alias contains the text, case ignored: the sheet's own in list
@@ -46,14 +51,20 @@ public class TreeSearchService {
         for (String sheet : order) {
             Map<Long, List<String>> aliases = personService.aliases(sheet, null);
             Map<Long, String> dues = rollups.dueTotals(sheet);
+            LocalDate today = sheets.today(sheet);
             for (Person person : people.findBySheetIdOrderByIdAsc(sheet)) {
                 if (contains(person.getName(), needle) || aliases.getOrDefault(person.getId(), List.of()).stream()
                         .anyMatch(alias -> contains(alias, needle))) {
-                    found.add(new Found(sheet, person.getName(), dues.getOrDefault(person.getId(), "n/a")));
+                    found.add(new Found(sheet, labelled(person, today), dues.getOrDefault(person.getId(), "n/a")));
                 }
             }
         }
         return found;
+    }
+
+    /** The person's name with the grade in force on the date: "<name> (<grade>)". */
+    private String labelled(Person person, LocalDate date) {
+        return person.getName() + " (" + grades.gradeOn(person.getId(), date) + ")";
     }
 
     private static boolean contains(String value, String needle) {

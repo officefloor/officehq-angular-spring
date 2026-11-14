@@ -19,6 +19,8 @@ export interface Crew {
 export interface CrewPerson {
   id: number;
   name: string;
+  /** The name as the screen shows it, with the grade in force on the sheet's today. */
+  label: string;
   due: number | null;
 }
 
@@ -174,7 +176,7 @@ export class Crews {
     return this.store.crews().map((crew) => {
       return {
         crew,
-        lead: byId.get(crew.leadId)?.name ?? '',
+        lead: byId.get(crew.leadId)?.label ?? '',
         members: crew.memberIds.map((id) => ({ id, name: byId.get(id)?.name ?? '' })),
         dueTotal: money(crewDueCents(crew, byId)),
       };
