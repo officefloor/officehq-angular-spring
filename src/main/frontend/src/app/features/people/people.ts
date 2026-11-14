@@ -725,6 +725,14 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
                 </button>
                 <button
                   type="button"
+                  data-testid="person-export-statement"
+                  [attr.aria-label]="'Download the last statement for ' + p.name + ' as CSV'"
+                  (click)="exportStatement(p)"
+                >
+                  Export statement
+                </button>
+                <button
+                  type="button"
                   data-testid="person-move-up"
                   [attr.aria-label]="'Move ' + p.name + ' up the list'"
                   (click)="move(p, 'up')"
@@ -1949,6 +1957,23 @@ export class People {
           ];
         }),
       ),
+    ]);
+  }
+
+  /** Download a person's statement as CSV: their claims bound by their last statement, oldest
+   *  first, with the number, date, amount, the bound figure and status as their rows show them. */
+  protected exportStatement(person: Person): void {
+    const floor = this.floor();
+    const late = this.late();
+    this.downloadCsv(`statement-${person.id}`, [
+      ['number', 'date', 'amount', 'figure', 'status'],
+      ...[...this.claimsOf(person.id)]
+        .reverse()
+        .filter((c) => c.stated)
+        .map((c) => {
+          const due = claimDueCents(c, this.rates.ofGradeOn(person.grades, c), floor, late);
+          return [c.number ?? '', c.date, c.amount, due === null ? NO_RATE : money(due), c.status];
+        }),
     ]);
   }
 

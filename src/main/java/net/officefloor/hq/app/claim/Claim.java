@@ -219,6 +219,14 @@ public class Claim {
         return this;
     }
 
+    /** How many of the claim's proofs, as it was once saved, were receipts and photos; on a copy made
+     *  by {@link #asItWas}. */
+    public Claim withProofKinds(int receipts, int photos) {
+        this.proofsReceipt = receipts;
+        this.proofsPhoto = photos;
+        return this;
+    }
+
     /** Whether the claim, as it was once saved, had its late charge waived; on a copy made by
      *  {@link #asItWas}. */
     public Claim withWaived(boolean waived) {

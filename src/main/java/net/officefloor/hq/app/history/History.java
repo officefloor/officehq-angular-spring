@@ -67,9 +67,15 @@ public class History {
                     if (rs.getBoolean("complete")) {
                         was.withRest(rs.getString("claim_number"), rs.getString("opened_by"), rs.getString("note"),
                                 rs.getInt("proofs"), rs.getString("split_from"), rs.getBoolean("late_entry"));
+                        if (rs.getObject("proofs_receipt") != null) {
+                            was.withProofKinds(rs.getInt("proofs_receipt"), rs.getInt("proofs_photo"));
+                        } else if (is != null) {
+                            was.withProofKinds(is.getProofsReceipt(), is.getProofsPhoto());
+                        }
                     } else if (is != null) {
                         was.withRest(is.getNumber(), is.getOpenedBy(), is.getNote(), is.getProofs(),
                                 is.getSplitFrom(), is.isLateEntry());
+                        was.withProofKinds(is.getProofsReceipt(), is.getProofsPhoto());
                     }
                     if (is != null) {
                         was.setRef(is.getRef());

@@ -17,10 +17,11 @@ public class HistoryListener {
 
     static final String CLAIM = "INSERT INTO claim_history (claim_id, sheet_id, person_id, amount,"
             + " claim_date, due_by, status, settled_due, stated, stated_due, corrects_number, deferred_until, claim_number,"
-            + " opened_by, note, proofs, split_from, late_entry, waived, held, complete, made_on)"
+            + " opened_by, note, proofs, split_from, late_entry, waived, held, proofs_receipt, proofs_photo, complete, made_on)"
             + " SELECT c.id, c.sheet_id, c.person_id, c.amount, c.claim_date, c.due_by, c.status, c.settled_due,"
             + " c.stated, c.stated_due, c.corrects_number, c.deferred_until, c.claim_number, c.opened_by, c.note,"
-            + " c.proofs, c.split_from, c.late_entry, c.waived, c.held, TRUE, s.today"
+            + " c.proofs, c.split_from, c.late_entry, c.waived, c.held, c.proofs_receipt, c.proofs_photo, TRUE,"
+            + " s.today"
             + " FROM claim c JOIN sheet s ON s.id = c.sheet_id WHERE c.id = ?";
 
     private static final String RATE = "INSERT INTO rate_history (sheet_id, grade, from_date, to_date, rate, version, forward_after,"
