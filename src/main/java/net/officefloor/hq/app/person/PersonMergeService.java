@@ -8,6 +8,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.crew.CrewService;
+import net.officefloor.hq.app.period.Period;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.setting.Role;
@@ -32,14 +34,15 @@ public class PersonMergeService {
     private final StatementRepository statements;
     private final PoolMemberRepository poolMembers;
     private final CrewService crews;
+    private final PeriodRepository periods;
     private final SettingService settings;
     private final SheetService sheets;
     private final Audit audit;
 
     public PersonMergeService(PersonRepository people, PersonAliasRepository aliases, PersonPatronRepository patrons,
             PersonHoldRepository holds, PersonWatchRepository watches, ClaimRepository claims,
-            StatementRepository statements, PoolMemberRepository poolMembers, CrewService crews, SettingService settings,
-            SheetService sheets, Audit audit) {
+            StatementRepository statements, PoolMemberRepository poolMembers, CrewService crews, PeriodRepository periods,
+            SettingService settings, SheetService sheets, Audit audit) {
         this.people = people;
         this.aliases = aliases;
         this.patrons = patrons;
@@ -49,6 +52,7 @@ public class PersonMergeService {
         this.statements = statements;
         this.poolMembers = poolMembers;
         this.crews = crews;
+        this.periods = periods;
         this.settings = settings;
         this.sheets = sheets;
         this.audit = audit;
@@ -59,7 +63,8 @@ public class PersonMergeService {
      *  any figure a statement bound; the merged name and aliases become the other's aliases; the merged
      *  person's patrons are added to the other's (not the other themselves, no repeats), anyone naming
      *  the merged person as patron names the other instead (no repeats), and the merged person's pool
-     *  memberships move to the other (shares added where the other is already a member). Their
+     *  memberships move to the other (shares added where the other is already a member), as do the
+     *  figures fixed for them in closed periods and their opening balances. Their
      *  statements become the other's, counted with theirs, the other's last statement staying theirs
      *  (or, having none, becoming the merged person's last). Their holds, watchers and contact are dropped, and they leave the sheet. Anyone but a
      *  steward, a merge into the same person, or either of them retired, is refused. Returns the other. */
@@ -134,6 +139,12 @@ public class PersonMergeService {
             }
         }
         crews.merge(from.getId(), into.getId());
+
+        // The figures fixed for them in closed and soft-closed periods, and their opening balances,
+        // become the other's.
+        List<Period> sheetPeriods = periods.findBySheetIdOrderByFromAsc(sheetId);
+        sheetPeriods.forEach(period -> period.fold(from.getId(), into.getId()));
+        periods.saveAllAndFlush(sheetPeriods);
 
         // Their statements become the other's, before the other's own (when they have any), so the
         // other's last statement stays theirs.

@@ -115,10 +115,12 @@ interface Split {
   added: Claim;
 }
 
-/** Whether a claim is deferred on the sheet's today: it is OPEN and today is before the date it was
- *  deferred until. From that date on it is an OPEN claim like any other. */
+/** Whether a claim is deferred on the sheet's today: today is before the date it was deferred until
+ *  and no statement binds it. A deferral takes effect only once the binding ends, so a claim settled
+ *  while bound is deferred too once unbound. From that date on it is a claim like any other. */
 export function deferred(claim: Claim, today: string | null): boolean {
-  return claim.status === 'OPEN' && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
+  return (claim.status === 'OPEN' || claim.status === 'SETTLED') && !claim.stated
+    && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
 }
 
 /** The status a claim had at the end of a day, as its status log records it: the last status it
@@ -845,10 +847,10 @@ export class PersonClaims {
   }
 
   /** Whether the row shows the claim deferred: the date it was deferred until is still after the
-   *  sheet's today, whatever its status now. */
+   *  sheet's today, whatever its status now, and no statement binds it. */
   protected isDeferred(claim: Claim): boolean {
     const today = this.session.today();
-    return claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
+    return !claim.stated && claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
   }
 
   /** The name of the period the claim's due-by falls in; empty when it falls in none. */

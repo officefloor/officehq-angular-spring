@@ -175,6 +175,21 @@ public class Period {
         }
     }
 
+    /** Fold one person's fixed due-total, carried figure and opening balance for the period into
+     *  another's, as when the first is merged into the second. */
+    public void fold(Long fromId, Long intoId) {
+        fold(personTotals, fromId, intoId);
+        fold(personCarried, fromId, intoId);
+        fold(personOpenings, fromId, intoId);
+    }
+
+    private static void fold(Map<Long, BigDecimal> figures, Long fromId, Long intoId) {
+        BigDecimal theirs = figures.remove(fromId);
+        if (theirs != null) {
+            figures.merge(intoId, theirs, BigDecimal::add);
+        }
+    }
+
     /** Close the period, fixing its due-total and each person's due-total and carried figure for it. */
     public void close(BigDecimal total, Map<Long, BigDecimal> personTotals, Map<Long, BigDecimal> personCarried) {
         this.closed = true;

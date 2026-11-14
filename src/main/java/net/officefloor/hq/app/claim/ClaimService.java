@@ -545,7 +545,8 @@ public class ClaimService {
     }
 
     /** Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches it
-     *  the claim counts in no total, is not overdue, cannot be settled and no statement binds it. A
+     *  the claim counts in no total, is not overdue, cannot be settled and no statement binds it. A claim a
+     *  statement binds is deferred only once the binding ends: until then it counts and can be settled. A
      *  claim that is not OPEN, a date not after today, or a claim dated in a closed period, is refused. */
     @Transactional
     public Claim defer(String sheetId, String user, Long personId, Long id, LocalDate until) {

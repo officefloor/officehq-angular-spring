@@ -566,10 +566,12 @@ public class Claim {
         }
     }
 
-    /** Whether the claim is deferred on a day: it is OPEN and that day is before its deferred-until
-     *  date. From that date on it is an OPEN claim like any other. */
+    /** Whether the claim is deferred on a day: that day is before its deferred-until date and no
+     *  statement binds it. A deferral takes effect only once the binding ends, so a claim settled while
+     *  bound is deferred too once unbound. From that date on it is a claim like any other. */
     public boolean deferredOn(LocalDate today) {
-        return status == ClaimStatus.OPEN && deferredUntil != null && today.isBefore(deferredUntil);
+        return (status == ClaimStatus.OPEN || status == ClaimStatus.SETTLED) && !stated && deferredUntil != null
+                && today.isBefore(deferredUntil);
     }
 
     /** Whether the claim counts toward what is claimed and due: only OPEN, PENDING and SETTLED ones do. */
