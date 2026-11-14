@@ -1,0 +1,64 @@
+{
+  "checkpoint": 201,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp201_consolidated-grades",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The consolidated figures gain, per grade on any sheet of the tree, the due-totals of the people on\nthat grade (retired people left out) added up over the tree, and per status the count of claims in\nthat status over the tree.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe consolidated figures gain, per grade on any sheet of the tree, the due-totals of the people on\nthat grade (retired people left out) added up over the tree, and per status the count of claims in\nthat status over the tree.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3536c6c90411c3f2f171ee6c0261dac2b81784f1",
+  "reset_sha": "",
+  "preagent_sha": "5af21e64a36142d628ddc88555fad1f2ae96c27b",
+  "prev_sha": "5af21e64a36142d628ddc88555fad1f2ae96c27b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6569912000000001,
+    "input_tokens": 38,
+    "output_tokens": 8106,
+    "cache_read_tokens": 716956,
+    "cache_creation_tokens": 43916,
+    "num_turns": 20,
+    "duration_ms": 314711,
+    "duration_api_ms": 77394,
+    "model": "claude-opus-5-5",
+    "session_id": "3c84dbf8-3a12-4b8f-8359-ff01a320744d",
+    "stop_reason": "success",
+    "result_text": "The consolidated figures now show, for each grade, the due-totals of people on that grade (retired people left out) added up over the sheet and all its sub-sheets. They also show, for each status, how many claims have that status across the tree. `bin/e2e` passes all 4 tests.\n\n**Server** (`RollupService.java`, `SheetController.java`):\n- A new `breakdown(sheet, asOf)` works out, for one sheet, the due-totals per grade of people who aren't retired, and the claim count per status. People with no due figure count as 0.00. It respects the screen's as-of date the same way the existing headline figures do.\n- `/descendant-figures` now also returns `gradeDueTotals` and `statusCounts`, added up over all descendant sheets.\n\n**Front end** (`people.ts`, `counters.ts`):\n- The sheet's own per-grade and per-status figures are taken from what its summary already shows. The descendants' figures are added on top, the same way the existing consolidated due and overdue totals are built.\n- The counters header shows them under `consolidated-grade-<A|B|C>-due-total` and `consolidated-status-<STATUS>-count`.\n\nThe grade rows come from the app's fixed A, B and C list, so a sub-sheet grade outside that list wouldn't be shown.\n\nNo database change was needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6569912000000001,
+        "num_turns": 20,
+        "duration_ms": 314711,
+        "duration_api_ms": 77394,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp201.agent.jsonl",
+  "agent_diff_file": "cp201.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
