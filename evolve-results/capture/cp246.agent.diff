@@ -1,0 +1,34 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d1b51e61d..8673f8d06 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -568,6 +568,8 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+             }
+             <th scope="col">Settled due</th>
+             <th scope="col">Open due</th>
++            <th scope="col">Open claims</th>
++            <th scope="col">Settled claims</th>
+             @if (columnShown('overdue-count')) {
+               <th scope="col">Overdue</th>
+             }
+@@ -657,6 +659,8 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+               }
+               <td data-testid="person-settled-total">{{ money(settledCentsOf(p)) }}</td>
+               <td data-testid="person-open-total">{{ money(openCentsOf(p)) }}</td>
++              <td data-testid="person-claims-OPEN-count">{{ claimCountOf(p.id, 'OPEN') }}</td>
++              <td data-testid="person-claims-SETTLED-count">{{ claimCountOf(p.id, 'SETTLED') }}</td>
+               @if (columnShown('overdue-count')) {
+                 <td data-testid="person-overdue-count">{{ overdueOf(p.id).length }}</td>
+               }
+@@ -2357,6 +2361,11 @@ export class People {
+     return this.claimsByPerson().get(personId) ?? [];
+   }
+ 
++  /** How many of a person's claims have the given status. */
++  protected claimCountOf(personId: number, status: Claim['status']): number {
++    return this.claimsOf(personId).filter((c) => c.status === status).length;
++  }
++
+   /** A person's OPEN, PENDING and SETTLED claims; drafts and voided claims do not count. */
+   private countedOf(personId: number): Claim[] {
+     return this.countedByPerson().get(personId) ?? [];

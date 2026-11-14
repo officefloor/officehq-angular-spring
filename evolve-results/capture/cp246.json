@@ -1,0 +1,64 @@
+{
+  "checkpoint": 246,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp246_claim-counts-per-person",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person the count of their OPEN claims and of their SETTLED claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person the count of their OPEN claims and of their SETTLED claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f2011c6f87009fe044f7359fe4ab13b92db38b38",
+  "reset_sha": "",
+  "preagent_sha": "0a295e7df288f0d063ec37ba9e1b5f249a930ca5",
+  "prev_sha": "0a295e7df288f0d063ec37ba9e1b5f249a930ca5",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.39746499999999996,
+    "input_tokens": 24,
+    "output_tokens": 2962,
+    "cache_read_tokens": 366965,
+    "cache_creation_tokens": 33092,
+    "num_turns": 12,
+    "duration_ms": 232629,
+    "duration_api_ms": 37415,
+    "model": "claude-opus-5-5",
+    "session_id": "3d3406d9-994a-4d0f-bc63-3f70c2b1c055",
+    "stop_reason": "success",
+    "result_text": "Each person's row now shows how many of their claims are open and how many are settled, and all 4 tests in `bin/e2e` pass.\n\nThe change is only in the front end, in `src/main/frontend/src/app/features/people/people.ts`:\n- **Two new columns** in the people table, \"Open claims\" and \"Settled claims\", with the test ids `person-claims-OPEN-count` and `person-claims-SETTLED-count`.\n- **A small helper, `claimCountOf`,** counts a person's claims with a given status. It uses the claims the page already loads.\n\nThe server, stored data and audit file are unchanged: the claim statuses were already loaded on the page, so nothing new was needed there.\n\nThe counts go purely by status. Draft, pending and void claims aren't in either column, and deleted claims drop out once the sheet is reloaded. The counts don't apply the extra rules the \"due\" totals use (deferred claims or retired people).",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.39746499999999996,
+        "num_turns": 12,
+        "duration_ms": 232629,
+        "duration_api_ms": 37415,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp246.agent.jsonl",
+  "agent_diff_file": "cp246.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
