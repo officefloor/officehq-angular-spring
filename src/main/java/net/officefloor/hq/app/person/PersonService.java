@@ -332,6 +332,20 @@ public class PersonService {
         return person;
     }
 
+    /** Give a person an approver: the user who may approve or reject their PENDING claims as a
+     *  steward may (blank for none). */
+    @Transactional
+    public Person setApprover(String sheetId, String user, Long id, String approver) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+        String name = approver == null || approver.isBlank() ? null : approver.trim();
+        person.setApprover(name);
+        people.saveAndFlush(person);
+        audit.recordOnCommit("APPROVER_SET sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " user=" + (name == null ? "" : name));
+        return person;
+    }
+
     /** Each person's holds on the sheet, in the order they were put on, by person id; a person with
      *  none is absent. */
     public Map<Long, List<PersonHold>> holds(String sheetId) {

@@ -595,7 +595,7 @@ public class ClaimService {
     @Transactional
     public Claim approve(String sheetId, String user, Long personId, Long id) {
         Person person = person(sheetId, personId);
-        Claim claim = pending(sheetId, user, personId, id, ClaimStatus.SETTLED);
+        Claim claim = pending(sheetId, user, person, id, ClaimStatus.SETTLED);
         if (claim.openedOrEditedBy(user)) {
             throw new OwnClaimSettleRefusedException(user);
         }
@@ -765,7 +765,7 @@ public class ClaimService {
     @Transactional
     public Claim reject(String sheetId, String user, Long personId, Long id, String reason) {
         Person person = person(sheetId, personId);
-        Claim claim = pending(sheetId, user, personId, id, ClaimStatus.OPEN);
+        Claim claim = pending(sheetId, user, person, id, ClaimStatus.OPEN);
         claim.setStatus(ClaimStatus.OPEN);
         Claim saved = claims.saveAndFlush(claim);
         log(sheetId, user, person, saved);
@@ -945,15 +945,15 @@ public class ClaimService {
         }
     }
 
-    /** The PENDING claim a steward approves or rejects; refused when it is not PENDING, dated in a
-     *  closed period, or the user is not a steward. */
-    private Claim pending(String sheetId, String user, Long personId, Long id, ClaimStatus to) {
-        Claim claim = claim(sheetId, personId, id);
+    /** The PENDING claim a steward, or the person's approver, approves or rejects; refused when it is
+     *  not PENDING, dated in a closed period, or the user is neither a steward nor the person's approver. */
+    private Claim pending(String sheetId, String user, Person person, Long id, ClaimStatus to) {
+        Claim claim = claim(sheetId, person.getId(), id);
         refuseClosed(sheetId, claim.getDueBy());
         if (claim.getStatus() != ClaimStatus.PENDING) {
             throw new StatusChangeRefusedException(claim.getStatus(), to);
         }
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+        if (settings.roleOf(sheetId, user) != Role.STEWARD && !user.equals(person.getApprover())) {
             throw new ApprovalRefusedException(user);
         }
         return claim;

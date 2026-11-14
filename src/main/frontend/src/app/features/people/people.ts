@@ -68,6 +68,8 @@ interface Person {
   watched: boolean;
   /** The reason of the person's flag while it is in force on the sheet's today; null when it is not. */
   flag: string | null;
+  /** The user who may approve or reject the person's PENDING claims as a steward may; null for none. */
+  approver: string | null;
   /** The person's aliases, sorted as names are compared. */
   aliases: string[];
   /** Whether the person's name or an alias of theirs is a name or alias on another sheet of the tree. */
@@ -540,6 +542,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
             <th scope="col">Holds</th>
             <th scope="col">Watched</th>
             <th scope="col">Flag</th>
+            <th scope="col">Approver</th>
             @if (columnShown('patrons')) {
               <th scope="col">Patrons</th>
             }
@@ -650,6 +653,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
               </td>
               <td data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</td>
               <td data-testid="person-flag-shown">{{ p.flag ?? '' }}</td>
+              <td data-testid="person-approver">{{ p.approver ?? '' }}</td>
               @if (columnShown('patrons')) {
                 <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
               }
@@ -827,6 +831,22 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
                   (click)="flag(p)"
                 >
                   Flag
+                </button>
+                <label [for]="'person-approver-input-' + p.id">Approver</label>
+                <input
+                  type="text"
+                  [id]="'person-approver-input-' + p.id"
+                  data-testid="person-approver-input"
+                  [value]="approverInputs()[p.id] ?? ''"
+                  (input)="setApproverInput(p.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-approver-save"
+                  [attr.aria-label]="'Set approver of ' + p.name"
+                  (click)="setApprover(p)"
+                >
+                  Set approver
                 </button>
                 <label [for]="'person-inline-grade-' + p.id">Grade</label>
                 <select
@@ -1068,6 +1088,8 @@ export class People {
   protected readonly holdDates = signal<Record<number, { from?: string; to?: string }>>({});
   /** The flag reason and until-date typed on each person's row, by person id. */
   protected readonly flagInputs = signal<Record<number, { reason?: string; until?: string }>>({});
+  /** The approver typed on each person's row, by person id. */
+  protected readonly approverInputs = signal<Record<number, string>>({});
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   /** The sheet's claims that count in live totals: OPEN, PENDING and SETTLED ones, except one deferred
@@ -1531,6 +1553,7 @@ export class People {
       this.retireDates.set({});
       this.holdDates.set({});
       this.flagInputs.set({});
+      this.approverInputs.set({});
       this.patronChoices.set({});
       this.aliasInputs.set({});
       this.mergeChoices.set({});
@@ -1888,6 +1911,29 @@ export class People {
       this.flagInputs.update((inputs) => ({ ...inputs, [person.id]: {} }));
     } catch {
       this.rowError.set({ id: person.id, message: `${person.name} could not be flagged.` });
+    }
+  }
+
+  protected setApproverInput(personId: number, text: string): void {
+    this.approverInputs.update((inputs) => ({ ...inputs, [personId]: text }));
+    if (this.rowError()?.id === personId) this.rowError.set(null);
+  }
+
+  /** Give a person the typed approver (blank for none), who may then approve or reject their
+   *  PENDING claims as a steward may; their row then shows the approver. */
+  protected async setApprover(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const user = this.approverInputs()[person.id] ?? '';
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/approver`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, { user }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? { ...p, ...saved } : p)));
+      this.approverInputs.update((inputs) => ({ ...inputs, [person.id]: '' }));
+    } catch {
+      this.rowError.set({ id: person.id, message: `The approver of ${person.name} could not be set.` });
     }
   }
 

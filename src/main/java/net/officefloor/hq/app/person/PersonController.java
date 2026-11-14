@@ -77,7 +77,7 @@ public class PersonController {
             List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
             List<String> tags, List<SnapshotView> snapshots, List<StatementSummary.Line> statements,
-            String flag) {
+            String flag, String approver) {
         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
                 StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched,
                 List<String> aliases, boolean clashing, List<PersonRetirement> retirements,
@@ -89,7 +89,7 @@ public class PersonController {
                     person.getContact(), aliases, clashing, person.getOriginSheetId(),
                     retirements.stream().map(RetirementView::of).toList(), person.getTags(),
                     snapshots.stream().map(SnapshotView::of).toList(), statements.lines(),
-                    person.flagReasonOn(today));
+                    person.flagReasonOn(today), person.getApprover());
         }
     }
 
@@ -142,6 +142,10 @@ public class PersonController {
 
     /** A flag: its reason and the last day it is in force (blank takes the sheet's today). */
     public record FlagRequest(@Size(max = 200) String reason, LocalDate until) {
+    }
+
+    /** An approver to give a person: a user name (blank for none). */
+    public record ApproverRequest(@Size(max = 200) String user) {
     }
 
     /** An alias to give a person. */
@@ -325,6 +329,15 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(service.flag(sheet, by, id, request.reason(), request.until()), by);
+    }
+
+    /** Give a person an approver, who may approve or reject their PENDING claims as a steward may. */
+    @PostMapping("/{id}/approver")
+    public PersonView setApprover(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated ApproverRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return withStatements(service.setApprover(sheet, by, id, request.user()), by);
     }
 
     /** Name another person on the sheet as a person's patron. */

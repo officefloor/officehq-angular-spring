@@ -73,6 +73,10 @@ public class Person {
     @Column(name = "flag_until")
     private LocalDate flagUntil;
 
+    /** The user who may approve or reject the person's PENDING claims as a steward may; null for none. */
+    @Column(name = "approver")
+    private String approver;
+
     /** The person's place in the list, ascending; set by the store when they are added, so they go to the end. */
     @Generated
     @Column(name = "list_position", insertable = false, nullable = false)
@@ -101,6 +105,7 @@ public class Person {
         was.originSheetId = originSheetId;
         was.flagReason = flagReason;
         was.flagUntil = flagUntil;
+        was.approver = approver;
         return was;
     }
 
@@ -206,6 +211,14 @@ public class Person {
     /** The reason of the person's flag while it is in force on a day; null when it is not. */
     public String flagReasonOn(LocalDate day) {
         return flaggedOn(day) ? flagReason : null;
+    }
+
+    public String getApprover() {
+        return approver;
+    }
+
+    public void setApprover(String approver) {
+        this.approver = approver;
     }
 
     /** Whether the person is retired: any retirement date set counts, even one after the sheet's today. */
