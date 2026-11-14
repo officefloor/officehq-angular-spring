@@ -75,6 +75,10 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** A person's due-total is at most this; null when there is no cap. */
+    @Column(name = "due_cap", precision = 15, scale = 2)
+    private BigDecimal cap;
+
     protected Sheet() {
     }
 
@@ -176,6 +180,19 @@ public class Sheet {
      *  sheet's today is on or after it. */
     public boolean isPeriodNumberingOn() {
         return periodNumberingFrom != null && !today.isBefore(periodNumberingFrom);
+    }
+
+    public BigDecimal getCap() {
+        return cap;
+    }
+
+    public void setCap(BigDecimal cap) {
+        this.cap = cap;
+    }
+
+    /** A due-total held to the cap (null, n/a, is not capped): the cap when the sum is above it. */
+    public static BigDecimal capped(BigDecimal dueTotal, BigDecimal cap) {
+        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
     }
 
     /** Take the sheet's next claim number. */

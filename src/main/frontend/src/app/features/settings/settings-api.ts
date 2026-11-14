@@ -38,6 +38,8 @@ export interface Settings {
   periodNumberingFrom: string | null;
   /** Days, by grade: the terms a grade has of its own; a grade not here uses the sheet's terms. */
   gradeTerms: Record<string, number>;
+  /** Two decimals, as the server formats it: a person's due-total is at most it; null when there is none. */
+  cap: string | null;
 }
 
 export interface RoleGrant {
@@ -85,6 +87,12 @@ export class SettingsApi {
     );
   }
 
+  setCap(sheetId: string, value: string): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/cap`, { value }, { headers: this.headers() }),
+    );
+  }
+
   setPolicyDate(sheetId: string, value: string): Promise<Settings> {
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/policy-date`, { value }, { headers: this.headers() }),
@@ -115,7 +123,7 @@ export class SettingsApi {
 }
 
 export const SETTINGS_INVALID =
-  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of days (blank: 14) and terms for each grade of a whole number of days (blank: the sheet\'s terms) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off).';
+  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of days (blank: 14) and terms for each grade of a whole number of days (blank: the sheet\'s terms) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off) and a cap of 0.00 or more with up to two decimals (blank: none).';
 
 export function settingsError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return SETTINGS_INVALID;

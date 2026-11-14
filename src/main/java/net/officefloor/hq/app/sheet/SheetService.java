@@ -68,6 +68,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getLatePct).orElse(Sheet.DEFAULT_LATE_PCT);
     }
 
+    /** The sheet's cap: a person's due-total is at most it; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal cap(String id) {
+        return sheets.findById(id).map(Sheet::getCap).orElse(null);
+    }
+
     /** Whether a claim opened now is numbered within its period. */
     @Transactional(readOnly = true)
     public boolean periodNumberingOn(String id) {

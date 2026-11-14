@@ -22,11 +22,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen takes it: its id, its today, its floor with two decimals, its
-     *  terms in days, its late percent with two decimals, and its policy date (null when blank). */
-    public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate) {
+     *  terms in days, its late percent with two decimals, its policy date (null when blank), and its cap with two decimals (null when none). */
+    public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
+            String cap) {
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
-                    sheet.getLatePct().setScale(2).toPlainString(), sheet.getPolicyDate());
+                    sheet.getLatePct().setScale(2).toPlainString(), sheet.getPolicyDate(),
+                    sheet.getCap() == null ? null : sheet.getCap().setScale(2).toPlainString());
         }
     }
 

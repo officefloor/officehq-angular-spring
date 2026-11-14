@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The sheet's settings (its clerk limit, floor, terms, terms per grade, late percent, policy date and period numbering from-date) and the role each user name holds on it. */
+/** The sheet's settings (its clerk limit, floor, terms, terms per grade, late percent, policy date, period numbering from-date and cap) and the role each user name holds on it. */
 @Service
 public class SettingsService {
 
@@ -32,6 +32,9 @@ public class SettingsService {
 
     /** The key the period numbering from-date is audited under. */
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
+
+    /** The key the cap is audited under. */
+    public static final String CAP = "cap";
 
     private final SheetRoleRepository roles;
     private final SheetService sheets;
@@ -186,6 +189,28 @@ public class SettingsService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + PERIOD_NUMBERING_FROM + " value=" + (from == null ? "" : from));
         return from;
+    }
+
+    /** The sheet's cap; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal cap(String sheetId) {
+        return sheets.cap(sheetId);
+    }
+
+    /** Set the sheet's cap (null: none), the sheet created first if it was never loaded; every
+     *  person's due-total (and so every total) is held to it from now on. */
+    @Transactional
+    public BigDecimal setCap(String sheetId, String user, BigDecimal cap) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal scaled = cap == null ? null : cap.setScale(2);
+        sheet.setCap(scaled);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + CAP + " value=" + (scaled == null ? "" : scaled.toPlainString()));
+        rollup.recordChanges(sheetId, user, before);
+        return scaled;
     }
 
     @Transactional(readOnly = true)

@@ -12,7 +12,7 @@ import { Lateness, Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-a
 import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, retireError, statementError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
-// claims, what they have claimed, their due-total, their overdue claims, and their patrons and backing; the sheet's claimed-total,
+// claims, what they have claimed, their due-total (held to the sheet's cap) and its excess over the cap, their overdue claims, and their patrons and backing; the sheet's claimed-total,
 // due-total and overdue claims; a header of counters repeating them; a summary of them by grade, period and status; and
 // the one form that adds a person or, with a
 // person's editor open, saves that person.
@@ -85,7 +85,10 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
-              <td data-testid="person-due-total">{{ dueOf(p) }}</td>
+              <td>
+                <span data-testid="person-due-total">{{ dueOf(p) }}</span>
+                <span>excess <span data-testid="person-excess">{{ money(excessOf(p.id)) }}</span></span>
+              </td>
               <td>
                 <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
                 <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span></span>
@@ -202,7 +205,7 @@ export class People {
    *  claims show (each already rounded; open ones within a hold, unbound, left out). Null (n/a) when their grade in force on the
    *  sheet's today has no rate then, unless a claim shows a due (a settled claim's fixed one, a stated claim's bound one,
    *  or one at the rate of the grade they had on its date): then the sum of the dues there are. */
-  private readonly dueByPerson = computed(() => {
+  private readonly uncappedDueByPerson = computed(() => {
     const out = new Map<number, number | null>();
     const floor = cents(this.session.floor());
     const late = this.lateness();
@@ -218,6 +221,21 @@ export class People {
     }
     return out;
   });
+  /** Each person's due-total in cents, by person id, held to the sheet's cap: the cap when their
+   *  uncapped one is above it (n/a is not capped). */
+  private readonly dueByPerson = computed(() => {
+    const cap = this.session.cap();
+    const capCents = cap === null ? null : cents(cap);
+    const out = new Map<number, number | null>();
+    for (const [id, due] of this.uncappedDueByPerson()) {
+      out.set(id, due === null || capCents === null ? due : Math.min(due, capCents));
+    }
+    return out;
+  });
+  /** The person's excess in cents: how far their uncapped due-total is above their capped one (0 otherwise). */
+  protected excessOf(personId: number): number {
+    return (this.uncappedDueByPerson().get(personId) ?? 0) - (this.dueByPerson().get(personId) ?? 0);
+  }
   /** Each person's overdue claims, by person id: how many of their counting claims are overdue
    *  (OPEN with the due-by before the sheet's today), and the dues they show in cents (n/a ones skipped). */
   private readonly overdueByPerson = computed(() => {

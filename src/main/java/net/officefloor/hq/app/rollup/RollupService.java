@@ -36,7 +36,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class RollupService {
 
-    /** A person's figures: claimed, and due-total (null: n/a). */
+    /** A person's figures: claimed, and due-total held to the sheet's cap (null: n/a). */
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal) {
         boolean sameAs(Figures other) {
             return other != null && claimed.compareTo(other.claimed) == 0
@@ -77,6 +77,7 @@ public class RollupService {
         Optional<Sheet> sheet = sheets.findById(sheetId);
         LocalDate today = sheet.map(Sheet::getToday).orElseGet(LocalDate::now);
         BigDecimal floor = floorOf(sheet);
+        BigDecimal cap = sheet.map(Sheet::getCap).orElse(null);
         LateCharge late = LateCharge.of(sheet);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
@@ -93,7 +94,8 @@ public class RollupService {
         for (Person p : sheetPeople) {
             List<Claim> theirs = counted.getOrDefault(p.getId(), List.of());
             BigDecimal claimed = theirs.stream().map(Claim::getAmount).reduce(zero(), BigDecimal::add);
-            out.put(p.getId(), new Figures(p.getName(), claimed, dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding)));
+            out.put(p.getId(), new Figures(p.getName(), claimed,
+                    Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding), cap)));
         }
         return new Snapshot(out);
     }

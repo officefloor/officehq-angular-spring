@@ -32,13 +32,15 @@ public class SettingsController {
     /** The sheet's settings as the screen shows them: the clerk limit with two decimals, null for
      *  none, the floor with two decimals, the terms in days, the late percent with two decimals,
      *  the policy date, null when blank, the period numbering from-date, null when blank (off),
-     *  and the terms each grade has of its own, a grade without them left out. */
+     *  the terms each grade has of its own, a grade without them left out, and the cap with two
+     *  decimals, null for none. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms) {
+            LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct, LocalDate policyDate,
-                LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms) {
+                LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, BigDecimal cap) {
             return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms,
-                    latePct.setScale(2).toPlainString(), policyDate, periodNumberingFrom, gradeTerms);
+                    latePct.setScale(2).toPlainString(), policyDate, periodNumberingFrom, gradeTerms,
+                    cap == null ? null : cap.setScale(2).toPlainString());
         }
     }
 
@@ -56,6 +58,10 @@ public class SettingsController {
 
     /** The late percent as the form submits it: 0.00 or more with up to two decimals, blank for the default. */
     public record LatePctForm(@NotNull @Pattern(regexp = "(\\d{1,3}(\\.\\d{1,2})?)?") String value) {
+    }
+
+    /** The cap as the form submits it: 0.00 or more with up to two decimals, blank for none. */
+    public record CapForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value) {
     }
 
     /** The policy date as the form submits it: a date as yyyy-mm-dd, blank for none (the sheet's today). */
@@ -146,6 +152,16 @@ public class SettingsController {
         return view(sheetId);
     }
 
+    @PutMapping("/settings/cap")
+    public SettingsView setCap(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody CapForm body) {
+        BigDecimal cap = body.value().isEmpty() ? null : new BigDecimal(body.value());
+        service.setCap(sheetId, user.trim(), cap);
+        return view(sheetId);
+    }
+
     @PutMapping("/settings/policy-date")
     public SettingsView setPolicyDate(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
@@ -179,7 +195,7 @@ public class SettingsController {
     private SettingsView view(String sheetId) {
         return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId),
                 service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId),
-                gradeTerms(sheetId));
+                gradeTerms(sheetId), service.cap(sheetId));
     }
 
     private Map<String, Integer> gradeTerms(String sheetId) {

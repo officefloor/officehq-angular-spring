@@ -334,7 +334,7 @@ public class ClaimService {
         List<Claim> theirs = claims.findByPersonForUpdate(personId, sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         List<Claim> counted = theirs.stream().filter(c -> counts(c, person)).toList();
-        BigDecimal dueTotal = dueTotalOf(counted, person, today);
+        BigDecimal dueTotal = Sheet.capped(dueTotalOf(counted, person, today), sheets.cap(sheetId));
         for (Claim c : theirs) {
             if (counts(c, person)) {
                 // the statement binds the figure; the late charge keeps following the sheet's today
