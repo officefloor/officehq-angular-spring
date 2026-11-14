@@ -1,0 +1,95 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java b/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
+index 3f3d7b209..e4146dd1b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/BulkSettleService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.claim;
+ 
++import java.math.BigDecimal;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.NoSuchElementException;
+@@ -9,7 +10,10 @@ import java.util.Set;
+ import net.officefloor.hq.app.period.PeriodClosedException;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.SheetService;
++import net.officefloor.hq.app.Audit;
+ import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.interceptor.TransactionAspectSupport;
+ 
+ /** Settles a selection of claims together. */
+ @Service
+@@ -26,38 +30,57 @@ public class BulkSettleService {
+     private final RollupService rollups;
+     private final SettingService settings;
+     private final SheetService sheets;
++    private final Audit audit;
+ 
+     public BulkSettleService(ClaimListOrder order, ClaimService service, RollupService rollups, SettingService settings,
+-            SheetService sheets) {
++            SheetService sheets, Audit audit) {
+         this.order = order;
+         this.service = service;
+         this.rollups = rollups;
+         this.settings = settings;
+         this.sheets = sheets;
++        this.audit = audit;
+     }
+ 
+-    /** Settle each selected claim that can be settled, in list order (people in the order they were
++    /** Settle the selected claims all or nothing, in list order (people in the order they were
+      *  added, each person's claims newest first), by exactly the rules of settling one: a clerk's
+-     *  claim above the clerk limit goes PENDING and counts as settled. Each that cannot, or is not
+-     *  on the sheet, is refused and left as it is. Each claim is settled on its own, so a refused
+-     *  one writes nothing. Settling at least one makes a settle batch, whose number each marks. */
++     *  claim above the clerk limit goes PENDING and counts as settled. When any one cannot be
++     *  settled, or is not on the sheet, none is: every selected claim counts as refused and nothing
++     *  is written. Otherwise they make a settle batch, whose number each marks, and BATCH_SETTLED is
++     *  written after the claims' own lines. */
++    @Transactional
+     public Result settle(String sheetId, String user, Set<Long> ids) {
+-        List<Claim> settled = new ArrayList<>();
++        Result none = new Result(List.of(), ids.size(), null);
+         if (settings.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
+             // A viewer, or anyone on an archived sheet, changes nothing: every selected claim is refused.
+-            return new Result(settled, ids.size(), null);
++            return none;
++        }
++        List<Claim> selected = order.selected(sheetId, ids);
++        if (selected.size() != ids.size()) {
++            // A selected claim not on the sheet is refused, so all of them are.
++            return none;
+         }
+-        for (Claim claim : order.selected(sheetId, ids)) {
+-            try {
++        List<Claim> settled = new ArrayList<>();
++        try {
++            for (Claim claim : selected) {
+                 settled.add(rollups.track(sheetId, user, () -> service.changeStatus(sheetId, user,
+                         claim.getPersonId(), claim.getId(), ClaimStatus.SETTLED)));
+-            } catch (StatusChangeRefusedException | PermissionRefusedException | OwnClaimSettleRefusedException | ProofRequiredException | PeriodClosedException
+-                    | NoSuchElementException refused) {
+-                // Left as it is: its change rolled back with its own transaction.
+             }
++        } catch (StatusChangeRefusedException | PermissionRefusedException | OwnClaimSettleRefusedException | ProofRequiredException | PeriodClosedException
++                | NoSuchElementException refused) {
++            // One refused: roll back every claim this settle changed, with the audit lines they held.
++            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
++            return none;
++        }
++        if (settled.isEmpty()) {
++            return new Result(settled, 0, null);
+         }
+-        // Settling at least one claim makes a batch, numbered on the sheet in the order batches happen.
+-        Long batch = settled.isEmpty() ? null : service.batch(sheetId, settled);
+-        return new Result(settled, ids.size() - settled.size(), batch);
++        long batch = service.batch(sheetId, settled);
++        BigDecimal total = settled.stream()
++                .filter(claim -> claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null)
++                .map(Claim::getSettledDue).reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
++        audit.recordOnCommit("BATCH_SETTLED sheet=" + sheetId + " by=" + user + " batch=" + batch + " count="
++                + settled.size() + " total=" + total.toPlainString());
++        return new Result(settled, 0, batch);
+     }
+ }
