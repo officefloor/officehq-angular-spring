@@ -62,6 +62,7 @@ public class StatementService {
     /** Each person's statement summary on the sheet, by person id; a person with none is absent. */
     public Map<Long, StatementSummary> summaries(String sheetId) {
         return statements.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(Statement::isLive)
                 .collect(Collectors.groupingBy(Statement::getPersonId,
                         Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
     }
@@ -70,13 +71,14 @@ public class StatementService {
      *  person id (null: as they stand now); a person with none is absent. */
     public Map<Long, StatementSummary> summaries(String sheetId, LocalDate asOf) {
         return statements.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .filter(statement -> asOf == null || statement.madeAsOf(asOf))
+                .filter(statement -> asOf == null ? statement.isLive() : statement.stoodAsOf(asOf))
                 .collect(Collectors.groupingBy(Statement::getPersonId,
                         Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
     }
 
     public StatementSummary summary(String sheetId, Long personId) {
-        return StatementSummary.of(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId));
+        return StatementSummary.of(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId).stream()
+                .filter(Statement::isLive).toList());
     }
 
     /** Take a statement for a person now, or as of a day on or before the sheet's today (null: now):
@@ -134,7 +136,8 @@ public class StatementService {
     }
 
     /** A steward cancels a person's last statement: the claims it bound become live again (a figure
-     *  bound by an earlier statement is not restored) and it is no longer counted. Anyone else, or a
+     *  bound by an earlier statement is not restored) and it is no longer counted, though the sheet as it
+     *  stood at the end of a day before it was cancelled still shows it. Anyone else, or a
      *  person with no statement, is refused. Returns their claims, newest first. */
     @Transactional
     public List<Claim> cancel(String sheetId, String user, Long personId) {
@@ -144,7 +147,8 @@ public class StatementService {
         if (settings.roleOf(sheetId, user) != Role.STEWARD) {
             throw new StatementCancelRefusedException(user + " is not a steward: only a steward cancels a statement");
         }
-        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId);
+        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId).stream()
+                .filter(Statement::isLive).toList();
         if (theirs.isEmpty()) {
             throw new StatementCancelRefusedException(person.getName() + " has no statement to cancel");
         }
@@ -153,8 +157,9 @@ public class StatementService {
         List<Claim> bound = theirClaims.stream().filter(Claim::isStated).toList();
         bound.forEach(Claim::unbind);
         claims.saveAllAndFlush(bound);
-        statements.delete(last);
-        statements.flush();
+        // Kept, marked cancelled, so the sheet as it stood at the end of an earlier day still shows it.
+        last.cancel(sheets.today(sheetId));
+        statements.saveAndFlush(last);
         audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + last.getDueTotal());
         return theirClaims;

@@ -37,6 +37,10 @@ public class Statement {
     @Column(name = "made_on", updatable = false)
     private LocalDate madeOn;
 
+    /** The sheet's today when the statement was cancelled; null while it stands. */
+    @Column(name = "cancelled_on")
+    private LocalDate cancelledOn;
+
     protected Statement() {
     }
 
@@ -69,6 +73,22 @@ public class Statement {
      *  it (one taken before that was kept: dated on or before it). */
     public boolean madeAsOf(LocalDate day) {
         return !(madeOn != null ? madeOn : takenOn).isAfter(day);
+    }
+
+    /** Whether the statement stands now: it was not cancelled. */
+    public boolean isLive() {
+        return cancelledOn == null;
+    }
+
+    /** Whether the statement stood at the end of a day: made as of it, and not cancelled while the
+     *  sheet's today was on or before it. */
+    public boolean stoodAsOf(LocalDate day) {
+        return madeAsOf(day) && (cancelledOn == null || cancelledOn.isAfter(day));
+    }
+
+    /** Cancel the statement on the sheet's today. */
+    public void cancel(LocalDate today) {
+        this.cancelledOn = today;
     }
 
     public int getClaims() {

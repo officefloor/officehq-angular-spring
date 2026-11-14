@@ -21,11 +21,21 @@ export interface Pool {
   members: PoolMember[];
 }
 
-/** A person as a pool shows them: their name, and whether a retirement date is set. */
+/** A person as a pool shows them: their name, whether a retirement date is set, and their holds,
+ *  each from its from-date to its to-date, both included (null: it does not end). */
 export interface PoolPerson {
   id: number;
   name: string;
   retired: boolean;
+  holds: { from: string; to: string | null }[];
+}
+
+/** Whether a hold of the person is in force on the date (none when there is no date). */
+function heldOn(person: PoolPerson | undefined, today: string | null): boolean {
+  return (
+    today !== null &&
+    (person?.holds ?? []).some((h) => h.from <= today && (h.to === null || today <= h.to))
+  );
 }
 
 /** Hundredths in a two-decimal figure ("33.33" is 3333). */
@@ -34,30 +44,44 @@ function hundredths(figure: string): bigint {
   return BigInt(whole) * 100n + BigInt(part.padEnd(2, '0').slice(0, 2));
 }
 
-/** A pool's members' shares in hundredths, each with whether it is a retired person. */
-function sharesOf(pool: Pool, byId: Map<number, PoolPerson>): { share: bigint; retired: boolean }[] {
+/** A member's share in hundredths, whether it is a retired person, and whether it is a person with
+ *  a hold in force on the sheet's today. */
+interface Share {
+  share: bigint;
+  retired: boolean;
+  held: boolean;
+}
+
+/** A pool's members' shares, in the members' order. */
+function sharesOf(pool: Pool, byId: Map<number, PoolPerson>, today: string | null = null): Share[] {
   return pool.members.map((m) => ({
     share: hundredths(m.share),
     retired: m.personId !== null && (byId.get(m.personId)?.retired ?? false),
+    held: m.personId !== null && heldOn(byId.get(m.personId), today),
   }));
 }
 
 /** The shares added up, a retired member's counting as 0.00, in hundredths. */
-function totalOf(list: { share: bigint; retired: boolean }[]): bigint {
+function totalOf(list: Share[]): bigint {
   return list.filter((m) => !m.retired).reduce((sum, m) => sum + m.share, 0n);
 }
 
 /** Each pool's cuts in hundredths, in its members' order, by pool id; null when it is unbalanced or
  *  has no pot: a pool that is a member of none has the sheet's pot (blank for none), any other its cut
  *  in the pool above. Chains are short. */
-export function poolCuts(pools: Pool[], people: PoolPerson[], pot: string): Map<number, bigint[] | null> {
+export function poolCuts(
+  pools: Pool[],
+  people: PoolPerson[],
+  pot: string,
+  today: string | null,
+): Map<number, bigint[] | null> {
   const byId = new Map(people.map((p) => [p.id, p]));
   // The pool each pool is a member of, by member pool id.
   const above = new Map<number, Pool>();
   pools.forEach((p) => p.members.forEach((m) => m.memberPoolId !== null && above.set(m.memberPoolId, p)));
   const cutsOf = (pool: Pool, seen: Set<number>): bigint[] | null => {
     if (seen.has(pool.id)) return null;
-    const list = sharesOf(pool, byId);
+    const list = sharesOf(pool, byId, today);
     if (totalOf(list) !== 10000n) return null;
     const parent = above.get(pool.id);
     let from: bigint | null;
@@ -75,8 +99,13 @@ export function poolCuts(pools: Pool[], people: PoolPerson[], pot: string): Map<
 
 /** Each person's cut total in hundredths, by person id: their cuts across every pool they are a
  *  member of, added up; a pool that shows no cuts adds nothing. */
-export function personCutTotals(pools: Pool[], people: PoolPerson[], pot: string): Map<number, bigint> {
-  const cutsByPool = poolCuts(pools, people, pot);
+export function personCutTotals(
+  pools: Pool[],
+  people: PoolPerson[],
+  pot: string,
+  today: string | null,
+): Map<number, bigint> {
+  const cutsByPool = poolCuts(pools, people, pot, today);
   const totals = new Map<number, bigint>(people.map((p) => [p.id, 0n]));
   for (const pool of pools) {
     const cut = cutsByPool.get(pool.id);
@@ -95,21 +124,25 @@ export function figure(hundredths: bigint): string {
   return `${sign}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`;
 }
 
-/** Each member's cut of the pot in hundredths, in the members' order: the pot times their share
- *  divided by 100, rounded half to even; a retired member's 0. The remainder, the pot minus the cuts
- *  added up, goes to the member with the largest share, the earliest added on a tie. */
-function cuts(pot: bigint, members: { share: bigint; retired: boolean }[]): bigint[] {
+/** Each member's cut of the pot in hundredths, in the members' order: a retired member's and a held
+ *  member's 0; any other's the pot times their share divided by the shares of the members with a cut
+ *  added up, rounded half to even. The remainder, the pot minus the cuts added up, goes to the member
+ *  with a cut with the largest share, the earliest added on a tie; with no such member every cut is 0. */
+function cuts(pot: bigint, members: Share[]): bigint[] {
+  const cutting = (m: Share) => !m.retired && !m.held;
+  const shares = members.filter(cutting).reduce((sum, m) => sum + m.share, 0n);
+  if (shares === 0n) return members.map(() => 0n);
   const list = members.map((m) => {
-    if (m.retired) return 0n;
-    const exact = pot * m.share; // in ten-thousandths of a hundredth
-    let cut = exact / 10000n;
-    const rest = exact % 10000n;
-    if (rest > 5000n || (rest === 5000n && cut % 2n === 1n)) cut += 1n;
+    if (!cutting(m)) return 0n;
+    const exact = pot * m.share;
+    let cut = exact / shares;
+    const rest = (exact % shares) * 2n;
+    if (rest > shares || (rest === shares && cut % 2n === 1n)) cut += 1n;
     return cut;
   });
   let largest = -1;
   members.forEach((m, i) => {
-    if (!m.retired && (largest < 0 || m.share > members[largest].share)) largest = i;
+    if (cutting(m) && (largest < 0 || m.share > members[largest].share)) largest = i;
   });
   if (largest >= 0) list[largest] += pot - list.reduce((sum, c) => sum + c, 0n);
   return list;
@@ -271,6 +304,7 @@ export class Pools {
 
   protected readonly store = inject(PoolStore);
   private readonly settings = inject(SettingStore);
+  private readonly session = inject(Session);
   protected readonly name = signal('');
   protected readonly error = signal<string | null>(null);
   /** The member (the select's value) and share chosen on each pool's row, by pool id. */
@@ -284,7 +318,7 @@ export class Pools {
     const byId = new Map(this.people().map((p) => [p.id, p]));
     const pools = this.store.pools();
     const poolById = new Map(pools.map((p) => [p.id, p]));
-    const cutsByPool = poolCuts(pools, this.people(), this.settings.pot());
+    const cutsByPool = poolCuts(pools, this.people(), this.settings.pot(), this.session.today());
     return pools.map((pool) => {
       const total = totalOf(sharesOf(pool, byId));
       const cut = cutsByPool.get(pool.id) ?? null;

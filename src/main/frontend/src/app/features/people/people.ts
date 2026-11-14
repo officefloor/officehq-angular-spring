@@ -618,7 +618,9 @@ export class People {
   protected readonly settings = inject(SettingStore);
   private readonly pools = inject(PoolStore);
   /** Each person's cut total in hundredths, by person id: their cuts across every pool they are a member of. */
-  protected readonly cutTotals = computed(() => personCutTotals(this.pools.pools(), this.people(), this.settings.pot()));
+  protected readonly cutTotals = computed(() =>
+    personCutTotals(this.pools.pools(), this.people(), this.settings.pot(), this.session.today()),
+  );
   /** A person's cut total (two decimals). */
   protected cutTotalOf(person: Person): string {
     return figure(this.cutTotals().get(person.id) ?? 0n);
