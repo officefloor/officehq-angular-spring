@@ -154,6 +154,20 @@ public class PeriodController {
                 request.year()));
     }
 
+    /** A calendar year to generate the quarterly periods of. */
+    public record GenerateQuartersRequest(@NotNull @Min(1) @Max(9999) Integer year) {
+    }
+
+    /** Generate the four calendar quarters of a year as periods yyyy-Q1 to yyyy-Q4, leaving out
+     *  quarters taken. */
+    @PostMapping("/generate-quarters")
+    public GenerateView generateQuarters(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated GenerateQuartersRequest request) {
+        return new GenerateView(service.generateQuarters(sheetId.trim(), SignedInUser.decode(user),
+                request.year()));
+    }
+
     /** Close a period, fixing its due-total. */
     @PostMapping("/{name}/close")
     public PeriodView close(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable String name,

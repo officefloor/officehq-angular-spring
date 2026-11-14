@@ -119,19 +119,44 @@ public class PeriodService {
         List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromAsc(sheetId));
         int made = 0;
         for (YearMonth month = YearMonth.from(start); !month.isAfter(YearMonth.from(end)); month = month.plusMonths(1)) {
-            String name = month.toString();
-            LocalDate first = month.atDay(1);
-            LocalDate last = month.atEndOfMonth();
-            if (periods.nameInUse(sheetId, name) || existing.stream().anyMatch(p -> p.overlaps(first, last))) {
-                continue;
+            if (addUnlessTaken(sheetId, user, existing, month.toString(), month.atDay(1), month.atEndOfMonth())) {
+                made++;
             }
-            Period saved = save(new Period(sheetId, name, first, last));
-            existing.add(saved);
-            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + name
-                    + " from=" + first + " to=" + last);
-            made++;
         }
         return made;
+    }
+
+    /** Generate the four calendar quarters of a year, named yyyy-Q1 to yyyy-Q4, each running from the
+     *  first day of its first month to the last day of its third. A quarter whose name is already a
+     *  period, or whose days overlap a period on the sheet, is left out and the others are still made.
+     *  Returns how many were made. */
+    @Transactional
+    public int generateQuarters(String sheetId, String user, int year) {
+        sheets.lock(sheetId);
+        List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromAsc(sheetId));
+        int made = 0;
+        for (int quarter = 1; quarter <= 4; quarter++) {
+            YearMonth first = YearMonth.of(year, quarter * 3 - 2);
+            String name = String.format("%04d-Q%d", year, quarter);
+            if (addUnlessTaken(sheetId, user, existing, name, first.atDay(1), first.plusMonths(2).atEndOfMonth())) {
+                made++;
+            }
+        }
+        return made;
+    }
+
+    /** Add a period with no cap from and to a date, as {@link #add} would, unless its name is taken or
+     *  it overlaps one of the existing periods, which it then joins. Whether it was added. */
+    private boolean addUnlessTaken(String sheetId, String user, List<Period> existing, String name, LocalDate first,
+            LocalDate last) {
+        if (periods.nameInUse(sheetId, name) || existing.stream().anyMatch(p -> p.overlaps(first, last))) {
+            return false;
+        }
+        Period saved = save(new Period(sheetId, name, first, last));
+        existing.add(saved);
+        audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + name
+                + " from=" + first + " to=" + last);
+        return true;
     }
 
     /** Generate the twelve monthly periods of fiscal year FY<year>, the one whose first day is the first

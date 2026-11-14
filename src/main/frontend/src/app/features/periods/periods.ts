@@ -119,6 +119,25 @@ export class PeriodStore {
     return result.made;
   }
 
+  /** Generate the four calendar quarters of a year, <yyyy>-Q1 to <yyyy>-Q4, on the active sheet,
+   *  leaving out quarters whose name is taken or whose days overlap a period. Resolves to how many
+   *  were made. */
+  async generateQuarters(year: number): Promise<number> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const result = await firstValueFrom(
+      this.http.post<{ made: number }>(`/api/sheets/${encodeURIComponent(sheet)}/periods/generate-quarters`, {
+        year,
+      }),
+    );
+    if (this.session.sheetId() !== sheet) return result.made;
+    const list = await firstValueFrom(
+      this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`),
+    );
+    if (this.session.sheetId() === sheet) this.periods.set(list);
+    return result.made;
+  }
+
   /** Close a period on the active sheet, fixing its due-total; the server refuses one already
    *  closed. */
   async close(name: string): Promise<void> {
@@ -279,6 +298,17 @@ export class PeriodStore {
         />
         <button type="submit" data-testid="period-generate-fy">Generate fiscal year</button>
       </form>
+      <form (submit)="generateQuarters($event)">
+        <label for="period-generate-quarters-year">Calendar year (yyyy)</label>
+        <input
+          id="period-generate-quarters-year"
+          data-testid="period-generate-quarters-year"
+          inputmode="numeric"
+          [value]="quartersYear()"
+          (input)="quartersYear.set(value($event)); generateError.set(null)"
+        />
+        <button type="submit" data-testid="period-generate-quarters">Generate quarters</button>
+      </form>
       @if (generateError(); as message) {
         <p role="alert" data-testid="period-generate-error">{{ message }}</p>
       }
@@ -394,6 +424,7 @@ export class Periods {
   protected readonly generateFrom = signal('');
   protected readonly generateTo = signal('');
   protected readonly fiscalYear = signal('');
+  protected readonly quartersYear = signal('');
   /** How many periods the last generate made; null while one runs or before any. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateError = signal<string | null>(null);
@@ -546,6 +577,27 @@ export class Periods {
       this.generated.set(await this.store.generateFiscalYear(Number(year)));
     } catch {
       this.generateError.set(`The periods of FY${year} could not be generated.`);
+    } finally {
+      this.generating.set(false);
+    }
+  }
+
+  /** Generate the four calendar quarters of the year typed (yyyy), leaving out quarters taken. */
+  protected async generateQuarters(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.generating()) return;
+    this.generateError.set(null);
+    this.generated.set(null);
+    const year = this.quartersYear().trim();
+    if (!YEAR.test(year) || Number(year) < 1) {
+      this.generateError.set('Type the calendar year (yyyy) to generate the quarters of.');
+      return;
+    }
+    this.generating.set(true);
+    try {
+      this.generated.set(await this.store.generateQuarters(Number(year)));
+    } catch {
+      this.generateError.set(`The quarters of ${year} could not be generated.`);
     } finally {
       this.generating.set(false);
     }
