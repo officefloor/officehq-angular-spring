@@ -29,6 +29,8 @@ import { StatusSummary } from '../summary/summary';
         <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() }}</dd>
         <dt>My reviews</dt>
         <dd data-testid="my-reviews-count">{{ myReviewsCount() }}</dd>
+        <dt>Watched due</dt>
+        <dd data-testid="watched-due-total">{{ watchedDueTotal() }}</dd>
         <dt>People with sub-sheets</dt>
         <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
         <dt>Due in total with sub-sheets</dt>
@@ -59,6 +61,8 @@ export class Counters {
   readonly myCrewDueTotal = input.required<string>();
   /** How many REVIEW claims are assigned to the signed-in user. */
   readonly myReviewsCount = input.required<number>();
+  /** The due-totals of the people the signed-in user watches, added up; 0.00 when they watch no one. */
+  readonly watchedDueTotal = input.required<string>();
   readonly consolidatedPeopleCount = input.required<number>();
   readonly consolidatedDueTotal = input.required<string>();
   readonly consolidatedOverdueTotal = input.required<string>();

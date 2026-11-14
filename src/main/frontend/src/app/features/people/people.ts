@@ -163,6 +163,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
       [myOverdueTotal]="mine()?.overdueTotal ?? ''"
       [myCrewDueTotal]="myCrewDue()"
       [myReviewsCount]="myReviews()"
+      [watchedDueTotal]="watchedDue()"
       [consolidatedPeopleCount]="consolidatedPeople()"
       [consolidatedDueTotal]="consolidatedDue()"
       [consolidatedOverdueTotal]="consolidatedOverdue()"
@@ -1258,6 +1259,16 @@ export class People {
     const byId = new Map(this.crewPeople().map((p) => [p.id, p]));
     return money(led.reduce((sum, c) => sum + crewDueCents(c, byId), 0));
   });
+  /** The due-totals of the people the signed-in user watches, added up, skipping those whose grade
+   *  has no rate; 0.00 when they watch no one. */
+  protected readonly watchedDue = computed(() =>
+    money(
+      this.people()
+        .filter((p) => p.watched)
+        .map((p) => this.dueCentsBy(p))
+        .reduce<number>((sum, due) => sum + (due ?? 0), 0),
+    ),
+  );
   /** The sheet's descendants' figures added up, as the store last told them. */
   protected readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
   /** The consolidated figures: the sheet's own as it shows them plus its descendants', each as of the
