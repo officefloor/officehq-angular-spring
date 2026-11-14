@@ -64,7 +64,8 @@ public class ClaimService {
         return claim;
     }
 
-    /** Move a claim to a new status; a move its status does not allow is refused (409). */
+    /** Move a claim to a new status; a move its status does not allow is refused (409), as is
+     *  settling by the user who opened the claim (403). */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus to) {
         Claim claim = claims.findForUpdate(id, sheetId)
@@ -72,6 +73,10 @@ public class ClaimService {
         if (!claim.getStatus().canMoveTo(to)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + to);
+        }
+        if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who opened a claim cannot settle it");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
@@ -81,6 +86,7 @@ public class ClaimService {
         if (to == ClaimStatus.OPEN) {
             number = sheets.nextClaimNumber(sheetId);
             claim.setNumber(number);
+            claim.setOpenedBy(user);
         } else if (to == ClaimStatus.VOID) {
             claim.setNumber(null);
         } else if (to == ClaimStatus.SETTLED) {

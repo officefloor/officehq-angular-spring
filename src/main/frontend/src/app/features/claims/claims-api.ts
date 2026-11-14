@@ -25,6 +25,8 @@ export interface Claim {
   /** The due fixed when the claim was settled, with two decimals; null, so the due is live, for
    *  a claim not SETTLED or settled when its grade had no rate. */
   settledDue: string | null;
+  /** The user who opened the claim, who cannot settle it; null while DRAFT. */
+  openedBy: string | null;
 }
 
 /** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do. */
@@ -83,6 +85,7 @@ export function claimError(e: unknown): string {
 
 export function statusError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'The user who opened this claim cannot settle it.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   return 'Something went wrong; try again.';
 }

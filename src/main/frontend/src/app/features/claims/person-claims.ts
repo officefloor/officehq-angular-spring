@@ -34,6 +34,7 @@ import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, claimError, money, statu
             <span data-testid="claim-note">{{ c.note }}</span>
             <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
             <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
+            <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
             <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'open')"
               [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
             <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'settle')"

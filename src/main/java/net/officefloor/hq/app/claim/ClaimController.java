@@ -28,13 +28,14 @@ public class ClaimController {
 
     /** A claim as the screen shows it: the amount always with two decimals; a SETTLED claim's
      *  due as fixed when it was settled (null, so the due is live, when its grade had no rate then,
-     *  and for other claims). */
+     *  and for other claims); who opened it (null while DRAFT). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Integer number, String settledDue) {
+            ClaimStatus status, Integer number, String settledDue, String openedBy) {
         static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(),
-                    c.getSettledDue() == null ? null : c.getSettledDue().setScale(2).toPlainString());
+                    c.getSettledDue() == null ? null : c.getSettledDue().setScale(2).toPlainString(),
+                    c.getOpenedBy());
         }
     }
 
