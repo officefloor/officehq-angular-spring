@@ -177,7 +177,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
     <app-settings />
     <app-rates />
     <app-grades />
-    <app-periods [dueTotals]="periodDueTotals()" />
+    <app-periods [dueTotals]="periodDueTotals()" [claimCounts]="periodClaimCounts()" />
     <app-holidays />
     <app-notes />
     <app-void-reasons />
@@ -1502,6 +1502,18 @@ export class People {
         money([...byPerson].reduce((sum, [person, due]) => (people.has(person) ? sum + due : sum), 0)),
       ]),
     );
+  });
+  /** How many claims belong to each period, by period id: those whose due-by falls in it, leaving
+   *  out VOID and DELETED ones. */
+  protected readonly periodClaimCounts = computed(() => {
+    const periods = this.periods.periods();
+    const counts = new Map<number, number>();
+    for (const c of this.claims()) {
+      if (c.status === 'VOID' || c.status === 'DELETED') continue;
+      const period = periodOf(periods, c.dueBy);
+      if (period !== null) counts.set(period.id, (counts.get(period.id) ?? 0) + 1);
+    }
+    return counts;
   });
   /** The classic summary per period, in cents by period id: while the period is open, the dues shown
    *  now on the claims whose due-by falls in it that count by their status now (OPEN, PENDING or

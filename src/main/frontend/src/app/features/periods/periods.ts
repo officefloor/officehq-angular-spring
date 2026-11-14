@@ -383,6 +383,7 @@ export class PeriodStore {
             <th scope="col">Closed</th>
             <th scope="col">Cap</th>
             <th scope="col">Locked</th>
+            <th scope="col">Claims</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -397,6 +398,7 @@ export class PeriodStore {
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
+              <td data-testid="period-claims-count">{{ claimCounts().get(p.id) ?? 0 }}</td>
               <td>
                 <button
                   type="button"
@@ -458,6 +460,8 @@ export class Periods {
   protected readonly fiscalYearOf = fiscalYearOf;
   /** Each period's due-total (two decimals), by period id: the sum of the people's figures for it. */
   readonly dueTotals = input.required<Map<number, string>>();
+  /** How many claims belong to each period (VOID and DELETED left out), by period id. */
+  readonly claimCounts = input.required<Map<number, number>>();
 
   protected readonly name = signal('');
   protected readonly from = signal('');
