@@ -1,0 +1,41 @@
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 998e79c46..8bd564deb 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -183,7 +183,8 @@ public class PeriodService {
+      *  the new year's first period (a figure of 0.00 adds nothing and writes nothing; what an earlier rollover of the year,
+      *  not undone, already carried into that period is not carried again). A period belongs to the fiscal year its from-date falls in. Anyone
+      *  but a steward, or an old year with no periods on the sheet, is refused. Returns how many periods
+-     *  were made. */
++     *  were made. After it, every period of the old year still open (not closed or soft-closed) is soft-closed, in
++     *  order of their from-dates, as {@link #softClose} would. */
+     @Transactional
+     public int rollover(String sheetId, String user, int year) {
+         sheets.lock(sheetId);
+@@ -249,6 +250,8 @@ public class PeriodService {
+         rollovers.saveAndFlush(new Rollover(sheetId, year, user, today, first.getId(), generated, set));
+         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + String.format("%04d", year)
+                 + " periods=" + made);
++        oldYear.stream().filter(p -> !p.isClosed() && !p.isSoftClosed())
++                .forEach(p -> softCloseFixing(sheetId, user, p));
+         return made;
+     }
+ 
+@@ -341,12 +344,16 @@ public class PeriodService {
+         if (period.isClosed() || period.isSoftClosed()) {
+             throw new PeriodClosedException("The period " + name + " is already closed");
+         }
++        return softCloseFixing(sheetId, user, period);
++    }
++
++    private Period softCloseFixing(String sheetId, String user, Period period) {
+         Map<Long, BigDecimal> personTotals = personTotals(sheetId, period);
+         BigDecimal total = sum(personTotals);
+         period.softClose(total, personTotals, personCarried(sheetId, period));
+         events.publishEvent(new PeriodFixing(period));
+         Period saved = save(period);
+-        audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + name
++        audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + period.getName()
+                 + " total=" + total.toPlainString());
+         return saved;
+     }
