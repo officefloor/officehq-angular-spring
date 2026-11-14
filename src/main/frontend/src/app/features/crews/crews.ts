@@ -73,6 +73,13 @@ export class CrewStore {
   }
 }
 
+/** A crew's due-total in cents: its lead's and its members' due-totals added up, n/a skipped. */
+export function crewDueCents(crew: Crew, people: ReadonlyMap<number, CrewPerson>): number {
+  return [crew.leadId, ...crew.memberIds]
+    .map((id) => people.get(id)?.due ?? null)
+    .reduce<number>((sum, d) => sum + (d ?? 0), 0);
+}
+
 /** A crew as its row shows it: its lead's name, its members' names and its due-total. */
 interface CrewRow {
   crew: Crew;
@@ -161,14 +168,11 @@ export class Crews {
   protected readonly rows = computed<CrewRow[]>(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
     return this.store.crews().map((crew) => {
-      const due = [crew.leadId, ...crew.memberIds]
-        .map((id) => byId.get(id)?.due ?? null)
-        .reduce<number>((sum, d) => sum + (d ?? 0), 0);
       return {
         crew,
         lead: byId.get(crew.leadId)?.name ?? '',
         members: crew.memberIds.map((id) => ({ id, name: byId.get(id)?.name ?? '' })),
-        dueTotal: money(due),
+        dueTotal: money(crewDueCents(crew, byId)),
       };
     });
   });

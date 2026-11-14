@@ -13,7 +13,7 @@ import { Summary } from '../summary/summary';
 import { PersonPlans, PlanGenerate } from '../plans/plans';
 import { Counters } from '../counters/counters';
 import { PoolStore, Pools, figure, personCutTotals } from '../pools/pools';
-import { Crews } from '../crews/crews';
+import { CrewStore, Crews, crewDueCents } from '../crews/crews';
 
 /** A hold put on a person: from its from-date to its to-date, both included (null: it does not end). */
 interface Hold {
@@ -140,6 +140,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
       [overdueTotal]="overdueTotal()"
       [myDueTotal]="mine()?.dueTotal ?? ''"
       [myOverdueTotal]="mine()?.overdueTotal ?? ''"
+      [myCrewDueTotal]="myCrewDue()"
       [consolidatedPeopleCount]="consolidatedPeople()"
       [consolidatedDueTotal]="consolidatedDue()"
       [consolidatedOverdueTotal]="consolidatedOverdue()"
@@ -855,6 +856,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
 export class People {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  private readonly crewStore = inject(CrewStore);
   protected readonly rates = inject(RateStore);
   protected readonly periods = inject(PeriodStore);
   private readonly voidReasons = inject(VoidReasonStore);
@@ -1027,11 +1029,23 @@ export class People {
   /** The signed-in user's own figures: those of the person whose name or an alias is the user's
    *  name, as names are compared; null when there is no such person. */
   protected readonly mine = computed(() => {
+    const me = this.me();
+    return me ? { dueTotal: this.dueBy(me), overdueTotal: this.overdueTotalOf(me) } : null;
+  });
+  /** The person whose name or an alias is the signed-in user's name, as names are compared. */
+  private readonly me = computed(() => {
     const user = this.session.user()?.toLowerCase();
-    const me = this.people().find(
+    return this.people().find(
       (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
     );
-    return me ? { dueTotal: this.dueBy(me), overdueTotal: this.overdueTotalOf(me) } : null;
+  });
+  /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
+  protected readonly myCrewDue = computed(() => {
+    const me = this.me();
+    const led = me ? this.crewStore.crews().filter((c) => c.leadId === me.id) : [];
+    if (led.length === 0) return '';
+    const byId = new Map(this.crewPeople().map((p) => [p.id, p]));
+    return money(led.reduce((sum, c) => sum + crewDueCents(c, byId), 0));
   });
   /** The sheet's descendants' figures added up, as the store last told them. */
   protected readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);

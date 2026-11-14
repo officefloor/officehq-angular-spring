@@ -25,6 +25,8 @@ import { StatusSummary } from '../summary/summary';
         <dd data-testid="my-due-total">{{ myDueTotal() }}</dd>
         <dt>My overdue</dt>
         <dd data-testid="my-overdue-total">{{ myOverdueTotal() }}</dd>
+        <dt>My crews' due</dt>
+        <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() }}</dd>
         <dt>People with sub-sheets</dt>
         <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
         <dt>Due in total with sub-sheets</dt>
@@ -43,6 +45,8 @@ export class Counters {
   /** The signed-in user's own figures, when a person on the sheet has their name; blank otherwise. */
   readonly myDueTotal = input.required<string>();
   readonly myOverdueTotal = input.required<string>();
+  /** The due-totals of the crews the user's person leads, added up; blank when they lead none. */
+  readonly myCrewDueTotal = input.required<string>();
   readonly consolidatedPeopleCount = input.required<number>();
   readonly consolidatedDueTotal = input.required<string>();
   readonly consolidatedOverdueTotal = input.required<string>();
