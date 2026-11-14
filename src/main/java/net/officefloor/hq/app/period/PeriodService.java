@@ -524,7 +524,7 @@ public class PeriodService {
         if (period.isLocked() == locked) {
             throw new PeriodRefusedException("The period " + name + " is already " + (locked ? "locked" : "unlocked"));
         }
-        period.setLocked(locked);
+        period.setLocked(locked, sheets.today(sheetId));
         Period saved = periods.saveAndFlush(period);
         audit.recordOnCommit((locked ? "PERIOD_LOCKED" : "PERIOD_UNLOCKED") + " sheet=" + sheetId + " by=" + user
                 + " period=" + name);

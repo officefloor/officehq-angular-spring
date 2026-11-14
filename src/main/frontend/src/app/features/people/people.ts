@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, pendingLate, plusDays, reviewLate, sharePartCents, statusAsOf } from '../claims/claims';
+import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, pendingLate, plusDays, reviewLate, holderPartCents, statusAsOf } from '../claims/claims';
 import { GradeStore, Grades } from '../grades/grades';
 import { Holidays } from '../holidays/holidays';
 import { Notes } from '../notes/notes';
@@ -1212,8 +1212,8 @@ export class People {
     return map;
   });
   /** What the shares of the claims that count move in each person's figures, in cents, by person id:
-   *  each holder gains their part of a claim's due (see sharePartCents) and the claim's own person
-   *  loses it, in all, among SETTLED claims and among OPEN and PENDING ones; held tells a holder's
+   *  each holder gains their part of a claim (see holderPartCents; one whose grade has no rate gains
+   *  nothing) and the claim's own person loses it, in all, among SETTLED claims and among OPEN and PENDING ones; held tells a holder's
    *  part of a claim with a figure is one. A claim with no figure moves nothing. */
   private readonly sharedByPerson = computed(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
@@ -1235,8 +1235,10 @@ export class People {
       const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c), floor, late);
       if (due === null) continue;
       for (const s of c.shares) {
-        if (!grades.has(s.personId)) continue;
-        const part = sharePartCents(due, s.share);
+        const holder = grades.get(s.personId);
+        if (holder === undefined) continue;
+        const part = holderPartCents(c, s.share, this.rates.ofGradeOn(holder, c), late);
+        if (part === null) continue;
         move(s.personId, c, part, true);
         move(c.personId, c, -part, false);
       }

@@ -83,7 +83,7 @@ public class PeriodController {
         LocalDate asOf = AsOf.parse(asOfHeader);
         if (asOf != null) {
             // A period's cap is fixed when it is added, so the period as it stood then has the cap it has now;
-            // its opening balances are those it holds now, and it is locked as it is now.
+            // its opening balances are those it holds now, and it is locked if it is locked now and was by then.
             Map<Long, Period> now = new HashMap<>();
             service.list(sheetId.trim()).forEach(period -> now.put(period.getId(), period));
             return service.listAsOf(sheetId.trim(), asOf).stream()
@@ -91,7 +91,7 @@ public class PeriodController {
                         Period current = now.get(period.id());
                         return PeriodView.of(period, current != null ? current.getCap() : null,
                                 current != null ? current.getPersonOpenings() : Map.of(),
-                                current != null && current.isLocked());
+                                current != null && current.lockedAsOf(asOf));
                     }).toList();
         }
         return service.list(sheetId.trim()).stream().map(PeriodView::of).toList();

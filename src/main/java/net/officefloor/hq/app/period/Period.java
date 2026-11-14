@@ -81,6 +81,11 @@ public class Period {
     @Column(name = "locked", nullable = false)
     private boolean locked;
 
+    /** The sheet's today when the period was last locked; null while it is not locked, or for one
+     *  locked before this was kept. */
+    @Column(name = "locked_on")
+    private LocalDate lockedOn;
+
     /** The pools, pot and people as they stood when the period was closed or soft-closed (JSON), each
      *  pool member's cut for it worked out from these; null while it is open. */
     @Lob
@@ -138,9 +143,16 @@ public class Period {
         return locked;
     }
 
-    /** Lock or unlock the period. */
-    public void setLocked(boolean locked) {
+    /** Lock the period on a day (the sheet's today), or unlock it. */
+    public void setLocked(boolean locked, LocalDate on) {
         this.locked = locked;
+        this.lockedOn = locked ? on : null;
+    }
+
+    /** Whether the period was locked at the end of a day: it is locked now, and was locked on or before
+     *  that day (one locked before the day was kept counts as locked). */
+    public boolean lockedAsOf(LocalDate day) {
+        return locked && (lockedOn == null || !lockedOn.isAfter(day));
     }
 
     public BigDecimal getClosedTotal() {

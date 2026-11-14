@@ -308,8 +308,8 @@ public class RollupService {
     }
 
     /** What the shares of the claims that count move in each person's due-total, by person id: each
-     *  holder gains their part of a claim's figure (its due times their share divided by 100, rounded
-     *  half to even), and the claim's own person loses it. A person whose figures no share moves is
+     *  holder gains their part of the claim (see ClaimService#partOf; a holder whose grade has no rate
+     *  gains nothing), and the claim's own person loses it. A person whose figures no share moves is
      *  not listed; a claim with no figure moves nothing. */
     private Map<Long, BigDecimal> sharedParts(String sheetId, LocalDate asOf, List<Person> sheetPeople,
             Map<Long, List<Claim>> counted) {
@@ -328,7 +328,11 @@ public class RollupService {
                     if (!onSheet.contains(share.personId())) {
                         continue;
                     }
-                    BigDecimal part = share.partOf(figure);
+                    BigDecimal part = claimService.partOf(sheetId, claim, share, asOf);
+                    if (part == null) {
+                        parts.merge(person.getId(), NONE, BigDecimal::add);
+                        continue;
+                    }
                     parts.merge(share.personId(), part, BigDecimal::add);
                     parts.merge(person.getId(), part.negate(), BigDecimal::add);
                 }

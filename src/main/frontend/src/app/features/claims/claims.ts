@@ -109,6 +109,26 @@ export function sharePartCents(dueCents: number, share: string): number {
   return sign * whole;
 }
 
+/** A holder's part of a shared claim in cents: a settled claim keeps its parts as frozen (its settled
+ *  due's part, see sharePartCents); otherwise the claim's amount times the share divided by 100, times
+ *  the rate in force on the claim's date among the holder's grade's rates (see RateStore#ofGradeOn)
+ *  divided by 100, rounded like the claim; null when the holder's grade has no rate then (their part
+ *  is 0.00). */
+export function holderPartCents(claim: Claim, share: string, rates: Rate[], late: Late): number | null {
+  if (claim.settledDue !== null) return sharePartCents(cents(claim.settledDue), share);
+  const rate = rateOn(rates, claim.date);
+  if (rate === null) return null;
+  const amount = cents(claim.amount);
+  const sign = amount < 0 ? -1n : 1n;
+  // Cents times share and rate in hundredths of a percent each: the part is product / 10^8 cents.
+  const product = BigInt(Math.abs(amount)) * BigInt(Math.round(Number(share) * 100)) * BigInt(Math.round(Number(rate) * 100));
+  const whole = product / 100_000_000n;
+  const rest = product % 100_000_000n;
+  const halfUp = roundsHalfUp(claim, late);
+  const up = rest > 50_000_000n || (rest === 50_000_000n && (halfUp || whole % 2n === 1n));
+  return Number(sign * (up ? whole + 1n : whole));
+}
+
 /** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
 interface Split {
   kept: Claim;

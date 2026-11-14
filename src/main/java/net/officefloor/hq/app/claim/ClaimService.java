@@ -728,7 +728,9 @@ public class ClaimService {
         if (status == ClaimStatus.SETTLED || status == ClaimStatus.VOID || status == ClaimStatus.DELETED) {
             throw new ShareRefusedException("A " + status + " claim cannot be shared");
         }
-        refuseClosed(sheetId, claim.getDueBy());
+        if (periods.closedOn(sheetId, claim.getDate())) {
+            throw new PeriodClosedException("A claim dated " + claim.getDate() + " falls in a closed period");
+        }
         if (holder.getId().equals(person.getId())) {
             throw new ShareRefusedException("A claim cannot be shared with its own person");
         }
@@ -1230,6 +1232,24 @@ public class ClaimService {
                 : rates.rateFor(sheetId, grade, claim.getDate(), claim.getId(), asOf).map(Rate::getRate);
         return inForce
                 .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, rounding))
+                .orElse(null);
+    }
+
+    /** A holder's part of a shared claim (as it stood at the end of a day; null: now): a settled
+     *  claim keeps its parts as frozen, its settled due times the share divided by 100 (see
+     *  ClaimShare#partOf); otherwise the claim's amount times the share divided by 100, times the rate
+     *  of the holder's grade in force on the claim's date (of the rates that apply to the claim)
+     *  divided by 100, rounded to two decimals as the claim's date decides (see roundingOf); null when
+     *  the holder's grade has no rate then (their part is 0.00). */
+    public BigDecimal partOf(String sheetId, Claim claim, ClaimShare share, LocalDate asOf) {
+        if (claim.getSettledDue() != null) {
+            return share.partOf(claim.getSettledDue());
+        }
+        String grade = grades.gradeOn(share.personId(), claim.getDate(), asOf);
+        RoundingMode rounding = roundingOf(sheetId, claim, asOf);
+        return rates.rateFor(sheetId, grade, claim.getDate(), claim.getId(), asOf).map(Rate::getRate)
+                .map(rate -> claim.getAmount().multiply(share.share()).multiply(rate).movePointLeft(4)
+                        .setScale(2, rounding))
                 .orElse(null);
     }
 
