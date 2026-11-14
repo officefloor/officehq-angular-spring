@@ -34,18 +34,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class PlanController {
 
     /** A plan as the screen shows it, with how many claims it has made so far. */
-    public record PlanView(Long id, Long personId, String amount, LocalDate start, int every, LocalDate end,
-            int generated) {
+    public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every,
+            Integer day, LocalDate end, int generated) {
         static PlanView of(Plan plan, int generated) {
             return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
-                    plan.getEvery(), plan.getEnd(), generated);
+                    plan.getEvery(), plan.getDay(), plan.getEnd(), generated);
         }
     }
 
-    /** A plan's fields as typed: the amount and interval are checked by the service; a blank start
-     *  takes the sheet's today. */
+    /** A plan's fields as typed: the amount, interval and day of the month are checked by the service;
+     *  a blank start takes the sheet's today. */
     public record PlanRequest(@NotNull Long personId, @Size(max = 50) String amount, LocalDate start,
-            @Size(max = 50) String every, LocalDate end) {
+            @Size(max = 50) String every, @Size(max = 50) String day, LocalDate end) {
     }
 
     /** The claims a generate made, in the order it made them, and the sheet's plans after it. */
@@ -78,7 +78,7 @@ public class PlanController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return PlanView.of(service.add(sheet, by, request.personId(), request.amount(), request.start(),
-                request.every(), request.end()), 0);
+                request.every(), request.day(), request.end()), 0);
     }
 
     /** Make the plans' claims due by the sheet's today, then record the figures they moved. */
@@ -99,7 +99,7 @@ public class PlanController {
         return them.stream().map(p -> PlanView.of(p, generated.getOrDefault(p.getId(), 0))).toList();
     }
 
-    /** A bad amount or interval, an end before the start, or a date that is not a real yyyy-mm-dd date. */
+    /** A bad amount, interval or day of the month, an end before the start, or a date that is not a real yyyy-mm-dd date. */
     @ExceptionHandler({PlanRefusedException.class, HttpMessageNotReadableException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public void refused() {

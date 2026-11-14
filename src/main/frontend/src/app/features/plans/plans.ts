@@ -9,8 +9,10 @@ export interface Plan {
   personId: number;
   amount: string;
   start: string;
-  /** Every so many days after the start, a plan date. */
-  every: number;
+  /** Every so many days after the start, a plan date; null for a monthly plan. */
+  every: number | null;
+  /** The day of the month (1 to 31) a monthly plan runs on; null for one that runs every so many days. */
+  day: number | null;
   end: string;
   /** How many claims the plan has made so far. */
   generated: number;
@@ -18,6 +20,7 @@ export interface Plan {
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const EVERY = /^\d{1,6}$/;
+const DAY = /^\d{1,2}$/;
 
 // The active sheet's plans in the order they were added, re-read whenever a sheet is loaded.
 @Injectable({ providedIn: 'root' })
@@ -36,8 +39,12 @@ export class PlanStore {
     });
   }
 
-  /** Add a plan for a person; the server refuses a bad amount or interval, or an end before the start. */
-  async add(personId: number, fields: { amount: string; start: string | null; every: string; end: string }): Promise<void> {
+  /** Add a plan for a person; the server refuses a bad amount, interval or day of the month, or an end
+   *  before the start. */
+  async add(
+    personId: number,
+    fields: { amount: string; start: string | null; every: string | null; day: string | null; end: string },
+  ): Promise<void> {
     const sheet = this.session.sheetId();
     if (!sheet) throw new Error('No sheet loaded.');
     const saved = await firstValueFrom(
@@ -75,7 +82,11 @@ export class PlanStore {
         <li [attr.data-testid]="'plan-row-' + pl.id">
           <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
           from <span data-testid="plan-start">{{ pl.start }}</span>
-          every <span data-testid="plan-every">{{ pl.every }}</span> days
+          @if (pl.day !== null) {
+            monthly on day <span data-testid="plan-day">{{ pl.day }}</span>
+          } @else {
+            every <span data-testid="plan-every">{{ pl.every }}</span> days
+          }
           to <span data-testid="plan-end">{{ pl.end }}</span>;
           made <span data-testid="plan-generated">{{ pl.generated }}</span>
         </li>
@@ -106,6 +117,14 @@ export class PlanStore {
         [value]="every()"
         (input)="every.set(value($event)); error.set(null)"
       />
+      <label [for]="'plan-form-day-' + personId()">Or monthly on day</label>
+      <input
+        [id]="'plan-form-day-' + personId()"
+        data-testid="plan-form-day"
+        inputmode="numeric"
+        [value]="day()"
+        (input)="day.set(value($event)); error.set(null)"
+      />
       <label [for]="'plan-form-end-' + personId()">End</label>
       <input
         type="date"
@@ -129,6 +148,7 @@ export class PersonPlans {
   protected readonly amount = signal('');
   protected readonly start = signal('');
   protected readonly every = signal('');
+  protected readonly day = signal('');
   protected readonly end = signal('');
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
@@ -138,7 +158,8 @@ export class PersonPlans {
     return (event.target as HTMLInputElement).value;
   }
 
-  /** Add the typed plan; a bad amount or interval, or an end before the start, is refused on the row. */
+  /** Add the typed plan, monthly when a day of the month is typed; a bad amount, interval or day, both
+   *  an interval and a day, or an end before the start, is refused on the row. */
   protected async submit(event: Event): Promise<void> {
     event.preventDefault();
     if (this.busy()) return;
@@ -146,20 +167,33 @@ export class PersonPlans {
     const amount = this.amount().trim();
     const start = this.start().trim();
     const every = this.every().trim();
+    const day = this.day().trim();
     const end = this.end().trim();
     const refused =
       'The plan could not be added: it needs an amount of 0.00 or more with up to two decimals, ' +
-      'every so many days (a whole number, at least 1), and an end on or after its start.';
-    if (!AMOUNT.test(amount) || !EVERY.test(every) || Number(every) < 1 || !DATE.test(end) || (start !== '' && !DATE.test(start))) {
+      'either every so many days (a whole number, at least 1) or a day of the month (1 to 31), ' +
+      'and an end on or after its start.';
+    const runs =
+      day !== ''
+        ? every === '' && DAY.test(day) && Number(day) >= 1 && Number(day) <= 31
+        : EVERY.test(every) && Number(every) >= 1;
+    if (!AMOUNT.test(amount) || !runs || !DATE.test(end) || (start !== '' && !DATE.test(start))) {
       this.error.set(refused);
       return;
     }
     this.busy.set(true);
     try {
-      await this.store.add(this.personId(), { amount, start: start || null, every, end });
+      await this.store.add(this.personId(), {
+        amount,
+        start: start || null,
+        every: day === '' ? every : null,
+        day: day === '' ? null : day,
+        end,
+      });
       this.amount.set('');
       this.start.set('');
       this.every.set('');
+      this.day.set('');
       this.end.set('');
     } catch {
       this.error.set(refused);

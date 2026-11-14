@@ -59,23 +59,29 @@ public class PlanService {
     }
 
     /** Add a plan for a person: an amount of 0.00 or more with up to two decimals, a start (blank: the
-     *  sheet's today), every so many days (a whole number, at least 1) and an end on or after the start. */
+     *  sheet's today), either every so many days (a whole number, at least 1) or monthly on a day of the
+     *  month (1 to 31), and an end on or after the start. */
     @Transactional
     public Plan add(String sheetId, String user, Long personId, String amount, LocalDate start, String every,
-            LocalDate end) {
+            String day, LocalDate end) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + personId + " on sheet " + sheetId));
         BigDecimal figure = amountOf(amount);
-        int days = everyOf(every);
+        boolean monthly = day != null && !day.isBlank();
+        if (monthly && every != null && !every.isBlank()) {
+            throw new PlanRefusedException("A plan runs either every so many days or on a day of the month");
+        }
+        Integer days = monthly ? null : everyOf(every);
+        Integer dayOfMonth = monthly ? dayOf(day) : null;
         LocalDate today = sheets.today(sheetId);
         LocalDate from = start != null ? start : today;
         if (end == null || end.isBefore(from)) {
             throw new PlanRefusedException("A plan must end on or after its start");
         }
-        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, figure, from, days, end, today));
+        Plan saved = plans.saveAndFlush(new Plan(sheetId, personId, figure, from, days, dayOfMonth, end, today));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " amount=" + saved.getAmount().toPlainString() + " start=" + saved.getStart()
-                + " every=" + saved.getEvery() + " end=" + saved.getEnd());
+                + (monthly ? " day=" + saved.getDay() : " every=" + saved.getEvery()) + " end=" + saved.getEnd());
         return saved;
     }
 
@@ -124,6 +130,14 @@ public class PlanService {
         String typed = every == null ? "" : every.trim();
         if (!typed.matches("\\d{1,6}") || Integer.parseInt(typed) < 1) {
             throw new PlanRefusedException("A plan runs every whole number of days, at least 1");
+        }
+        return Integer.parseInt(typed);
+    }
+
+    private static int dayOf(String day) {
+        String typed = day.trim();
+        if (!typed.matches("\\d{1,2}") || Integer.parseInt(typed) < 1 || Integer.parseInt(typed) > 31) {
+            throw new PlanRefusedException("A monthly plan runs on a day of the month, 1 to 31");
         }
         return Integer.parseInt(typed);
     }
