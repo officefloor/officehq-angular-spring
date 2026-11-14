@@ -195,13 +195,14 @@ public class PersonService {
     }
 
     /** The sheet's people as they stood at the end of a day, in the order they were added: those added
-     *  by then, each with the name, own terms, retirement and contact they had then (null: as they stand now). */
+     *  by then (those since merged into another included), each with the name, own terms, retirement and
+     *  contact they had then (null: as they stand now). */
     public List<Person> list(String sheetId, LocalDate asOf) {
         if (asOf == null) {
             return list(sheetId);
         }
         Map<Long, History.PersonThen> then = history.people(sheetId, asOf);
-        return list(sheetId).stream().filter(person -> person.onSheetAsOf(asOf)).map(person -> {
+        return people.findEverBySheetId(sheetId).stream().filter(person -> person.onSheetAsOf(asOf)).map(person -> {
             History.PersonThen was = then.get(person.getId());
             return was == null ? person : person.asItWas(was.name(), was.terms(), was.retiredFrom(), was.contact());
         }).toList();

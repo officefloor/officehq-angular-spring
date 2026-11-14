@@ -1021,32 +1021,35 @@ export class People {
     return person.aliases.join(', ');
   }
 
-  /** A person's patrons' names, sorted, comma and space separated. */
+  /** A person's patrons, each as their name and share, sorted by name, comma and space separated. */
   protected patronsOf(person: Person): string {
     const names = new Map(this.people().map((p) => [p.id, p.name]));
+    const shares = patronShares(person.patronIds.length);
     return person.patronIds
-      .map((id) => names.get(id))
-      .filter((name): name is string => name !== undefined)
-      .sort((a, b) => a.localeCompare(b))
+      .map((id, i) => ({ name: names.get(id), share: shares[i] }))
+      .filter((patron): patron is { name: string; share: number } => patron.name !== undefined)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((patron) => `${patron.name} ${money(patron.share)}`)
       .join(', ');
   }
 
-  /** A person's patrons' settled figures added up: the due frozen on each of their SETTLED claims dated
-   *  within the 90 days up to and including the sheet's today; 0.00 with none. */
+  /** A person's backing: over their patrons, each patron's settled figure (the due frozen on each of
+   *  their SETTLED claims dated within the 90 days up to and including the sheet's today) times their
+   *  share divided by 100, added up and rounded half to even; 0.00 with none. */
   protected backingOf(person: Person): string {
     const today = this.session.today();
     if (today === null) return money(0);
     const since = plusDays(today, -89);
     const byPerson = this.claimsByPerson();
-    return money(
-      person.patronIds.reduce(
-        (sum, id) =>
-          (byPerson.get(id) ?? [])
-            .filter((c) => c.status === 'SETTLED' && c.settledDue !== null && since <= c.date && c.date <= today)
-            .reduce((total, c) => total + cents(c.settledDue ?? '0'), sum),
-        0,
-      ),
-    );
+    const shares = patronShares(person.patronIds.length);
+    // In ten-thousandths of a cent: cents times a share in hundredths of a percent.
+    const exact = person.patronIds.reduce((sum, id, i) => {
+      const figure = (byPerson.get(id) ?? [])
+        .filter((c) => c.status === 'SETTLED' && c.settledDue !== null && since <= c.date && c.date <= today)
+        .reduce((total, c) => total + cents(c.settledDue ?? '0'), 0);
+      return sum + figure * shares[i];
+    }, 0);
+    return money(halfEven(exact, 10_000));
   }
 
   protected setHoldDate(personId: number, field: 'from' | 'to', date: string): void {
@@ -1639,6 +1642,22 @@ export class People {
 
 /** The figures added up, leaving out the single highest and the single lowest when there are three
  *  or more. */
+/** The patrons' shares in hundredths, in the order they were named: 100.00 split equally, each rounded
+ *  half to even, the remainder (100.00 minus the shares added up) to the first-named patron. */
+function patronShares(count: number): number[] {
+  if (count === 0) return [];
+  const shares = Array.from({ length: count }, () => halfEven(10_000, count));
+  shares[0] += 10_000 - shares.reduce((sum, share) => sum + share, 0);
+  return shares;
+}
+
+/** A whole number divided by a positive whole number, rounded half to even. */
+function halfEven(numerator: number, divisor: number): number {
+  const whole = Math.floor(numerator / divisor);
+  const rest = numerator - whole * divisor;
+  return 2 * rest > divisor || (2 * rest === divisor && whole % 2 !== 0) ? whole + 1 : whole;
+}
+
 function trimmedSum(figures: number[]): number {
   const sum = figures.reduce((total, figure) => total + figure, 0);
   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);

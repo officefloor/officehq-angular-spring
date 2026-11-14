@@ -11,6 +11,11 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     @Query("select p from Person p where p.sheetId = :sheetId and p.mergedInto is null order by p.id")
     List<Person> findBySheetIdOrderByIdAsc(String sheetId);
 
+    /** Everyone ever added to the sheet in the order they were added, those since merged into another
+     *  included: a past day's view shows the people who were on the sheet then. */
+    @Query("select p from Person p where p.sheetId = :sheetId order by p.id")
+    List<Person> findEverBySheetId(String sheetId);
+
     /** The person on the sheet; a person merged into another has left it. */
     @Query("select p from Person p where p.id = :id and p.sheetId = :sheetId and p.mergedInto is null")
     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
