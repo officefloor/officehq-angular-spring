@@ -1,0 +1,125 @@
+diff --git a/src/main/frontend/src/app/features/audit/audit-viewer.ts b/src/main/frontend/src/app/features/audit/audit-viewer.ts
+index 5001e8362..2c16c6f47 100644
+--- a/src/main/frontend/src/app/features/audit/audit-viewer.ts
++++ b/src/main/frontend/src/app/features/audit/audit-viewer.ts
+@@ -29,6 +29,16 @@ import { Session } from '../../core/session';
+           <li data-testid="audit-line">{{ line }}</li>
+         }
+       </ol>
++      <h3 id="activity-heading">Activity</h3>
++      <button type="button" data-testid="activity-show" (click)="showActivity()">Show activity</button>
++      @if (activityError(); as message) {
++        <p role="alert" data-testid="activity-error">{{ message }}</p>
++      }
++      <ul aria-labelledby="activity-heading">
++        @for (line of activity(); track $index) {
++          <li data-testid="activity-line">{{ line }}</li>
++        }
++      </ul>
+     </section>
+   `,
+ })
+@@ -38,8 +48,13 @@ export class AuditViewer {
+   protected readonly filter = signal('');
+   protected readonly lines = signal<string[]>([]);
+   protected readonly error = signal<string | null>(null);
++  /** The sheet's activity as last shown: one "<user> <EVENT> <count>" line per user and event. */
++  protected readonly activity = signal<string[]>([]);
++  protected readonly activityError = signal<string | null>(null);
+   /** Counts presses, so only the latest press's answer is shown. */
+   private shows = 0;
++  /** Counts activity presses, so only the latest press's answer is shown. */
++  private activityShows = 0;
+ 
+   constructor() {
+     // A sheet (re-)load clears what an earlier press showed.
+@@ -48,6 +63,9 @@ export class AuditViewer {
+       this.session.loads();
+       this.shows++;
+       this.lines.set([]);
++      this.activityShows++;
++      this.activity.set([]);
++      this.activityError.set(null);
+     });
+   }
+ 
+@@ -75,4 +93,21 @@ export class AuditViewer {
+       if (press === this.shows) this.error.set('The audit could not be read.');
+     }
+   }
++
++  /** Read the sheet's activity: its audit lines counted per user and event. */
++  protected async showActivity(): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const press = ++this.activityShows;
++    this.activityError.set(null);
++    this.activity.set([]);
++    try {
++      const lines = await firstValueFrom(
++        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/activity`),
++      );
++      if (press === this.activityShows) this.activity.set(lines);
++    } catch {
++      if (press === this.activityShows) this.activityError.set('The activity could not be read.');
++    }
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditController.java b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+index 4cd321764..db0acabe7 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+@@ -32,6 +32,12 @@ public class AuditController {
+         return service.lines(sheetId.trim(), name);
+     }
+ 
++    /** The sheet's activity: one "<user> <EVENT> <count>" line per user and event, sorted by user then event. */
++    @GetMapping("/activity")
++    public List<String> activity(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
++        return service.activity(sheetId.trim());
++    }
++
+     /** A claim's timeline: the audit lines about it as the file holds them, newest first. */
+     @GetMapping("/claims/{id}/timeline")
+     public List<String> timeline(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id) {
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java b/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
+index c499974ae..1880c253b 100644
+--- a/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
+@@ -6,6 +6,7 @@ import java.util.List;
+ import java.util.Locale;
+ import java.util.NoSuchElementException;
+ import java.util.Optional;
++import java.util.TreeMap;
+ import java.util.regex.Matcher;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.Audit;
+@@ -69,6 +70,28 @@ public class AuditViewService {
+         return found;
+     }
+ 
++    /**
++     * The sheet's activity: for every user and every event in the sheet's audit lines, one line
++     * "<user> <EVENT> <count>", sorted by user then event.
++     */
++    public List<String> activity(String sheetId) {
++        TreeMap<String, TreeMap<String, Integer>> counts = new TreeMap<>();
++        for (String line : audit.lines()) {
++            if (!field(line, "sheet").filter(sheetId::equals).isPresent()) {
++                continue;
++            }
++            Optional<String> by = field(line, "by").map(user -> user.split(" ", 2)[0]);
++            if (by.isEmpty() || by.get().isEmpty()) {
++                continue;
++            }
++            String event = line.split(" ", 2)[0];
++            counts.computeIfAbsent(by.get(), user -> new TreeMap<>()).merge(event, 1, Integer::sum);
++        }
++        List<String> found = new ArrayList<>();
++        counts.forEach((user, events) -> events.forEach((event, n) -> found.add(user + " " + event + " " + n)));
++        return found;
++    }
++
+     /**
+      * The sheet's lines, newest first. With a non-blank name, only the lines whose name= or person=
+      * field is that name, compared as names are (case and surrounding spaces ignored), followed by
