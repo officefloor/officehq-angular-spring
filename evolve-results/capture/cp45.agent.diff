@@ -1,0 +1,132 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index e6d3adcb7..8ec89f7f0 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -183,6 +183,12 @@ export class ClaimsApi {
+       { headers: this.headers() }));
+   }
+ 
++  /** Settle each of the claims, in list order, as settling one would; those that cannot be settled are left as they are. */
++  bulkSettle(sheetId: string, ids: number[]): Promise<{ settled: number; refused: number }> {
++    return firstValueFrom(this.http.post<{ settled: number; refused: number }>(`${this.url(sheetId)}/claims/bulk-settle`, { ids },
++      { headers: this.headers() }));
++  }
++
+   private url(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}`;
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 47343d68b..d8b846849 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -75,6 +75,14 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
+       @if (bulkError(); as err) {
+         <p role="alert" data-testid="bulk-error">{{ err }}</p>
+       }
++      <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
++      @if (bulkSettleResult(); as r) {
++        <p role="status">Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>,
++          refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong></p>
++      }
++      @if (bulkSettleError(); as err) {
++        <p role="alert" data-testid="bulk-settle-error">{{ err }}</p>
++      }
+       <table data-testid="people-list">
+         <thead>
+           <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+@@ -291,6 +299,10 @@ export class People {
+   protected readonly bulkResult = signal<{ opened: number; refused: number } | null>(null);
+   protected readonly bulkError = signal<string | null>(null);
+   private bulkOpening = false;
++  /** The last bulk settle's counts; gone while one runs. */
++  protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
++  protected readonly bulkSettleError = signal<string | null>(null);
++  private bulkSettling = false;
+   protected readonly editingId = signal<number | null>(null);
+   /** The version of the person the open editor loaded. */
+   private editingVersion = 0;
+@@ -335,6 +347,8 @@ export class People {
+         this.selectedClaims.set(new Set());
+         this.bulkResult.set(null);
+         this.bulkError.set(null);
++        this.bulkSettleResult.set(null);
++        this.bulkSettleError.set(null);
+         this.people.set([]);
+         this.claims.set([]);
+         this.rates.set([]);
+@@ -519,6 +533,31 @@ export class People {
+     }
+   }
+ 
++  /** Settle every selected claim that can be settled, in list order, by the rules of settling one
++   *  (one sent to PENDING counts as settled); then show how many were settled and refused, and the
++   *  claims as the store now holds them. */
++  protected async bulkSettle(): Promise<void> {
++    if (this.bulkSettling) return;
++    this.bulkSettleResult.set(null);
++    this.bulkSettleError.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    const ids = [...this.selectedClaims()];
++    this.bulkSettling = true;
++    try {
++      const result = await this.claimsApi.bulkSettle(sheetId, ids);
++      const claims = await this.claimsApi.list(sheetId);
++      if (this.session.sheetId() !== sheetId) return;
++      this.claims.set(claims);
++      this.selectedClaims.set(new Set());
++      this.bulkSettleResult.set(result);
++    } catch {
++      this.bulkSettleError.set('Something went wrong settling the claims; try again.');
++    } finally {
++      this.bulkSettling = false;
++    }
++  }
++
+   /** Download the people as CSV, in list order, retired ones too: name, grade today, retired-from, due-total as shown. */
+   protected exportCsv(): void {
+     const lines = [csvLine(['name', 'grade', 'retired-from', 'due-total']),
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 7e5894239..0260cd966 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -88,6 +88,11 @@ public class ClaimController {
+     public record BulkOpenView(int opened, int refused) {
+     }
+ 
++    /** A bulk settle's result: how many of the selected claims were settled (a claim sent to
++     *  PENDING counts) and how many refused. */
++    public record BulkSettleView(int settled, int refused) {
++    }
++
+     private static String trimmed(String value) {
+         return value == null ? null : value.trim();
+     }
+@@ -168,6 +173,27 @@ public class ClaimController {
+         return view(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED));
+     }
+ 
++    /** Settle each selected claim in list order (people in the order added, newest claim first),
++     *  each on its own by the rules of settling one; a claim sent to PENDING counts as settled, and
++     *  a claim that cannot be settled is left as it is. */
++    @PostMapping("/claims/bulk-settle")
++    public BulkSettleView bulkSettle(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody BulkForm body) {
++        List<Long> ordered = service.inListOrder(sheetId, body.ids());
++        int settled = 0;
++        for (long id : ordered) {
++            try {
++                service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED);
++                settled++;
++            } catch (ResponseStatusException e) {
++                // refused: left as it is
++            }
++        }
++        return new BulkSettleView(settled, (int) body.ids().stream().distinct().count() - settled);
++    }
++
+     @PostMapping("/claims/{id}/approve")
+     public ClaimView approve(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,

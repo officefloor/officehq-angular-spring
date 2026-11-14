@@ -1,0 +1,64 @@
+{
+  "checkpoint": 45,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp45_bulk-settle",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected claims can be settled together with one button, each in list order (people as added,\nnewest claim first within a person) by exactly the rules of settling one claim, by the signed-in\nuser: a claim that goes to PENDING counts as settled by the button, a claim that cannot be settled\nis left as it is. Show how many were settled and how many were refused. Each claim that went\nthrough writes its own lines as a single settle would.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected claims can be settled together with one button, each in list order (people as added,\nnewest claim first within a person) by exactly the rules of settling one claim, by the signed-in\nuser: a claim that goes to PENDING counts as settled by the button, a claim that cannot be settled\nis left as it is. Show how many were settled and how many were refused. Each claim that went\nthrough writes its own lines as a single settle would.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "affb81b47bdff30838c8be434f779f7443a97147",
+  "reset_sha": "",
+  "preagent_sha": "823378ca04ee001896358747b63922721fc22f35",
+  "prev_sha": "823378ca04ee001896358747b63922721fc22f35",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5497350000000001,
+    "input_tokens": 26,
+    "output_tokens": 4554,
+    "cache_read_tokens": 452635,
+    "cache_creation_tokens": 46003,
+    "num_turns": 14,
+    "duration_ms": 181922,
+    "duration_api_ms": 44930,
+    "model": "claude-opus-5-5",
+    "session_id": "14b0b57d-9ae5-4a0b-814b-3cab0acb53bb",
+    "stop_reason": "success",
+    "result_text": "There's now a \"Settle selected claims\" button that settles all the checked claims at once and shows how many were settled and how many were refused. `bin/e2e` passes all 4 tests.\n\n- **Server:** a new `POST /api/sheets/{sheetId}/claims/bulk-settle` endpoint in `ClaimController.java`, built the same way as the existing bulk open. It puts the selected claims in list order (people as added, newest claim first), then settles each one through the same code a single settle uses, as the signed-in user. So each claim follows the same rules: a closed period, the user who opened the claim, or a status that doesn't allow settling all refuse it, and a claim over the clerk limit goes to PENDING. A PENDING result counts as settled; a refused claim is left as it is. Each claim that goes through writes its own audit lines, as a single settle would.\n- **Front end:** the button (`bulk-settle`) sits next to \"Open selected claims\" in `people.ts`. The counts appear in `bulk-settled` and `bulk-settle-refused`, and a request failure shows `bulk-settle-error`. The old counts disappear as soon as the button is pressed again. When it finishes, the claim list is re-read from the store and the selection is cleared.\n\nNo database change was needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5497350000000001,
+        "num_turns": 14,
+        "duration_ms": 181922,
+        "duration_api_ms": 44930,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp45.agent.jsonl",
+  "agent_diff_file": "cp45.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
