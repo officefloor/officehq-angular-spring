@@ -20,6 +20,8 @@ export interface Plan {
   nextDates: string[];
   /** Whether the plan is paused now; its dates from the day it was paused to the day it is resumed are skipped. */
   paused: boolean;
+  /** The changes of the plan's amount, oldest first: the sheet's today when made, and the new amount. */
+  changes: { on: string; amount: string }[];
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -73,6 +75,17 @@ export class PlanStore {
     this.plans.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
   }
 
+  /** Change the plan's amount from the sheet's today; the server refuses a bad amount. */
+  async changeAmount(planId: number, amount: string): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.post<Plan>(`/api/sheets/${encodeURIComponent(sheet)}/plans/${planId}/amount`, { amount }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.plans.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+  }
+
   /** Make every plan's claims due by the sheet's today; gives back the claims made. */
   async generate(): Promise<Claim[]> {
     const sheet = this.session.sheetId();
@@ -112,6 +125,20 @@ export class PlanStore {
           paused <span data-testid="plan-paused">{{ pl.paused ? 'yes' : 'no' }}</span>
           <button type="button" data-testid="plan-pause" (click)="pause(pl.id, true)">Pause</button>
           <button type="button" data-testid="plan-resume" (click)="pause(pl.id, false)">Resume</button>
+          <label [for]="'plan-amount-' + pl.id">New amount</label>
+          <input
+            [id]="'plan-amount-' + pl.id"
+            data-testid="plan-amount"
+            inputmode="decimal"
+            [value]="newAmounts()[pl.id] ?? ''"
+            (input)="typeAmount(pl.id, value($event))"
+          />
+          <button type="button" data-testid="plan-amount-save" (click)="changeAmount(pl.id)">Save amount</button>
+          <ul [attr.aria-label]="'Amount changes of the plan from ' + pl.start">
+            @for (c of pl.changes; track $index) {
+              <li data-testid="plan-change-line">{{ c.on }} amount={{ c.amount }}</li>
+            }
+          </ul>
           @if (rowErrors()[pl.id]; as message) {
             <p role="alert" data-testid="plan-error">{{ message }}</p>
           }
@@ -179,6 +206,8 @@ export class PersonPlans {
   protected readonly error = signal<string | null>(null);
   /** The refusal of the last pause or resume on each plan's row, by plan id. */
   protected readonly rowErrors = signal<Record<number, string>>({});
+  /** The new amount typed on each plan's row, by plan id. */
+  protected readonly newAmounts = signal<Record<number, string>>({});
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
 
@@ -196,6 +225,28 @@ export class PersonPlans {
         ...errors,
         [planId]: on ? 'The plan could not be paused: it is paused already.' : 'The plan could not be resumed: it is not paused.',
       }));
+    }
+  }
+
+  protected typeAmount(planId: number, amount: string): void {
+    this.newAmounts.update((typed) => ({ ...typed, [planId]: amount }));
+    this.rowErrors.update(({ [planId]: _, ...rest }) => rest);
+  }
+
+  /** Change the plan's amount to the typed one; a bad amount is refused on its row. */
+  protected async changeAmount(planId: number): Promise<void> {
+    this.rowErrors.update(({ [planId]: _, ...rest }) => rest);
+    const amount = (this.newAmounts()[planId] ?? '').trim();
+    const refused = 'The amount could not be changed: it needs 0.00 or more, with up to two decimals.';
+    if (!AMOUNT.test(amount)) {
+      this.rowErrors.update((errors) => ({ ...errors, [planId]: refused }));
+      return;
+    }
+    try {
+      await this.store.changeAmount(planId, amount);
+      this.newAmounts.update(({ [planId]: _, ...rest }) => rest);
+    } catch {
+      this.rowErrors.update((errors) => ({ ...errors, [planId]: refused }));
     }
   }
 

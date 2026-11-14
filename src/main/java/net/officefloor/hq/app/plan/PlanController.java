@@ -38,13 +38,26 @@ public class PlanController {
      *  first five plan dates after the sheet's today and on or before its end, those a pause skips left
      *  out, and whether it is paused now. */
     public record PlanView(Long id, Long personId, String amount, LocalDate start, Integer every,
-            Integer day, LocalDate end, int generated, List<LocalDate> nextDates, boolean paused) {
-        static PlanView of(Plan plan, int generated, List<PlanPause> pauses, LocalDate today) {
-            return new PlanView(plan.getId(), plan.getPersonId(), plan.getAmount().toPlainString(), plan.getStart(),
+            Integer day, LocalDate end, int generated, List<LocalDate> nextDates, boolean paused,
+            List<ChangeView> changes) {
+        static PlanView of(Plan plan, int generated, List<PlanPause> pauses, List<PlanChange> changes,
+                LocalDate today) {
+            return new PlanView(plan.getId(), plan.getPersonId(),
+                    PlanService.amountAfter(plan, changes).toPlainString(), plan.getStart(),
                     plan.getEvery(), plan.getDay(), plan.getEnd(), generated,
                     plan.datesAfter(today, NEXT_DATES, d -> PlanService.skipped(pauses, d)),
-                    pauses.stream().anyMatch(PlanPause::isOpen));
+                    pauses.stream().anyMatch(PlanPause::isOpen),
+                    changes.stream().map(c -> new ChangeView(c.getChangedOn(), c.getAmount().toPlainString()))
+                            .toList());
         }
+    }
+
+    /** A change of a plan's amount: the sheet's today when it was made, and the new amount. */
+    public record ChangeView(LocalDate on, String amount) {
+    }
+
+    /** A plan's new amount as typed; the service checks it. */
+    public record AmountRequest(@Size(max = 50) String amount) {
     }
 
     /** How many next dates a plan shows. */
@@ -88,7 +101,7 @@ public class PlanController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return PlanView.of(service.add(sheet, by, request.personId(), request.amount(), request.start(),
-                request.every(), request.day(), request.end()), 0, List.of(), sheets.today(sheet));
+                request.every(), request.day(), request.end()), 0, List.of(), List.of(), sheets.today(sheet));
     }
 
     /** Pause the plan from the sheet's today; refused when it is paused already. */
@@ -103,6 +116,15 @@ public class PlanController {
     public PlanView resume(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long planId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
         return paused(sheetId, planId, user, false);
+    }
+
+    /** Change the plan's amount on the sheet's today; refused when the amount is bad. */
+    @PostMapping("/{planId}/amount")
+    public PlanView amount(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long planId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated AmountRequest request) {
+        String sheet = sheetId.trim();
+        Plan plan = service.changeAmount(sheet, SignedInUser.decode(user), planId, request.amount());
+        return views(sheet, null).stream().filter(v -> v.id().equals(plan.getId())).findFirst().orElseThrow();
     }
 
     private PlanView paused(String sheetId, Long planId, String user, boolean on) {
@@ -127,12 +149,14 @@ public class PlanController {
         List<Plan> them = service.list(sheet, asOf);
         Map<Long, Integer> generated = service.generated(them, asOf);
         Map<Long, List<PlanPause>> pauses = service.pauses(them, asOf);
+        Map<Long, List<PlanChange>> changes = service.changes(them, asOf);
         LocalDate today = sheets.today(sheet);
         return them.stream().map(p -> PlanView.of(p, generated.getOrDefault(p.getId(), 0),
-                pauses.getOrDefault(p.getId(), List.of()), today)).toList();
+                pauses.getOrDefault(p.getId(), List.of()), changes.getOrDefault(p.getId(), List.of()), today))
+                .toList();
     }
 
-    /** A bad amount, interval or day of the month, an end before the start, pausing a paused plan or
+    /** A bad amount (added or changed), interval or day of the month, an end before the start, pausing a paused plan or
      *  resuming a running one, or a date that is not a real yyyy-mm-dd date. */
     @ExceptionHandler({PlanRefusedException.class, HttpMessageNotReadableException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)

@@ -325,7 +325,7 @@ public class PersonService {
             throw new FlagRefusedException("A flag needs a reason");
         }
         LocalDate to = until != null ? until : sheets.today(sheetId);
-        person.flag(reason.trim(), to);
+        person.flag(reason.trim(), to, sheets.today(sheetId));
         people.saveAndFlush(person);
         audit.recordOnCommit("PERSON_FLAGGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " reason=" + reason.trim() + " until=" + to);
@@ -397,7 +397,7 @@ public class PersonService {
 
     /** The sheet's people as they stood at the end of a day, in the order they were added: those added
      *  by then (those since merged into another included), each with the name, own terms, retirement and
-     *  contact they had then (null: as they stand now). */
+     *  contact they had then (null: as they stand now), and a flag put on since left out. */
     public List<Person> list(String sheetId, LocalDate asOf) {
         if (asOf == null) {
             return list(sheetId);
@@ -405,7 +405,8 @@ public class PersonService {
         Map<Long, History.PersonThen> then = history.people(sheetId, asOf);
         return people.findEverBySheetId(sheetId).stream().filter(person -> person.onSheetAsOf(asOf)).map(person -> {
             History.PersonThen was = then.get(person.getId());
-            return was == null ? person : person.asItWas(was.name(), was.terms(), was.retiredFrom(), was.contact());
+            return (was == null ? person : person.asItWas(was.name(), was.terms(), was.retiredFrom(), was.contact()))
+                    .flaggedAsOf(asOf);
         }).toList();
     }
 

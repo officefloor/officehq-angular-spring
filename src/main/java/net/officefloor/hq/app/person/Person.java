@@ -73,6 +73,10 @@ public class Person {
     @Column(name = "flag_until")
     private LocalDate flagUntil;
 
+    /** The sheet's today when the person's flag was put on; null when not known. */
+    @Column(name = "flag_on")
+    private LocalDate flagOn;
+
     /** The user who may approve or reject the person's PENDING claims as a steward may; null for none. */
     @Column(name = "approver")
     private String approver;
@@ -105,6 +109,7 @@ public class Person {
         was.originSheetId = originSheetId;
         was.flagReason = flagReason;
         was.flagUntil = flagUntil;
+        was.flagOn = flagOn;
         was.approver = approver;
         return was;
     }
@@ -198,9 +203,23 @@ public class Person {
     }
 
     /** Flag the person with a reason until a date, replacing any flag they had. */
-    public void flag(String reason, LocalDate until) {
+    public void flag(String reason, LocalDate until, LocalDate on) {
         this.flagReason = reason;
         this.flagUntil = until;
+        this.flagOn = on;
+    }
+
+    /** The person as they stood at the end of a day: this person, or, when their flag was put on after
+     *  it, a copy that is never saved without the flag. */
+    public Person flaggedAsOf(LocalDate asOf) {
+        if (flagOn == null || !flagOn.isAfter(asOf)) {
+            return this;
+        }
+        Person was = asItWas(name, terms, retiredFrom, contact);
+        was.flagReason = null;
+        was.flagUntil = null;
+        was.flagOn = null;
+        return was;
     }
 
     /** Whether the person's flag is in force on a day: on or before its until-date. */
