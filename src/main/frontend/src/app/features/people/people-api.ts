@@ -44,7 +44,7 @@ export class PeopleApi {
 }
 
 export function personError(e: unknown): string {
-  return e instanceof HttpErrorResponse && e.status === 400
-    ? 'Enter a name and choose a grade.'
-    : 'Something went wrong; try again.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name and choose a grade.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'That name is already in use on this sheet.';
+  return 'Something went wrong; try again.';
 }

@@ -10,4 +10,7 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     List<Person> findBySheetIdOrderByIdAsc(String sheetId);
 
     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
+
+    /** The sheet's people with this name, ignoring case. */
+    List<Person> findBySheetIdAndNameIgnoreCase(String sheetId, String name);
 }
