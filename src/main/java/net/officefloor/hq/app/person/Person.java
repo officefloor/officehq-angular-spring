@@ -9,6 +9,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
+import java.util.TreeSet;
 import net.officefloor.hq.app.history.HistoryListener;
 import org.hibernate.annotations.Generated;
 
@@ -44,6 +47,10 @@ public class Person {
     /** The person's contact, trimmed and lower-cased; null for none. */
     @Column(name = "contact")
     private String contact;
+
+    /** The person's tags, lower case, sorted and comma separated; null when they have none. */
+    @Column(name = "tags")
+    private String tags;
 
     /** The sheet's today when the person was added; null for one added before it was kept. */
     @Column(name = "added_on", updatable = false)
@@ -82,6 +89,7 @@ public class Person {
         was.terms = terms;
         was.retiredFrom = retiredFrom;
         was.contact = contact;
+        was.tags = tags;
         was.originSheetId = originSheetId;
         return was;
     }
@@ -149,6 +157,16 @@ public class Person {
 
     public void setContact(String contact) {
         this.contact = contact;
+    }
+
+    /** The person's tags, sorted; empty when they have none. */
+    public List<String> getTags() {
+        return tags == null ? List.of() : List.of(tags.split(","));
+    }
+
+    /** Give the person their tags (already trimmed, lower case and without repeats), or none (empty). */
+    public void setTags(Collection<String> tags) {
+        this.tags = tags.isEmpty() ? null : String.join(",", new TreeSet<>(tags));
     }
 
     public String getOriginSheetId() {

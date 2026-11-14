@@ -11,6 +11,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
@@ -31,11 +33,13 @@ public class PersonService {
     private final EntityManager entityManager;
     private final History history;
     private final Audit audit;
+    private final ClaimRepository claims;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonGradeService grades,
             PersonHoldRepository holds, PersonWatchRepository watches, PersonAliasRepository aliases,
             PersonRetirementRepository retirements, SheetService sheets, EntityManager entityManager,
-            History history, Audit audit) {
+            History history, Audit audit, ClaimRepository claims) {
+        this.claims = claims;
         this.retirements = retirements;
         this.aliases = aliases;
         this.history = history;
@@ -96,6 +100,14 @@ public class PersonService {
      *  the grade they are given applies from the beginning of time. */
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+        return add(sheetId, user, name, grade, terms, contact, null);
+    }
+
+    /** Add a person as above, carrying the tags typed comma separated (blank: none); see
+     *  {@link ClaimService#tagsOf}. */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
+            String tags) {
         LocalDate today = sheets.today(sheetId);
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, null);
@@ -104,7 +116,9 @@ public class PersonService {
         Person person = new Person(sheetId, trimmed, today);
         person.setTerms(terms);
         person.setContact(key);
+        person.setTags(ClaimService.tagsOf(tags));
         Person added = people.saveAndFlush(person);
+        useTags(sheetId, added);
         grades.give(added, grade, null);
         record("PERSON_ADDED", sheetId, user, added, grade, (terms != null ? " terms=" + terms : "")
                 + (key != null ? " contact=" + key : ""));
@@ -117,6 +131,14 @@ public class PersonService {
     @Transactional
     public Person update(String sheetId, String user, Long id, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact) {
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, null);
+    }
+
+    /** Update a person as above, giving them the tags typed comma separated (blank: none; null keeps
+     *  the tags they have); see {@link ClaimService#tagsOf}. */
+    @Transactional
+    public Person update(String sheetId, String user, Long id, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, String contact, String tags) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
         if (person.getVersion() != version) {
@@ -139,6 +161,9 @@ public class PersonService {
         person.setTerms(terms);
         String contactBefore = person.getContact();
         person.setContact(key);
+        if (tags != null) {
+            person.setTags(ClaimService.tagsOf(tags));
+        }
         LocalDate today = sheets.today(sheetId);
         if (gradeFrom != null || !grade.equals(grades.gradeOn(id, today))) {
             grades.give(person, grade, gradeFrom != null ? gradeFrom : today);
@@ -146,6 +171,7 @@ public class PersonService {
             entityManager.lock(person, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
         }
         Person saved = people.saveAndFlush(person);
+        useTags(sheetId, saved);
         record("PERSON_EDITED", sheetId, user, saved, grades.gradeOn(id, today),
                 (Objects.equals(before, terms) ? "" : " terms=" + (terms != null ? terms : ""))
                 + (Objects.equals(contactBefore, key) ? "" : " contact=" + (key != null ? key : "")));
@@ -380,6 +406,11 @@ public class PersonService {
     private void record(String event, String sheetId, String user, Person person, String grade, String terms) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " grade=" + grade + terms);
+    }
+
+    /** Keep the person's tags on the sheet's list of the tags ever used. */
+    private void useTags(String sheetId, Person person) {
+        person.getTags().forEach(tag -> claims.useTag(sheetId, tag));
     }
 
     /** A contact as kept: trimmed and lower-cased; null for a blank one. */

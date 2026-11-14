@@ -33,6 +33,8 @@ interface Person {
   terms: number | null;
   /** The person's contact, trimmed and lower-cased; null for none. */
   contact: string | null;
+  /** The person's tags, lower case and sorted; empty when they have none. */
+  tags: string[];
   /** The sheet the person was transferred from; null for one not transferred in. */
   origin: string | null;
   /** How many statements were taken for the person. */
@@ -155,6 +157,13 @@ interface StatementTaken {
           data-testid="person-form-contact"
           [value]="contact()"
           (input)="contact.set(value($event)); error.set(null)"
+        />
+        <label for="person-form-tags">Tags (comma separated)</label>
+        <input
+          id="person-form-tags"
+          data-testid="person-form-tags"
+          [value]="tags()"
+          (input)="tags.set(value($event)); error.set(null)"
         />
         <button type="submit" data-testid="person-form-submit">
           {{ editingId() === null ? 'Add person' : 'Save person' }}
@@ -355,6 +364,7 @@ interface StatementTaken {
             <th scope="col">Grade</th>
             <th scope="col">Terms</th>
             <th scope="col">Contact</th>
+            <th scope="col">Tags</th>
             <th scope="col">Came from</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
@@ -405,6 +415,7 @@ interface StatementTaken {
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueBy(p) }}</td>
@@ -809,20 +820,24 @@ export class People {
   });
   /** Every tag ever used on the sheet, as the store last told it. */
   private readonly usedTags = signal<string[]>([]);
-  /** Per tag ever used on the sheet, sorted: the dues shown on the claims that count which carry it
-   *  added up (a claim with no figure adds nothing; one with two tags counts in both). */
+  /** Per tag ever used on the sheet, sorted: the dues shown on the claims that count which carry it,
+   *  or whose person carries it, added up (a claim with no figure adds nothing; one with two tags
+   *  counts in both; one carrying a tag its person carries too counts once). */
   protected readonly tagTotals = computed(() => {
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+    const personTags = new Map(this.people().map((p) => [p.id, p.tags]));
     const floor = this.floor();
     const late = this.late();
     const totals = new Map<string, number>();
     for (const tag of this.usedTags()) totals.set(tag, 0);
     for (const c of this.claims()) for (const tag of c.tags) if (!totals.has(tag)) totals.set(tag, 0);
+    for (const p of this.people()) for (const tag of p.tags) if (!totals.has(tag)) totals.set(tag, 0);
     for (const c of this.live()) {
       const theirs = grades.get(c.personId);
-      if (theirs === undefined || c.tags.length === 0) continue;
+      const tags = new Set([...c.tags, ...(personTags.get(c.personId) ?? [])]);
+      if (theirs === undefined || tags.size === 0) continue;
       const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c.date), floor, late) ?? 0;
-      for (const tag of c.tags) totals.set(tag, (totals.get(tag) ?? 0) + due);
+      for (const tag of tags) totals.set(tag, (totals.get(tag) ?? 0) + due);
     }
     return [...totals.keys()].sort().map((tag) => ({ tag, dueTotal: money(totals.get(tag)!) }));
   });
@@ -957,6 +972,8 @@ export class People {
   protected readonly terms = signal('');
   /** The person's contact; blank for none. */
   protected readonly contact = signal('');
+  /** The person's tags as typed, comma separated; blank for none. */
+  protected readonly tags = signal('');
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the editor loaded. */
   private readonly editingVersion = signal(0);
@@ -1793,6 +1810,7 @@ export class People {
     this.gradeFrom.set('');
     this.terms.set(person.terms === null ? '' : String(person.terms));
     this.contact.set(person.contact ?? '');
+    this.tags.set(person.tags.join(', '));
     this.error.set(null);
   }
 
@@ -1803,6 +1821,7 @@ export class People {
     this.gradeFrom.set('');
     this.terms.set('');
     this.contact.set('');
+    this.tags.set('');
     this.error.set(null);
   }
 
@@ -1819,6 +1838,7 @@ export class People {
       grade: this.grade(),
       terms: terms === '' ? null : Number(terms),
       contact: contact === '' ? null : contact,
+      tags: this.tags(),
     };
     if (!body.name) {
       this.error.set('Type a name for the person.');

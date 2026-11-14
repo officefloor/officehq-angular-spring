@@ -109,8 +109,8 @@ public class SheetCloneService {
         // People, in list order, then what each one has.
         Map<Long, Long> people = new LinkedHashMap<>();
         for (Long id : ids("SELECT id FROM person WHERE sheet_id = ? ORDER BY list_position, id", from)) {
-            people.put(id, insert("INSERT INTO person (sheet_id, name, retired_from, terms, added_on, contact,"
-                    + " origin_sheet_id) SELECT ?, name, retired_from, terms, added_on, contact, origin_sheet_id"
+            people.put(id, insert("INSERT INTO person (sheet_id, name, retired_from, terms, added_on, contact, tags,"
+                    + " origin_sheet_id) SELECT ?, name, retired_from, terms, added_on, contact, tags, origin_sheet_id"
                     + " FROM person WHERE id = ?", to, id));
         }
         for (Map.Entry<Long, Long> person : people.entrySet()) {

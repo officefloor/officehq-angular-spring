@@ -142,7 +142,8 @@ public class PersonTransferService {
                 .toList();
         Map<String, String> oldNumbers = new HashMap<>();
         numbered.forEach(claim -> oldNumbers.put(String.valueOf(claim.getId()), claim.getNumber()));
-        List<String> tags = theirClaims.stream().flatMap(claim -> claim.getTags().stream()).distinct().toList();
+        List<String> tags = Stream.concat(person.getTags().stream(),
+                theirClaims.stream().flatMap(claim -> claim.getTags().stream())).distinct().toList();
         LocalDate today = sheets.today(to);
         Long personId = person.getId();
         entities.flush();

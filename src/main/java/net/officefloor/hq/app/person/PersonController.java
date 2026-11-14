@@ -64,11 +64,12 @@ public class PersonController {
      *  grade they were given from the earliest, how many statements were taken for them and the
      *  last one's due-total and date (null when none was), and whether they are retired and from
      *  when (null when not), and the holds put on them in the order they were, and the ids of their patrons in the order
-     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none), and their aliases sorted as names are compared, and the sheet they were transferred from (null for none), and their past retirements in the order they ended. */
+     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none), and their aliases sorted as names are compared, and the sheet they were transferred from (null for none), and their past retirements in the order they ended, and their tags sorted (empty for none). */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
             List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
-            List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements) {
+            List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
+            List<String> tags) {
         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
                 StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched,
                 List<String> aliases, boolean clashing, List<PersonRetirement> retirements) {
@@ -77,7 +78,7 @@ public class PersonController {
                     statements.lastDueTotal(), statements.lastDate(), person.isRetired(), person.getRetiredFrom(),
                     holds.stream().map(HoldView::of).toList(), patronIds, watched, person.getTerms(),
                     person.getContact(), aliases, clashing, person.getOriginSheetId(),
-                    retirements.stream().map(RetirementView::of).toList());
+                    retirements.stream().map(RetirementView::of).toList(), person.getTags());
         }
     }
 
@@ -87,7 +88,8 @@ public class PersonController {
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             @Min(0) @Max(36500) Integer terms,
-            @Size(max = 200) String contact) {
+            @Size(max = 200) String contact,
+            @Size(max = 2000) String tags) {
     }
 
     /** A person's fields as saved from an editor: the grade applies from its from-date (blank takes
@@ -98,6 +100,7 @@ public class PersonController {
             LocalDate gradeFrom,
             @Min(0) @Max(36500) Integer terms,
             @Size(max = 200) String contact,
+            @Size(max = 2000) String tags,
             @NotNull Long version) {
     }
 
@@ -217,7 +220,7 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.add(sheet, by, request.name(),
-                request.grade(), request.terms(), request.contact())), by);
+                request.grade(), request.terms(), request.contact(), request.tags())), by);
     }
 
     /** Change a person's name and give them a grade from a date; refused when the person was saved since the editor loaded them. */
@@ -227,7 +230,7 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.update(sheet, by, id, request.version(),
-                request.name(), request.grade(), request.gradeFrom(), request.terms(), request.contact())), by);
+                request.name(), request.grade(), request.gradeFrom(), request.terms(), request.contact(), request.tags())), by);
     }
 
     /** Add or update a person per pasted line, in order, each as the form would; none when any line is refused. */
