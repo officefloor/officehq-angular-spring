@@ -1,0 +1,68 @@
+{
+  "checkpoint": 128,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp128_transfer-merges",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    111
+  ],
+  "replaced_tests": [
+    "cp111_transfer-person.spec.ts::transfer person"
+  ],
+  "request": {
+    "spec": "A transfer to a sheet that already has a person with the same name or alias (as names are\ncompared) now merges the arriving person into them instead of being refused, exactly as a merge\ndoes (claims after theirs, aliases joined, bound figures lost); the other sheet writes\nPERSON_TRANSFERRED name=<name> from=<sheet id> then PERSON_MERGED from=<name> into=<name>.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA transfer to a sheet that already has a person with the same name or alias (as names are\ncompared) now merges the arriving person into them instead of being refused, exactly as a merge\ndoes (claims after theirs, aliases joined, bound figures lost); the other sheet writes\nPERSON_TRANSFERRED name=<name> from=<sheet id> then PERSON_MERGED from=<name> into=<name>.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1597ed96fbaa8f6d17836935dbf5b8739d116333",
+  "reset_sha": "",
+  "preagent_sha": "7387c28046d3a2299ffcbaa63792e19cc96ee265",
+  "prev_sha": "7387c28046d3a2299ffcbaa63792e19cc96ee265",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8943972,
+    "input_tokens": 58,
+    "output_tokens": 11696,
+    "cache_read_tokens": 1276826,
+    "cache_creation_tokens": 50610,
+    "num_turns": 30,
+    "duration_ms": 533614,
+    "duration_api_ms": 129604,
+    "model": "claude-opus-5-5",
+    "session_id": "d1d8eeb6-1b9c-4e6f-9558-225fd6fc89c1",
+    "stop_reason": "success",
+    "result_text": "Transferring a person to a sheet that already has someone with the same name or alias now merges them into that person instead of refusing the transfer. `bin/e2e` passes all 4 tests in the spec.\n\n**What changed**\n- **`PersonTransferService`**: before moving the person, it looks on the other sheet for anyone matching their name or any of their aliases. The match ignores case and skips people already merged away.\n  - **One match:** the person is transferred as before (claims renumbered there, figures bound by statements lost), then merged into the match. The other sheet writes `PERSON_TRANSFERRED \u2026 from=<sheet>`, then `PERSON_MERGED \u2026 from=<name> into=<name>`, then its rollup lines.\n  - **No match:** behaves exactly as before, including the existing name, alias and contact checks.\n- **`PersonMergeService`**: I moved the body of `merge` into a package-private `absorb(...)` so the transfer can reuse it. Its steward check is skipped there, because the transfer already checked that the user is a steward on the source sheet.\n- **New migration `V76__person_alias_not_unique.sql`**: the store had a unique index on sheet + lower-cased alias. The test expects Ada to end up with both `Addie` and `addie` as aliases, which that index made impossible, so I replaced it with a non-unique index of the same name. Adding an alias through the screen is still refused when it's already in use, because the service checks for that itself.\n\n**Choices the request didn't specify** \u2014 change these if you want different behaviour:\n- If the arriving person's names match **more than one** person on the other sheet, the transfer is refused, since it's unclear who to merge into.\n- If the match is **retired**, the transfer is refused, in line with the existing rule that nobody merges into a retired person.\n- When a merge happens, the arriving person's contact is **not** checked against the other sheet, because a merge drops it anyway.\n\nThe javadocs on both services and on `TransferRefusedException` are updated to match.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8943972,
+        "num_turns": 30,
+        "duration_ms": 533614,
+        "duration_api_ms": 129604,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp128.agent.jsonl",
+  "agent_diff_file": "cp128.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
