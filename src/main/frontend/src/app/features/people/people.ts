@@ -50,6 +50,9 @@ interface Person {
   /** The person's past retirements, from the date they were retired from to the day they were
    *  unretired, in the order they ended. */
   retirements: { from: string; to: string }[];
+  /** The snapshots written for the person, oldest first: the day being left and their due-total
+   *  then ('n/a' when none). */
+  snapshots: { day: string; dueTotal: string }[];
   /** The holds put on the person, in the order they were: their OPEN claims dated within one, unless
    *  bound by a statement, count in no live total. */
   holds: Hold[];
@@ -410,6 +413,7 @@ interface StatementTaken {
             <th scope="col">Retired</th>
             <th scope="col">Retired from</th>
             <th scope="col">Past retirements</th>
+            <th scope="col">Snapshots</th>
             <th scope="col">Active</th>
             <th scope="col">On hold</th>
             <th scope="col">Holds</th>
@@ -465,6 +469,13 @@ interface StatementTaken {
                 <ul [attr.aria-label]="'Past retirements of ' + p.name">
                   @for (r of p.retirements; track $index) {
                     <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                  }
+                </ul>
+              </td>
+              <td>
+                <ul [attr.aria-label]="'Snapshots of ' + p.name">
+                  @for (s of p.snapshots; track $index) {
+                    <li data-testid="person-snapshot-line">{{ s.day }} {{ s.dueTotal }}</li>
                   }
                 </ul>
               </td>

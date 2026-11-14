@@ -29,6 +29,7 @@ public class PersonService {
     private final PersonWatchRepository watches;
     private final PersonAliasRepository aliases;
     private final PersonRetirementRepository retirements;
+    private final PersonSnapshotRepository snapshots;
     private final SheetService sheets;
     private final EntityManager entityManager;
     private final History history;
@@ -37,9 +38,10 @@ public class PersonService {
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonGradeService grades,
             PersonHoldRepository holds, PersonWatchRepository watches, PersonAliasRepository aliases,
-            PersonRetirementRepository retirements, SheetService sheets, EntityManager entityManager,
-            History history, Audit audit, ClaimRepository claims) {
+            PersonRetirementRepository retirements, PersonSnapshotRepository snapshots, SheetService sheets,
+            EntityManager entityManager, History history, Audit audit, ClaimRepository claims) {
         this.claims = claims;
+        this.snapshots = snapshots;
         this.retirements = retirements;
         this.aliases = aliases;
         this.history = history;
@@ -220,6 +222,24 @@ public class PersonService {
         return retirements.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(r -> asOf == null || !r.getTo().isAfter(asOf))
                 .collect(Collectors.groupingBy(PersonRetirement::getPersonId));
+    }
+
+    /** Keep a SNAPSHOT written for a person: the day being left and their due-total then as shown. */
+    public void snapshot(String sheetId, Long personId, LocalDate day, String dueTotal) {
+        snapshots.save(new PersonSnapshot(sheetId, personId, day, dueTotal));
+    }
+
+    /** A person's snapshots, in the order they were written. */
+    public List<PersonSnapshot> snapshots(Long personId) {
+        return snapshots.findByPersonIdOrderByIdAsc(personId);
+    }
+
+    /** Each person's snapshots on the sheet of days up to the end of a day (null: all), in the order
+     *  they were written, by person id; a person with none is absent. */
+    public Map<Long, List<PersonSnapshot>> snapshots(String sheetId, LocalDate asOf) {
+        return snapshots.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(s -> asOf == null || !s.getDay().isAfter(asOf))
+                .collect(Collectors.groupingBy(PersonSnapshot::getPersonId));
     }
 
     /** Put a hold on a person from a date (a missing date takes the sheet's today) to an optional

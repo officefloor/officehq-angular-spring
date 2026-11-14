@@ -60,25 +60,34 @@ public class PersonController {
         }
     }
 
+    /** A SNAPSHOT written for a person: the day being left and their due-total then ("n/a" for none). */
+    public record SnapshotView(LocalDate day, String dueTotal) {
+        public static SnapshotView of(PersonSnapshot snapshot) {
+            return new SnapshotView(snapshot.getDay(), snapshot.getDueTotal());
+        }
+    }
+
     /** A person as the screen shows them, with the grade in force on the sheet's today and every
      *  grade they were given from the earliest, how many statements were taken for them and the
      *  last one's due-total and date (null when none was), and whether they are retired and from
      *  when (null when not), and the holds put on them in the order they were, and the ids of their patrons in the order
-     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none), and their aliases sorted as names are compared, and the sheet they were transferred from (null for none), and their past retirements in the order they ended, and their tags sorted (empty for none). */
+     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none), and their aliases sorted as names are compared, and the sheet they were transferred from (null for none), and their past retirements in the order they ended, and their tags sorted (empty for none), and the snapshots written for them oldest first. */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
             List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
-            List<String> tags) {
+            List<String> tags, List<SnapshotView> snapshots) {
         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
                 StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched,
-                List<String> aliases, boolean clashing, List<PersonRetirement> retirements) {
+                List<String> aliases, boolean clashing, List<PersonRetirement> retirements,
+                List<PersonSnapshot> snapshots) {
             return new PersonView(person.getId(), person.getName(), PersonGradeService.gradeOn(grades, today),
                     grades.stream().map(GradeView::of).toList(), person.getVersion(), statements.count(),
                     statements.lastDueTotal(), statements.lastDate(), person.isRetired(), person.getRetiredFrom(),
                     holds.stream().map(HoldView::of).toList(), patronIds, watched, person.getTerms(),
                     person.getContact(), aliases, clashing, person.getOriginSheetId(),
-                    retirements.stream().map(RetirementView::of).toList(), person.getTags());
+                    retirements.stream().map(RetirementView::of).toList(), person.getTags(),
+                    snapshots.stream().map(SnapshotView::of).toList());
         }
     }
 
@@ -199,6 +208,7 @@ public class PersonController {
         Map<Long, List<PersonHold>> holds = service.holds(sheet, asOf);
         Map<Long, List<String>> aliases = service.aliases(sheet, asOf);
         Map<Long, List<PersonRetirement>> retirements = service.retirements(sheet, asOf);
+        Map<Long, List<PersonSnapshot>> snapshots = service.snapshots(sheet, asOf);
         LocalDate today = asOf != null ? asOf : sheets.today(sheet);
         List<Person> them = service.list(sheet, asOf);
         Set<Long> clashing = service.clashingIds(sheet, them, aliases);
@@ -208,7 +218,8 @@ public class PersonController {
                         holds.getOrDefault(p.getId(), List.of()),
                         patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId()),
                         aliases.getOrDefault(p.getId(), List.of()), clashing.contains(p.getId()),
-                        retirements.getOrDefault(p.getId(), List.of())))
+                        retirements.getOrDefault(p.getId(), List.of()),
+                        snapshots.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
 
@@ -368,7 +379,8 @@ public class PersonController {
         return PersonView.of(person, grades.of(person.getId()), sheets.today(person.getSheetId()),
                 statements.summary(person.getSheetId(), person.getId()), service.holds(person.getId()),
                 service.patronIds(person.getId()), user != null && service.watches(person.getId(), user),
-                service.aliases(person.getId()), service.clashing(person), service.retirements(person.getId()));
+                service.aliases(person.getId()), service.clashing(person), service.retirements(person.getId()),
+                service.snapshots(person.getId()));
     }
 
     /** A save that raced another to the same version; the editor re-reads the person. */
