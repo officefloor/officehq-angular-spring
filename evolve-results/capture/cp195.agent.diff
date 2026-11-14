@@ -1,0 +1,111 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 950d0ad96..9db9b2aa0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -723,6 +723,14 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+                 >
+                   Cancel statement
+                 </button>
++                <button
++                  type="button"
++                  data-testid="person-export-statement"
++                  [attr.aria-label]="'Download the last statement for ' + p.name + ' as CSV'"
++                  (click)="exportStatement(p)"
++                >
++                  Export statement
++                </button>
+                 <button
+                   type="button"
+                   data-testid="person-move-up"
+@@ -1952,6 +1960,23 @@ export class People {
+     ]);
+   }
+ 
++  /** Download a person's statement as CSV: their claims bound by their last statement, oldest
++   *  first, with the number, date, amount, the bound figure and status as their rows show them. */
++  protected exportStatement(person: Person): void {
++    const floor = this.floor();
++    const late = this.late();
++    this.downloadCsv(`statement-${person.id}`, [
++      ['number', 'date', 'amount', 'figure', 'status'],
++      ...[...this.claimsOf(person.id)]
++        .reverse()
++        .filter((c) => c.stated)
++        .map((c) => {
++          const due = claimDueCents(c, this.rates.ofGradeOn(person.grades, c), floor, late);
++          return [c.number ?? '', c.date, c.amount, due === null ? NO_RATE : money(due), c.status];
++        }),
++    ]);
++  }
++
+   /** Download rows as a CSV file named for the sheet: a field holding a quote, comma or line break
+    *  is quoted (quotes doubled), and every line ends with a line feed. */
+   private downloadCsv(name: string, rows: string[][]): void {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index d2b3cc3fa..9637b1fc8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -219,6 +219,14 @@ public class Claim {
+         return this;
+     }
+ 
++    /** How many of the claim's proofs, as it was once saved, were receipts and photos; on a copy made
++     *  by {@link #asItWas}. */
++    public Claim withProofKinds(int receipts, int photos) {
++        this.proofsReceipt = receipts;
++        this.proofsPhoto = photos;
++        return this;
++    }
++
+     /** Whether the claim, as it was once saved, had its late charge waived; on a copy made by
+      *  {@link #asItWas}. */
+     public Claim withWaived(boolean waived) {
+diff --git a/src/main/java/net/officefloor/hq/app/history/History.java b/src/main/java/net/officefloor/hq/app/history/History.java
+index c57ff15fe..30df61f84 100644
+--- a/src/main/java/net/officefloor/hq/app/history/History.java
++++ b/src/main/java/net/officefloor/hq/app/history/History.java
+@@ -67,9 +67,15 @@ public class History {
+                     if (rs.getBoolean("complete")) {
+                         was.withRest(rs.getString("claim_number"), rs.getString("opened_by"), rs.getString("note"),
+                                 rs.getInt("proofs"), rs.getString("split_from"), rs.getBoolean("late_entry"));
++                        if (rs.getObject("proofs_receipt") != null) {
++                            was.withProofKinds(rs.getInt("proofs_receipt"), rs.getInt("proofs_photo"));
++                        } else if (is != null) {
++                            was.withProofKinds(is.getProofsReceipt(), is.getProofsPhoto());
++                        }
+                     } else if (is != null) {
+                         was.withRest(is.getNumber(), is.getOpenedBy(), is.getNote(), is.getProofs(),
+                                 is.getSplitFrom(), is.isLateEntry());
++                        was.withProofKinds(is.getProofsReceipt(), is.getProofsPhoto());
+                     }
+                     if (is != null) {
+                         was.setRef(is.getRef());
+diff --git a/src/main/java/net/officefloor/hq/app/history/HistoryListener.java b/src/main/java/net/officefloor/hq/app/history/HistoryListener.java
+index 9f975476b..244c265d9 100644
+--- a/src/main/java/net/officefloor/hq/app/history/HistoryListener.java
++++ b/src/main/java/net/officefloor/hq/app/history/HistoryListener.java
+@@ -17,10 +17,11 @@ public class HistoryListener {
+ 
+     static final String CLAIM = "INSERT INTO claim_history (claim_id, sheet_id, person_id, amount,"
+             + " claim_date, due_by, status, settled_due, stated, stated_due, corrects_number, deferred_until, claim_number,"
+-            + " opened_by, note, proofs, split_from, late_entry, waived, held, complete, made_on)"
++            + " opened_by, note, proofs, split_from, late_entry, waived, held, proofs_receipt, proofs_photo, complete, made_on)"
+             + " SELECT c.id, c.sheet_id, c.person_id, c.amount, c.claim_date, c.due_by, c.status, c.settled_due,"
+             + " c.stated, c.stated_due, c.corrects_number, c.deferred_until, c.claim_number, c.opened_by, c.note,"
+-            + " c.proofs, c.split_from, c.late_entry, c.waived, c.held, TRUE, s.today"
++            + " c.proofs, c.split_from, c.late_entry, c.waived, c.held, c.proofs_receipt, c.proofs_photo, TRUE,"
++            + " s.today"
+             + " FROM claim c JOIN sheet s ON s.id = c.sheet_id WHERE c.id = ?";
+ 
+     private static final String RATE = "INSERT INTO rate_history (sheet_id, grade, from_date, to_date, rate, version, forward_after,"
+diff --git a/src/main/resources/db/migration/V108__claim_history_proof_kinds.sql b/src/main/resources/db/migration/V108__claim_history_proof_kinds.sql
+new file mode 100644
+index 000000000..8fb7d942c
+--- /dev/null
++++ b/src/main/resources/db/migration/V108__claim_history_proof_kinds.sql
+@@ -0,0 +1,5 @@
++-- A claim's saved states keep its proofs per kind, so the sheet read as of a past day shows them as
++-- they stood then. A state kept before kinds were kept counts all its proofs as receipts.
++ALTER TABLE claim_history ADD COLUMN proofs_receipt INT;
++ALTER TABLE claim_history ADD COLUMN proofs_photo INT;
++UPDATE claim_history SET proofs_receipt = proofs, proofs_photo = 0 WHERE proofs IS NOT NULL;
