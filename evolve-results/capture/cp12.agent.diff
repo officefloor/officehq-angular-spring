@@ -1,0 +1,130 @@
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 67f62f679..17ebf35a4 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -1,8 +1,8 @@
+ import { Component, inject, input, output, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Session } from '../../core/session';
+-import { Rate, dueCents, pctOn } from '../rates/rates-api';
+-import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, money, statusError } from './claims-api';
++import { Rate, claimDueCents } from '../rates/rates-api';
++import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, claimError, money, statusError } from './claims-api';
+ 
+ // One person's claims, newest first, and the one form that adds a claim or, with a claim's
+ // editor open, saves that claim.
+@@ -84,11 +84,10 @@ export class PersonClaims {
+   }
+ 
+   /** The claim's amount times the rate in force on the claim's date, divided by 100, rounded half
+-   *  up; n/a with no rate in force then. A claim settled with a due shows the due fixed then. */
++   *  to even; n/a with no rate in force then. A claim settled with a due shows the due fixed then. */
+   protected dueOf(c: Claim): string {
+-    if (c.settledDue !== null) return c.settledDue;
+-    const pct = pctOn(this.rates(), c.date);
+-    return pct === null ? 'n/a' : money(dueCents(cents(c.amount), cents(pct)));
++    const due = claimDueCents(this.rates(), c);
++    return due === null ? 'n/a' : money(due);
+   }
+ 
+   protected edit(c: Claim): void {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b4edfe7b0..eab6d4c76 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
+ import { Claim, ClaimsApi, cents, counts, money } from '../claims/claims-api';
+ import { PersonClaims } from '../claims/person-claims';
+ import { Rates } from '../rates/rates';
+-import { Rate, RatesApi, dueCents, pctOn } from '../rates/rates-api';
++import { Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
+ import { GRADES, PeopleApi, Person, personError } from './people-api';
+ 
+ // The sheet's rates; the people on the active sheet, in the order they were added, each with their
+@@ -86,13 +86,19 @@ export class People {
+   });
+   /** The sheet's rates (a percent with two decimals), each for a grade from a from-date. */
+   protected readonly rates = signal<Rate[]>([]);
+-  /** Each person's due-total in cents, by person id, at their grade's rate in force on the sheet's
+-   *  today; null (n/a) when it has none then. */
++  /** Each person's due-total in cents, by person id: the sum of the dues their OPEN and SETTLED
++   *  claims show (each already rounded). Null (n/a) when their grade has no rate in force on the
++   *  sheet's today, unless a settled claim keeps a fixed due: then the sum of the dues there are. */
+   private readonly dueByPerson = computed(() => {
+     const out = new Map<number, number | null>();
+     for (const p of this.people()) {
+-      const pct = this.pctOf(p.grade);
+-      out.set(p.id, pct === null ? null : dueCents(this.byPerson().get(p.id)?.cents ?? 0, cents(pct)));
++      const rates = this.ratesOf(p.grade);
++      const counted = this.claimsOf(p.id).filter(counts);
++      if (pctOn(rates, this.session.today()) === null && !counted.some((c) => c.settledDue !== null)) {
++        out.set(p.id, null);
++        continue;
++      }
++      out.set(p.id, counted.reduce((sum, c) => sum + (claimDueCents(rates, c) ?? 0), 0));
+     }
+     return out;
+   });
+@@ -141,11 +147,6 @@ export class People {
+     return money(this.byPerson().get(personId)?.cents ?? 0);
+   }
+ 
+-  /** The rate for a grade in force on the sheet's today, or null when it has none then. */
+-  protected pctOf(grade: string): string | null {
+-    return pctOn(this.ratesOf(grade), this.session.today());
+-  }
+-
+   /** Every rate the sheet has for a grade. */
+   protected ratesOf(grade: string): Rate[] {
+     return this.rates().filter((r) => r.grade === grade);
+diff --git a/src/main/frontend/src/app/features/rates/rates-api.ts b/src/main/frontend/src/app/features/rates/rates-api.ts
+index b864c0a68..c036b6c38 100644
+--- a/src/main/frontend/src/app/features/rates/rates-api.ts
++++ b/src/main/frontend/src/app/features/rates/rates-api.ts
+@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
++import { Claim, cents } from '../claims/claims-api';
+ 
+ /** A percent of 0.00 or more with up to two decimals. */
+ export const PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
+@@ -57,8 +58,18 @@ export function rateError(e: unknown): string {
+ }
+ 
+ /** Whole cents times a percent (in hundredths of a percent), divided by 100, in whole cents,
+- *  rounded half up (away from zero). Worked in BigInt so large amounts stay exact. */
++ *  rounded half to even. Worked in BigInt so large amounts stay exact. */
+ export function dueCents(cents: number, pctHundredths: number): number {
+   const product = BigInt(cents) * BigInt(pctHundredths);
+-  return Number((product + 5000n) / 10000n);
++  const whole = product / 10000n;
++  const rest = product % 10000n;
++  return Number(rest > 5000n || (rest === 5000n && whole % 2n === 1n) ? whole + 1n : whole);
++}
++
++/** A claim's due in cents: the due fixed when it was settled, else its amount times its grade's
++ *  rate in force on its date, rounded half to even; null (n/a) with no rate in force then. */
++export function claimDueCents(rates: readonly Rate[], c: Claim): number | null {
++  if (c.settledDue !== null) return cents(c.settledDue);
++  const pct = pctOn(rates, c.date);
++  return pct === null ? null : dueCents(cents(c.amount), cents(pct));
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index eefb2a036..cad72c700 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -103,11 +103,11 @@ public class ClaimService {
+     }
+ 
+     /** The claim's amount times its person's grade rate in force on the claim's date, divided by
+-     *  100, rounded half up; null with no rate in force then. */
++     *  100, rounded half to even; null with no rate in force then. */
+     private BigDecimal dueOf(Claim claim, Person person) {
+         return rates.findInForce(claim.getSheetId(), person.getGrade(), claim.getDate())
+                 .map(Rate::getPct)
+-                .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
++                .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
+                 .orElse(null);
+     }
+ 
