@@ -1,0 +1,64 @@
+{
+  "checkpoint": 99,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp99_person-contact",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may have a contact: a text on the person form, stored with surrounding spaces removed and\nlower-cased, shown on the row. A contact already on the sheet (another person's) is refused with an\nerror on the form, and nothing is saved; a blank contact is none. PERSON_ADDED gains\ncontact=<contact> at the end when the form gave one; PERSON_EDITED gains contact=<contact> at the\nend when the contact the form gave differs from the one stored (the empty value when it was\ncleared).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may have a contact: a text on the person form, stored with surrounding spaces removed and\nlower-cased, shown on the row. A contact already on the sheet (another person's) is refused with an\nerror on the form, and nothing is saved; a blank contact is none. PERSON_ADDED gains\ncontact=<contact> at the end when the form gave one; PERSON_EDITED gains contact=<contact> at the\nend when the contact the form gave differs from the one stored (the empty value when it was\ncleared).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2347738545a6647521b841274346413836eb4114",
+  "reset_sha": "",
+  "preagent_sha": "fcd1e10edb2982d458962de3fc5046bf4f79b0e9",
+  "prev_sha": "fcd1e10edb2982d458962de3fc5046bf4f79b0e9",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.986875,
+    "input_tokens": 46,
+    "output_tokens": 11193,
+    "cache_read_tokens": 1133155,
+    "cache_creation_tokens": 67025,
+    "num_turns": 24,
+    "duration_ms": 482390,
+    "duration_api_ms": 106797,
+    "model": "claude-opus-5-5",
+    "session_id": "ae3d2e94-0d65-4bf4-b2e0-af2a07fc4c43",
+    "stop_reason": "success",
+    "result_text": "People now have a contact, and all 4 tests in `bin/e2e` pass.\n\n**What it does**\n- The person form has a Contact field (`person-form-contact`) and each row shows it (`person-contact`). It's stored with surrounding spaces removed and in lower case, and a blank contact is stored as none.\n- If another person on the sheet already has that contact, adding or editing is refused with the form's error (HTTP 409). Nothing is saved and nothing is written to the audit file. A unique index on `(sheet_id, contact)` also stops two saves at the same moment from both getting through.\n- Audit: `PERSON_ADDED` ends with `contact=<c>` only when one was given. `PERSON_EDITED` ends with `contact=<c>` only when the contact changed, and with `contact=` when it was cleared. Bulk grading passes each person's current contact through unchanged, so it adds nothing to the audit line.\n- The as-of view shows the contact a person had on that date, because it's now also kept in `person_history`.\n\n**Changed files**\n- New: `V62__person_contact.sql`, `ContactInUseException.java`.\n- Updated: `Person`, `PersonRepository`, `PersonService`, `PersonController`, `BulkGradeService`, `History`, `HistoryListener`, and `people.ts`.\n\n**One fix outside the request:** scenario 1 first failed because the as-of view showed 0 claims voided as \"late\". This was an existing bug, not caused by contact: the as-of view rebuilds claims from `claim_history`, which never stored the void reason. I fixed it in `History.java` by taking the reason from the claim as it is now whenever the claim was already VOID on that date, the same way ref and tags are filled in. That's correct as long as a voided claim's reason can't change later. If you'd rather keep the reason in `claim_history` itself, that needs its own migration.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.986875,
+        "num_turns": 24,
+        "duration_ms": 482390,
+        "duration_api_ms": 106797,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp99.agent.jsonl",
+  "agent_diff_file": "cp99.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

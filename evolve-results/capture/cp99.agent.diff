@@ -1,0 +1,429 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index edcf41986..986b48a23 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -28,6 +28,8 @@ interface Person {
+   version: number;
+   /** The person's own terms in business days, which fix the due-by of their claims; null for none. */
+   terms: number | null;
++  /** The person's contact, trimmed and lower-cased; null for none. */
++  contact: string | null;
+   /** How many statements were taken for the person. */
+   statementCount: number;
+   /** The last statement's due-total (two decimals, or n/a); null when none was taken. */
+@@ -115,6 +117,13 @@ interface StatementTaken {
+           [value]="terms()"
+           (input)="terms.set(value($event)); error.set(null)"
+         />
++        <label for="person-form-contact">Contact</label>
++        <input
++          id="person-form-contact"
++          data-testid="person-form-contact"
++          [value]="contact()"
++          (input)="contact.set(value($event)); error.set(null)"
++        />
+         <button type="submit" data-testid="person-form-submit">
+           {{ editingId() === null ? 'Add person' : 'Save person' }}
+         </button>
+@@ -271,6 +280,7 @@ interface StatementTaken {
+             <th scope="col">Name</th>
+             <th scope="col">Grade</th>
+             <th scope="col">Terms</th>
++            <th scope="col">Contact</th>
+             <th scope="col">Claimed</th>
+             <th scope="col">Due</th>
+             <th scope="col">Settled due</th>
+@@ -314,6 +324,7 @@ interface StatementTaken {
+               <td data-testid="person-name">{{ p.name }}</td>
+               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
++              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
+               <td data-testid="person-due-total">{{ dueBy(p) }}</td>
+               <td data-testid="person-settled-total">{{ money(settledCentsOf(p)) }}</td>
+@@ -731,6 +742,8 @@ export class People {
+   protected readonly gradeFrom = signal('');
+   /** The person's own terms in whole days; blank for none. */
+   protected readonly terms = signal('');
++  /** The person's contact; blank for none. */
++  protected readonly contact = signal('');
+   protected readonly editingId = signal<number | null>(null);
+   /** The version of the person the editor loaded. */
+   private readonly editingVersion = signal(0);
+@@ -1323,6 +1336,7 @@ export class People {
+     this.grade.set(this.gradeOf(person));
+     this.gradeFrom.set('');
+     this.terms.set(person.terms === null ? '' : String(person.terms));
++    this.contact.set(person.contact ?? '');
+     this.error.set(null);
+   }
+ 
+@@ -1332,6 +1346,7 @@ export class People {
+     this.grade.set('A');
+     this.gradeFrom.set('');
+     this.terms.set('');
++    this.contact.set('');
+     this.error.set(null);
+   }
+ 
+@@ -1342,7 +1357,13 @@ export class People {
+     const sheet = this.session.sheetId();
+     if (!sheet) return;
+     const terms = this.terms().trim();
+-    const body = { name: this.name().trim(), grade: this.grade(), terms: terms === '' ? null : Number(terms) };
++    const contact = this.contact().trim().toLowerCase();
++    const body = {
++      name: this.name().trim(),
++      grade: this.grade(),
++      terms: terms === '' ? null : Number(terms),
++      contact: contact === '' ? null : contact,
++    };
+     if (!body.name) {
+       this.error.set('Type a name for the person.');
+       return;
+@@ -1376,7 +1397,7 @@ export class People {
+         await this.showCurrent(sheet, id, e.error as Person | null);
+         this.error.set('Someone else saved this person since you opened the editor; their values are shown.');
+       } else if (e instanceof HttpErrorResponse && e.status === 409) {
+-        this.error.set(`Another person on the sheet is already named ${body.name}.`);
++        this.error.set(`Another person on the sheet is already named ${body.name}, or already has that contact.`);
+       } else {
+         this.error.set(id === null ? 'The person could not be added.' : 'The person could not be saved.');
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/history/History.java b/src/main/java/net/officefloor/hq/app/history/History.java
+index 849180894..e23d419a0 100644
+--- a/src/main/java/net/officefloor/hq/app/history/History.java
++++ b/src/main/java/net/officefloor/hq/app/history/History.java
+@@ -73,6 +73,9 @@ public class History {
+                         was.setRef(is.getRef());
+                         was.setTags(is.getTags());
+                         was.setBatch(is.getBatch());
++                        if (was.getStatus() == ClaimStatus.VOID) {
++                            was.setVoidReason(is.getVoidReason());
++                        }
+                     }
+                     return was;
+                 },
+@@ -80,8 +83,8 @@ public class History {
+         return current.keySet().stream().filter(then::containsKey).map(then::get).toList();
+     }
+ 
+-    /** A person as they stood at the end of a day: their name, own terms and retirement date. */
+-    public record PersonThen(String name, Integer terms, LocalDate retiredFrom) {
++    /** A person as they stood at the end of a day: their name, own terms, retirement date and contact. */
++    public record PersonThen(String name, Integer terms, LocalDate retiredFrom, String contact) {
+     }
+ 
+     /** The sheet's people as they stood at the end of a day, by person id; a person saved only after
+@@ -90,7 +93,8 @@ public class History {
+         Map<Long, PersonThen> then = new LinkedHashMap<>();
+         jdbc.query("SELECT * FROM person_history WHERE sheet_id = ? AND made_on <= ? ORDER BY id",
+                 (rs, n) -> Map.entry(rs.getLong("person_id"), new PersonThen(rs.getString("name"),
+-                        (Integer) rs.getObject("terms"), rs.getObject("retired_from", LocalDate.class))),
++                        (Integer) rs.getObject("terms"), rs.getObject("retired_from", LocalDate.class),
++                        rs.getString("contact"))),
+                 sheetId, day).forEach(entry -> then.put(entry.getKey(), entry.getValue()));
+         return then;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/history/HistoryListener.java b/src/main/java/net/officefloor/hq/app/history/HistoryListener.java
+index 3141f209b..fb084b352 100644
+--- a/src/main/java/net/officefloor/hq/app/history/HistoryListener.java
++++ b/src/main/java/net/officefloor/hq/app/history/HistoryListener.java
+@@ -36,7 +36,7 @@ public class HistoryListener {
+             + " FROM sheet_setting_value v JOIN sheet s ON s.id = v.sheet_id WHERE v.id = ?";
+ 
+     private static final String PERSON = "INSERT INTO person_history (person_id, sheet_id, name, terms, retired_from,"
+-            + " made_on) SELECT p.id, p.sheet_id, p.name, p.terms, p.retired_from, s.today"
++            + " contact, made_on) SELECT p.id, p.sheet_id, p.name, p.terms, p.retired_from, p.contact, s.today"
+             + " FROM person p JOIN sheet s ON s.id = p.sheet_id WHERE p.id = ?";
+ 
+     private final ObjectProvider<JdbcTemplate> jdbc;
+diff --git a/src/main/java/net/officefloor/hq/app/person/BulkGradeService.java b/src/main/java/net/officefloor/hq/app/person/BulkGradeService.java
+index 573d37d03..57dcc9e0f 100644
+--- a/src/main/java/net/officefloor/hq/app/person/BulkGradeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/BulkGradeService.java
+@@ -49,7 +49,7 @@ public class BulkGradeService {
+         }
+         for (Person person : selected) {
+             graded.add(rollups.track(sheetId, user, () -> service.update(sheetId, user, person.getId(),
+-                    person.getVersion(), person.getName(), grade, from, person.getTerms())));
++                    person.getVersion(), person.getName(), grade, from, person.getTerms(), person.getContact())));
+         }
+         return graded;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/ContactInUseException.java b/src/main/java/net/officefloor/hq/app/person/ContactInUseException.java
+new file mode 100644
+index 000000000..eff2a13a1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/ContactInUseException.java
+@@ -0,0 +1,9 @@
++package net.officefloor.hq.app.person;
++
++/** Another person on the sheet already has this contact. */
++public class ContactInUseException extends RuntimeException {
++
++    public ContactInUseException(String contact) {
++        super("The contact " + contact + " is already in use on the sheet");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 3960401ef..743a047b0 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -40,6 +40,10 @@ public class Person {
+     @Column(name = "terms")
+     private Integer terms;
+ 
++    /** The person's contact, trimmed and lower-cased; null for none. */
++    @Column(name = "contact")
++    private String contact;
++
+     /** The sheet's today when the person was added; null for one added before it was kept. */
+     @Column(name = "added_on", updatable = false)
+     private LocalDate addedOn;
+@@ -53,14 +57,15 @@ public class Person {
+         this.addedOn = addedOn;
+     }
+ 
+-    /** The person as they stood at the end of a past day, with the name, own terms and retirement
+-     *  date they had then: a copy that is never saved. */
+-    public Person asItWas(String name, Integer terms, LocalDate retiredFrom) {
++    /** The person as they stood at the end of a past day, with the name, own terms, retirement
++     *  date and contact they had then: a copy that is never saved. */
++    public Person asItWas(String name, Integer terms, LocalDate retiredFrom, String contact) {
+         Person was = new Person(sheetId, name, addedOn);
+         was.id = id;
+         was.version = version;
+         was.terms = terms;
+         was.retiredFrom = retiredFrom;
++        was.contact = contact;
+         return was;
+     }
+ 
+@@ -110,6 +115,14 @@ public class Person {
+         this.terms = terms;
+     }
+ 
++    public String getContact() {
++        return contact;
++    }
++
++    public void setContact(String contact) {
++        this.contact = contact;
++    }
++
+     /** Whether the person is retired: any retirement date set counts, even one after the sheet's today. */
+     public boolean isRetired() {
+         return retiredFrom != null;
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index e907af690..9973200f2 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -57,16 +57,17 @@ public class PersonController {
+      *  grade they were given from the earliest, how many statements were taken for them and the
+      *  last one's due-total and date (null when none was), and whether they are retired and from
+      *  when (null when not), and the holds put on them in the order they were, and the ids of their patrons in the order
+-     *  they were named, and whether the signed-in user watches them, and their own terms (null for none). */
++     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none). */
+     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
+             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
+-            List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms) {
++            List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact) {
+         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
+                 StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched) {
+             return new PersonView(person.getId(), person.getName(), PersonGradeService.gradeOn(grades, today),
+                     grades.stream().map(GradeView::of).toList(), person.getVersion(), statements.count(),
+                     statements.lastDueTotal(), statements.lastDate(), person.isRetired(), person.getRetiredFrom(),
+-                    holds.stream().map(HoldView::of).toList(), patronIds, watched, person.getTerms());
++                    holds.stream().map(HoldView::of).toList(), patronIds, watched, person.getTerms(),
++                    person.getContact());
+         }
+     }
+ 
+@@ -75,7 +76,8 @@ public class PersonController {
+     public record PersonRequest(
+             @NotBlank @Size(max = 200) String name,
+             @NotNull @Pattern(regexp = "[ABC]") String grade,
+-            @Min(0) @Max(36500) Integer terms) {
++            @Min(0) @Max(36500) Integer terms,
++            @Size(max = 200) String contact) {
+     }
+ 
+     /** A person's fields as saved from an editor: the grade applies from its from-date (blank takes
+@@ -85,6 +87,7 @@ public class PersonController {
+             @NotNull @Pattern(regexp = "[ABC]") String grade,
+             LocalDate gradeFrom,
+             @Min(0) @Max(36500) Integer terms,
++            @Size(max = 200) String contact,
+             @NotNull Long version) {
+     }
+ 
+@@ -159,7 +162,7 @@ public class PersonController {
+         String sheet = sheetId.trim();
+         String by = SignedInUser.decode(user);
+         return withStatements(rollups.track(sheet, by, () -> service.add(sheet, by, request.name(),
+-                request.grade(), request.terms())), by);
++                request.grade(), request.terms(), request.contact())), by);
+     }
+ 
+     /** Change a person's name and give them a grade from a date; refused when the person was saved since the editor loaded them. */
+@@ -169,7 +172,7 @@ public class PersonController {
+         String sheet = sheetId.trim();
+         String by = SignedInUser.decode(user);
+         return withStatements(rollups.track(sheet, by, () -> service.update(sheet, by, id, request.version(),
+-                request.name(), request.grade(), request.gradeFrom(), request.terms())), by);
++                request.name(), request.grade(), request.gradeFrom(), request.terms(), request.contact())), by);
+     }
+ 
+     /** Give the selected people a grade from a date, in list order, each as its editor would; the
+@@ -251,9 +254,10 @@ public class PersonController {
+     public void notFound() {
+     }
+ 
+-    /** The name is already in use on the sheet, or the patron may not be named; a concurrent save is
+-     *  caught by the unique index. */
+-    @ExceptionHandler({NameInUseException.class, PatronRefusedException.class, DataIntegrityViolationException.class})
++    /** The name or contact is already in use on the sheet, or the patron may not be named; a concurrent
++     *  save is caught by the unique index. */
++    @ExceptionHandler({NameInUseException.class, ContactInUseException.class, PatronRefusedException.class,
++            DataIntegrityViolationException.class})
+     @ResponseStatus(HttpStatus.CONFLICT)
+     public void nameInUse() {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+index 3adad5fc5..742a97b54 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonRepository.java
+@@ -20,4 +20,9 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
+     @Query("select count(p) > 0 from Person p where p.sheetId = :sheetId and lower(p.name) = lower(:name)"
+             + " and (:exceptId is null or p.id <> :exceptId)")
+     boolean nameInUse(String sheetId, String name, Long exceptId);
++
++    /** Whether another person on the sheet (not {@code exceptId}) has this contact. */
++    @Query("select count(p) > 0 from Person p where p.sheetId = :sheetId and p.contact = :contact"
++            + " and (:exceptId is null or p.id <> :exceptId)")
++    boolean contactInUse(String sheetId, String contact, Long exceptId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index c6e1be750..843820f2a 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -4,6 +4,7 @@ import jakarta.persistence.EntityManager;
+ import jakarta.persistence.LockModeType;
+ import java.time.LocalDate;
+ import java.util.List;
++import java.util.Locale;
+ import java.util.Map;
+ import java.util.NoSuchElementException;
+ import java.util.Objects;
+@@ -58,23 +59,34 @@ public class PersonService {
+      *  applies from the beginning of time. */
+     @Transactional
+     public Person add(String sheetId, String user, String name, String grade, Integer terms) {
++        return add(sheetId, user, name, grade, terms, null);
++    }
++
++    /** Add a person to the sheet with their own terms (null for none) and a contact (blank for none);
++     *  the grade they are given applies from the beginning of time. */
++    @Transactional
++    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+         LocalDate today = sheets.today(sheetId);
+         String trimmed = name.trim();
+         requireFreeName(sheetId, trimmed, null);
++        String key = contactKey(contact);
++        requireFreeContact(sheetId, key, null);
+         Person person = new Person(sheetId, trimmed, today);
+         person.setTerms(terms);
++        person.setContact(key);
+         Person added = people.saveAndFlush(person);
+         grades.give(added, grade, null);
+-        record("PERSON_ADDED", sheetId, user, added, grade, terms != null ? " terms=" + terms : "");
++        record("PERSON_ADDED", sheetId, user, added, grade, (terms != null ? " terms=" + terms : "")
++                + (key != null ? " contact=" + key : ""));
+         return added;
+     }
+ 
+     /** Change a person's name, and give them the grade from a date (blank takes the sheet's today),
+-     *  keeping the grades already given, and set their own terms (null for none), from an editor that loaded the given version of them. A
++     *  keeping the grades already given, and set their own terms (null for none) and contact (blank for none), from an editor that loaded the given version of them. A
+      *  blank from-date with the grade in force on the sheet's today gives no grade. */
+     @Transactional
+     public Person update(String sheetId, String user, Long id, long version, String name, String grade,
+-            LocalDate gradeFrom, Integer terms) {
++            LocalDate gradeFrom, Integer terms, String contact) {
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+         if (person.getVersion() != version) {
+@@ -82,9 +94,13 @@ public class PersonService {
+         }
+         String trimmed = name.trim();
+         requireFreeName(sheetId, trimmed, id);
++        String key = contactKey(contact);
++        requireFreeContact(sheetId, key, id);
+         person.setName(trimmed);
+         Integer before = person.getTerms();
+         person.setTerms(terms);
++        String contactBefore = person.getContact();
++        person.setContact(key);
+         LocalDate today = sheets.today(sheetId);
+         if (gradeFrom != null || !grade.equals(grades.gradeOn(id, today))) {
+             grades.give(person, grade, gradeFrom != null ? gradeFrom : today);
+@@ -93,7 +109,8 @@ public class PersonService {
+         }
+         Person saved = people.saveAndFlush(person);
+         record("PERSON_EDITED", sheetId, user, saved, grades.gradeOn(id, today),
+-                Objects.equals(before, terms) ? "" : " terms=" + (terms != null ? terms : ""));
++                (Objects.equals(before, terms) ? "" : " terms=" + (terms != null ? terms : ""))
++                + (Objects.equals(contactBefore, key) ? "" : " contact=" + (key != null ? key : "")));
+         return saved;
+     }
+ 
+@@ -176,7 +193,7 @@ public class PersonService {
+     }
+ 
+     /** The sheet's people as they stood at the end of a day, in the order they were added: those added
+-     *  by then, each with the name, own terms and retirement they had then (null: as they stand now). */
++     *  by then, each with the name, own terms, retirement and contact they had then (null: as they stand now). */
+     public List<Person> list(String sheetId, LocalDate asOf) {
+         if (asOf == null) {
+             return list(sheetId);
+@@ -184,7 +201,7 @@ public class PersonService {
+         Map<Long, History.PersonThen> then = history.people(sheetId, asOf);
+         return list(sheetId).stream().filter(person -> person.onSheetAsOf(asOf)).map(person -> {
+             History.PersonThen was = then.get(person.getId());
+-            return was == null ? person : person.asItWas(was.name(), was.terms(), was.retiredFrom());
++            return was == null ? person : person.asItWas(was.name(), was.terms(), was.retiredFrom(), was.contact());
+         }).toList();
+     }
+ 
+@@ -254,6 +271,20 @@ public class PersonService {
+                 + " name=" + person.getName() + " grade=" + grade + terms);
+     }
+ 
++    /** A contact as kept: trimmed and lower-cased; null for a blank one. */
++    private static String contactKey(String contact) {
++        if (contact == null || contact.isBlank()) {
++            return null;
++        }
++        return contact.trim().toLowerCase(Locale.ROOT);
++    }
++
++    private void requireFreeContact(String sheetId, String contact, Long exceptId) {
++        if (contact != null && people.contactInUse(sheetId, contact, exceptId)) {
++            throw new ContactInUseException(contact);
++        }
++    }
++
+     private void requireFreeName(String sheetId, String name, Long exceptId) {
+         if (people.nameInUse(sheetId, name, exceptId)) {
+             throw new NameInUseException(name);
+diff --git a/src/main/resources/db/migration/V62__person_contact.sql b/src/main/resources/db/migration/V62__person_contact.sql
+new file mode 100644
+index 000000000..91e3595c4
+--- /dev/null
++++ b/src/main/resources/db/migration/V62__person_contact.sql
+@@ -0,0 +1,4 @@
++-- A person's contact, kept trimmed and lower-cased; null for none. No two people on a sheet share one.
++ALTER TABLE person ADD COLUMN contact VARCHAR(200);
++CREATE UNIQUE INDEX person_sheet_contact ON person (sheet_id, contact);
++ALTER TABLE person_history ADD COLUMN contact VARCHAR(200);
