@@ -802,6 +802,14 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
                 </button>
                 <button
                   type="button"
+                  data-testid="person-export"
+                  [attr.aria-label]="'Download the row for ' + p.name + ' as CSV'"
+                  (click)="exportPerson(p)"
+                >
+                  Export row
+                </button>
+                <button
+                  type="button"
                   data-testid="person-move-up"
                   [attr.aria-label]="'Move ' + p.name + ' up the list'"
                   (click)="move(p, 'up')"
@@ -2264,6 +2272,23 @@ export class People {
           ];
         }),
       ),
+    ]);
+  }
+
+  /** Download a person's row as CSV: one line per cell, with the value as the row shows it. */
+  protected exportPerson(person: Person): void {
+    this.downloadCsv(`person-${person.id}`, [
+      ['cell', 'value'],
+      ['person-name', this.labelOf(person)],
+      ['person-grade', this.gradeOf(person)],
+      ['person-claimed', this.claimedBy(person.id)],
+      ['person-due-total', this.dueBy(person)],
+      ['person-statement-count', String(person.statementCount)],
+      ['person-overdue-total', this.overdueTotalOf(person)],
+      ['person-hold', person.holds.length > 0 ? 'yes' : 'no'],
+      ['person-retired', person.retired ? 'yes' : 'no'],
+      ['person-aliases', this.aliasesOf(person)],
+      ['person-score', String(this.scoreOf(person))],
     ]);
   }
 
