@@ -1,11 +1,12 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
+import { People } from '../people/people';
 
-// The one screen: sign in by name, then load a sheet by id.
+// The one screen: sign in by name, then load a sheet by id and work on its people.
 @Component({
   selector: 'app-home',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, People],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -25,6 +26,7 @@ import { Session } from '../../core/session';
           <input id="sheet-today-input" type="date" data-testid="sheet-today-input" formControlName="today" />
           <button type="submit" data-testid="sheet-today-save">Save today</button>
         </form>
+        <app-people />
       } @else {
         <p data-testid="home-empty">Load a sheet to begin.</p>
       }

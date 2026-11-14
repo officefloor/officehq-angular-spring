@@ -11,6 +11,8 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd): every date decision and default date uses it. */
   readonly today = signal<string | null>(null);
+  /** Bumped on every sheet load, so a load of the same id again re-reads what the sheet holds. */
+  readonly loads = signal(0);
 
   /** Sign in by name; resolves to an error message, or null on success. */
   async signIn(name: string): Promise<string | null> {
@@ -35,6 +37,7 @@ export class Session {
       );
       this.sheetId.set(res.id);
       this.today.set(res.today);
+      this.loads.update((n) => n + 1);
       return null;
     } catch (e) {
       return message(e, 'Enter a sheet id without spaces.');
