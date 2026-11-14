@@ -1,0 +1,172 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index b58ba6c7a..32b385957 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -143,7 +143,7 @@ function roundsHalfUp(claim: Claim, late: Late): boolean {
+   return policy !== null && claim.roundsBy < policy;
+ }
+ 
+-/** A claim's figure in cents: the figure a statement bound it to; otherwise its amount times the
++/** A claim's figure in cents: the due a statement bound it to; otherwise its amount times the
+  *  rate in force on its date among its grade's rates; null when it has no figure. The floor is not applied here (see claimDueCents). */
+ function figureCents(claim: Claim, rates: Rate[], halfUp: boolean): number | null {
+   if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
+@@ -156,11 +156,12 @@ function figureCents(claim: Claim, rates: Rate[], halfUp: boolean): number | nul
+  *  in force on its date (none for a correction) and its figure plus its late charge: for every full 30
+  *  days an OPEN or PENDING claim is overdue, the late percent in force on that boundary (its due-by plus
+  *  30, 60, 90 ... days) of the figure plus the charges of the boundaries before it (compounding), rounded
+- *  like a due, the charges added up (a statement never binds
+- *  the charge; settling freezes the due; a correction or a waived claim has none); null when it has no
++ *  like a due, the charges added up (a statement binds the due,
++ *  charge included; settling freezes the due; a correction or a waived claim has none); null when it has no
+  *  figure. */
+ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string) => number, late: Late): number | null {
+   if (claim.settledDue !== null) return cents(claim.settledDue);
++  if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
+   const halfUp = roundsHalfUp(claim, late);
+   const figure = figureCents(claim, rates, halfUp);
+   if (figure === null) return null;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 40da0c26f..ed6282791 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -45,7 +45,7 @@ public class ClaimController {
+ 
+     /** A claim as the screen shows it; the amount and the due fixed on settling (null when none
+      *  was) are strings with two decimals; openedBy is null for a claim never opened; stated tells
+-     *  whether a statement bound the claim, statedDue the figure it bound it to (null when none);
++     *  whether a statement bound the claim, statedDue the due it bound it to, late charge included (null when none);
+      *  corrects is the number of the claim a correction corrects (null when it is not one); roundsBy
+      *  is the date its live figures round by against the sheet's policy date (its own date, or for a
+      *  correction the date of the claim it corrects); dueBy is the date it is due by, fixed when it was
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e7e31002a..1bfb80aa4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -922,8 +922,8 @@ public class ClaimService {
+                 .findFirst().map(Period::getName).orElse(NO_PERIOD) + "-";
+     }
+ 
+-    /** The figure a claim shows: the due fixed when it was settled, else the figure its person's last
+-     *  statement bound it to, else its due at the person's grade rate; null when it has none. */
++    /** The figure a claim shows: the due fixed when it was settled, else the due its person's last
++     *  statement bound it to (late charge included), else its due at the person's grade rate; null when it has none. */
+     public BigDecimal figureOf(String sheetId, Person person, Claim claim) {
+         return figureOf(sheetId, person, claim, null);
+     }
+@@ -942,7 +942,8 @@ public class ClaimService {
+                 : liveFigureOf(sheetId, person, claim, asOf, override);
+     }
+ 
+-    /** The due a claim shows: a settled claim's frozen due; otherwise the greater of the sheet's floor in
++    /** The due a claim shows: a settled claim's frozen due; else the due its person's last statement
++     *  bound it to; otherwise the greater of the sheet's floor in
+      *  force on its date (none for a correction) and its figure plus its late charge (none while it is
+      *  deferred: it is not overdue then); null when it has no figure. */
+     public BigDecimal dueOf(String sheetId, Person person, Claim claim) {
+@@ -962,6 +963,10 @@ public class ClaimService {
+         if (claim.getSettledDue() != null) {
+             return claim.getSettledDue();
+         }
++        // A statement binds the due as shown, late charge and floor included.
++        if (claim.isStated()) {
++            return claim.getStatedDue();
++        }
+         BigDecimal figure = figureOf(sheetId, person, claim, asOf, override);
+         boolean open = claim.getStatus().isOpen() && !claim.deferredOn(todayOr(sheetId, asOf));
+         return figure == null ? null
+@@ -990,8 +995,8 @@ public class ClaimService {
+      *  the figure for every 30-day boundary it is overdue past (its due-by plus its grace plus 30, 60, 90 ...
+      *  days), compounding: the late percent in force on that boundary date of the figure plus the charges
+      *  of the boundaries before it, rounded to two decimals as the claim's date decides (see roundingOf), the
+-     *  charges added up. Never bound by a statement: it follows the
+-     *  sheet's today. A waived claim bears none. Whether the claim counts as open is given, so a re-settle can charge a SETTLED
++     *  charges added up. It follows the sheet's today until a statement binds the
++     *  claim's due, charge included. A waived claim bears none. Whether the claim counts as open is given, so a re-settle can charge a SETTLED
+      *  claim as if it were still OPEN. */
+     private BigDecimal lateChargeOf(String sheetId, Person person, Claim claim, BigDecimal figure, boolean open,
+             LocalDate asOf) {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index ac527ed29..4af24658d 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -92,12 +92,14 @@ public class RateController {
+     }
+ 
+     /** The rates of the sheets the sheet's rates fall back to, nearest first (its parent, the
+-     *  parent's parent, up to three levels up), each listed as {@link #list} lists them now: a parent
+-     *  keeps its own today, so a sheet read as of a past day falls back to its parents as they stand now. */
++     *  parent's parent, up to three levels up), each listed as {@link #list} lists them: as they stand
++     *  now, or as they stood at the end of the screen's as-of date. */
+     @GetMapping("/inherited")
+-    public List<List<RateView>> inherited(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
++    public List<List<RateView>> inherited(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader(value = AsOf.HEADER, required = false) String asOf) {
++        LocalDate day = AsOf.parse(asOf);
+         return service.ancestors(sheetId.trim()).stream()
+-                .map(ancestor -> service.list(ancestor).stream().map(this::view).toList())
++                .map(ancestor -> service.list(ancestor, day).stream().map(this::view).toList())
+                 .toList();
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 39d0d815f..73a6ae724 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -106,7 +106,7 @@ public class RateService {
+     }
+ 
+     /** The grade's rate in force on a date as the sheet's rates stood at the end of a day (null: as
+-     *  they stand now), falling back to its parent sheets' rates as they stand now. */
++     *  they stand now), falling back to its parent sheets' rates as they stood at the end of that day. */
+     public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date, LocalDate asOf) {
+         return rateFor(sheetId, grade, date, null, asOf);
+     }
+@@ -120,10 +120,10 @@ public class RateService {
+         if (own.isPresent()) {
+             return own;
+         }
+-        // A parent sheet keeps its own today, not this one's: the sheet falls back to its parents'
+-        // rates as they stand now, as it does to its parents themselves.
++        // Read as of a day, the sheet falls back to its parents' rates as they stood at the end of it
++        // (a rate a parent was given while its today was after the day does not count).
+         for (String ancestor : ancestors(sheetId)) {
+-            Optional<Rate> theirs = ownRateFor(ancestor, grade, date, claimId, null);
++            Optional<Rate> theirs = ownRateFor(ancestor, grade, date, claimId, asOf);
+             if (theirs.isPresent()) {
+                 return theirs;
+             }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 8b8414c8c..41b2a917a 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -25,7 +25,8 @@ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ /** The statements taken for people on a sheet. Taking one records the person's due-total and binds
+- *  each claim of theirs that counts to the figure it shows then; the rest are left unbound. */
++ *  each claim of theirs that counts to the due it shows then, late charge included; the rest are left
++ *  unbound. */
+ @Service
+ public class StatementService {
+ 
+@@ -119,13 +120,14 @@ public class StatementService {
+                 claim.unbind();
+                 continue;
+             }
+-            // The statement binds the figure; the late charge on top keeps following the sheet's today.
+-            BigDecimal figure = claimService.figureOf(sheetId, person, then, asOf);
+-            if (figure != null) {
+-                total = total.add(claimService.dueOf(sheetId, person, then, asOf));
++            // The statement binds the due as shown, late charge included: one an earlier statement bound
++            // stays as it is.
++            BigDecimal due = claimService.dueOf(sheetId, person, then, asOf);
++            if (due != null) {
++                total = total.add(due);
+                 anyFigure = true;
+             }
+-            claim.bind(figure);
++            claim.bind(due);
+             counted++;
+         }
+         claims.saveAllAndFlush(theirs);

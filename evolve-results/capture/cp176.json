@@ -1,0 +1,88 @@
+{
+  "checkpoint": 176,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp176_statement-binds-late-charge",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    24,
+    26,
+    40,
+    46,
+    52,
+    56,
+    64,
+    84,
+    88,
+    161,
+    174
+  ],
+  "replaced_tests": [
+    "cp161_as-of-exports.spec.ts::as of exports scenario 3",
+    "cp174_late-charge-waiver.spec.ts::late charge waiver",
+    "cp24_floor.spec.ts::floor",
+    "cp26_late-charge.spec.ts::late charge",
+    "cp40_hold-interval.spec.ts::hold interval scenario 3",
+    "cp46_re-settle.spec.ts::re settle",
+    "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+    "cp56_late-per-boundary.spec.ts::late per boundary",
+    "cp64_floor-after-late.spec.ts::floor after late",
+    "cp84_business-day-terms.spec.ts::business day terms scenario 2",
+    "cp88_compound-late-charge.spec.ts::compound late charge"
+  ],
+  "request": {
+    "spec": "A statement now binds a claim's due as shown, late charge included: while bound, the claim shows\nand totals that figure and its late charge no longer follows the sheet's today. The next statement\nbinds the figure as shown then (so a bound figure stays as it is until the statement is cancelled).\nA settled claim's frozen figure is unaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA statement now binds a claim's due as shown, late charge included: while bound, the claim shows\nand totals that figure and its late charge no longer follows the sheet's today. The next statement\nbinds the figure as shown then (so a bound figure stays as it is until the statement is cancelled).\nA settled claim's frozen figure is unaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d05417183e446ca6bbc6e1424e204d3faa218ab7",
+  "reset_sha": "",
+  "preagent_sha": "d5a4e6b77db698080df445548ed0c2f2d7e07c72",
+  "prev_sha": "d5a4e6b77db698080df445548ed0c2f2d7e07c72",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.1869766000000004,
+    "input_tokens": 60,
+    "output_tokens": 13756,
+    "cache_read_tokens": 1650163,
+    "cache_creation_tokens": 72698,
+    "num_turns": 30,
+    "duration_ms": 780368,
+    "duration_api_ms": 149504,
+    "model": "claude-opus-5-5",
+    "session_id": "0233aad2-e782-4a5a-860a-2fe09a6bc638",
+    "stop_reason": "success",
+    "result_text": "A statement now locks in each claim's due as it is shown, late charge included. `bin/e2e` passes all 4 tests.\n\n**The statement change:**\n- **Server** (`StatementService.take`, `ClaimService.dueOf`): taking a statement now stores the claim's full due, with the late charge and floor already applied. While the claim is bound, that stored figure is what it shows and adds to totals, so its late charge stops moving with the sheet's today.\n- A later statement re-stores the figure as already shown, so a bound figure stays the same until the statement is cancelled. A settled claim keeps its frozen due, because that check still comes first.\n- **Front end** (`claims.ts`, `claimDueCents`): a bound claim shows its stored figure directly instead of adding a late charge on top.\n- I updated the comments that said a statement never binds the late charge.\n\n**A second change outside the request.** Scenario 2 failed on every run because of rates, not statements. It views a sheet \"as of\" a past day, and that sheet takes its rates from a parent sheet. The app used the parent's rates as they are now and showed `20.00`; the test expects `n/a`. I changed the fallback so a sheet viewed as of a day uses the parent's rates as they stood at the end of that day. This applies on the server (`RateService.rateFor`) and in the `/rates/inherited` endpoint. It reverses a rule the code documented on purpose, so please check you agree with it.\n\n**Statements taken before this change:** they stored only the base amount, without the late charge, and no migration updates them. After this change those claims show that lower amount with no late charge until the statement is cancelled or a new one is taken. Tests always use fresh sheets so they aren't affected, but a real database with bound claims would be. Recalculating those old figures in a migration would mean working out each late charge as of the day the statement was taken; I can add that if you need it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.1869766000000004,
+        "num_turns": 30,
+        "duration_ms": 780368,
+        "duration_api_ms": 149504,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp176.agent.jsonl",
+  "agent_diff_file": "cp176.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
