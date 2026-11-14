@@ -62,6 +62,11 @@ public class Sheet {
     @Column(name = "escalate_after")
     private Integer escalateAfter;
 
+    /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each
+     *  before it can be settled or approved; null for none. */
+    @Column(name = "proof_kinds")
+    private String proofKinds;
+
     /** The review SLA: a REVIEW claim whose review day plus this many days is before the sheet's
      *  today is late for review; null for none. */
     @Column(name = "review_sla")
@@ -143,6 +148,14 @@ public class Sheet {
 
     public void setEscalateAfter(Integer escalateAfter) {
         this.escalateAfter = escalateAfter;
+    }
+
+    public String getProofKinds() {
+        return proofKinds;
+    }
+
+    public void setProofKinds(String proofKinds) {
+        this.proofKinds = proofKinds;
     }
 
     public Integer getReviewSla() {

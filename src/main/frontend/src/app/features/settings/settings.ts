@@ -54,6 +54,9 @@ interface SettingsView {
   /** The escalation gap: reminding a claim whose previous reminder was at least this many days before
    *  the sheet's today escalates it; null for off. */
   escalateAfter: number | null;
+  /** The proof kinds, comma separated: a claim above the proof threshold needs a proof of each before
+   *  it can be settled or approved; blank for none. */
+  proofKinds: string;
   /** The review SLA: a REVIEW claim whose review day plus this many days is before the sheet's
    *  today is late for review; null for none. */
   reviewSla: number | null;
@@ -199,6 +202,8 @@ export class SettingStore {
   readonly graceDays = signal('');
   /** The escalation gap as text: whole days, blank for off. */
   readonly escalateAfter = signal('');
+  /** The proof kinds, comma separated; blank for none. */
+  readonly proofKinds = signal('');
   /** The review SLA as text: whole days, blank for none. */
   readonly reviewSla = signal('');
   /** The fiscal year start month, 1 to 12; 1 unless set. */
@@ -228,6 +233,7 @@ export class SettingStore {
       this.entryDate.set('');
       this.graceDays.set('');
       this.escalateAfter.set('');
+      this.proofKinds.set('');
       this.reviewSla.set('');
       this.fiscalStartMonth.set(1);
       this.pot.set('');
@@ -477,6 +483,19 @@ export class SettingStore {
     if (this.session.sheetId() !== sheet) return;
     this.show(saved);
   }
+
+  /** Change the active sheet's proof kinds (comma separated, each receipt or photo); null leaves them
+   *  blank (none). */
+  async setProofKinds(value: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/proof-kinds`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   /** Change the active sheet's review SLA; null leaves it blank (none). */
   async setReviewSla(value: number | null): Promise<void> {
     const sheet = this.session.sheetId();
@@ -565,6 +584,7 @@ export class SettingStore {
     this.entryDate.set(settings.entryDate);
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
     this.escalateAfter.set(settings.escalateAfter === null ? '' : String(settings.escalateAfter));
+    this.proofKinds.set(settings.proofKinds);
     this.reviewSla.set(settings.reviewSla === null ? '' : String(settings.reviewSla));
     this.fiscalStartMonth.set(settings.fiscalStartMonth);
     this.pot.set(settings.pot ?? '');
@@ -579,7 +599,8 @@ export class SettingStore {
 // who acts as a steward while the sheet's today is from its from-date to its to-date) and the
 // clerk limit, the highest due a clerk settles outright (above it the claim goes PENDING), the floor, the least a claim's live due can be,
 // the cap, the most a person's due-total can be, the proof threshold, above which a claim's due (by the threshold
-// in force on its date) cannot be settled or approved until the claim has a proof, the note threshold, above
+// in force on its date) cannot be settled or approved until the claim has a proof (and one of each of the
+// proof kinds, receipt or photo, while they are set), the note threshold, above
 // which a claim's due (by the threshold in force on its date) cannot be opened while its note is empty,
 // the review threshold, above which a claim's due (by the threshold in force on its date) sends it to REVIEW
 // when opened, until a steward reviews it,
@@ -933,6 +954,14 @@ export class SettingStore {
           (focus)="escalateAfterTyped.set(true)"
           (input)="escalateAfter.set(value($event)); escalateAfterTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-proof-kinds">Proof kinds (receipt, photo; comma separated)</label>
+        <input
+          id="setting-proof-kinds"
+          data-testid="setting-proof-kinds"
+          [value]="proofKinds()"
+          (focus)="proofKindsTyped.set(true)"
+          (input)="proofKinds.set(value($event)); proofKindsTyped.set(true); settingsError.set(null)"
+        />
         <label for="setting-review-sla">Review SLA (days)</label>
         <input
           id="setting-review-sla"
@@ -1113,6 +1142,13 @@ export class SettingStore {
         }
       </p>
       <p>
+        Proof kinds:
+        <strong data-testid="setting-proof-kinds-current">{{ store.proofKinds() }}</strong>
+        @if (store.proofKinds() === '') {
+          <span>none</span>
+        }
+      </p>
+      <p>
         Review SLA:
         <strong data-testid="setting-review-sla-current">{{ store.reviewSla() }}</strong>
         @if (store.reviewSla() === '') {
@@ -1218,6 +1254,8 @@ export class Settings {
   protected readonly graceDaysTyped = signal(false);
   protected readonly escalateAfter = signal('');
   protected readonly escalateAfterTyped = signal(false);
+  protected readonly proofKinds = signal('');
+  protected readonly proofKindsTyped = signal(false);
   protected readonly reviewSla = signal('');
   protected readonly reviewSlaTyped = signal(false);
   protected readonly fiscalStartMonth = signal('');
@@ -1365,6 +1403,12 @@ export class Settings {
     const saveGraceDays = this.graceDaysTyped();
     const escalateAfter = this.escalateAfter().trim();
     const saveEscalateAfter = this.escalateAfterTyped();
+    const proofKinds = this.proofKinds()
+      .split(',')
+      .map((kind) => kind.trim())
+      .filter((kind) => kind !== '')
+      .join(',');
+    const saveProofKinds = this.proofKindsTyped();
     const reviewSla = this.reviewSla().trim();
     const saveReviewSla = this.reviewSlaTyped();
     const fiscalStartMonth = this.fiscalStartMonth().trim();
@@ -1486,6 +1530,10 @@ export class Settings {
       this.settingsError.set('Type an escalation gap of 0 or more whole days, or leave it blank for off.');
       return;
     }
+    if (saveProofKinds && proofKinds.split(',').some((kind) => kind !== '' && kind !== 'receipt' && kind !== 'photo')) {
+      this.settingsError.set('Type proof kinds of receipt or photo, comma separated, or leave them blank for none.');
+      return;
+    }
     if (saveReviewSla && reviewSla !== '' && !DAYS.test(reviewSla)) {
       this.settingsError.set('Type a review SLA of 0 or more whole days, or leave it blank for none.');
       return;
@@ -1525,6 +1573,7 @@ export class Settings {
     this.entryDateTyped.set(false);
     this.graceDaysTyped.set(false);
     this.escalateAfterTyped.set(false);
+    this.proofKindsTyped.set(false);
     this.reviewSlaTyped.set(false);
     this.fiscalStartMonthTyped.set(false);
     this.potTyped.set(false);
@@ -1560,6 +1609,7 @@ export class Settings {
         if (saveEntryDate) await this.store.setEntryDate(entryDate === '' ? null : entryDate);
         if (saveGraceDays) await this.store.setGraceDays(graceDays === '' ? null : Number(graceDays));
         if (saveEscalateAfter) await this.store.setEscalateAfter(escalateAfter === '' ? null : Number(escalateAfter));
+        if (saveProofKinds) await this.store.setProofKinds(proofKinds === '' ? null : proofKinds);
         if (saveReviewSla) await this.store.setReviewSla(reviewSla === '' ? null : Number(reviewSla));
         if (saveFiscalStartMonth) await this.store.setFiscalStartMonth(Number(fiscalStartMonth));
         if (savePot) await this.store.setPot(pot === '' ? null : pot);
@@ -1585,6 +1635,7 @@ export class Settings {
         if (saveEntryDate) this.entryDateTyped.set(true);
         if (saveGraceDays) this.graceDaysTyped.set(true);
         if (saveEscalateAfter) this.escalateAfterTyped.set(true);
+        if (saveProofKinds) this.proofKindsTyped.set(true);
         if (saveReviewSla) this.reviewSlaTyped.set(true);
         if (saveFiscalStartMonth) this.fiscalStartMonthTyped.set(true);
         if (savePot) this.potTyped.set(true);

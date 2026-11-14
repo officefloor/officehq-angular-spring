@@ -120,6 +120,14 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** How many of the claim's proofs are receipts (a proof added with no kind chosen is one). */
+    @Column(name = "proofs_receipt", nullable = false)
+    private int proofsReceipt;
+
+    /** How many of the claim's proofs are photos. */
+    @Column(name = "proofs_photo", nullable = false)
+    private int proofsPhoto;
+
     /** The number of the claim this claim was split off; null for a claim not split off another. */
     @Column(name = "split_from", updatable = false)
     private String splitFrom;
@@ -450,9 +458,31 @@ public class Claim {
         return lockedBy != null && !lockedBy.equals(user);
     }
 
-    /** Count one more proof added to the claim. */
-    public void addProof() {
+    public int getProofsReceipt() {
+        return proofsReceipt;
+    }
+
+    public int getProofsPhoto() {
+        return proofsPhoto;
+    }
+
+    /** How many of the claim's proofs are of a kind (receipt or photo); 0 for any other kind. */
+    public int proofsOf(String kind) {
+        return switch (kind) {
+            case ProofKind.RECEIPT -> proofsReceipt;
+            case ProofKind.PHOTO -> proofsPhoto;
+            default -> 0;
+        };
+    }
+
+    /** Count one more proof, of a kind (receipt or photo), added to the claim. */
+    public void addProof(String kind) {
         this.proofs++;
+        if (ProofKind.PHOTO.equals(kind)) {
+            this.proofsPhoto++;
+        } else {
+            this.proofsReceipt++;
+        }
     }
 
     /** Whether the claim is deferred on a day: it is OPEN and that day is before its deferred-until

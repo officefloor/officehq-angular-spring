@@ -59,13 +59,14 @@ public class ClaimController {
      *  was given); comments are its comments, oldest first, each as <user> on <date>: <text>; batch
      *  is the number of the settle batch that settled it (null when a bulk settle did not); lines are
      *  its lines, oldest first, each as <label> <qty> x <unit> (empty when it has none); waived is
-     *  whether a steward waived its late charge. */
+     *  whether a steward waived its late charge; proofsReceipt and proofsPhoto are how many of its
+     *  proofs are receipts and photos. */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry,
             LocalDate remindedOn, String ref, List<String> tags, String voidReason, List<String> comments,
-            Long batch, List<String> lines, boolean waived) {
+            Long batch, List<String> lines, boolean waived, int proofsReceipt, int proofsPhoto) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log, List<String> comments) {
             return of(claim, roundsBy, log, comments, List.of());
         }
@@ -80,7 +81,8 @@ public class ClaimController {
                     claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
                     claim.getRemindedOn(), claim.getRef(), claim.getTags(),
-                    claim.getVoidReason(), comments, claim.getBatch(), lines, claim.isWaived());
+                    claim.getVoidReason(), comments, claim.getBatch(), lines, claim.isWaived(),
+                    claim.getProofsReceipt(), claim.getProofsPhoto());
         }
     }
 
@@ -432,13 +434,19 @@ public class ClaimController {
         return new SplitView(view(sheet, split.kept()), view(sheet, split.added()));
     }
 
-    /** Add a proof to a claim that is not SETTLED or VOID. */
+    /** The kind of a proof being added: receipt or photo; null or blank when none is chosen (a receipt). */
+    public record ProofRequest(@Size(max = 20) String kind) {
+    }
+
+    /** Add a proof, of a kind when one is chosen, to a claim that is not SETTLED or VOID. */
     @PostMapping("/people/{personId}/claims/{id}/proof")
     public ClaimView addProof(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
-            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody(required = false) @Validated ProofRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        return view(sheet, service.addProof(sheet, by, personId, id));
+        String kind = request == null || request.kind() == null || request.kind().isBlank() ? null : request.kind().trim();
+        return view(sheet, service.addProof(sheet, by, personId, id, kind));
     }
 
     /** Add a line to a DRAFT claim: its amount becomes its lines added up. */

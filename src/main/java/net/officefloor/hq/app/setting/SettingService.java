@@ -12,6 +12,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ProofKind;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -64,6 +65,7 @@ public class SettingService {
     private static final String NUMBERING_FROM = "period-numbering-from";
     private static final String GRACE_DAYS = "grace-days";
     private static final String ESCALATE_AFTER = "escalate-after";
+    private static final String PROOF_KINDS = "proof-kinds";
     private static final String REVIEW_SLA = "review-sla";
     private static final String ENTRY_DATE = "entry-date";
     private static final String POT = "pot";
@@ -76,7 +78,8 @@ public class SettingService {
             Integer graceDays, List<Delegation> delegations, BigDecimal clerkLimit, BigDecimal floor, BigDecimal cap,
             int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
             Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent,
-            int fiscalStartMonth, BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla) {
+            int fiscalStartMonth, BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla,
+            List<String> proofKinds) {
     }
 
     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
@@ -106,6 +109,7 @@ public class SettingService {
         String grace = kept.contains(GRACE_DAYS) ? then.get(GRACE_DAYS) : Objects.toString(graceDays(sheetId), null);
         String escalate = kept.contains(ESCALATE_AFTER) ? then.get(ESCALATE_AFTER)
                 : Objects.toString(escalateAfter(sheetId), null);
+        String kinds = kept.contains(PROOF_KINDS) ? then.get(PROOF_KINDS) : sheets.load(sheetId).getProofKinds();
         String sla = kept.contains(REVIEW_SLA) ? then.get(REVIEW_SLA) : Objects.toString(reviewSla(sheetId), null);
         BigDecimal potNow = pot(sheetId);
         String pot = kept.contains(POT) ? then.get(POT) : potNow != null ? potNow.toPlainString() : null;
@@ -133,7 +137,8 @@ public class SettingService {
                 latePct(sheetId, day, day), history.policyDate(sheetId, day), gradeTerms, dated,
                 entry != null ? LocalDate.parse(entry) : null, pot != null ? new BigDecimal(pot) : null, parent,
                 fiscal != null ? Integer.parseInt(fiscal) : 1, alert != null ? new BigDecimal(alert) : null,
-                escalate != null ? Integer.valueOf(escalate) : null, sla != null ? Integer.valueOf(sla) : null);
+                escalate != null ? Integer.valueOf(escalate) : null, sla != null ? Integer.valueOf(sla) : null,
+                kindsOf(kinds));
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -445,6 +450,16 @@ public class SettingService {
         return sheets.load(sheetId).getEscalateAfter();
     }
 
+    /** The sheet's proof kinds: a claim above the proof threshold needs a proof of each before it can
+     *  be settled or approved; empty when none are set. */
+    public List<String> proofKinds(String sheetId) {
+        return kindsOf(sheets.load(sheetId).getProofKinds());
+    }
+
+    private static List<String> kindsOf(String kinds) {
+        return kinds == null || kinds.isBlank() ? List.of() : List.of(kinds.split(","));
+    }
+
     /** The sheet's review SLA in days; null when it is blank (none). */
     public Integer reviewSla(String sheetId) {
         return sheets.load(sheetId).getReviewSla();
@@ -672,6 +687,25 @@ public class SettingService {
         history.settingSet(sheetId, ESCALATE_AFTER, days != null ? days.toString() : null);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=escalate-after value="
                 + (days != null ? days.toString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's proof kinds: each a receipt or a photo, listed once; empty leaves them blank
+     *  (none). A kind other than receipt or photo is refused. */
+    @Transactional
+    public Sheet setProofKinds(String sheetId, String by, List<String> kinds) {
+        for (String kind : kinds) {
+            if (!ProofKind.valid(kind)) {
+                throw new IllegalArgumentException("A proof kind is receipt or photo, not " + kind);
+            }
+        }
+        String value = String.join(",", kinds.stream().distinct().toList());
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setProofKinds(value.isEmpty() ? null : value);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, PROOF_KINDS, value.isEmpty() ? null : value);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=proof-kinds value=" + value);
         return saved;
     }
 

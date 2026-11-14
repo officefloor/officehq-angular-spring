@@ -628,20 +628,24 @@ public class ClaimService {
         return saved;
     }
 
-    /** Add a proof to a claim: its proofs count rises by one. A SETTLED or VOID claim, or one dated in
-     *  a closed period, is refused. */
+    /** Add a proof of a kind (receipt or photo; null when none is chosen, a receipt) to a claim: its
+     *  proofs count, and its count of the kind, rise by one. A SETTLED or VOID claim, one dated in a
+     *  closed period, or a kind other than receipt or photo, is refused. */
     @Transactional
-    public Claim addProof(String sheetId, String user, Long personId, Long id) {
+    public Claim addProof(String sheetId, String user, Long personId, Long id, String kind) {
+        if (kind != null && !ProofKind.valid(kind)) {
+            throw new ProofRefusedException(kind);
+        }
         Person person = person(sheetId, personId);
         Claim claim = claim(sheetId, personId, id);
         refuseClosed(sheetId, claim.getDueBy());
         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
             throw new ProofRefusedException(claim.getStatus());
         }
-        claim.addProof();
+        claim.addProof(kind);
         Claim saved = claims.saveAndFlush(claim);
         audit.recordOnCommit(line("CLAIM_PROOF_ADDED", sheetId, user, person, saved, saved.getNumber())
-                + " proofs=" + saved.getProofs());
+                + " proofs=" + saved.getProofs() + (kind != null ? " kind=" + kind : ""));
         return saved;
     }
 
@@ -1101,12 +1105,21 @@ public class ClaimService {
 
     /** A claim whose due is above the proof threshold in force on its date (its person's grade's in
      *  force then when one is set, else the sheet's) cannot be settled or approved while it has no
-     *  proofs; a due of n/a, or no threshold, asks for none. */
+     *  proofs, nor, while the sheet's proof kinds are set, without a proof of each kind listed; a due of
+     *  n/a, or no threshold, asks for none. */
     private void refuseUnproved(String sheetId, Person person, Claim claim, BigDecimal due) {
         String grade = grades.gradeOn(person.getId(), claim.getDate());
         BigDecimal threshold = settings.proofThresholdFor(sheetId, grade, claim.getDate());
-        if (claim.getProofs() == 0 && threshold != null && due != null && due.compareTo(threshold) > 0) {
+        if (threshold == null || due == null || due.compareTo(threshold) <= 0) {
+            return;
+        }
+        if (claim.getProofs() == 0) {
             throw new ProofRequiredException(due, threshold);
+        }
+        for (String kind : settings.proofKinds(sheetId)) {
+            if (claim.proofsOf(kind) == 0) {
+                throw new ProofRequiredException(due, threshold, kind);
+            }
         }
     }
 

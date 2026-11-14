@@ -52,12 +52,13 @@ public class SettingController {
      *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold, note-threshold,
      *  review-threshold,
      *  rounding); and
-     *  the permission matrix, the roles each action allows by action (blank for the standing rule). */
+     *  the permission matrix, the roles each action allows by action (blank for the standing rule); and the
+     *  proof kinds, comma separated (blank for none). */
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
             String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
             Map<String, List<DatedView>> dated, Map<String, String> permissions, List<DelegationView> delegations,
             String entryDate, String pot, String parent, int fiscalStartMonth,
-            String alertThreshold, Integer escalateAfter, Integer reviewSla) {
+            String alertThreshold, Integer escalateAfter, Integer reviewSla, String proofKinds) {
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
@@ -165,6 +166,10 @@ public class SettingController {
     public record EscalateAfterRequest(@Min(0) @Max(36500) Integer value) {
     }
 
+    /** Proof kinds, comma separated, each receipt or photo; null or blank leaves them blank (none). */
+    public record ProofKindsRequest(@Size(max = 200) String value) {
+    }
+
     /** A review SLA of 0 or more whole days; null leaves it blank (none). */
     public record ReviewSlaRequest(@Min(0) @Max(36500) Integer value) {
     }
@@ -206,7 +211,7 @@ public class SettingController {
                 then.entryDate() != null ? then.entryDate().toString() : "",
                 then.pot() != null ? then.pot().toPlainString() : null, then.parent() != null ? then.parent() : "",
                 then.fiscalStartMonth(), then.alertThreshold() != null ? then.alertThreshold().toPlainString() : null,
-                then.escalateAfter(), then.reviewSla());
+                then.escalateAfter(), then.reviewSla(), String.join(",", then.proofKinds()));
     }
 
     /** Assign a user name a role; a role other than clerk or steward is refused. */
@@ -430,6 +435,19 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Change the sheet's proof kinds; a claim above the proof threshold needs a proof of each listed
+     *  kind before it can be settled or approved. A kind other than receipt or photo is refused. */
+    @PutMapping("/proof-kinds")
+    public SettingsView setProofKinds(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated ProofKindsRequest request) {
+        String sheet = sheetId.trim();
+        List<String> kinds = request.value() == null ? List.of()
+                : Arrays.stream(request.value().split(",")).map(String::trim).filter(k -> !k.isEmpty()).toList();
+        service.setProofKinds(sheet, SignedInUser.decode(user), kinds);
+        return view(sheet);
+    }
+
     /** Change the sheet's review SLA; a REVIEW claim is late for review only when it is set. */
     @PutMapping("/review-sla")
     public SettingsView setReviewSla(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -504,7 +522,7 @@ public class SettingController {
                 entryDate != null ? entryDate.toString() : "", pot != null ? pot.toPlainString() : null,
                 parent != null ? parent : "", service.fiscalStartMonth(sheet),
                 alert != null ? alert.toPlainString() : null, service.escalateAfter(sheet),
-                service.reviewSla(sheet));
+                service.reviewSla(sheet), String.join(",", service.proofKinds(sheet)));
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */

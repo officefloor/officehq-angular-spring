@@ -55,6 +55,10 @@ export interface Claim {
   remindedOn: string | null;
   /** How many proofs were added to the claim. */
   proofs: number;
+  /** How many of the claim's proofs are receipts (a proof added with no kind chosen is one). */
+  proofsReceipt: number;
+  /** How many of the claim's proofs are photos. */
+  proofsPhoto: number;
   /** The number of the claim this claim was split off; null when it was not. */
   splitFrom: string | null;
   /** The user whose open editor locks the claim for everyone else; null when no one's does. */
@@ -337,6 +341,8 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
           <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span>
           <span data-testid="claim-proofs">{{ c.proofs }}</span>
+          <span>receipts <span data-testid="claim-proofs-receipt">{{ c.proofsReceipt }}</span></span>
+          <span>photos <span data-testid="claim-proofs-photo">{{ c.proofsPhoto }}</span></span>
           <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span>
           <ol data-testid="claim-log" [attr.aria-label]="'Status log of claim ' + c.id">
             @for (line of c.log; track $index) {
@@ -468,6 +474,16 @@ const NUMBER = /^\S+$/;
           >
             Comment
           </button>
+          <label [for]="'claim-proof-kind-' + c.id">Proof kind</label>
+          <select
+            [id]="'claim-proof-kind-' + c.id"
+            data-testid="claim-proof-kind"
+            (change)="setProofKind(c.id, value($event))"
+          >
+            <option value="" [selected]="!proofKindChoice()[c.id]">Choose a kind (receipt)</option>
+            <option value="receipt" [selected]="proofKindChoice()[c.id] === 'receipt'">Receipt</option>
+            <option value="photo" [selected]="proofKindChoice()[c.id] === 'photo'">Photo</option>
+          </select>
           <button type="button" data-testid="claim-proof" [attr.aria-label]="'Add a proof to claim ' + c.id" (click)="addProof(c)">
             Add proof
           </button>
@@ -600,6 +616,9 @@ export class PersonClaims {
 
   /** The void reason chosen on each claim's row, by claim id (a reason on the sheet's list, or blank). */
   protected readonly voidReasonChoice = signal<Record<number, string>>({});
+
+  /** The proof kind chosen on each claim's row, by claim id (receipt, photo, or blank for none chosen). */
+  protected readonly proofKindChoice = signal<Record<number, string>>({});
 
   /** The defer-until date typed on each claim's row, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
@@ -794,6 +813,11 @@ export class PersonClaims {
 
   protected setVoidReason(id: number, reason: string): void {
     this.voidReasonChoice.update((chosen) => ({ ...chosen, [id]: reason }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  protected setProofKind(id: number, kind: string): void {
+    this.proofKindChoice.update((chosen) => ({ ...chosen, [id]: kind }));
     if (this.rowError()?.id === id) this.rowError.set(null);
   }
 
@@ -992,16 +1016,19 @@ export class PersonClaims {
     }
   }
 
-  /** Add a proof to a claim, raising its proofs count by one; a SETTLED or VOID claim, or one dated
-   *  in a closed period, is refused on the row. */
+  /** Add a proof of the kind chosen on its row (a receipt when none is) to a claim, raising its proofs
+   *  count, and its count of the kind, by one; a SETTLED or VOID claim, or one dated in a closed
+   *  period, is refused on the row. Once added, the row's kind goes back to none chosen. */
   protected async addProof(claim: Claim): Promise<void> {
     this.rowError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/proof`;
     try {
-      const saved = await firstValueFrom(this.http.post<Claim>(url, null));
+      const kind = this.proofKindChoice()[claim.id] || null;
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { kind }));
       if (this.session.sheetId() !== sheet) return;
+      this.proofKindChoice.update((chosen) => ({ ...chosen, [claim.id]: '' }));
       this.saved.emit(saved);
     } catch {
       this.rowError.set({
