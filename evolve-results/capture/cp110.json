@@ -1,0 +1,64 @@
+{
+  "checkpoint": 110,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp110_consolidated-figures",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A sheet's children are the sheets naming it as their parent. The screen gains consolidated figures\nover the sheet and all its descendants: the number of people, the due-total (each sheet's due-total\nas that sheet shows it, added up) and the overdue-total (likewise). A sheet with no children shows\nits own figures there.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA sheet's children are the sheets naming it as their parent. The screen gains consolidated figures\nover the sheet and all its descendants: the number of people, the due-total (each sheet's due-total\nas that sheet shows it, added up) and the overdue-total (likewise). A sheet with no children shows\nits own figures there.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a926330b92828ef30662115a81930c63c1d9fc44",
+  "reset_sha": "",
+  "preagent_sha": "03d614b6f780aa34f16f6d469194ebb3f3fb24f8",
+  "prev_sha": "03d614b6f780aa34f16f6d469194ebb3f3fb24f8",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.815596,
+    "input_tokens": 38,
+    "output_tokens": 9179,
+    "cache_read_tokens": 782040,
+    "cache_creation_tokens": 59432,
+    "num_turns": 20,
+    "duration_ms": 334457,
+    "duration_api_ms": 89584,
+    "model": "claude-opus-5-5",
+    "session_id": "dbef8580-f85b-497c-9df7-288fe5b18b65",
+    "stop_reason": "success",
+    "result_text": "The sheet screen now shows consolidated figures for the sheet plus all its descendants: the number of people, the due-total and the overdue-total. All 4 acceptance tests pass under `bin/e2e`.\n\n**How it works**\n- **Server:** a new `GET /api/sheets/{id}/descendant-figures` endpoint in `SheetController.java` walks down the parent links. That means the sheet's children (sheets naming it as their parent), their children, and so on. A sheet already counted is skipped, so a loop in the links can't hang it. For each descendant it reads the people count, due-total and overdue-total from the existing rollup figures, using that sheet's own today, and adds them up. The sheet you're viewing is not included. The tree walk is `SheetService.descendants`, and the per-sheet figures come from the new `RollupService.headline`.\n- **Front end:** `people.ts` fetches those figures whenever the sheet loads. It adds them to the figures the sheet already shows in its header, and `counters.ts` displays the result under `consolidated-people-count`, `consolidated-due-total` and `consolidated-overdue-total`. A sheet with no children therefore shows exactly its own header figures.\n- No database change was needed, because sheets already store their parent.\n\n**Two limits:**\n- The descendants' figures come from the server's rollup, the same figures the audit file's TOTALS lines record, rather than from each child's screen. The tests show the two agree, but they are separate code, so they could drift if one changes later.\n- If you set an \"as of\" date, the sheet's own share follows that date but the descendants' share is still as of now.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.815596,
+        "num_turns": 20,
+        "duration_ms": 334457,
+        "duration_api_ms": 89584,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp110.agent.jsonl",
+  "agent_diff_file": "cp110.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

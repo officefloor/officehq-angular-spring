@@ -1,0 +1,251 @@
+diff --git a/src/main/frontend/src/app/features/counters/counters.ts b/src/main/frontend/src/app/features/counters/counters.ts
+index 19362da13..5aa4632b6 100644
+--- a/src/main/frontend/src/app/features/counters/counters.ts
++++ b/src/main/frontend/src/app/features/counters/counters.ts
+@@ -2,7 +2,9 @@ import { Component, input } from '@angular/core';
+ import { StatusSummary } from '../summary/summary';
+ 
+ // The sheet's counters, shown at the top at all times; each repeats a figure shown elsewhere: the
+-// people on the sheet (retired included), the summary's claims per status and the sheet's totals.
++// people on the sheet (retired included), the summary's claims per status and the sheet's totals;
++// then the consolidated figures over the sheet and all its descendants (the sheets naming it as
++// their parent, theirs, and so on), each sheet's figures as that sheet shows them, added up.
+ @Component({
+   selector: 'app-counters',
+   template: `
+@@ -18,6 +20,12 @@ import { StatusSummary } from '../summary/summary';
+         <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
+         <dt>Overdue in total</dt>
+         <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
++        <dt>People with sub-sheets</dt>
++        <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
++        <dt>Due in total with sub-sheets</dt>
++        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() }}</dd>
++        <dt>Overdue in total with sub-sheets</dt>
++        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
+       </dl>
+     </header>
+   `,
+@@ -27,4 +35,7 @@ export class Counters {
+   readonly statuses = input.required<StatusSummary[]>();
+   readonly dueTotal = input.required<string>();
+   readonly overdueTotal = input.required<string>();
++  readonly consolidatedPeopleCount = input.required<number>();
++  readonly consolidatedDueTotal = input.required<string>();
++  readonly consolidatedOverdueTotal = input.required<string>();
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index cfd571e4c..2ce818f82 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -53,6 +53,15 @@ interface Person {
+   aliases: string[];
+ }
+ 
++/** The figures of a sheet's descendants added up, each as that sheet shows it. */
++interface DescendantFigures {
++  people: number;
++  dueTotal: string;
++  overdueTotal: string;
++}
++
++const NO_DESCENDANTS: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00' };
++
+ /** A statement taken: the person's statements as their row shows them, and their claims as it
+  *  bound them. */
+ interface StatementTaken {
+@@ -72,6 +81,9 @@ interface StatementTaken {
+       [statuses]="statusSummary()"
+       [dueTotal]="dueTotal()"
+       [overdueTotal]="overdueTotal()"
++      [consolidatedPeopleCount]="people().length + descendantFigures().people"
++      [consolidatedDueTotal]="money(cents(dueTotal()) + cents(descendantFigures().dueTotal))"
++      [consolidatedOverdueTotal]="money(cents(overdueTotal()) + cents(descendantFigures().overdueTotal))"
+     />
+     <app-settings />
+     <app-rates />
+@@ -540,6 +552,7 @@ export class People {
+   protected readonly periods = inject(PeriodStore);
+   private readonly voidReasons = inject(VoidReasonStore);
+   protected readonly money = money;
++  protected readonly cents = cents;
+   protected readonly settings = inject(SettingStore);
+   /** Whether the signed-in user is a viewer on the sheet. */
+   protected readonly viewer = computed(() => {
+@@ -645,6 +658,8 @@ export class People {
+       ),
+     ),
+   );
++  /** The sheet's descendants' figures added up, as the store last told them. */
++  protected readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
+   /** Every tag ever used on the sheet, as the store last told it. */
+   private readonly usedTags = signal<string[]>([]);
+   /** Per tag ever used on the sheet, sorted: the dues shown on the claims that count which carry it
+@@ -858,6 +873,7 @@ export class People {
+       this.people.set([]);
+       this.claims.set([]);
+       this.usedTags.set([]);
++      this.descendantFigures.set(NO_DESCENDANTS);
+       this.rowError.set(null);
+       this.retireDates.set({});
+       this.holdDates.set({});
+@@ -1628,15 +1644,17 @@ export class People {
+   /** Read the sheet's people and claims; a response for an earlier load is dropped. */
+   private async read(sheet: string, load: number): Promise<void> {
+     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
+-    const [list, claims, tags] = await Promise.all([
++    const [list, claims, tags, descendants] = await Promise.all([
+       firstValueFrom(this.http.get<Person[]>(`${base}/people`)),
+       firstValueFrom(this.http.get<Claim[]>(`${base}/claims`)),
+       firstValueFrom(this.http.get<string[]>(`${base}/claim-tags`)),
++      firstValueFrom(this.http.get<DescendantFigures>(`${base}/descendant-figures`)),
+     ]);
+     if (this.session.loads() !== load) return;
+     this.people.set(list);
+     this.claims.set(claims);
+     this.usedTags.set(tags);
++    this.descendantFigures.set(descendants);
+   }
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 3013b3547..fc1d4f4a8 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -100,6 +100,18 @@ public class RollupService {
+         return result;
+     }
+ 
++    /** A sheet's headline figures as it shows them now: how many people are on it, and its due-total
++     *  and overdue-total. */
++    public record Headline(int people, BigDecimal dueTotal, BigDecimal overdueTotal) {
++    }
++
++    /** The sheet's headline figures as it shows them now. */
++    @Transactional(readOnly = true)
++    public Headline headline(String sheetId) {
++        Rollup rollup = rollup(sheetId);
++        return new Headline(rollup.people().size(), rollup.dueTotal(), rollup.overdueTotal());
++    }
++
+     /** Record in the audit each person's due-total as it stands now, in list order: the figures of
+      *  the day the sheet's today is about to leave. */
+     public void snapshot(String sheetId, String user) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index e85f0f192..ccde86202 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.sheet;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import net.officefloor.hq.app.SignedInUser;
+ import net.officefloor.hq.app.claim.ClaimService;
+@@ -14,6 +15,7 @@ import org.springframework.http.HttpStatus;
+ import org.springframework.http.converter.HttpMessageNotReadableException;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PathVariable;
+ import org.springframework.web.bind.annotation.PostMapping;
+ import org.springframework.web.bind.annotation.PutMapping;
+@@ -34,6 +36,10 @@ public class SheetController {
+         }
+     }
+ 
++    /** The figures of a sheet's descendants added up, each as that sheet shows it now. */
++    public record DescendantFigures(int sheets, int people, String dueTotal, String overdueTotal) {
++    }
++
+     public record TodayRequest(@NotNull LocalDate today) {
+     }
+ 
+@@ -58,6 +64,23 @@ public class SheetController {
+         return SheetView.of(service.load(id.trim()));
+     }
+ 
++    /** The sheet's descendants' figures added up: how many people are on them, and each one's
++     *  due-total and overdue-total as that sheet shows it. The sheet's own figures are not included. */
++    @GetMapping("/{id}/descendant-figures")
++    public DescendantFigures descendantFigures(@PathVariable @NotBlank @Size(max = 200) String id) {
++        int people = 0;
++        BigDecimal due = BigDecimal.ZERO.setScale(2);
++        BigDecimal overdue = BigDecimal.ZERO.setScale(2);
++        var descendants = service.descendants(id.trim());
++        for (String sheet : descendants) {
++            RollupService.Headline figures = rollups.headline(sheet);
++            people += figures.people();
++            due = due.add(figures.dueTotal());
++            overdue = overdue.add(figures.overdueTotal());
++        }
++        return new DescendantFigures(descendants.size(), people, due.toPlainString(), overdue.toPlainString());
++    }
++
+     /** Change the sheet's today, closing the periods past their grace days and releasing every claim
+      *  editor's lock when the date moved; the audit records each person's due-total on the day being
+      *  left when the date moved, then only the figures it moved. */
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+index 9aaa92731..c3a7b96e4 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetRepository.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.sheet;
+ 
+ import jakarta.persistence.LockModeType;
++import java.util.List;
+ import java.util.Optional;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Lock;
+@@ -12,4 +13,7 @@ public interface SheetRepository extends JpaRepository<Sheet, String> {
+     @Lock(LockModeType.PESSIMISTIC_WRITE)
+     @Query("select s from Sheet s where s.id = :id")
+     Optional<Sheet> findLockedById(String id);
++
++    /** The sheets naming this one as their parent. */
++    List<Sheet> findByParentIdOrderByIdAsc(String parentId);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index b5a17efa9..837060c3f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -2,6 +2,10 @@ package net.officefloor.hq.app.sheet;
+ 
+ import java.time.Clock;
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.stereotype.Service;
+@@ -75,6 +79,27 @@ public class SheetService {
+         return sheets.save(sheet);
+     }
+ 
++    /** The ids of the sheet's descendants: its children (the sheets naming it as their parent), their
++     *  children, and so on; the sheet itself is not among them. */
++    public List<String> descendants(String id) {
++        List<String> found = new ArrayList<>();
++        Set<String> seen = new HashSet<>(Set.of(id));
++        List<String> next = List.of(id);
++        while (!next.isEmpty()) {
++            List<String> children = new ArrayList<>();
++            for (String parent : next) {
++                for (Sheet child : sheets.findByParentIdOrderByIdAsc(parent)) {
++                    if (seen.add(child.getId())) {
++                        children.add(child.getId());
++                    }
++                }
++            }
++            found.addAll(children);
++            next = children;
++        }
++        return found;
++    }
++
+     /** Whether the sheet is archived: every change to it is then refused. */
+     public boolean isArchived(String id) {
+         return sheets.findById(id).map(Sheet::isArchived).orElse(false);
