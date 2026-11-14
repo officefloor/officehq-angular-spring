@@ -1,0 +1,107 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index b31bac249..5a1c278dd 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -21,7 +21,7 @@ export interface Claim {
+   date: string;
+   note: string;
+   status: ClaimStatus;
+-  /** The sheet's number for the claim, given when it is opened; null while DRAFT or once VOID. */
++  /** The sheet's number for the claim, given when it is opened and kept if it is voided; null while DRAFT. */
+   number: number | null;
+   /** The due fixed when the claim was settled, with two decimals; null, so the due is live, for
+    *  a claim not SETTLED or settled when its grade had no rate. */
+@@ -102,6 +102,7 @@ export class ClaimsApi {
+ export function claimError(e: unknown): string {
+   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount of 0.00 or more with up to two decimals.';
+   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
++  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft claim can be edited; void it and add a new one.';
+   if (e instanceof HttpErrorResponse && e.status === 423) return 'The date is in a closed period.';
+   return 'Something went wrong; try again.';
+ }
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 5a7ec486a..7655669b9 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -106,6 +106,10 @@ export class PersonClaims {
+   protected edit(c: Claim): void {
+     this.error.set(null);
+     this.clearRowError(c.id);
++    if (c.status !== 'DRAFT') {
++      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Only a draft claim can be edited; void it and add a new one.' }));
++      return;
++    }
+     if (periodOn(this.periods(), c.date)?.closed) {
+       this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'This claim is dated in a closed period.' }));
+       return;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 7857ea4d8..6734616fd 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -39,7 +39,8 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+-    /** The sheet's number for the claim, given when it is opened; none while DRAFT or once VOID. */
++    /** The sheet's number for the claim, given when it is opened and kept if it is voided; none
++     *  while DRAFT. */
+     @Column(name = "claim_number")
+     private Integer number;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index 65196e80f..469840ab4 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -14,7 +14,7 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+ 
+     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
+ 
+-    /** The claim, locked for a status change so two users cannot move it at once. */
++    /** The claim, locked for a status change or edit so two users cannot change it at once. */
+     @Lock(LockModeType.PESSIMISTIC_WRITE)
+     @Query("select c from Claim c where c.id = :id and c.sheetId = :sheetId")
+     Optional<Claim> findForUpdate(Long id, String sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 2f53e69bc..78fae688e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -68,14 +68,19 @@ public class ClaimService {
+         return claim;
+     }
+ 
+-    /** Change a claim's amount, date and note; a missing date takes the sheet's today. Refused
+-     *  (423) when its old or new date is in a closed period. */
++    /** Change a DRAFT claim's amount, date and note; a missing date takes the sheet's today.
++     *  Refused (409) once the claim is no longer a DRAFT (an open claim is voided and a new one
++     *  added instead), and (423) when its old or new date is in a closed period. */
+     @Transactional
+     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
+-        Claim claim = claims.findByIdAndSheetId(id, sheetId)
++        Claim claim = claims.findForUpdate(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+         LocalDate on = date != null ? date : sheets.today(sheetId);
+         refuseIfClosed(sheetId, claim.getDate());
++        if (claim.getStatus() != ClaimStatus.DRAFT) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "A " + claim.getStatus() + " claim cannot be edited");
++        }
+         refuseIfClosed(sheetId, on);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         claim.setAmount(amount);
+@@ -108,15 +113,13 @@ public class ClaimService {
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+-        // the VOIDED record carries the number the claim had
++        // a voided claim keeps its number (never reused), and the VOIDED record carries it
+         Integer number = claim.getNumber();
+         claim.setStatus(to);
+         if (to == ClaimStatus.OPEN) {
+             number = sheets.nextClaimNumber(sheetId);
+             claim.setNumber(number);
+             claim.setOpenedBy(user);
+-        } else if (to == ClaimStatus.VOID) {
+-            claim.setNumber(null);
+         } else if (to == ClaimStatus.SETTLED) {
+             // a claim bound by a statement settles at its bound figure
+             claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : dueOf(claim, person));
