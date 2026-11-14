@@ -36,11 +36,11 @@ public class ClaimController {
      *  claim a correction corrects (null for other claims). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
-            String statedDue, String corrects, long listed) {
+            String statedDue, String corrects, long listed, LocalDate dueBy) {
         static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
-                    c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed());
+                    c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy());
         }
 
         private static String money(BigDecimal value) {

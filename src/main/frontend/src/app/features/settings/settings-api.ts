@@ -18,6 +18,9 @@ export const POLICY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 /** Terms of a whole number of days. */
 export const TERMS_PATTERN = /^\d{1,4}$/;
 
+/** The grades a person can hold, each of which can have terms of its own. */
+export const GRADES = ['A', 'B', 'C'] as const;
+
 export interface Settings {
   /** Two decimals, as the server formats it; null when there is no limit. */
   clerkLimit: string | null;
@@ -33,6 +36,8 @@ export interface Settings {
   /** yyyy-mm-dd: while the sheet's today is on or after it, a claim opened is numbered within its
    *  period; null when blank (off). */
   periodNumberingFrom: string | null;
+  /** Days, by grade: the terms a grade has of its own; a grade not here uses the sheet's terms. */
+  gradeTerms: Record<string, number>;
 }
 
 export interface RoleGrant {
@@ -65,6 +70,12 @@ export class SettingsApi {
   setTerms(sheetId: string, value: string): Promise<Settings> {
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/terms`, { value }, { headers: this.headers() }),
+    );
+  }
+
+  setGradeTerms(sheetId: string, grade: string, value: string): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/terms/${encodeURIComponent(grade)}`, { value }, { headers: this.headers() }),
     );
   }
 
@@ -104,7 +115,7 @@ export class SettingsApi {
 }
 
 export const SETTINGS_INVALID =
-  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of days (blank: 14) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off).';
+  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of days (blank: 14) and terms for each grade of a whole number of days (blank: the sheet\'s terms) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off).';
 
 export function settingsError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return SETTINGS_INVALID;

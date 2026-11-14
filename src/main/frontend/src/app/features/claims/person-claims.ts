@@ -135,19 +135,19 @@ export class PersonClaims {
   protected dueOf(c: Claim): string {
     const grade = gradeOn(this.grades(), c.date);
     const due = claimDueCents(this.rates().filter((r) => r.grade === grade), c, cents(this.session.floor()), {
-      today: this.session.today(), terms: this.session.terms(), latePct: this.session.latePct(),
+      today: this.session.today(), latePct: this.session.latePct(),
     }, roundsHalfUp(c, this.claims(), this.session.policyDate(), this.session.today()));
     return due === null ? 'n/a' : money(due);
   }
 
-  /** The claim's date plus the sheet's terms. */
+  /** The claim's due-by, fixed when it was created. */
   protected dueByOf(c: Claim): string {
-    return dueBy(c, this.session.terms());
+    return dueBy(c);
   }
 
   /** Whether the claim is open (OPEN or PENDING) with its due-by before the sheet's today. */
   protected overdueOf(c: Claim): boolean {
-    return overdue(c, this.session.terms(), this.session.today());
+    return overdue(c, this.session.today());
   }
 
   /** The name of the period whose dates contain the claim's date; blank when none does. */

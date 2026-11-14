@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The sheet's settings (its clerk limit, floor, terms, late percent, policy date and period numbering from-date) and the role each user name holds on it. */
+/** The sheet's settings (its clerk limit, floor, terms, terms per grade, late percent, policy date and period numbering from-date) and the role each user name holds on it. */
 @Service
 public class SettingsService {
 
@@ -23,6 +23,8 @@ public class SettingsService {
     public static final String FLOOR = "floor";
     /** The key the terms are audited under. */
     public static final String TERMS = "terms";
+    /** The key a grade's terms are audited under, followed by the grade. */
+    public static final String TERMS_OF_GRADE = "terms-";
     /** The key the late percent is audited under. */
     public static final String LATE_PCT = "late-pct";
     /** The key the policy date is audited under. */
@@ -89,18 +91,37 @@ public class SettingsService {
         return sheets.terms(sheetId);
     }
 
-    /** Set the sheet's terms in days, the sheet created first if it was never loaded; every claim's
-     *  due-by (and so whether it is overdue, and its late charge) moves with them. */
+    /** Set the sheet's terms in days, the sheet created first if it was never loaded; they apply
+     *  to claims created from now on in a grade without its own terms, while every claim's due-by,
+     *  fixed when it was created, stays as it is. */
     @Transactional
     public int setTerms(String sheetId, String user, int terms) {
         Sheet sheet = sheets.load(sheetId, user);
         sheets.lock(sheetId);
-        RollupService.Snapshot before = rollup.snapshot(sheetId);
         sheet.setTerms(terms);
         sheets.flush();
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + TERMS + " value=" + terms);
-        rollup.recordChanges(sheetId, user, before);
+        return terms;
+    }
+
+    /** The terms set for a grade; null when it has none of its own (it uses the sheet's terms). */
+    @Transactional(readOnly = true)
+    public Integer gradeTerms(String sheetId, String grade) {
+        return sheets.find(sheetId).map(s -> s.getGradeTerms(grade)).orElse(null);
+    }
+
+    /** Set a grade's terms in days (null: none, the grade uses the sheet's terms), the sheet
+     *  created first if it was never loaded; like the sheet's terms they apply to claims created
+     *  from now on, while every claim's due-by stays as it is. */
+    @Transactional
+    public Integer setGradeTerms(String sheetId, String user, String grade, Integer terms) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        sheet.setGradeTerms(grade, terms);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + TERMS_OF_GRADE + grade + " value=" + (terms == null ? "" : terms));
         return terms;
     }
 

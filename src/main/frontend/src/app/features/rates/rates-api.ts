@@ -69,10 +69,9 @@ export function dueCents(cents: number, pctHundredths: number, halfUp = false): 
   return Number(product < 0n ? -rounded : rounded);
 }
 
-/** What a claim's late charge follows: the sheet's today, terms and late percent. */
+/** What a claim's late charge follows: the sheet's today and late percent. */
 export interface Lateness {
   today: string | null;
-  terms: number;
   /** The late percent with two decimals. */
   latePct: string;
 }
@@ -99,7 +98,7 @@ function figureCents(rates: readonly Rate[], c: Claim, floorCents: number, halfU
 /** An overdue claim's late charge in cents: the late percent of its figure for every full 30 days
  *  past its due-by, rounded by the claim's rounding policy; 0 when it is not overdue. */
 function lateChargeCents(c: Claim, figure: number, late: Lateness, halfUp: boolean): number {
-  if (late.today === null || isCorrection(c) || !overdue(c, late.terms, late.today)) return 0;
-  const days = Math.round((Date.parse(late.today) - Date.parse(dueBy(c, late.terms))) / 86_400_000);
+  if (late.today === null || isCorrection(c) || !overdue(c, late.today)) return 0;
+  const days = Math.round((Date.parse(late.today) - Date.parse(dueBy(c))) / 86_400_000);
   return dueCents(figure, cents(late.latePct) * Math.floor(days / 30), halfUp);
 }

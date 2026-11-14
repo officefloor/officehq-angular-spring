@@ -13,7 +13,7 @@ export class Session {
   readonly today = signal<string | null>(null);
   /** The active sheet's floor (two decimals): a claim's live due is at least it. */
   readonly floor = signal('1.00');
-  /** The active sheet's terms in days: a claim is due by its date plus them. */
+  /** The active sheet's terms in days: a claim created in a grade without terms of its own is due by its date plus them. */
   readonly terms = signal(14);
   /** The active sheet's late percent (two decimals): an overdue claim's due gains it for every
    *  full 30 days overdue. */

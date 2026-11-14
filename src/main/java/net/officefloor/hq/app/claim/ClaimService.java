@@ -23,6 +23,7 @@ import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -98,7 +99,8 @@ public class ClaimService {
         refuseIfRetired(person, on);
         String corrected = correctedBy(sheetId, personId, amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        Claim fresh = new Claim(sheetId, personId, amount, on, noteOf(note));
+        int terms = sheets.find(sheetId).map(s -> s.termsFor(person.gradeOn(on))).orElse(Sheet.DEFAULT_TERMS);
+        Claim fresh = new Claim(sheetId, personId, amount, on, on.plusDays(terms), noteOf(note));
         fresh.setCorrects(corrected);
         // the sheet is locked (refuseIfClosed), so two claims added at once are listed one after the other
         fresh.setListed(claims.findLastListed(sheetId) + 1);

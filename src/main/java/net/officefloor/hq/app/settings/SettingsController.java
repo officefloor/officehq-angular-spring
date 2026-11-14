@@ -9,6 +9,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import net.officefloor.hq.app.session.CurrentUser;
 import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.http.HttpStatus;
@@ -29,13 +31,14 @@ public class SettingsController {
 
     /** The sheet's settings as the screen shows them: the clerk limit with two decimals, null for
      *  none, the floor with two decimals, the terms in days, the late percent with two decimals,
-     *  the policy date, null when blank, and the period numbering from-date, null when blank (off). */
+     *  the policy date, null when blank, the period numbering from-date, null when blank (off),
+     *  and the terms each grade has of its own, a grade without them left out. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            LocalDate periodNumberingFrom) {
+            LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct, LocalDate policyDate,
-                LocalDate periodNumberingFrom) {
+                LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms) {
             return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms,
-                    latePct.setScale(2).toPlainString(), policyDate, periodNumberingFrom);
+                    latePct.setScale(2).toPlainString(), policyDate, periodNumberingFrom, gradeTerms);
         }
     }
 
@@ -75,6 +78,9 @@ public class SettingsController {
             @NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String user,
             @NotNull @Pattern(regexp = "clerk|steward") String role) {
     }
+
+    /** The grades a person can hold. */
+    private static final List<String> GRADES = List.of("A", "B", "C");
 
     private final SettingsService service;
 
@@ -116,6 +122,17 @@ public class SettingsController {
             @Valid @RequestBody TermsForm body) {
         int terms = body.value().isEmpty() ? Sheet.DEFAULT_TERMS : Integer.parseInt(body.value());
         service.setTerms(sheetId, user.trim(), terms);
+        return view(sheetId);
+    }
+
+    @PutMapping("/settings/terms/{grade}")
+    public SettingsView setGradeTerms(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody TermsForm body) {
+        Integer terms = body.value().isEmpty() ? null : Integer.valueOf(body.value());
+        service.setGradeTerms(sheetId, user.trim(), grade, terms);
         return view(sheetId);
     }
 
@@ -161,7 +178,19 @@ public class SettingsController {
 
     private SettingsView view(String sheetId) {
         return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId),
-                service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId));
+                service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId),
+                gradeTerms(sheetId));
+    }
+
+    private Map<String, Integer> gradeTerms(String sheetId) {
+        Map<String, Integer> out = new TreeMap<>();
+        for (String grade : GRADES) {
+            Integer terms = service.gradeTerms(sheetId, grade);
+            if (terms != null) {
+                out.put(grade, terms);
+            }
+        }
+        return out;
     }
 
     @GetMapping("/roles")

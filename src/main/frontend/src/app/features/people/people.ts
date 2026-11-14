@@ -180,9 +180,9 @@ export class People {
   });
   /** The sheet's rates (a percent with two decimals), each for a grade from a from-date. */
   protected readonly rates = signal<Rate[]>([]);
-  /** What every late charge follows: the sheet's today, terms and late percent. */
+  /** What every late charge follows: the sheet's today and late percent. */
   private readonly lateness = computed<Lateness>(() => ({
-    today: this.session.today(), terms: this.session.terms(), latePct: this.session.latePct(),
+    today: this.session.today(), latePct: this.session.latePct(),
   }));
   /** Each person's due-total in cents, by person id: the sum of the dues their OPEN and SETTLED
    *  claims show (each already rounded; a held person's OPEN ones left out). Null (n/a) when their grade in force on the
@@ -211,7 +211,7 @@ export class People {
     const floor = cents(this.session.floor());
     const late = this.lateness();
     for (const p of this.people()) {
-      const overdueClaims = this.claimsOf(p.id).filter(this.countsLive()).filter((c) => overdue(c, late.terms, late.today));
+      const overdueClaims = this.claimsOf(p.id).filter(this.countsLive()).filter((c) => overdue(c, late.today));
       out.set(p.id, {
         count: overdueClaims.length,
         cents: overdueClaims.reduce((sum, c) => sum + (this.claimDueCents(p, c, floor, late) ?? 0), 0),

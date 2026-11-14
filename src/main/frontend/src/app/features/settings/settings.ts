@@ -1,10 +1,10 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { LATE_PCT_PATTERN, LIMIT_PATTERN, POLICY_DATE_PATTERN, ROLES, TERMS_PATTERN, RoleGrant, SETTINGS_INVALID, SettingsApi, roleError, settingsError } from './settings-api';
+import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, POLICY_DATE_PATTERN, ROLES, TERMS_PATTERN, RoleGrant, SETTINGS_INVALID, SettingsApi, roleError, settingsError } from './settings-api';
 
 // The sheet's settings (its clerk limit: a clerk settles only claims whose due is at or below it;
-// its floor: a claim's live due is at least it; its terms: a claim is due by its date plus them; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period) with the form that saves the ones changed in it, and the role each user name holds with the form that sets one.
+// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period) with the form that saves the ones changed in it, and the role each user name holds with the form that sets one.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -14,6 +14,9 @@ import { LATE_PCT_PATTERN, LIMIT_PATTERN, POLICY_DATE_PATTERN, ROLES, TERMS_PATT
       <p>Clerk limit in force <strong data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</strong></p>
       <p>Floor in force <strong data-testid="setting-floor-current">{{ session.floor() }}</strong></p>
       <p>Terms in force (days) <strong data-testid="setting-terms-current">{{ session.terms() }}</strong></p>
+      @for (g of grades; track g) {
+        <p>Terms in force for grade {{ g }} (days) <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ termsOf(g) }}</strong></p>
+      }
       <p>Late percent in force <strong data-testid="setting-late-pct-current">{{ session.latePct() }}</strong></p>
       <p>Policy date in force (blank: the sheet's today) <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
       <p>Period numbering from (blank: off) <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
@@ -24,6 +27,10 @@ import { LATE_PCT_PATTERN, LIMIT_PATTERN, POLICY_DATE_PATTERN, ROLES, TERMS_PATT
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" autocomplete="off" />
         <label for="setting-terms">Terms in days (blank: 14)</label>
         <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" autocomplete="off" />
+        @for (g of grades; track g) {
+          <label [for]="'setting-terms-' + g">Terms in days for grade {{ g }} (blank: the sheet's terms)</label>
+          <input [id]="'setting-terms-' + g" [attr.data-testid]="'setting-terms-' + g" [formControl]="gradeTermsForm.controls[g]" inputmode="numeric" autocomplete="off" />
+        }
         <label for="setting-late-pct">Late percent per 30 days overdue (blank: 0.00)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" autocomplete="off" />
         <label for="setting-policy-date">Policy date: claims dated before it round half up, others half to even (blank: the sheet's today)</label>
@@ -77,6 +84,9 @@ export class Settings {
   protected readonly clerkLimit = signal<string | null>(null);
   /** The sheet's period numbering from-date (yyyy-mm-dd); null when blank (off). */
   protected readonly periodNumberingFrom = signal<string | null>(null);
+  protected readonly grades = GRADES;
+  /** The terms each grade has of its own; a grade not here uses the sheet's terms. */
+  protected readonly gradeTerms = signal<Record<string, number>>({});
   /** The roles set on the sheet. */
   protected readonly grants = signal<RoleGrant[]>([]);
   protected readonly sortedGrants = computed(() => [...this.grants()].sort((a, b) => a.user.localeCompare(b.user)));
@@ -98,6 +108,12 @@ export class Settings {
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
   });
+  /** A grade's own terms, typed in beside the other settings and saved with them. */
+  protected readonly gradeTermsForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
     role: new FormControl('', { nonNullable: true }),
@@ -105,6 +121,7 @@ export class Settings {
 
   constructor() {
     this.settingsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
+    this.gradeTermsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.roleForm.valueChanges.subscribe(() => this.roleErr.set(null));
     effect(() => {
       const id = this.session.sheetId();
@@ -112,14 +129,21 @@ export class Settings {
       untracked(() => {
         this.clerkLimit.set(null);
         this.periodNumberingFrom.set(null);
+        this.gradeTerms.set({});
         this.grants.set([]);
         this.settingsErr.set(null);
         this.roleErr.set(null);
         this.settingsForm.reset({ clerkLimit: '', floor: '', terms: '', latePct: '', policyDate: '', periodNumberingFrom: '' }, { emitEvent: false });
+        this.gradeTermsForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.roleForm.reset({ user: '', role: '' }, { emitEvent: false });
         if (id) void this.read(id);
       });
     });
+  }
+
+  /** The terms in force for a grade: its own, else the sheet's. */
+  protected termsOf(grade: string): number {
+    return this.gradeTerms()[grade] ?? this.session.terms();
   }
 
   protected async saveSettings(): Promise<void> {
@@ -137,7 +161,11 @@ export class Settings {
     const saveLatePct = latePct.dirty;
     const savePolicyDate = policyDate.dirty;
     const savePeriodNumberingFrom = periodNumberingFrom.dirty;
-    const saveLimit = clerkLimit.dirty || !(saveFloor || saveTerms || saveLatePct || savePolicyDate || savePeriodNumberingFrom);
+    const gradeTermsToSave = GRADES
+      .filter((g) => this.gradeTermsForm.controls[g].dirty)
+      .map((g) => ({ grade: g, control: this.gradeTermsForm.controls[g], value: this.gradeTermsForm.controls[g].value.trim() }));
+    const saveLimit = clerkLimit.dirty
+      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom);
     const limitValue = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
@@ -147,6 +175,7 @@ export class Settings {
     if ((saveLimit && limitValue !== '' && !LIMIT_PATTERN.test(limitValue))
         || (saveFloor && floorValue !== '' && !LIMIT_PATTERN.test(floorValue))
         || (saveTerms && termsValue !== '' && !TERMS_PATTERN.test(termsValue))
+        || gradeTermsToSave.some((t) => t.value !== '' && !TERMS_PATTERN.test(t.value))
         || (saveLatePct && latePctValue !== '' && !LATE_PCT_PATTERN.test(latePctValue))
         || (savePolicyDate && policyDateValue !== '' && !POLICY_DATE_PATTERN.test(policyDateValue))
         || (savePeriodNumberingFrom && periodNumberingFromValue !== '' && !POLICY_DATE_PATTERN.test(periodNumberingFromValue))) {
@@ -170,6 +199,11 @@ export class Settings {
         if (terms.value.trim() === termsValue) terms.markAsPristine();
         if (this.session.sheetId() === sheetId) this.session.terms.set(saved.terms);
       }
+      for (const t of gradeTermsToSave) {
+        const saved = await this.api.setGradeTerms(sheetId, t.grade, t.value);
+        if (t.control.value.trim() === t.value) t.control.markAsPristine();
+        if (this.session.sheetId() === sheetId) this.gradeTerms.set(saved.gradeTerms);
+      }
       if (saveLatePct) {
         const saved = await this.api.setLatePct(sheetId, latePctValue);
         if (latePct.value.trim() === latePctValue) latePct.markAsPristine();
@@ -192,7 +226,7 @@ export class Settings {
     }
     if (this.resaveSettings) {
       this.resaveSettings = false;
-      if (this.settingsForm.dirty) await this.saveSettings();
+      if (this.settingsForm.dirty || this.gradeTermsForm.dirty) await this.saveSettings();
     }
   }
 
@@ -236,6 +270,7 @@ export class Settings {
         this.session.latePct.set(settings.latePct);
         this.session.policyDate.set(settings.policyDate);
         this.periodNumberingFrom.set(settings.periodNumberingFrom);
+        this.gradeTerms.set(settings.gradeTerms);
         this.grants.set(grants);
       }
     } catch {

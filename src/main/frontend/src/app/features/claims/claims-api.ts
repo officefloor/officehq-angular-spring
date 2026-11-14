@@ -44,6 +44,9 @@ export interface Claim {
   /** Where the claim is listed, newest (highest) first: set when it is added, and again when it
    *  is reassigned, so a moved claim is its new person's newest. */
   listed: number;
+  /** yyyy-mm-dd: fixed when the claim was created, its date plus the terms of its person's grade
+   *  in force on that date; later changes to the terms or its date leave it. */
+  dueBy: string;
 }
 
 /** Claims as they are listed: newest (or most recently reassigned) first. */
@@ -71,15 +74,14 @@ export function counts(c: Claim): boolean {
   return isOpen(c) || c.status === 'SETTLED';
 }
 
-/** A claim's due-by (yyyy-mm-dd): its date plus the sheet's terms in days. */
-export function dueBy(c: Claim, terms: number): string {
-  const [y, m, d] = c.date.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
+/** A claim's due-by (yyyy-mm-dd), fixed when it was created. */
+export function dueBy(c: Claim): string {
+  return c.dueBy;
 }
 
 /** Whether a claim is overdue: open (OPEN or PENDING) with its due-by before the sheet's today. */
-export function overdue(c: Claim, terms: number, today: string | null): boolean {
-  return isOpen(c) && today !== null && dueBy(c, terms) < today;
+export function overdue(c: Claim, today: string | null): boolean {
+  return isOpen(c) && today !== null && dueBy(c) < today;
 }
 
 /** Whether a claim's live figures round half up: its date (a correction's, the date of the claim
