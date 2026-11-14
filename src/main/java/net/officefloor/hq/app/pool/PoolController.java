@@ -10,6 +10,7 @@ import java.util.List;
 import net.officefloor.hq.app.AsOf;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.person.PersonController;
+import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -97,11 +98,14 @@ public class PoolController {
     private final PoolService service;
     private final PoolHistoryService pastPools;
     private final JsonMapper json;
+    private final RollupService rollups;
 
-    public PoolController(PoolService service, PoolHistoryService pastPools, JsonMapper json) {
+    public PoolController(PoolService service, PoolHistoryService pastPools, JsonMapper json,
+            RollupService rollups) {
         this.service = service;
         this.pastPools = pastPools;
         this.json = json;
+        this.rollups = rollups;
     }
 
     /** The sheet's pools, in the order they were added, then its crews as pools, in the order they were added. */
@@ -130,14 +134,17 @@ public class PoolController {
         return PoolView.of(service.add(sheetId.trim(), SignedInUser.decode(user), request.name()));
     }
 
-    /** Add a member to one of the sheet's pools. */
+    /** Add a member to one of the sheet's pools; the figures its cuts move (a cut counts against the cap)
+     *  are followed in the audit. */
     @PostMapping("/{poolId}/members")
     @ResponseStatus(HttpStatus.CREATED)
     public PoolView addMember(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long poolId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Validated PoolMemberRequest request) {
-        return PoolView.of(service.addMember(sheetId.trim(), SignedInUser.decode(user), poolId, request.personId(),
-                request.memberPoolId(), request.share(), request.from(), request.to()));
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return PoolView.of(rollups.track(sheet, by, () -> service.addMember(sheet, by, poolId, request.personId(),
+                request.memberPoolId(), request.share(), request.from(), request.to())));
     }
 
     /** A blank or used name, a person already in the pool, a pool that may not be a member, a bad

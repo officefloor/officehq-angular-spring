@@ -23,6 +23,7 @@ import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonGradeService;
 import net.officefloor.hq.app.person.PersonService;
+import net.officefloor.hq.app.pool.PoolCutService;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -63,12 +64,14 @@ public class RollupService {
     private final SheetService sheets;
     private final SettingService settings;
     private final History history;
+    private final PoolCutService cuts;
     private final Audit audit;
 
     public RollupService(ClaimRepository claims, ClaimService claimService,
             RateService rates, PersonGradeService grades, PersonService personService, SheetService sheets,
-            SettingService settings, History history, Audit audit) {
+            SettingService settings, History history, PoolCutService cuts, Audit audit) {
         this.history = history;
+        this.cuts = cuts;
         this.claims = claims;
         this.claimService = claimService;
         this.rates = rates;
@@ -251,13 +254,14 @@ public class RollupService {
                 .filter(claim -> claim.countsLive(retiredFrom.get(claim.getPersonId()), today))
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, BigDecimal> shared = sharedParts(sheetId, asOf, sheetPeople, counted);
+        Map<Long, BigDecimal> cutTotals = cuts.cutTotals(sheetId, asOf, sheetPeople);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = NONE;
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
         for (Person person : sheetPeople) {
             Figures f = figuresOf(sheetId, today, asOf, person, counted.getOrDefault(person.getId(), List.of()),
-                    shared.get(person.getId()));
+                    shared.get(person.getId()), cutTotals.getOrDefault(person.getId(), NONE));
             figures.put(person.getId(), f);
             claimedTotal = claimedTotal.add(f.claimed());
             if (f.due() != null) {
@@ -311,13 +315,13 @@ public class RollupService {
     /** A person's figures from their claims that count: the sum of their amounts, leaving out those
      *  that correct another claim, and the sum of the
      *  figures they show (a held one's included), or none when the grade in force on the sheet's today has no rate in force
-     *  then and no claim of theirs shows a figure; the sum is held to the sheet's cap. The overdue-total
+     *  then and no claim of theirs shows a figure; the sum is held to the sheet's cap less their cut total. The overdue-total
      *  sums the dues of those that are OPEN or PENDING with a due-by plus their grace before the sheet's today.
      *  The settled figures, for the score, sum those of SETTLED claims that correct nothing. The
      *  due-total takes in what the shares of claims move (null: none moves it): a holder's parts, less
      *  the parts others hold of the person's own claims. */
     private Figures figuresOf(String sheetId, LocalDate today, LocalDate asOf, Person person, List<Claim> counted,
-            BigDecimal sharedPart) {
+            BigDecimal sharedPart, BigDecimal cutTotal) {
         BigDecimal claimed = NONE;
         BigDecimal due = NONE;
         BigDecimal overdue = NONE;
@@ -350,7 +354,7 @@ public class RollupService {
             anyFigure = true;
         }
         boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), today, asOf), today, asOf).isPresent();
-        return new Figures(person.getName(), claimed, hasRate || anyFigure ? settings.capped(sheetId, due, asOf) : null,
+        return new Figures(person.getName(), claimed, hasRate || anyFigure ? settings.capped(sheetId, due, cutTotal, asOf) : null,
                 overdue, settled, overdueCount);
     }
 

@@ -329,7 +329,7 @@ public class SettingService {
         return inForce(sheetId, "floor", on, asOf).map(SettingValue::getValue).orElse(START_FLOOR);
     }
 
-    /** The sheet's cap in force on its today: the most a person's due-total can be; null when there is none. */
+    /** The sheet's cap in force on its today: the most a person's due-total and cut total together can be; null when there is none. */
     public BigDecimal cap(String sheetId) {
         return inForce(sheetId, "cap", sheets.today(sheetId)).map(SettingValue::getValue).orElse(null);
     }
@@ -364,17 +364,22 @@ public class SettingService {
         return inForce(sheetId, "review-threshold", on).map(SettingValue::getValue).orElse(null);
     }
 
-    /** A person's due-total held to the sheet's cap; a due-total of none (n/a) is not capped. */
-    public BigDecimal capped(String sheetId, BigDecimal dueTotal) {
-        return capped(sheetId, dueTotal, null);
+    /** A person's due-total held to the sheet's cap less their cut total (not below 0.00); a due-total
+     *  of none (n/a) is not capped. */
+    public BigDecimal capped(String sheetId, BigDecimal dueTotal, BigDecimal cutTotal) {
+        return capped(sheetId, dueTotal, cutTotal, null);
     }
 
-    /** A person's due-total held to the cap in force at the end of a day, as it stood then, the day
-     *  standing in for the sheet's today (null: the cap in force on the sheet's today now). */
-    public BigDecimal capped(String sheetId, BigDecimal dueTotal, LocalDate asOf) {
+    /** A person's due-total held to the cap in force at the end of a day, as it stood then, less their
+     *  cut total (not below 0.00), the day standing in for the sheet's today (null: the cap in force on
+     *  the sheet's today now). */
+    public BigDecimal capped(String sheetId, BigDecimal dueTotal, BigDecimal cutTotal, LocalDate asOf) {
         BigDecimal cap = asOf == null ? cap(sheetId)
                 : inForce(sheetId, "cap", asOf, asOf).map(SettingValue::getValue).orElse(null);
-        return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
+        if (dueTotal == null || cap == null) {
+            return dueTotal;
+        }
+        return dueTotal.min(cap.subtract(cutTotal).max(BigDecimal.ZERO.setScale(2)));
     }
 
     /** The sheet's terms in days in force on a date: a claim of that date is due by its date plus them. */

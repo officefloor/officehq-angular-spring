@@ -552,13 +552,15 @@ public class SettingController {
         return view(sheet);
     }
 
-    /** Change the sheet's pot; each member of a balanced pool shows a cut of it. */
+    /** Change the sheet's pot; each member of a balanced pool shows a cut of it. The figures it moves
+     *  (a cut counts against the cap) are followed in the audit. */
     @PutMapping("/pot")
     public SettingsView setPot(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Validated PotRequest request) {
         String sheet = sheetId.trim();
-        service.setPot(sheet, SignedInUser.decode(user), request.value());
+        String by = SignedInUser.decode(user);
+        rollups.track(sheet, by, () -> service.setPot(sheet, by, request.value()));
         return view(sheet);
     }
 

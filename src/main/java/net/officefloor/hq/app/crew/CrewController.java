@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -41,9 +42,11 @@ public class CrewController {
     }
 
     private final CrewService service;
+    private final RollupService rollups;
 
-    public CrewController(CrewService service) {
+    public CrewController(CrewService service, RollupService rollups) {
         this.service = service;
+        this.rollups = rollups;
     }
 
     /** The sheet's crews, in the order they were added. */
@@ -52,21 +55,25 @@ public class CrewController {
         return service.list(sheetId.trim()).stream().map(CrewView::of).toList();
     }
 
-    /** Add a crew to the sheet. */
+    /** Add a crew to the sheet; a crew is a pool, so the figures its cuts move are followed in the audit. */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public CrewView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated CrewRequest request) {
-        return CrewView.of(service.add(sheetId.trim(), SignedInUser.decode(user), request.name(), request.leadId()));
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return CrewView.of(rollups.track(sheet, by, () -> service.add(sheet, by, request.name(), request.leadId())));
     }
 
-    /** Add a member to one of the sheet's crews. */
+    /** Add a member to one of the sheet's crews; the figures its cuts move are followed in the audit. */
     @PostMapping("/{crewId}/members")
     @ResponseStatus(HttpStatus.CREATED)
     public CrewView addMember(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long crewId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Validated CrewMemberRequest request) {
-        return CrewView.of(service.addMember(sheetId.trim(), SignedInUser.decode(user), crewId, request.personId()));
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return CrewView.of(rollups.track(sheet, by, () -> service.addMember(sheet, by, crewId, request.personId())));
     }
 
     /** A blank or used name, a person not of the sheet, or a member who leads the crew or is in it

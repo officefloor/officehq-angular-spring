@@ -16,6 +16,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonGradeService;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonService;
+import net.officefloor.hq.app.pool.PoolCutService;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
@@ -42,12 +43,14 @@ public class StatementService {
     private final SheetService sheets;
     private final SettingService settings;
     private final History history;
+    private final PoolCutService cuts;
     private final Audit audit;
 
     public StatementService(StatementRepository statements, ClaimRepository claims, ClaimService claimService,
             PersonRepository people, RateService rates, PersonGradeService grades, PersonService personService,
-            SheetService sheets, SettingService settings, History history, Audit audit) {
+            SheetService sheets, SettingService settings, History history, PoolCutService cuts, Audit audit) {
         this.history = history;
+        this.cuts = cuts;
         this.statements = statements;
         this.claims = claims;
         this.claimService = claimService;
@@ -130,7 +133,10 @@ public class StatementService {
         }
         claims.saveAllAndFlush(theirs);
         boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), day, asOf), day, asOf).isPresent();
-        String dueTotal = hasRate || anyFigure ? settings.capped(sheetId, total, asOf).toPlainString() : NO_RATE;
+        BigDecimal cutTotal = cuts.cutTotals(sheetId, asOf, personService.list(sheetId, asOf))
+                .getOrDefault(personId, BigDecimal.ZERO.setScale(2));
+        String dueTotal = hasRate || anyFigure ? settings.capped(sheetId, total, cutTotal, asOf).toPlainString()
+                : NO_RATE;
         statements.saveAndFlush(new Statement(sheetId, personId, day, dueTotal, counted, today));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " due-total=" + dueTotal + " claims=" + counted + (asOf != null ? " asof=" + asOf : ""));

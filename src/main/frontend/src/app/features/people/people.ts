@@ -2186,26 +2186,31 @@ export class People {
     return (today === null ? null : gradeOn(person.grades, today)) ?? person.grade;
   }
 
-  /** The sum of the dues shown on a person's claims that count held to the sheet's cap, or n/a when
-   *  the grade in force on the sheet's today has no rate in force then and no claim of theirs shows a
-   *  figure. */
+  /** The sum of the dues shown on a person's claims that count held to the sheet's cap less their cut
+   *  total (not below 0.00), or n/a when the grade in force on the sheet's today has no rate in force
+   *  then and no claim of theirs shows a figure. */
   protected dueBy(person: Person): string {
     const due = this.dueCentsBy(person);
     return due === null ? NO_RATE : money(due);
   }
 
-  /** How far the sum of the dues on a person's claims that count is above the sheet's cap; 0.00
-   *  when it is not, there is no cap or the due-total is n/a. */
+  /** How far the sum of the dues on a person's claims that count plus their cut total is above the
+   *  sheet's cap; 0.00 when it is not, there is no cap or the due-total is n/a. */
   protected excessOf(person: Person): string {
     const sum = this.uncappedCentsBy(person);
     const cap = this.cap();
-    return money(sum === null || cap === null ? 0 : Math.max(sum - cap, 0));
+    return money(sum === null || cap === null ? 0 : Math.max(sum + this.cutCentsOf(person) - cap, 0));
   }
 
   private dueCentsBy(person: Person): number | null {
     const sum = this.uncappedCentsBy(person);
     const cap = this.cap();
-    return sum === null || cap === null ? sum : Math.min(sum, cap);
+    return sum === null || cap === null ? sum : Math.min(sum, Math.max(cap - this.cutCentsOf(person), 0));
+  }
+
+  /** A person's cut total in cents. */
+  private cutCentsOf(person: Person): number {
+    return Number(this.cutTotals().get(person.id) ?? 0n);
   }
 
   private uncappedCentsBy(person: Person): number | null {
