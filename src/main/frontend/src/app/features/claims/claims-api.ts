@@ -183,6 +183,12 @@ export class ClaimsApi {
       { headers: this.headers() }));
   }
 
+  /** Settle each of the claims, in list order, as settling one would; those that cannot be settled are left as they are. */
+  bulkSettle(sheetId: string, ids: number[]): Promise<{ settled: number; refused: number }> {
+    return firstValueFrom(this.http.post<{ settled: number; refused: number }>(`${this.url(sheetId)}/claims/bulk-settle`, { ids },
+      { headers: this.headers() }));
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }

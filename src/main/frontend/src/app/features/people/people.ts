@@ -75,6 +75,14 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
       @if (bulkError(); as err) {
         <p role="alert" data-testid="bulk-error">{{ err }}</p>
       }
+      <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
+      @if (bulkSettleResult(); as r) {
+        <p role="status">Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>,
+          refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong></p>
+      }
+      @if (bulkSettleError(); as err) {
+        <p role="alert" data-testid="bulk-settle-error">{{ err }}</p>
+      }
       <table data-testid="people-list">
         <thead>
           <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -291,6 +299,10 @@ export class People {
   protected readonly bulkResult = signal<{ opened: number; refused: number } | null>(null);
   protected readonly bulkError = signal<string | null>(null);
   private bulkOpening = false;
+  /** The last bulk settle's counts; gone while one runs. */
+  protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
+  protected readonly bulkSettleError = signal<string | null>(null);
+  private bulkSettling = false;
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the open editor loaded. */
   private editingVersion = 0;
@@ -335,6 +347,8 @@ export class People {
         this.selectedClaims.set(new Set());
         this.bulkResult.set(null);
         this.bulkError.set(null);
+        this.bulkSettleResult.set(null);
+        this.bulkSettleError.set(null);
         this.people.set([]);
         this.claims.set([]);
         this.rates.set([]);
@@ -516,6 +530,31 @@ export class People {
       this.bulkError.set('Something went wrong opening the claims; try again.');
     } finally {
       this.bulkOpening = false;
+    }
+  }
+
+  /** Settle every selected claim that can be settled, in list order, by the rules of settling one
+   *  (one sent to PENDING counts as settled); then show how many were settled and refused, and the
+   *  claims as the store now holds them. */
+  protected async bulkSettle(): Promise<void> {
+    if (this.bulkSettling) return;
+    this.bulkSettleResult.set(null);
+    this.bulkSettleError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const ids = [...this.selectedClaims()];
+    this.bulkSettling = true;
+    try {
+      const result = await this.claimsApi.bulkSettle(sheetId, ids);
+      const claims = await this.claimsApi.list(sheetId);
+      if (this.session.sheetId() !== sheetId) return;
+      this.claims.set(claims);
+      this.selectedClaims.set(new Set());
+      this.bulkSettleResult.set(result);
+    } catch {
+      this.bulkSettleError.set('Something went wrong settling the claims; try again.');
+    } finally {
+      this.bulkSettling = false;
     }
   }
 

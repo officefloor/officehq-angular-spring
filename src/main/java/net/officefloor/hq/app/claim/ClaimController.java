@@ -88,6 +88,11 @@ public class ClaimController {
     public record BulkOpenView(int opened, int refused) {
     }
 
+    /** A bulk settle's result: how many of the selected claims were settled (a claim sent to
+     *  PENDING counts) and how many refused. */
+    public record BulkSettleView(int settled, int refused) {
+    }
+
     private static String trimmed(String value) {
         return value == null ? null : value.trim();
     }
@@ -166,6 +171,27 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         return view(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED));
+    }
+
+    /** Settle each selected claim in list order (people in the order added, newest claim first),
+     *  each on its own by the rules of settling one; a claim sent to PENDING counts as settled, and
+     *  a claim that cannot be settled is left as it is. */
+    @PostMapping("/claims/bulk-settle")
+    public BulkSettleView bulkSettle(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkForm body) {
+        List<Long> ordered = service.inListOrder(sheetId, body.ids());
+        int settled = 0;
+        for (long id : ordered) {
+            try {
+                service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED);
+                settled++;
+            } catch (ResponseStatusException e) {
+                // refused: left as it is
+            }
+        }
+        return new BulkSettleView(settled, (int) body.ids().stream().distinct().count() - settled);
     }
 
     @PostMapping("/claims/{id}/approve")
