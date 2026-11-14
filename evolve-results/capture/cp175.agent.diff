@@ -1,0 +1,101 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 09ae8b957..3ddbc54d6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -850,6 +850,14 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+                 >
+                   Transfer
+                 </button>
++                <button
++                  type="button"
++                  data-testid="person-transfer-undo"
++                  [attr.aria-label]="'Undo the transfer of ' + p.name + ' to this sheet'"
++                  (click)="undoTransfer(p)"
++                >
++                  Undo transfer
++                </button>
+                 @if (rowError(); as e) {
+                   @if (e.id === p.id) {
+                     <p role="alert" [attr.data-testid]="e.testId ?? 'person-error'">{{ e.message }}</p>
+@@ -1658,6 +1666,23 @@ export class People {
+     await this.read(sheet, this.session.loads());
+   }
+ 
++  /** Undo a person's transfer to this sheet: they go back to the sheet they came from, so the people
++   *  and claims are read again. */
++  protected async undoTransfer(person: Person): Promise<void> {
++    this.rowError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/transfer-undo`;
++    try {
++      await firstValueFrom(this.http.post<void>(url, {}));
++    } catch {
++      this.rowError.set({ id: person.id, message: `The transfer of ${person.name} could not be undone.` });
++      return;
++    }
++    if (this.session.sheetId() !== sheet) return;
++    await this.read(sheet, this.session.loads());
++  }
++
+   /** A person's aliases, as the server sorts them (as names are compared), comma and space separated. */
+   protected aliasesOf(person: Person): string {
+     return person.aliases.join(', ');
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 0992fa558..360bb9fbb 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -339,6 +339,14 @@ public class PersonController {
+         transfers.transfer(sheetId.trim(), SignedInUser.decode(user), id, request.toSheetId());
+     }
+ 
++    /** Undo a person's transfer to this sheet: they are transferred back to the sheet they came from. */
++    @PostMapping("/{id}/transfer-undo")
++    @ResponseStatus(HttpStatus.NO_CONTENT)
++    public void undoTransfer(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
++        transfers.undo(sheetId.trim(), SignedInUser.decode(user), id);
++    }
++
+     /** Give a person an alias. */
+     @PostMapping("/{id}/aliases")
+     public PersonView addAlias(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index 606e2788e..72ad820f2 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -89,6 +89,34 @@ public class PersonTransferService {
+         }));
+     }
+ 
++    /** A steward undoes a person's transfer to this sheet on the same sheet's today they arrived: they
++     *  are transferred back to the sheet they came from, exactly as a transfer, and this sheet then
++     *  writes its line. Anyone but a steward, a later day, or a person who did not arrive by transfer
++     *  is refused. */
++    @Transactional
++    public void undo(String sheetId, String user, Long id) {
++        Person person = people.findByIdAndSheetId(id, sheetId)
++                .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
++        String from = person.getOriginSheetId();
++        if (from == null) {
++            throw new TransferRefusedException(person.getName() + " did not arrive by transfer");
++        }
++        Stream.of(sheetId, from).sorted().distinct().forEach(sheets::lock);
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new TransferRefusedException(user + " is not a steward: only a steward undoes a transfer");
++        }
++        if (!sheets.today(sheetId).equals(person.getAddedOn())) {
++            throw new TransferRefusedException("A transfer is undone only on the day the person arrived");
++        }
++        String name = person.getName();
++        rollups.track(sheetId, user, () -> {
++            transfer(sheetId, user, id, from);
++            audit.recordOnCommit("PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + user + " name=" + name
++                    + " to=" + from);
++            return null;
++        });
++    }
++
+     private void move(String sheetId, String user, Long id, String to) {
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
