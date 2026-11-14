@@ -1,0 +1,176 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 6a099c07c..70a163eb3 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -151,7 +151,7 @@ public class ClaimController {
+     public record BulkOpenRequest(@NotNull @Size(max = 10000) Set<@NotNull Long> claimIds) {
+     }
+ 
+-    /** What a bulk open did: the claims it opened, in the order it numbered them, and how many of the
++    /** What a bulk open did: the claims it opened, in list order, and how many of the
+      *  selected claims it refused. */
+     public record BulkOpenView(List<ClaimView> opened, int refused) {
+     }
+@@ -301,7 +301,7 @@ public class ClaimController {
+         return changeStatus(sheetId, user, personId, id, ClaimStatus.OPEN);
+     }
+ 
+-    /** Open the selected claims that can be opened, numbered in list order; the rest are refused
++    /** Open the selected claims that can be opened, in list order; the rest are refused
+      *  and left as they are. */
+     @PostMapping("/claims/open")
+     public BulkOpenView openAll(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+@@ -344,7 +344,7 @@ public class ClaimController {
+         return view(sheet, rollups.track(sheet, by, () -> service.approve(sheet, by, personId, id)));
+     }
+ 
+-    /** Review a REVIEW claim: a steward makes it OPEN, numbered then. */
++    /** Review a REVIEW claim: a steward makes it OPEN, numbered once settled. */
+     @PostMapping("/people/{personId}/claims/{id}/review")
+     public ClaimView review(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+             @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 38368dd18..55b0a9d48 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -367,7 +367,7 @@ public class ClaimService {
+         Person person = person(sheetId, personId);
+         // Lock the sheet first, so a claim opened at the same moment elsewhere waits and the claim
+         // read below is its latest state.
+-        if (to == ClaimStatus.OPEN) {
++        if (to == ClaimStatus.OPEN || to == ClaimStatus.SETTLED) {
+             sheets.lock(sheetId);
+         }
+         Claim claim = claim(sheetId, personId, id);
+@@ -421,14 +421,12 @@ public class ClaimService {
+             // Settled one at a time until a bulk settle marks it with its batch.
+             claim.setBatch(null);
+         }
+-        if (to == ClaimStatus.OPEN) {
+-            claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
+-            claim.setOpenedBy(user);
+-        } else if (to == ClaimStatus.REVIEW) {
+-            // Numbered only once a steward has reviewed it.
++        if (to == ClaimStatus.OPEN || to == ClaimStatus.REVIEW) {
++            // Numbered only once it is settled.
+             claim.setOpenedBy(user);
+         } else if (to == ClaimStatus.SETTLED) {
+             claim.setSettledDue(due);
++            numberOnSettle(sheetId, claim);
+         } else if (to == ClaimStatus.VOID) {
+             claim.setVoidReason(reason);
+         }
+@@ -552,7 +550,7 @@ public class ClaimService {
+ 
+     /** Split an amount off an OPEN claim: it keeps the rest of its amount and loses any figure a
+      *  statement bound it to, and a new OPEN claim of the split-off amount, with the same date and
+-     *  note, the next number, opened by the user and due by its date plus the terms in force on it,
++     *  note and no number (one is given at settlement), opened by the user and due by its date plus the terms in force on it,
+      *  is listed under the person naming the claim it was split from (a late entry when its due-by falls
+      *  in a soft-closed period). A claim that is not OPEN, one
+      *  deferred, one dated in a closed period, an amount not above 0.00 and below the claim's, or a
+@@ -560,8 +558,6 @@ public class ClaimService {
+     @Transactional
+     public Split split(String sheetId, String user, Long personId, Long id, BigDecimal amount) {
+         Person person = person(sheetId, personId);
+-        // Lock the sheet first, as opening does: the new claim takes the next number.
+-        sheets.lock(sheetId);
+         Claim claim = claim(sheetId, personId, id);
+         settings.refuseUnless(sheetId, user, Permission.OPEN);
+         refuseClosed(sheetId, claim.getDueBy());
+@@ -578,14 +574,14 @@ public class ClaimService {
+         LocalDate on = kept.getDate();
+         int terms = termsFor(sheetId, person, sheets.today(sheetId));
+         LocalDate dueBy = holidays.businessDaysAfter(sheetId, on, terms);
+-        Claim split = Claim.splitOff(kept, part, dueBy, terms, nextNumber(sheetId, dueBy), user);
++        Claim split = Claim.splitOff(kept, part, dueBy, terms, null, user);
+         if (periods.softClosedOn(sheetId, dueBy)) {
+             split.markLateEntry();
+         }
+         Claim added = claims.saveAndFlush(split);
+         log(sheetId, user, person, added);
+         audit.recordOnCommit(line("CLAIM_SPLIT", sheetId, user, person, kept, kept.getNumber())
+-                + " into=" + added.getNumber());
++                + " into=" + (added.getNumber() != null ? added.getNumber() : ""));
+         record("CLAIM_OPENED", sheetId, user, person, added);
+         return new Split(kept, added);
+     }
+@@ -595,6 +591,8 @@ public class ClaimService {
+     @Transactional
+     public Claim approve(String sheetId, String user, Long personId, Long id) {
+         Person person = person(sheetId, personId);
++        // Lock the sheet first, as settling does: the claim takes the next number.
++        sheets.lock(sheetId);
+         Claim claim = pending(sheetId, user, person, id, ClaimStatus.SETTLED);
+         if (claim.openedOrEditedBy(user)) {
+             throw new OwnClaimSettleRefusedException(user);
+@@ -603,6 +601,7 @@ public class ClaimService {
+         refuseUnproved(sheetId, person, claim, due);
+         claim.setSettledDue(due);
+         claim.setStatus(ClaimStatus.SETTLED);
++        numberOnSettle(sheetId, claim);
+         Claim saved = claims.saveAndFlush(claim);
+         log(sheetId, user, person, saved);
+         audit.recordOnCommit(line("CLAIM_APPROVED", sheetId, user, person, saved, saved.getNumber())
+@@ -611,14 +610,12 @@ public class ClaimService {
+         return saved;
+     }
+ 
+-    /** A steward reviews a REVIEW claim: it is OPEN, taking the next number as an opened claim does, and
++    /** A steward reviews a REVIEW claim: it is OPEN, unnumbered until it is settled, and
+      *  keeps who opened it; CLAIM_REVIEWED then CLAIM_OPENED are written. Anyone else, a claim that is
+      *  not in REVIEW, or one dated in a closed period, is refused. */
+     @Transactional
+     public Claim review(String sheetId, String user, Long personId, Long id) {
+         Person person = person(sheetId, personId);
+-        // Lock the sheet first, as opening does: the claim takes the next number.
+-        sheets.lock(sheetId);
+         Claim claim = claim(sheetId, personId, id);
+         refuseClosed(sheetId, claim.getDueBy());
+         if (claim.getStatus() != ClaimStatus.REVIEW) {
+@@ -628,7 +625,6 @@ public class ClaimService {
+             throw new ApprovalRefusedException(user);
+         }
+         claim.setStatus(ClaimStatus.OPEN);
+-        claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
+         Claim saved = claims.saveAndFlush(claim);
+         log(sheetId, user, person, saved);
+         record("CLAIM_REVIEWED", sheetId, user, person, saved, null);
+@@ -992,6 +988,14 @@ public class ClaimService {
+         return prefix + (last + 1);
+     }
+ 
++    /** A claim being settled takes the next number in its sequence for its due-by, unless it was
++     *  numbered already (as claims opened before numbering on settlement were). Taken with the sheet locked. */
++    private void numberOnSettle(String sheetId, Claim claim) {
++        if (claim.getNumber() == null) {
++            claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
++        }
++    }
++
+     /** Whether period numbering is on: set, and the sheet's today on or after it. */
+     private boolean periodNumbering(String sheetId) {
+         LocalDate from = settings.periodNumberingFrom(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 9c6ed769b..1cbf32af0 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -171,7 +171,7 @@ public class PeriodService {
+      *  as {@link #generateFiscalYear} does, then each person's open figure at the end of the old year's
+      *  last period (the dues of their claims that count, due by a day in a period of the old year, and
+      *  OPEN or PENDING at the end of that last period's last day) is added to their opening balance for
+-     *  the new year's first period. A period belongs to the fiscal year its from-date falls in. Anyone
++     *  the new year's first period (a figure of 0.00 adds nothing and writes nothing). A period belongs to the fiscal year its from-date falls in. Anyone
+      *  but a steward, or an old year with no periods on the sheet, is refused. Returns how many periods
+      *  were made. */
+     @Transactional
+@@ -217,6 +217,9 @@ public class PeriodService {
+         }
+         for (Person person : everyone) {
+             BigDecimal amount = open.get(person.getId());
++            if (amount.signum() == 0) {
++                continue;
++            }
+             first.addOpening(person.getId(), amount);
+             audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                     + " period=" + first.getName() + " amount=" + amount.toPlainString());
