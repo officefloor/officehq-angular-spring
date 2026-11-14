@@ -139,6 +139,7 @@ const PERMISSIONS: { action: string; label: string; standing: string }[] = [
   { action: 'reassign', label: 'Reassign', standing: 'steward' },
   { action: 'close', label: 'Close a period', standing: 'clerk, restricted and steward' },
   { action: 'reopen', label: 'Reopen a period', standing: 'steward' },
+  { action: 'today', label: "Change the sheet's today", standing: 'clerk, restricted and steward' },
 ];
 
 /** Whether a permission entry is blank or a comma separated list of roles. */

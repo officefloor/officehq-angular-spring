@@ -14,6 +14,8 @@ import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.setting.Permission;
+import net.officefloor.hq.app.setting.PermissionRefusedException;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import org.springframework.http.HttpStatus;
@@ -169,6 +171,7 @@ public class SheetController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated TodayRequest request) {
         String sheet = id.trim();
         String by = SignedInUser.decode(user);
+        settings.refuseUnless(sheet, by, Permission.TODAY);
         return SheetView.of(rollups.track(sheet, by,
                 () -> {
                     LocalDate was = service.today(sheet);
@@ -203,6 +206,12 @@ public class SheetController {
         String to = request.to() == null ? "" : request.to().trim();
         clones.cloneTo(id.trim(), SignedInUser.decode(user), to);
         return new CloneView(to);
+    }
+
+    /** A role the permission matrix does not let change the sheet's today is refused. */
+    @ExceptionHandler(PermissionRefusedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public void refused() {
     }
 
     /** A date that is not a real yyyy-mm-dd date is refused. */
