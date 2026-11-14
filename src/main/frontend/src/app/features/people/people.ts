@@ -916,8 +916,13 @@ export class People {
   protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
   /** Why the last bulk settle could not be done at all; null when it was. */
   protected readonly bulkSettleError = signal<string | null>(null);
-  /** The number of the sheet's last settle batch; null when there has been none. */
-  protected readonly lastBatch = this.session.lastBatch.asReadonly();
+  /** The number of the sheet's last settle batch; null when there has been none. Shown as of a past
+   *  day, the highest batch among the claims as they stood then. */
+  protected readonly lastBatch = computed(() => {
+    if (this.session.asOf() === null) return this.session.lastBatch();
+    const batches = this.claims().flatMap((c) => (c.batch === null ? [] : [c.batch]));
+    return batches.length ? Math.max(...batches) : null;
+  });
   /** Whether a bulk settle is waiting for its answer; a second press meanwhile is dropped. */
   private readonly bulkSettleBusy = signal(false);
   /** The person (an id, or blank) the selected claims are to move to. */

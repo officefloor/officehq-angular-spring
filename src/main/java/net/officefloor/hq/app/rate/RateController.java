@@ -20,6 +20,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -52,12 +53,19 @@ public class RateController {
     public record RatePreviewView(int count, String diff) {
     }
 
+    /** Pasted rates, one per line as grade,rate,from,to. */
+    public record ImportRequest(@NotNull @Size(max = 1_000_000) String text) {
+    }
+
     private final RateService service;
+    private final RateImportService imports;
     private final RollupService rollups;
     private final ClaimService claims;
 
-    public RateController(RateService service, RollupService rollups, ClaimService claims) {
+    public RateController(RateService service, RateImportService imports, RollupService rollups,
+            ClaimService claims) {
         this.service = service;
+        this.imports = imports;
         this.rollups = rollups;
         this.claims = claims;
     }
@@ -92,6 +100,16 @@ public class RateController {
                 request.to(), request.rate())));
     }
 
+    /** Set a rate per pasted line, in order, each as the form would; none when any line is refused.
+     *  The rates set, in the order of their lines. */
+    @PostMapping("/import")
+    public List<RateView> importRates(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated ImportRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return imports.importRates(sheet, by, request.text()).stream().map(RateView::of).toList();
+    }
+
     /** Preview a candidate rate for a grade (A, B or C): how the dues of the OPEN and PENDING claims of
      *  people on the grade would change were it the grade's rate on every date. Nothing is saved. */
     @GetMapping("/{grade}/preview")
@@ -108,7 +126,7 @@ public class RateController {
     public void unreadable() {
     }
 
-    /** A to-date before the from-date is refused. */
+    /** A to-date before the from-date, or a refused line of a paste, is refused. */
     @ExceptionHandler(RateRefusedException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public void refused() {

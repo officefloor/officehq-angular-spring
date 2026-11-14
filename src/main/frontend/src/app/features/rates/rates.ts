@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, Injectable, computed, effect, inject, signal } from '@angular/core';
+import { Component, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
@@ -172,6 +172,19 @@ export class RateStore {
     );
   }
 
+  /** Set a rate per pasted line of grade,rate,from,to on the active sheet, each as `set` would; none
+   *  when any line is refused. How many were set; the sheet's rates are then re-read. */
+  async import(text: string): Promise<number> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const load = this.session.loads();
+    const saved = await firstValueFrom(
+      this.http.post<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates/import`, { text }),
+    );
+    if (this.session.sheetId() === sheet) await this.read(sheet, load);
+    return saved.length;
+  }
+
   /** Preview a candidate rate for a grade on the active sheet; nothing is saved. */
   async preview(grade: string, rate: string): Promise<RatePreview> {
     const sheet = this.session.sheetId();
@@ -241,6 +254,23 @@ export class RateStore {
       </form>
       @if (error(); as message) {
         <p role="alert" data-testid="rate-form-error">{{ message }}</p>
+      }
+      <form (submit)="importRates($event)" aria-label="Import rates">
+        <label for="import-rates">Import rates, one per line as grade,rate,from,to (from and to may be left out)</label>
+        <textarea
+          id="import-rates"
+          data-testid="import-rates"
+          rows="4"
+          [value]="importText()"
+          (input)="importText.set(value($event)); importError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="import-rates-submit">Import rates</button>
+        @if (importSet() !== null) {
+          Set <strong data-testid="import-rates-set">{{ importSet() }}</strong>
+        }
+      </form>
+      @if (importError(); as message) {
+        <p role="alert" data-testid="import-rates-error">{{ message }}</p>
       }
       <form (submit)="runPreview($event)">
         <label for="rate-preview-grade">Preview grade</label>
@@ -316,6 +346,7 @@ export class RateStore {
 })
 export class Rates {
   protected readonly store = inject(RateStore);
+  private readonly session = inject(Session);
   protected readonly grades = GRADES;
   protected readonly noRate = NO_RATE;
   protected readonly grade = signal('A');
@@ -327,8 +358,26 @@ export class Rates {
   protected readonly previewPct = signal('');
   protected readonly previewError = signal<string | null>(null);
   protected readonly previewResult = signal<RatePreview | null>(null);
+  protected readonly importText = signal('');
+  /** How many rates the last import set; null before one, or while one runs. */
+  protected readonly importSet = signal<number | null>(null);
+  protected readonly importError = signal<string | null>(null);
+  private readonly importBusy = signal(false);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
+
+  constructor() {
+    // A loaded sheet starts the import box afresh: its last count and error were for the sheet before.
+    effect(() => {
+      this.session.sheetId();
+      this.session.loads();
+      untracked(() => {
+        this.importText.set('');
+        this.importSet.set(null);
+        this.importError.set(null);
+      });
+    });
+  }
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement | HTMLSelectElement).value;
@@ -353,6 +402,32 @@ export class Rates {
       this.previewResult.set(await this.store.preview(this.previewGrade(), pct));
     } catch {
       this.previewError.set('The rate could not be previewed.');
+    }
+  }
+
+  /** Set a rate per pasted line of grade,rate,from,to, each as the form would; when any line is
+   *  refused nothing is set. How many were set then shows. */
+  protected async importRates(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.importBusy()) return;
+    this.importError.set(null);
+    this.importSet.set(null);
+    const text = this.importText();
+    if (!text.trim()) {
+      this.importError.set('Paste at least one line of grade,rate,from,to.');
+      return;
+    }
+    this.importBusy.set(true);
+    try {
+      this.importSet.set(await this.store.import(text));
+      this.importText.set('');
+    } catch {
+      this.importError.set(
+        'The rates could not be imported: every line needs a grade of A, B or C, a rate of 0.00 or more ' +
+          'with up to two decimals, and dates (yyyy-mm-dd) with the to-date not before the from-date.',
+      );
+    } finally {
+      this.importBusy.set(false);
     }
   }
 
