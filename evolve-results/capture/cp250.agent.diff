@@ -1,0 +1,144 @@
+diff --git a/src/main/frontend/src/app/features/policy/policy-viewer.ts b/src/main/frontend/src/app/features/policy/policy-viewer.ts
+index 50d3166af..a84ab0d2a 100644
+--- a/src/main/frontend/src/app/features/policy/policy-viewer.ts
++++ b/src/main/frontend/src/app/features/policy/policy-viewer.ts
+@@ -4,22 +4,24 @@ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+ /** A policy version: its number, its from-date (yyyy-mm-dd, or start), the setting it changed and the
+- *  value given, and how many claims it is the policy version of. */
++ *  value given, how many claims it is the policy version of, and the dues of those that count added up. */
+ interface PolicyLine {
+   number: number;
+   from: string;
+   key: string;
+   value: string;
+   claims: number;
++  dueTotal: string;
+ }
+ 
+-// The sheet's policy versions, read afresh on each press, oldest first.
++// The sheet's policy versions, read afresh on each press, oldest first; or downloaded as CSV.
+ @Component({
+   selector: 'app-policy-viewer',
+   template: `
+     <section aria-labelledby="policy-heading">
+       <h2 id="policy-heading">Policy versions</h2>
+       <button type="button" data-testid="policy-show" (click)="show()">Show policy versions</button>
++      <button type="button" data-testid="export-policy" (click)="exportCsv()">Export policy versions as CSV</button>
+       @if (error(); as message) {
+         <p role="alert" data-testid="policy-error">{{ message }}</p>
+       }
+@@ -60,4 +62,31 @@ export class PolicyViewer {
+       this.error.set('The policy versions could not be read.');
+     }
+   }
++
++  /** Download the sheet's policy versions, read afresh, oldest first, as CSV: number, from-date, key,
++   *  value, claims and due-total. */
++  protected async exportCsv(): Promise<void> {
++    this.error.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    try {
++      const lines = await firstValueFrom(
++        this.http.get<PolicyLine[]>(`/api/sheets/${encodeURIComponent(sheet)}/policy-versions`),
++      );
++      const rows = [
++        ['version', 'from', 'key', 'value', 'claims', 'due-total'],
++        ...lines.map((l) => [String(l.number), l.from, l.key, l.value, String(l.claims), l.dueTotal]),
++      ];
++      const field = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
++      const text = rows.map((r) => r.map(field).join(',') + '\n').join('');
++      const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
++      const link = document.createElement('a');
++      link.href = url;
++      link.download = `policy-${sheet}.csv`;
++      link.click();
++      setTimeout(() => URL.revokeObjectURL(url));
++    } catch {
++      this.error.set('The policy versions could not be read.');
++    }
++  }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/policy/PolicyViewService.java b/src/main/java/net/officefloor/hq/app/policy/PolicyViewService.java
+index 383cefdfa..aa222bf65 100644
+--- a/src/main/java/net/officefloor/hq/app/policy/PolicyViewService.java
++++ b/src/main/java/net/officefloor/hq/app/policy/PolicyViewService.java
+@@ -1,10 +1,19 @@
+ package net.officefloor.hq.app.policy;
+ 
++import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
++import java.util.Arrays;
+ import java.util.List;
++import java.util.Map;
++import java.util.function.Function;
++import java.util.stream.Collectors;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.setting.PolicyVersion;
+ import net.officefloor.hq.app.setting.PolicyVersionRepository;
+ import org.springframework.stereotype.Service;
+@@ -15,16 +24,22 @@ import org.springframework.transaction.annotation.Transactional;
+ public class PolicyViewService {
+ 
+     /** A policy version: its number, its from-date (yyyy-mm-dd), the key and value it changed, and how
+-     *  many of the sheet's claims (DELETED ones left out) it is the policy version of. */
+-    public record Line(int number, String from, String key, String value, int claims) {
++     *  many of the sheet's claims (DELETED ones left out) it is the policy version of, and the dues (as shown) of those of them that count added up
++     *  (two decimals; one with no figure left out). */
++    public record Line(int number, String from, String key, String value, int claims, String dueTotal) {
+     }
+ 
+     private final PolicyVersionRepository versions;
+     private final ClaimRepository claims;
++    private final ClaimService claimService;
++    private final PersonRepository people;
+ 
+-    public PolicyViewService(PolicyVersionRepository versions, ClaimRepository claims) {
++    public PolicyViewService(PolicyVersionRepository versions, ClaimRepository claims, ClaimService claimService,
++            PersonRepository people) {
+         this.versions = versions;
+         this.claims = claims;
++        this.claimService = claimService;
++        this.people = people;
+     }
+ 
+     /** The sheet's policy versions, oldest first. A claim's policy version is the number of versions in
+@@ -32,15 +47,28 @@ public class PolicyViewService {
+     @Transactional(readOnly = true)
+     public List<Line> lines(String sheetId) {
+         List<PolicyVersion> all = versions.findBySheetIdOrderByNumberAsc(sheetId);
++        Map<Long, Person> byId = people.findEverBySheetId(sheetId).stream()
++                .collect(Collectors.toMap(Person::getId, Function.identity()));
+         int[] counts = new int[all.size() + 1];
++        BigDecimal[] dues = new BigDecimal[all.size() + 1];
++        Arrays.fill(dues, BigDecimal.ZERO.setScale(2));
+         for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
+             if (claim.getStatus() != ClaimStatus.DELETED) {
+                 LocalDate date = claim.getDate();
+-                counts[(int) all.stream().filter(v -> v.inForceOn(date)).count()]++;
++                int number = (int) all.stream().filter(v -> v.inForceOn(date)).count();
++                counts[number]++;
++                Person person = byId.get(claim.getPersonId());
++                if (claim.counts() && person != null) {
++                    BigDecimal due = claimService.dueOf(sheetId, person, claim);
++                    if (due != null) {
++                        dues[number] = dues[number].add(due);
++                    }
++                }
+             }
+         }
+         return all.stream().map(v -> new Line(v.getNumber(), v.getFrom() != null ? v.getFrom().toString() : "start",
+                 v.getKey() != null ? v.getKey() : "", v.getValue() != null ? v.getValue() : "",
+-                counts[v.getNumber()])).toList();
++                counts[v.getNumber()], dues[v.getNumber()].setScale(2, RoundingMode.HALF_EVEN).toPlainString()))
++                .toList();
+     }
+ }
