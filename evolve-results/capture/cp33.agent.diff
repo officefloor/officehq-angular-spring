@@ -1,0 +1,67 @@
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index ff705d9de..bf352dd5a 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -157,3 +157,8 @@ export function patronError(e: unknown): string {
+ export function isStale(e: unknown): boolean {
+   return e instanceof HttpErrorResponse && e.status === 412;
+ }
++
++/** One CSV line ending in a line feed; a value holding a comma, a quote or a line break is quoted, its quotes doubled. */
++export function csvLine(values: string[]): string {
++  return values.map((v) => (/[",\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v)).join(',') + '\n';
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3d77139c0..0b4f89ee4 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,4 +1,4 @@
+-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
++import { DOCUMENT, Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { Session } from '../../core/session';
+ import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, counts, money, overdue, quickAddError, roundsHalfUp } from '../claims/claims-api';
+@@ -8,7 +8,7 @@ import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
+ import { Rates } from '../rates/rates';
+ import { Summary, SummaryPerson } from '../summary/summary';
+ import { Lateness, Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
+-import { GRADES, PeopleApi, Person, gradeOn, holdError, isStale, patronError, personError, retireError, statementError } from './people-api';
++import { GRADES, PeopleApi, Person, csvLine, gradeOn, holdError, isStale, patronError, personError, retireError, statementError } from './people-api';
+ 
+ // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
+ // claims, what they have claimed, their due-total, their overdue claims, and their patrons and backing; the sheet's claimed-total,
+@@ -64,6 +64,7 @@ import { GRADES, PeopleApi, Person, gradeOn, holdError, isStale, patronError, pe
+           (change)="session.showRetired.set($any($event.target).checked)" />
+         Show retired
+       </label>
++      <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <table data-testid="people-list">
+         <thead>
+           <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+@@ -141,6 +142,7 @@ export class People {
+   private readonly claimsApi = inject(ClaimsApi);
+   private readonly ratesApi = inject(RatesApi);
+   private readonly periodsApi = inject(PeriodsApi);
++  private readonly document = inject(DOCUMENT);
+ 
+   protected readonly grades = GRADES;
+   protected readonly people = signal<Person[]>([]);
+@@ -435,6 +437,18 @@ export class People {
+       : [claim, ...cs].sort((a, b) => b.id - a.id));
+   }
+ 
++  /** Download the people as CSV, in list order, retired ones too: name, grade today, retired-from, due-total as shown. */
++  protected exportCsv(): void {
++    const lines = [csvLine(['name', 'grade', 'retired-from', 'due-total']),
++      ...this.people().map((p) => csvLine([p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueOf(p)]))];
++    const url = URL.createObjectURL(new Blob([lines.join('')], { type: 'text/csv' }));
++    const link = this.document.createElement('a');
++    link.href = url;
++    link.download = `people-${this.session.sheetId()}.csv`;
++    link.click();
++    setTimeout(() => URL.revokeObjectURL(url));
++  }
++
+   protected cancel(): void {
+     this.reset();
+   }
