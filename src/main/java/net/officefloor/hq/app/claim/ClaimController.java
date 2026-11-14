@@ -27,10 +27,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ClaimController {
 
     /** A claim as the screen shows it: the amount always with two decimals. */
-    public record ClaimView(long id, long personId, String amount, LocalDate date, String note) {
+    public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
+            ClaimStatus status) {
         static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
-                    c.getDate(), c.getNote());
+                    c.getDate(), c.getNote(), c.getStatus());
         }
     }
 
@@ -72,5 +73,29 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm body) {
         return ClaimView.of(service.update(sheetId, user.trim(), id, new BigDecimal(body.amount()), body.date(), body.note()));
+    }
+
+    @PostMapping("/claims/{id}/open")
+    public ClaimView open(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.OPEN));
+    }
+
+    @PostMapping("/claims/{id}/settle")
+    public ClaimView settle(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED));
+    }
+
+    @PostMapping("/claims/{id}/void")
+    public ClaimView voidClaim(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.VOID));
     }
 }

@@ -2,7 +2,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { dueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, claimError, money } from './claims-api';
+import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, money, statusError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -32,10 +32,20 @@ import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, claimError, money } from './cl
             <span data-testid="claim-date">{{ c.date }}</span>
             <span data-testid="claim-note">{{ c.note }}</span>
             <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+            <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
+            <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'open')"
+              [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
+            <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'settle')"
+              [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
+            <button type="button" data-testid="claim-void" (click)="changeStatus(c, 'void')"
+              [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
             <button type="button" data-testid="claim-edit" (click)="edit(c)"
               [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
             @if (editingId() === c.id) {
               <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+            }
+            @if (rowErrors()[c.id]; as err) {
+              <p role="alert" data-testid="claim-error">{{ err }}</p>
             }
           </li>
         }
@@ -58,6 +68,8 @@ export class PersonClaims {
 
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
+  /** The error of each claim's last refused status change, by claim id. */
+  protected readonly rowErrors = signal<Record<number, string>>({});
   protected readonly fieldId = (name: string) => `claim-form-${name}-${this.personId()}`;
 
   protected readonly form = new FormGroup({
@@ -78,6 +90,7 @@ export class PersonClaims {
 
   protected edit(c: Claim): void {
     this.error.set(null);
+    this.clearRowError(c.id);
     this.editingId.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note });
   }
@@ -108,6 +121,23 @@ export class PersonClaims {
     } catch (e) {
       this.error.set(claimError(e));
     }
+  }
+
+  /** Open, settle or void a claim; a move its status does not allow shows an error on the claim. */
+  protected async changeStatus(c: Claim, action: ClaimAction): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const claim = await this.api.changeStatus(sheetId, c.id, action);
+      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: statusError(e) }));
+    }
+  }
+
+  private clearRowError(id: number): void {
+    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
   }
 
   protected reset(): void {

@@ -58,6 +58,29 @@ public class ClaimService {
         return claim;
     }
 
+    /** Move a claim to a new status; a move its status does not allow is refused (409). */
+    @Transactional
+    public Claim changeStatus(String sheetId, String user, long id, ClaimStatus to) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        if (!claim.getStatus().canMoveTo(to)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot become " + to);
+        }
+        claim.setStatus(to);
+        claims.flush();
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        String event = switch (to) {
+            case OPEN -> "CLAIM_OPENED";
+            case SETTLED -> "CLAIM_SETTLED";
+            case VOID -> "CLAIM_VOIDED";
+            case DRAFT -> throw new IllegalArgumentException("A claim cannot return to DRAFT");
+        };
+        record(event, user, person, claim);
+        return claim;
+    }
+
     /** Amounts are written as the screen shows them (two decimals), dates as yyyy-mm-dd. */
     private void record(String event, String user, Person person, Claim claim) {
         audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user

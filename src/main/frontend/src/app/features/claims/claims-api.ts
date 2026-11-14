@@ -6,6 +6,12 @@ import { Session } from '../../core/session';
 /** An amount of 0.00 or more with up to two decimals. */
 export const AMOUNT_PATTERN = /^\d{1,13}(\.\d{1,2})?$/;
 
+/** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+
+/** A move of a claim's status, as the server names it. */
+export type ClaimAction = 'open' | 'settle' | 'void';
+
 export interface Claim {
   id: number;
   personId: number;
@@ -13,6 +19,12 @@ export interface Claim {
   amount: string;
   date: string;
   note: string;
+  status: ClaimStatus;
+}
+
+/** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do. */
+export function counts(c: Claim): boolean {
+  return c.status === 'OPEN' || c.status === 'SETTLED';
 }
 
 export interface ClaimForm {
@@ -43,6 +55,12 @@ export class ClaimsApi {
     return firstValueFrom(this.http.put<Claim>(`${this.url(sheetId)}/claims/${id}`, form, { headers: this.headers() }));
   }
 
+  changeStatus(sheetId: string, id: number, action: ClaimAction): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, null, { headers: this.headers() }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }
@@ -55,6 +73,12 @@ export class ClaimsApi {
 export function claimError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount of 0.00 or more with up to two decimals.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
+  return 'Something went wrong; try again.';
+}
+
+export function statusError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   return 'Something went wrong; try again.';
 }
 

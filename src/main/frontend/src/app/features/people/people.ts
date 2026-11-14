@@ -1,7 +1,7 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
-import { Claim, ClaimsApi, cents, money } from '../claims/claims-api';
+import { Claim, ClaimsApi, cents, counts, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Rates } from '../rates/rates';
 import { Rate, RatesApi, dueCents } from '../rates/rates-api';
@@ -73,13 +73,13 @@ export class People {
   protected readonly people = signal<Person[]>([]);
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
-  /** Each person's claims (newest first) and claimed in cents, by person id. */
+  /** Each person's claims (newest first) and claimed in cents (OPEN and SETTLED claims only), by person id. */
   private readonly byPerson = computed(() => {
     const out = new Map<number, { claims: Claim[]; cents: number }>();
     for (const c of this.claims()) {
       const entry = out.get(c.personId) ?? { claims: [], cents: 0 };
       entry.claims.push(c);
-      entry.cents += cents(c.amount);
+      if (counts(c)) entry.cents += cents(c.amount);
       out.set(c.personId, entry);
     }
     return out;
