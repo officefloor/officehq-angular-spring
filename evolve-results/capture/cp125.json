@@ -1,0 +1,64 @@
+{
+  "checkpoint": 125,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp125_unretire",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A retired person can be unretired (a button on the row; PERSON_UNRETIRED name=<name> on=<the\nsheet's today>; anyone not retired is refused with an error on the row). They are no longer retired\n(retired no, no retired-from); the retirement is kept on the row as <from> to <the day unretired>, one line per past\nretirement; and a claim dated after the from and before the to of a\npast retirement is refused as a claim after a retirement is.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA retired person can be unretired (a button on the row; PERSON_UNRETIRED name=<name> on=<the\nsheet's today>; anyone not retired is refused with an error on the row). They are no longer retired\n(retired no, no retired-from); the retirement is kept on the row as <from> to <the day unretired>, one line per past\nretirement; and a claim dated after the from and before the to of a\npast retirement is refused as a claim after a retirement is.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0b86c9a744baefbfd83453c742e6137d04c2e0ee",
+  "reset_sha": "",
+  "preagent_sha": "1a309e33aededde6c6eac10a877622bf66f6362d",
+  "prev_sha": "1a309e33aededde6c6eac10a877622bf66f6362d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9114496000000002,
+    "input_tokens": 36,
+    "output_tokens": 11155,
+    "cache_read_tokens": 883908,
+    "cache_creation_tokens": 63928,
+    "num_turns": 19,
+    "duration_ms": 292848,
+    "duration_api_ms": 101994,
+    "model": "claude-opus-5-5",
+    "session_id": "04aa1272-0d08-44de-99fc-0070631fcaf8",
+    "stop_reason": "success",
+    "result_text": "A retired person can now be unretired from their row, and all 4 tests in `bin/e2e` pass (the main unretire test and the three scenarios).\n\n**What it does**\n- **Unretire button** on each person's row (`person-unretire`). It writes `PERSON_UNRETIRED name=<name> on=<the sheet's today>` to the audit file, followed by the same ROLLUP/TOTALS lines a retire writes. If the person isn't retired, it's refused and the error shows on the row (`person-error`); nothing is written to the store or the audit file.\n- **After unretiring**, the row shows retired `no` with an empty retired-from. Each past retirement appears as its own line, `<from> to <the day unretired>` (`person-retirement-line`). Their claims count in the totals again.\n- **Claim dates:** a claim dated strictly after the from and strictly before the to of a past retirement is refused, the same way a claim after a current retirement is. Dates on the from or the to themselves are allowed, as the test expects.\n\n**How it's stored**\n- A new table, `person_retirement` (migration `V75__person_retirement.sql`), with an entity, a repository and `UnretireRefusedException`. Its link to the person is `ON DELETE CASCADE`, so merging or transferring a person deletes their past retirements instead of being blocked by them. They are not carried over to the merged-into person or the other sheet.\n- `PersonService.unretire` saves the past retirement and clears `retiredFrom`. A new `POST \u2026/people/{id}/unretire` endpoint calls it.\n- The person data sent to the screen now includes the list of past retirements. This changed the signature of `PersonView.of`, so I updated its callers, including `QuickAddController`.\n- `ClaimService.refuseRetired` now also checks past retirements. Paste, quick add and reassign all go through it.\n- When the sheet is viewed as of an earlier date, a past retirement only shows if it had ended by that date. No test covers this.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9114496000000002,
+        "num_turns": 19,
+        "duration_ms": 292848,
+        "duration_api_ms": 101994,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp125.agent.jsonl",
+  "agent_diff_file": "cp125.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
