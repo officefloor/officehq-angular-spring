@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, dueBy, money, overdue, roundsHalfUp, statusError } from './claims-api';
+import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, dueBy, money, overdue, reassignError, roundsHalfUp, statusError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -63,6 +63,15 @@ import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError,
               [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
             <button type="button" data-testid="claim-edit" (click)="edit(c)"
               [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
+            <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
+            <select #reassignTo [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to"
+              (change)="clearRowError(c.id)">
+              @for (o of others(); track o.id) {
+                <option [value]="o.id">{{ o.name }}</option>
+              }
+            </select>
+            <button type="button" data-testid="claim-reassign" (click)="reassign(c, reassignTo.value)"
+              [attr.aria-label]="'Reassign claim of ' + c.amount + ' on ' + c.date">Reassign</button>
             @if (editingId() === c.id) {
               <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
             }
@@ -87,6 +96,8 @@ export class PersonClaims {
   readonly rates = input.required<Rate[]>();
   /** Every grade this person has been given, each from its from-date. */
   readonly grades = input.required<DatedGrade[]>();
+  /** The other people on the sheet, whom a claim may be reassigned to. */
+  readonly others = input.required<{ id: number; name: string }[]>();
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
   /** The ids of the claims selected for a bulk action. */
@@ -238,7 +249,24 @@ export class PersonClaims {
     }
   }
 
-  private clearRowError(id: number): void {
+  /** Move a claim to another person; a refusal shows an error on the claim. */
+  protected async reassign(c: Claim, personId: string): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    if (!personId) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Choose a person to reassign the claim to.' }));
+      return;
+    }
+    try {
+      const claim = await this.api.reassign(sheetId, c.id, Number(personId));
+      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: reassignError(e) }));
+    }
+  }
+
+  protected clearRowError(id: number): void {
     this.rowErrors.update(({ [id]: _, ...rest }) => rest);
   }
 

@@ -1,7 +1,7 @@
 import { DOCUMENT, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
-import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, counts, isOpen, money, overdue, quickAddError, roundsHalfUp } from '../claims/claims-api';
+import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, isOpen, money, overdue, quickAddError, roundsHalfUp } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
@@ -127,7 +127,7 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, holdError, isStale, patron
                 }
               </td>
               <td>
-                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rates()" [grades]="p.grades" [periods]="periods()"
+                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rates()" [grades]="p.grades" [others]="patronChoicesFor(p)" [periods]="periods()"
                   [selected]="selectedClaims()" (toggled)="claimToggled($event)" (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -400,7 +400,7 @@ export class People {
       const taken = await this.api.statement(sheetId, p.id);
       if (this.session.sheetId() !== sheetId) return;
       this.taken(taken.person);
-      this.claims.update((cs) => [...cs.filter((c) => c.personId !== p.id), ...taken.claims].sort((a, b) => b.id - a.id));
+      this.claims.update((cs) => [...cs.filter((c) => c.personId !== p.id), ...taken.claims].sort(byListed));
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [p.id]: statementError(e) }));
     }
@@ -447,11 +447,10 @@ export class People {
     this.periods.update((ps) => [...ps.filter((p) => p.id !== period.id), period].sort((a, b) => a.from.localeCompare(b.from)));
   }
 
-  /** Take in a claim just added (listed first, as the newest) or saved (in its place). */
+  /** Take in a claim just added (listed first, as the newest) or saved (in its place; a
+   *  reassigned one listed first under its new person). */
   protected claimSaved(claim: Claim): void {
-    this.claims.update((cs) => cs.some((c) => c.id === claim.id)
-      ? cs.map((c) => (c.id === claim.id ? claim : c))
-      : [claim, ...cs].sort((a, b) => b.id - a.id));
+    this.claims.update((cs) => [claim, ...cs.filter((c) => c.id !== claim.id)].sort(byListed));
   }
 
   /** Select a claim for a bulk action, or take it out of the selection. */

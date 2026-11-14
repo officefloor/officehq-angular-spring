@@ -36,11 +36,11 @@ public class ClaimController {
      *  claim a correction corrects (null for other claims). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
-            String statedDue, String corrects) {
+            String statedDue, String corrects, long listed) {
         static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
-                    c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects());
+                    c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed());
         }
 
         private static String money(BigDecimal value) {
@@ -64,6 +64,10 @@ public class ClaimController {
 
     /** The reason a steward gives for rejecting a PENDING claim. */
     public record RejectForm(@NotBlank @Size(max = 500) String reason) {
+    }
+
+    /** The person a claim is reassigned to. */
+    public record ReassignForm(@NotNull Long personId) {
     }
 
     /** The claims selected for a bulk action, by id. */
@@ -163,6 +167,15 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody RejectForm body) {
         return ClaimView.of(service.reject(sheetId, user.trim(), id, body.reason().trim()));
+    }
+
+    @PostMapping("/claims/{id}/reassign")
+    public ClaimView reassign(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ReassignForm body) {
+        return ClaimView.of(service.reassign(sheetId, user.trim(), id, body.personId()));
     }
 
     @PostMapping("/claims/{id}/void")

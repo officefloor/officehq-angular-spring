@@ -41,6 +41,14 @@ export interface Claim {
   statedDue: string | null;
   /** The number of the SETTLED claim this correction (a negative amount) corrects; null for others. */
   corrects: string | null;
+  /** Where the claim is listed, newest (highest) first: set when it is added, and again when it
+   *  is reassigned, so a moved claim is its new person's newest. */
+  listed: number;
+}
+
+/** Claims as they are listed: newest (or most recently reassigned) first. */
+export function byListed(a: Claim, b: Claim): number {
+  return b.listed - a.listed;
 }
 
 /** Whether a claim is a correction: its amount is negative. */
@@ -144,6 +152,13 @@ export class ClaimsApi {
     );
   }
 
+  /** Move a DRAFT, OPEN or PENDING claim to another person on the sheet. */
+  reassign(sheetId: string, id: number, personId: number): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/reassign`, { personId }, { headers: this.headers() }),
+    );
+  }
+
   /** Open each of the claims, in list order; those that cannot be opened are left as they are. */
   bulkOpen(sheetId: string, ids: number[]): Promise<{ opened: number; refused: number }> {
     return firstValueFrom(this.http.post<{ opened: number; refused: number }>(`${this.url(sheetId)}/claims/bulk-open`, { ids },
@@ -190,6 +205,16 @@ export function statusError(e: unknown, opener: boolean): string {
   }
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
+  return 'Something went wrong; try again.';
+}
+
+/** Why a reassignment was refused. */
+export function reassignError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can reassign a claim.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft, open or pending claim can move to another person.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return "The claim's date is after that person's retirement date.";
   return 'Something went wrong; try again.';
 }
 

@@ -64,7 +64,7 @@ public class ClaimService {
 
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
-        return claims.findBySheetIdOrderByIdDesc(sheetId);
+        return claims.findBySheetIdOrderByListedDesc(sheetId);
     }
 
     /** The claims of the ids on the sheet in list order: the people in the order they were added,
@@ -77,7 +77,7 @@ public class ClaimService {
         for (int i = 0; i < theirs.size(); i++) {
             personOrder.put(theirs.get(i).getId(), i);
         }
-        return claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+        return claims.findBySheetIdOrderByListedDesc(sheetId).stream()
                 .filter(c -> wanted.contains(c.getId()))
                 .sorted(Comparator.comparingInt(c -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
                 .map(Claim::getId)
@@ -100,6 +100,8 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim fresh = new Claim(sheetId, personId, amount, on, noteOf(note));
         fresh.setCorrects(corrected);
+        // the sheet is locked (refuseIfClosed), so two claims added at once are listed one after the other
+        fresh.setListed(claims.findLastListed(sheetId) + 1);
         Claim claim = claims.saveAndFlush(fresh);
         record("CLAIM_ADDED", user, person, claim);
         rollup.recordChanges(sheetId, user, before);
@@ -226,6 +228,43 @@ public class ClaimService {
         claim.setStatus(ClaimStatus.OPEN);
         claims.flush();
         record("CLAIM_REJECTED", user, person, claim, claim.getNumber(), " reason=" + reason);
+        rollup.recordChanges(sheetId, user, before);
+        return claim;
+    }
+
+    /** A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet: it keeps its
+     *  number and date, is listed as the new person's newest claim, and loses any figure a
+     *  statement bound it to (live again until the new person's next statement). Refused (404)
+     *  when the claim or person is missing, (423) when it is dated in a closed period, (403) for a
+     *  clerk, (409) when SETTLED or VOID or already the person's, and (422) when it is dated after
+     *  the new person's retirement date. */
+    @Transactional
+    public Claim reassign(String sheetId, String user, long id, long toPersonId) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        Person to = people.findByIdAndSheetId(toPersonId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward reassigns a claim");
+        }
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be reassigned");
+        }
+        if (claim.getPersonId() == toPersonId) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already that person's");
+        }
+        refuseIfRetired(to, claim.getDate());
+        Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setPersonId(to.getId());
+        claim.unbind();
+        claim.setListed(claims.findLastListed(sheetId) + 1);
+        claims.flush();
+        record("CLAIM_REASSIGNED", user, to, claim, claim.getNumber(),
+                " from=" + from.getName() + " to=" + to.getName());
         rollup.recordChanges(sheetId, user, before);
         return claim;
     }

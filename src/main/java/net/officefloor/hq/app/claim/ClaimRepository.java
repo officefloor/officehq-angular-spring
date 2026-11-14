@@ -12,6 +12,13 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     /** The sheet's claims, newest first. */
     List<Claim> findBySheetIdOrderByIdDesc(String sheetId);
 
+    /** The sheet's claims as they are listed: newest (or most recently reassigned) first. */
+    List<Claim> findBySheetIdOrderByListedDesc(String sheetId);
+
+    /** The highest place a claim on the sheet is listed at; 0 with none. */
+    @Query("select coalesce(max(c.listed), 0) from Claim c where c.sheetId = :sheetId")
+    long findLastListed(String sheetId);
+
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
     /** The person's claim of a number (the one a correction corrects). */
@@ -30,6 +37,6 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     /** A person's claims, newest first, locked while a statement binds them. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select c from Claim c where c.personId = :personId and c.sheetId = :sheetId order by c.id desc")
+    @Query("select c from Claim c where c.personId = :personId and c.sheetId = :sheetId order by c.listed desc")
     List<Claim> findByPersonForUpdate(Long personId, String sheetId);
 }
