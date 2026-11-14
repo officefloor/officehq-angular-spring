@@ -1,0 +1,249 @@
+diff --git a/src/main/frontend/src/app/features/audit/audit-viewer.ts b/src/main/frontend/src/app/features/audit/audit-viewer.ts
+new file mode 100644
+index 000000000..8cded3862
+--- /dev/null
++++ b/src/main/frontend/src/app/features/audit/audit-viewer.ts
+@@ -0,0 +1,77 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, effect, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++// The audit viewer: the active sheet's audit lines exactly as the file holds them, newest first;
++// with a name in the filter, only the lines about that person.
++@Component({
++  selector: 'app-audit-viewer',
++  template: `
++    <section aria-labelledby="audit-heading">
++      <h2 id="audit-heading">Audit</h2>
++      <form (submit)="show($event)">
++        <label for="audit-filter">Person</label>
++        <input
++          id="audit-filter"
++          data-testid="audit-filter"
++          [value]="filter()"
++          (input)="filter.set(value($event)); error.set(null)"
++        />
++        <button type="submit" data-testid="audit-show">Show audit</button>
++        @if (error(); as message) {
++          <p role="alert" data-testid="audit-error">{{ message }}</p>
++        }
++      </form>
++      <ol>
++        @for (line of lines(); track $index) {
++          <li data-testid="audit-line">{{ line }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class AuditViewer {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++  protected readonly filter = signal('');
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal<string | null>(null);
++  /** Counts presses, so only the latest press's answer is shown. */
++  private shows = 0;
++
++  constructor() {
++    // A sheet (re-)load clears what an earlier press showed.
++    effect(() => {
++      this.session.sheetId();
++      this.session.loads();
++      this.shows++;
++      this.lines.set([]);
++    });
++  }
++
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement).value;
++  }
++
++  /** Read the sheet's audit lines, filtered to the typed name when one is typed. */
++  protected async show(event: Event): Promise<void> {
++    event.preventDefault();
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const press = ++this.shows;
++    this.error.set(null);
++    this.lines.set([]);
++    const name = this.filter().trim();
++    try {
++      const lines = await firstValueFrom(
++        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/audit`, {
++          params: name ? { name } : {},
++        }),
++      );
++      if (press === this.shows) this.lines.set(lines);
++    } catch {
++      if (press === this.shows) this.error.set('The audit could not be read.');
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 1ebbacf9a..c77d5a108 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,11 +1,12 @@
+ import { Component, inject, signal } from '@angular/core';
+ import { Session } from '../../core/session';
++import { AuditViewer } from '../audit/audit-viewer';
+ import { People } from '../people/people';
+ 
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [People],
++  imports: [AuditViewer, People],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -62,6 +63,7 @@ import { People } from '../people/people';
+           <p role="alert" data-testid="asof-error">{{ error }}</p>
+         }
+         <app-people />
++        <app-audit-viewer />
+       } @else {
+         <p data-testid="home-empty">No sheet loaded.</p>
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index c64489962..d61a05589 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
+ import java.nio.file.StandardOpenOption;
++import java.util.List;
+ import java.util.Set;
+ import net.officefloor.hq.app.setting.SettingService;
+ import org.springframework.beans.factory.ObjectProvider;
+@@ -88,6 +89,15 @@ public class Audit {
+         });
+     }
+ 
++    /** Every line the audit file holds, in the order they were appended; none when there is no file yet. */
++    public synchronized List<String> lines() {
++        try {
++            return Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : List.of();
++        } catch (IOException e) {
++            throw new UncheckedIOException(e);
++        }
++    }
++
+     /** Truncate the audit file. */
+     public synchronized void clear() {
+         try {
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditController.java b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+new file mode 100644
+index 000000000..ee24ba533
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditController.java
+@@ -0,0 +1,30 @@
++package net.officefloor.hq.app.audit;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/audit")
++public class AuditController {
++
++    private final AuditViewService service;
++
++    public AuditController(AuditViewService service) {
++        this.service = service;
++    }
++
++    /** The sheet's audit lines as the file holds them, newest first; with a name, only those about that person. */
++    @GetMapping
++    public List<String> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestParam(required = false) @Size(max = 200) String name) {
++        return service.lines(sheetId.trim(), name);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java b/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
+new file mode 100644
+index 000000000..349d32274
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/audit/AuditViewService.java
+@@ -0,0 +1,70 @@
++package net.officefloor.hq.app.audit;
++
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.List;
++import java.util.Locale;
++import java.util.Optional;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++import net.officefloor.hq.app.Audit;
++import org.springframework.stereotype.Service;
++
++/**
++ * Reads the audit file back for the viewer: it is not a second record, only what the file holds.
++ */
++@Service
++public class AuditViewService {
++
++    /** The start of a field: a space, then its key and '='. A field's value runs to the next field. */
++    private static final Pattern FIELD = Pattern.compile(" ([a-z][a-z0-9-]*)=");
++
++    private final Audit audit;
++
++    public AuditViewService(Audit audit) {
++        this.audit = audit;
++    }
++
++    /**
++     * The sheet's lines, newest first. With a non-blank name, only the lines whose name= or person=
++     * field is that name, compared as names are (case and surrounding spaces ignored).
++     */
++    public List<String> lines(String sheetId, String name) {
++        String wanted = name == null ? "" : normal(name);
++        List<String> found = new ArrayList<>();
++        for (String line : audit.lines()) {
++            if (!field(line, "sheet").filter(sheetId::equals).isPresent()) {
++                continue;
++            }
++            if (!wanted.isEmpty() && !about(line, wanted)) {
++                continue;
++            }
++            found.add(line);
++        }
++        Collections.reverse(found);
++        return found;
++    }
++
++    private static boolean about(String line, String wanted) {
++        return field(line, "name").map(AuditViewService::normal).filter(wanted::equals).isPresent()
++                || field(line, "person").map(AuditViewService::normal).filter(wanted::equals).isPresent();
++    }
++
++    /** The value of the line's first field with this key, up to the next field. */
++    private static Optional<String> field(String line, String key) {
++        Matcher m = FIELD.matcher(line);
++        while (m.find()) {
++            if (!m.group(1).equals(key)) {
++                continue;
++            }
++            int start = m.end();
++            int end = m.find() ? m.start() : line.length();
++            return Optional.of(line.substring(start, end));
++        }
++        return Optional.empty();
++    }
++
++    private static String normal(String name) {
++        return name.trim().toLowerCase(Locale.ROOT);
++    }
++}
