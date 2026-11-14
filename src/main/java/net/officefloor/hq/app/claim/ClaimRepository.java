@@ -15,9 +15,13 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
     /** The person's claim of a number (the one a correction corrects). */
-    Optional<Claim> findFirstBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, Integer number);
+    Optional<Claim> findFirstBySheetIdAndPersonIdAndNumber(String sheetId, Long personId, String number);
 
-    boolean existsBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, Integer number, ClaimStatus status);
+    boolean existsBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, String number, ClaimStatus status);
+
+    /** The numbers given to claims on the sheet. */
+    @Query("select c.number from Claim c where c.sheetId = :sheetId and c.number is not null")
+    List<String> findNumbers(String sheetId);
 
     /** The claim, locked for a status change or edit so two users cannot change it at once. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

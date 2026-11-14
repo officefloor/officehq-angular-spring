@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
@@ -29,6 +30,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ClaimService {
+
+    /** The period name a claim in no period is numbered under. */
+    private static final String NO_PERIOD = "X";
 
     private final ClaimRepository claims;
     private final PersonRepository people;
@@ -85,13 +89,13 @@ public class ClaimService {
      *  the number of a SETTLED claim of the same person. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseIfClosed(sheetId, on);
         refuseIfRetired(person, on);
-        Integer corrected = correctedBy(sheetId, personId, amount, corrects);
+        String corrected = correctedBy(sheetId, personId, amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim fresh = new Claim(sheetId, personId, amount, on, noteOf(note));
         fresh.setCorrects(corrected);
@@ -108,7 +112,7 @@ public class ClaimService {
      *  the number of a SETTLED claim of the same person. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
-            Integer corrects) {
+            String corrects) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
@@ -121,7 +125,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         refuseIfRetired(person, on);
-        Integer corrected = correctedBy(sheetId, person.getId(), amount, corrects);
+        String corrected = correctedBy(sheetId, person.getId(), amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setCorrects(corrected);
@@ -160,10 +164,10 @@ public class ClaimService {
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         // a voided claim keeps its number (never reused), and the VOIDED record carries it
-        Integer number = claim.getNumber();
+        String number = claim.getNumber();
         claim.setStatus(to);
         if (to == ClaimStatus.OPEN) {
-            number = sheets.nextClaimNumber(sheetId);
+            number = nextNumber(sheetId, claim.getDate());
             claim.setNumber(number);
             claim.setOpenedBy(user);
         } else if (to == ClaimStatus.SETTLED) {
@@ -214,6 +218,25 @@ public class ClaimService {
         return new Statement(person, StatementSummary.of(statements.findByPersonIdOrderByIdAsc(personId)), theirs);
     }
 
+    /** The number a claim dated {@code date} takes as it is opened: under period numbering (set,
+     *  and the sheet's today on or after it) the next within the period containing the date
+     *  (<period name>-<n>), or X-<n> when none does; otherwise the sheet's next number. */
+    private String nextNumber(String sheetId, LocalDate date) {
+        if (!sheets.periodNumberingOn(sheetId)) {
+            return String.valueOf(sheets.nextClaimNumber(sheetId));
+        }
+        // held until the transaction ends, so two claims opened at once are numbered one after the other
+        sheets.lock(sheetId);
+        String prefix = periods.containing(sheetId, date).map(Period::getName).orElse(NO_PERIOD) + "-";
+        int last = claims.findNumbers(sheetId).stream()
+                .filter(n -> n.startsWith(prefix))
+                .map(n -> n.substring(prefix.length()))
+                .filter(n -> n.matches("\\d{1,9}"))
+                .mapToInt(Integer::parseInt)
+                .max().orElse(0);
+        return prefix + (last + 1);
+    }
+
     /** Refuse (423) a change to a claim dated in a closed period, holding the sheet locked until
      *  the transaction ends so a period cannot be closed meanwhile. */
     private void refuseIfClosed(String sheetId, LocalDate date) {
@@ -223,7 +246,7 @@ public class ClaimService {
 
     /** The number a claim of the amount corrects: none unless the amount is negative, when it must
      *  be the number of a SETTLED claim of the same person, or the claim is refused (422). */
-    private Integer correctedBy(String sheetId, long personId, BigDecimal amount, Integer corrects) {
+    private String correctedBy(String sheetId, long personId, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             return null;
         }
@@ -301,11 +324,11 @@ public class ClaimService {
     }
 
     /** Amounts are written as the screen shows them (two decimals), dates as yyyy-mm-dd. */
-    private void record(String event, String user, Person person, Claim claim, Integer number) {
+    private void record(String event, String user, Person person, Claim claim, String number) {
         record(event, user, person, claim, number, "");
     }
 
-    private void record(String event, String user, Person person, Claim claim, Integer number, String extra) {
+    private void record(String event, String user, Person person, Claim claim, String number, String extra) {
         audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user
                 + " person=" + person.getName() + " amount=" + claim.getAmount().setScale(2).toPlainString()
                 + " date=" + claim.getDate() + (number != null ? " number=" + number : "") + extra);

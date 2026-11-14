@@ -23,7 +23,7 @@ import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError,
       <input [id]="fieldId('note')" data-testid="claim-form-note" formControlName="note" autocomplete="off" />
       <label [for]="fieldId('corrects')">Corrects claim no.</label>
       <input [id]="fieldId('corrects')" data-testid="claim-form-corrects" formControlName="corrects"
-        inputmode="numeric" autocomplete="off" />
+        autocomplete="off" />
       <button type="submit" data-testid="claim-form-submit">{{ editingId() === null ? 'Add claim' : 'Save claim' }}</button>
       @if (error(); as err) {
         <p role="alert" data-testid="claim-form-error">{{ err }}</p>
@@ -147,7 +147,7 @@ export class PersonClaims {
       return;
     }
     this.editingId.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects === null ? '' : String(c.corrects) });
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' });
   }
 
   protected async submit(): Promise<void> {
@@ -167,8 +167,8 @@ export class PersonClaims {
       return;
     }
     const corrects = value.corrects.trim();
-    if (corrects !== '' && !/^[1-9]\d{0,8}$/.test(corrects)) {
-      this.error.set('Enter the number of the claim corrected as a whole number.');
+    if (corrects !== '' && !/^\S{1,120}$/.test(corrects)) {
+      this.error.set('Enter the number of the claim corrected as it is shown, without spaces.');
       return;
     }
     const correction = amount.startsWith('-');
@@ -176,7 +176,7 @@ export class PersonClaims {
       this.error.set('A negative amount must name the number of the settled claim it corrects.');
       return;
     }
-    const form = { amount, date: date || null, note: value.note, corrects: corrects === '' ? null : Number(corrects) };
+    const form = { amount, date: date || null, note: value.note, corrects: corrects === '' ? null : corrects };
     const editing = this.editingId();
     this.submitting = true;
     try {

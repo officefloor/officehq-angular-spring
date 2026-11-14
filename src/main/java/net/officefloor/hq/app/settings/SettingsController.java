@@ -29,11 +29,13 @@ public class SettingsController {
 
     /** The sheet's settings as the screen shows them: the clerk limit with two decimals, null for
      *  none, the floor with two decimals, the terms in days, the late percent with two decimals,
-     *  and the policy date, null when blank. */
-    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate) {
-        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct, LocalDate policyDate) {
+     *  the policy date, null when blank, and the period numbering from-date, null when blank (off). */
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+            LocalDate periodNumberingFrom) {
+        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct, LocalDate policyDate,
+                LocalDate periodNumberingFrom) {
             return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms,
-                    latePct.setScale(2).toPlainString(), policyDate);
+                    latePct.setScale(2).toPlainString(), policyDate, periodNumberingFrom);
         }
     }
 
@@ -55,6 +57,10 @@ public class SettingsController {
 
     /** The policy date as the form submits it: a date as yyyy-mm-dd, blank for none (the sheet's today). */
     public record PolicyDateForm(@NotNull @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String value) {
+    }
+
+    /** The period numbering from-date as the form submits it: a date as yyyy-mm-dd, blank for off. */
+    public record PeriodNumberingFromForm(@NotNull @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String value) {
     }
 
     /** A user name's role on the sheet. */
@@ -138,9 +144,24 @@ public class SettingsController {
         return view(sheetId);
     }
 
+    @PutMapping("/settings/period-numbering-from")
+    public SettingsView setPeriodNumberingFrom(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody PeriodNumberingFromForm body) {
+        LocalDate from;
+        try {
+            from = body.value().isEmpty() ? null : LocalDate.parse(body.value());
+        } catch (DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date");
+        }
+        service.setPeriodNumberingFrom(sheetId, user.trim(), from);
+        return view(sheetId);
+    }
+
     private SettingsView view(String sheetId) {
         return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId),
-                service.latePct(sheetId), service.policyDate(sheetId));
+                service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId));
     }
 
     @GetMapping("/roles")

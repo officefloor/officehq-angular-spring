@@ -4,7 +4,6 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -36,8 +35,8 @@ public class ClaimController {
      *  bound it, and the due it was bound to (null when unbound or n/a then); the number of the
      *  claim a correction corrects (null for other claims). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
-            ClaimStatus status, Integer number, String settledDue, String openedBy, boolean stated,
-            String statedDue, Integer corrects) {
+            ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
+            String statedDue, String corrects) {
         static ClaimView of(Claim c) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
@@ -60,7 +59,7 @@ public class ClaimController {
             @NotNull @Pattern(regexp = "-?\\d{1,13}(\\.\\d{1,2})?") String amount,
             LocalDate date,
             @Size(max = 1000) String note,
-            @Positive Integer corrects) {
+            @Size(max = 120) @Pattern(regexp = "\\s*\\S+\\s*") String corrects) {
     }
 
     /** The claims selected for a bulk action, by id. */
@@ -69,6 +68,10 @@ public class ClaimController {
 
     /** A bulk open's result: how many of the selected claims were opened and how many refused. */
     public record BulkOpenView(int opened, int refused) {
+    }
+
+    private static String trimmed(String value) {
+        return value == null ? null : value.trim();
     }
 
     private final ClaimService service;
@@ -93,7 +96,7 @@ public class ClaimController {
             @PathVariable long personId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm body) {
-        return ClaimView.of(service.add(sheetId, user.trim(), personId, new BigDecimal(body.amount()), body.date(), body.note(), body.corrects()));
+        return ClaimView.of(service.add(sheetId, user.trim(), personId, new BigDecimal(body.amount()), body.date(), body.note(), trimmed(body.corrects())));
     }
 
     @PutMapping("/claims/{id}")
@@ -102,7 +105,7 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm body) {
-        return ClaimView.of(service.update(sheetId, user.trim(), id, new BigDecimal(body.amount()), body.date(), body.note(), body.corrects()));
+        return ClaimView.of(service.update(sheetId, user.trim(), id, new BigDecimal(body.amount()), body.date(), body.note(), trimmed(body.corrects())));
     }
 
     @PostMapping("/claims/{id}/open")

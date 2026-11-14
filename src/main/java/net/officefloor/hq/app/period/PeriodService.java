@@ -3,6 +3,7 @@ package net.officefloor.hq.app.period;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Role;
@@ -103,6 +104,12 @@ public class PeriodService {
         periods.flush();
         audit.recordOnCommit("PERIOD_REOPENED sheet=" + sheetId + " by=" + user + " period=" + period.getName());
         return period;
+    }
+
+    /** The sheet's period whose dates contain {@code date}, if any. */
+    @Transactional(readOnly = true)
+    public Optional<Period> containing(String sheetId, LocalDate date) {
+        return periods.findBySheetIdOrderByFromAsc(sheetId).stream().filter(p -> p.contains(date)).findFirst();
     }
 
     /** Refuse (423) a change to a claim dated {@code date} when a closed period contains it. */

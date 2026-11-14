@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { LATE_PCT_PATTERN, LIMIT_PATTERN, POLICY_DATE_PATTERN, ROLES, TERMS_PATTERN, RoleGrant, SETTINGS_INVALID, SettingsApi, roleError, settingsError } from './settings-api';
 
 // The sheet's settings (its clerk limit: a clerk settles only claims whose due is at or below it;
-// its floor: a claim's live due is at least it; its terms: a claim is due by its date plus them; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even) with the form that saves the ones changed in it, and the role each user name holds with the form that sets one.
+// its floor: a claim's live due is at least it; its terms: a claim is due by its date plus them; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period) with the form that saves the ones changed in it, and the role each user name holds with the form that sets one.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -16,6 +16,7 @@ import { LATE_PCT_PATTERN, LIMIT_PATTERN, POLICY_DATE_PATTERN, ROLES, TERMS_PATT
       <p>Terms in force (days) <strong data-testid="setting-terms-current">{{ session.terms() }}</strong></p>
       <p>Late percent in force <strong data-testid="setting-late-pct-current">{{ session.latePct() }}</strong></p>
       <p>Policy date in force (blank: the sheet's today) <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
+      <p>Period numbering from (blank: off) <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
       <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" aria-label="Settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit" inputmode="decimal" autocomplete="off" />
@@ -27,6 +28,8 @@ import { LATE_PCT_PATTERN, LIMIT_PATTERN, POLICY_DATE_PATTERN, ROLES, TERMS_PATT
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" autocomplete="off" />
         <label for="setting-policy-date">Policy date: claims dated before it round half up, others half to even (blank: the sheet's today)</label>
         <input id="setting-policy-date" type="date" data-testid="setting-policy-date" formControlName="policyDate" />
+        <label for="setting-period-numbering-from">Period numbering from: claims opened from it are numbered within their period (blank: off)</label>
+        <input id="setting-period-numbering-from" type="date" data-testid="setting-period-numbering-from" formControlName="periodNumberingFrom" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsErr(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -72,6 +75,8 @@ export class Settings {
   protected readonly roleNames = ROLES.join(' or ');
   /** The sheet's clerk limit in force (two decimals); null when there is none. */
   protected readonly clerkLimit = signal<string | null>(null);
+  /** The sheet's period numbering from-date (yyyy-mm-dd); null when blank (off). */
+  protected readonly periodNumberingFrom = signal<string | null>(null);
   /** The roles set on the sheet. */
   protected readonly grants = signal<RoleGrant[]>([]);
   protected readonly sortedGrants = computed(() => [...this.grants()].sort((a, b) => a.user.localeCompare(b.user)));
@@ -91,6 +96,7 @@ export class Settings {
     terms: new FormControl('', { nonNullable: true }),
     latePct: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
+    periodNumberingFrom: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -105,10 +111,11 @@ export class Settings {
       this.session.loads();
       untracked(() => {
         this.clerkLimit.set(null);
+        this.periodNumberingFrom.set(null);
         this.grants.set([]);
         this.settingsErr.set(null);
         this.roleErr.set(null);
-        this.settingsForm.reset({ clerkLimit: '', floor: '', terms: '', latePct: '', policyDate: '' }, { emitEvent: false });
+        this.settingsForm.reset({ clerkLimit: '', floor: '', terms: '', latePct: '', policyDate: '', periodNumberingFrom: '' }, { emitEvent: false });
         this.roleForm.reset({ user: '', role: '' }, { emitEvent: false });
         if (id) void this.read(id);
       });
@@ -123,23 +130,26 @@ export class Settings {
     this.settingsErr.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    const { clerkLimit, floor, terms, latePct, policyDate } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom } = this.settingsForm.controls;
     // only the settings typed into since the last save are saved (the clerk limit when none is)
     const saveFloor = floor.dirty;
     const saveTerms = terms.dirty;
     const saveLatePct = latePct.dirty;
     const savePolicyDate = policyDate.dirty;
-    const saveLimit = clerkLimit.dirty || !(saveFloor || saveTerms || saveLatePct || savePolicyDate);
+    const savePeriodNumberingFrom = periodNumberingFrom.dirty;
+    const saveLimit = clerkLimit.dirty || !(saveFloor || saveTerms || saveLatePct || savePolicyDate || savePeriodNumberingFrom);
     const limitValue = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
     const termsValue = terms.value.trim();
     const latePctValue = latePct.value.trim();
     const policyDateValue = policyDate.value.trim();
+    const periodNumberingFromValue = periodNumberingFrom.value.trim();
     if ((saveLimit && limitValue !== '' && !LIMIT_PATTERN.test(limitValue))
         || (saveFloor && floorValue !== '' && !LIMIT_PATTERN.test(floorValue))
         || (saveTerms && termsValue !== '' && !TERMS_PATTERN.test(termsValue))
         || (saveLatePct && latePctValue !== '' && !LATE_PCT_PATTERN.test(latePctValue))
-        || (savePolicyDate && policyDateValue !== '' && !POLICY_DATE_PATTERN.test(policyDateValue))) {
+        || (savePolicyDate && policyDateValue !== '' && !POLICY_DATE_PATTERN.test(policyDateValue))
+        || (savePeriodNumberingFrom && periodNumberingFromValue !== '' && !POLICY_DATE_PATTERN.test(periodNumberingFromValue))) {
       this.settingsErr.set(SETTINGS_INVALID);
       return;
     }
@@ -169,6 +179,11 @@ export class Settings {
         const saved = await this.api.setPolicyDate(sheetId, policyDateValue);
         if (policyDate.value.trim() === policyDateValue) policyDate.markAsPristine();
         if (this.session.sheetId() === sheetId) this.session.policyDate.set(saved.policyDate);
+      }
+      if (savePeriodNumberingFrom) {
+        const saved = await this.api.setPeriodNumberingFrom(sheetId, periodNumberingFromValue);
+        if (periodNumberingFrom.value.trim() === periodNumberingFromValue) periodNumberingFrom.markAsPristine();
+        if (this.session.sheetId() === sheetId) this.periodNumberingFrom.set(saved.periodNumberingFrom);
       }
     } catch (e) {
       this.settingsErr.set(settingsError(e));
@@ -220,6 +235,7 @@ export class Settings {
         this.session.terms.set(settings.terms);
         this.session.latePct.set(settings.latePct);
         this.session.policyDate.set(settings.policyDate);
+        this.periodNumberingFrom.set(settings.periodNumberingFrom);
         this.grants.set(grants);
       }
     } catch {

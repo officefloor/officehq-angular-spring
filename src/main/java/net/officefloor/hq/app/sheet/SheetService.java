@@ -68,6 +68,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getLatePct).orElse(Sheet.DEFAULT_LATE_PCT);
     }
 
+    /** Whether a claim opened now is numbered within its period. */
+    @Transactional(readOnly = true)
+    public boolean periodNumberingOn(String id) {
+        return sheets.findById(id).map(Sheet::isPeriodNumberingOn).orElse(false);
+    }
+
     /** Take the sheet's next claim number (1 for the first), holding the sheet locked until the
      *  transaction ends so numbers are never shared and, if it rolls back, never skipped. */
     @Transactional

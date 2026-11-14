@@ -24,8 +24,9 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The sheet's number for the claim, given when it is opened and kept if it is voided; null while DRAFT. */
-  number: number | null;
+  /** The sheet's number for the claim, given when it is opened and kept if it is voided; null while DRAFT.
+   *  A sheet-wide number, or under period numbering one within its period (P1-1, X-1 in no period). */
+  number: string | null;
   /** The due fixed when the claim was settled, with two decimals; null, so the due is live, for
    *  a claim not SETTLED or settled when its grade had no rate. */
   settledDue: string | null;
@@ -36,7 +37,7 @@ export interface Claim {
   /** The due the claim was bound to, with two decimals; null when unbound or n/a then. */
   statedDue: string | null;
   /** The number of the SETTLED claim this correction (a negative amount) corrects; null for others. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 /** Whether a claim is a correction: its amount is negative. */
@@ -76,7 +77,7 @@ export interface ClaimForm {
   date: string | null;
   note: string;
   /** The number of the claim a correction corrects; null when none is named. */
-  corrects: number | null;
+  corrects: string | null;
 }
 
 export interface QuickAddForm {

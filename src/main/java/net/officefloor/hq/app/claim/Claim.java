@@ -40,9 +40,10 @@ public class Claim {
     private ClaimStatus status = ClaimStatus.DRAFT;
 
     /** The sheet's number for the claim, given when it is opened and kept if it is voided; none
-     *  while DRAFT. */
+     *  while DRAFT. A sheet-wide number (1, 2, ...), or under period numbering one within its
+     *  period (<period name>-<n>, X-<n> in no period). */
     @Column(name = "claim_number")
-    private Integer number;
+    private String number;
 
     /** The due fixed when the claim was settled; none before then, or when its grade had no rate
      *  (its due then stays live). */
@@ -66,7 +67,7 @@ public class Claim {
     /** The number of the SETTLED claim of the same person that this correction (a negative
      *  amount) corrects; none for any other claim. */
     @Column(name = "corrects")
-    private Integer corrects;
+    private String corrects;
 
     protected Claim() {
     }
@@ -104,11 +105,11 @@ public class Claim {
         return amount.signum() < 0;
     }
 
-    public Integer getCorrects() {
+    public String getCorrects() {
         return corrects;
     }
 
-    public void setCorrects(Integer corrects) {
+    public void setCorrects(String corrects) {
         this.corrects = corrects;
     }
 
@@ -136,11 +137,11 @@ public class Claim {
         this.status = status;
     }
 
-    public Integer getNumber() {
+    public String getNumber() {
         return number;
     }
 
-    public void setNumber(Integer number) {
+    public void setNumber(String number) {
         this.number = number;
     }
 

@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The sheet's settings (its clerk limit, floor, terms, late percent and policy date) and the role each user name holds on it. */
+/** The sheet's settings (its clerk limit, floor, terms, late percent, policy date and period numbering from-date) and the role each user name holds on it. */
 @Service
 public class SettingsService {
 
@@ -27,6 +27,9 @@ public class SettingsService {
     public static final String LATE_PCT = "late-pct";
     /** The key the policy date is audited under. */
     public static final String POLICY_DATE = "policy-date";
+
+    /** The key the period numbering from-date is audited under. */
+    public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
 
     private final SheetRoleRepository roles;
     private final SheetService sheets;
@@ -143,6 +146,25 @@ public class SettingsService {
                 + " key=" + POLICY_DATE + " value=" + (policyDate == null ? "" : policyDate));
         rollup.recordChanges(sheetId, user, before);
         return policyDate;
+    }
+
+    /** The sheet's period numbering from-date; null when blank (off). */
+    @Transactional(readOnly = true)
+    public LocalDate periodNumberingFrom(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getPeriodNumberingFrom).orElse(null);
+    }
+
+    /** Set the sheet's period numbering from-date (null: off), the sheet created first if it was
+     *  never loaded; numbers already given stay as they are. */
+    @Transactional
+    public LocalDate setPeriodNumberingFrom(String sheetId, String user, LocalDate from) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        sheet.setPeriodNumberingFrom(from);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + PERIOD_NUMBERING_FROM + " value=" + (from == null ? "" : from));
+        return from;
     }
 
     @Transactional(readOnly = true)
