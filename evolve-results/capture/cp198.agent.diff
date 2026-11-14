@@ -1,0 +1,200 @@
+diff --git a/src/main/frontend/src/app/features/duplicates/duplicates.ts b/src/main/frontend/src/app/features/duplicates/duplicates.ts
+new file mode 100644
+index 000000000..f5f39f3d2
+--- /dev/null
++++ b/src/main/frontend/src/app/features/duplicates/duplicates.ts
+@@ -0,0 +1,62 @@
++import { HttpClient } from '@angular/common/http';
++import { Component, effect, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++/** A person's date and amount with two or more claims, VOID and DELETED ones left out. */
++interface Duplicate {
++  name: string;
++  date: string;
++  amount: string;
++  count: number;
++}
++
++// The sheet's duplicate claims, read afresh on each press: people in list order, then by date,
++// then by amount.
++@Component({
++  selector: 'app-duplicates',
++  template: `
++    <section aria-labelledby="dups-heading">
++      <h2 id="dups-heading">Duplicate claims</h2>
++      <button type="button" data-testid="dups-show" (click)="show()">Show duplicates</button>
++      @if (error(); as message) {
++        <p role="alert" data-testid="dups-error">{{ message }}</p>
++      }
++      <ul>
++        @for (d of dups(); track $index) {
++          <li data-testid="dup-line">{{ d.name }} {{ d.date }} {{ d.amount }} x{{ d.count }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class Duplicates {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++  protected readonly dups = signal<Duplicate[]>([]);
++  protected readonly error = signal<string | null>(null);
++
++  constructor() {
++    // A sheet load clears the list shown for the sheet before.
++    effect(() => {
++      this.session.loads();
++      this.dups.set([]);
++      this.error.set(null);
++    });
++  }
++
++  protected async show(): Promise<void> {
++    this.error.set(null);
++    this.dups.set([]);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    try {
++      const dups = await firstValueFrom(
++        this.http.get<Duplicate[]>(`/api/sheets/${encodeURIComponent(sheet)}/duplicates`),
++      );
++      if (this.session.sheetId() === sheet) this.dups.set(dups);
++    } catch {
++      this.error.set('The duplicate claims could not be read.');
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index b1db2eefd..1ccea105d 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
+ import { Figures } from '../../core/figures';
+ import { LOCALES, Locale, Session } from '../../core/session';
+ import { AuditViewer } from '../audit/audit-viewer';
++import { Duplicates } from '../duplicates/duplicates';
+ import { People } from '../people/people';
+ import { TreeSearch } from '../search/tree-search';
+ import { SettingStore } from '../settings/settings';
+@@ -9,7 +10,7 @@ import { SettingStore } from '../settings/settings';
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [AuditViewer, Figures, People, TreeSearch],
++  imports: [AuditViewer, Duplicates, Figures, People, TreeSearch],
+   template: `
+     <div appFigures>
+     @if (session.user(); as user) {
+@@ -98,6 +99,7 @@ import { SettingStore } from '../settings/settings';
+           <p role="alert" data-testid="asof-error">{{ error }}</p>
+         }
+         <app-people />
++        <app-duplicates />
+         <app-tree-search />
+         <app-audit-viewer />
+       } @else {
+diff --git a/src/main/java/net/officefloor/hq/app/duplicate/DuplicateClaimController.java b/src/main/java/net/officefloor/hq/app/duplicate/DuplicateClaimController.java
+new file mode 100644
+index 000000000..46e1258a0
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/duplicate/DuplicateClaimController.java
+@@ -0,0 +1,28 @@
++package net.officefloor.hq.app.duplicate;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/duplicates")
++public class DuplicateClaimController {
++
++    private final DuplicateClaimService service;
++
++    public DuplicateClaimController(DuplicateClaimService service) {
++        this.service = service;
++    }
++
++    /** The sheet's duplicate claims: per person, each date and amount with two or more live claims. */
++    @GetMapping
++    public List<DuplicateClaimService.Duplicate> duplicates(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
++        return service.duplicates(sheetId.trim());
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/duplicate/DuplicateClaimService.java b/src/main/java/net/officefloor/hq/app/duplicate/DuplicateClaimService.java
+new file mode 100644
+index 000000000..e07b2addc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/duplicate/DuplicateClaimService.java
+@@ -0,0 +1,63 @@
++package net.officefloor.hq.app.duplicate;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Map;
++import java.util.TreeMap;
++import java.util.stream.Collectors;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/** Finds the claims a person has more than once: the same date and amount. */
++@Service
++public class DuplicateClaimService {
++
++    /** A person's date and amount with two or more claims (VOID and DELETED ones left out). */
++    public record Duplicate(String name, String date, String amount, int count) {
++    }
++
++    private record Key(LocalDate date, BigDecimal amount) implements Comparable<Key> {
++        @Override
++        public int compareTo(Key other) {
++            int byDate = date.compareTo(other.date);
++            return byDate != 0 ? byDate : amount.compareTo(other.amount);
++        }
++    }
++
++    private final PersonRepository people;
++    private final ClaimRepository claims;
++
++    public DuplicateClaimService(PersonRepository people, ClaimRepository claims) {
++        this.people = people;
++        this.claims = claims;
++    }
++
++    /** The sheet's duplicate claims: people in list order, then by date, then by amount. */
++    @Transactional(readOnly = true)
++    public List<Duplicate> duplicates(String sheetId) {
++        Map<Long, List<Claim>> byPerson = claims.findBySheetIdOrderByListedDesc(sheetId).stream()
++                .filter(c -> c.getStatus() != ClaimStatus.VOID && c.getStatus() != ClaimStatus.DELETED)
++                .collect(Collectors.groupingBy(Claim::getPersonId));
++        List<Duplicate> found = new ArrayList<>();
++        for (Person person : people.findBySheetIdOrderByIdAsc(sheetId)) {
++            Map<Key, Integer> counts = new TreeMap<>();
++            for (Claim claim : byPerson.getOrDefault(person.getId(), List.of())) {
++                counts.merge(new Key(claim.getDate(), claim.getAmount().stripTrailingZeros()), 1, Integer::sum);
++            }
++            counts.forEach((key, count) -> {
++                if (count >= 2) {
++                    found.add(new Duplicate(person.getName(), key.date().toString(),
++                            key.amount().setScale(2).toPlainString(), count));
++                }
++            });
++        }
++        return found;
++    }
++}
