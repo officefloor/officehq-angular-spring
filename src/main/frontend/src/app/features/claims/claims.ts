@@ -159,10 +159,11 @@ function figureCents(claim: Claim, rates: Rate[], halfUp: boolean): number | nul
   return dueCents(cents(claim.amount), rate, halfUp);
 }
 
-/** A claim's due in cents: the due fixed when it was settled; otherwise the greater of the sheet's floor
- *  in force on its date (none for a correction) and its figure plus its late charge: for every full 30
- *  days an OPEN or PENDING claim is overdue, the late percent in force on that boundary (its due-by plus
- *  30, 60, 90 ... days) of the figure plus the charges of the boundaries before it (compounding), rounded
+/** A claim's due in cents: the due fixed when it was settled; otherwise its floored figure (the greater of
+ *  the sheet's floor in force on its date and its figure; none for a correction) plus its late charge on
+ *  that floored figure: for every full 30 days an OPEN or PENDING claim is overdue, the late percent in force
+ *  on that boundary (its due-by plus 30, 60, 90 ... days) of the floored figure plus the charges of the
+ *  boundaries before it (compounding), rounded
  *  like a due, the charges added up (a statement binds the due,
  *  charge included; settling freezes the due; a correction or a waived claim has none); null when it has no
  *  figure. */
@@ -170,9 +171,10 @@ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string)
   if (claim.settledDue !== null) return cents(claim.settledDue);
   if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   const halfUp = roundsHalfUp(claim, late);
-  const figure = figureCents(claim, rates, halfUp);
-  if (figure === null) return null;
-  if (isCorrection(claim)) return figure;
+  const raw = figureCents(claim, rates, halfUp);
+  if (raw === null) return null;
+  if (isCorrection(claim)) return raw;
+  const figure = Math.max(raw, floor(claim.date));
   const grace = late.grace(claim);
   const periods = claim.waived ? 0 : Math.floor(daysOverdue(claim, late.today, grace) / 30);
   let charge = 0;
@@ -180,7 +182,7 @@ export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string)
     const pct = late.pct(plusDays(claim.dueBy, grace + 30 * boundary));
     if (cents(pct) !== 0) charge += dueCents(figure + charge, pct, halfUp);
   }
-  return Math.max(figure + charge, floor(claim.date));
+  return figure + charge;
 }
 
 /** A date (yyyy-mm-dd) some days on. */
