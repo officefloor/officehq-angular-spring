@@ -1,0 +1,203 @@
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 1ccea105d..3f1f6341d 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -3,6 +3,7 @@ import { Figures } from '../../core/figures';
+ import { LOCALES, Locale, Session } from '../../core/session';
+ import { AuditViewer } from '../audit/audit-viewer';
+ import { Duplicates } from '../duplicates/duplicates';
++import { SnapshotCompare } from '../snapshot-compare/snapshot-compare';
+ import { People } from '../people/people';
+ import { TreeSearch } from '../search/tree-search';
+ import { SettingStore } from '../settings/settings';
+@@ -10,7 +11,7 @@ import { SettingStore } from '../settings/settings';
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [AuditViewer, Duplicates, Figures, People, TreeSearch],
++  imports: [AuditViewer, Duplicates, Figures, People, SnapshotCompare, TreeSearch],
+   template: `
+     <div appFigures>
+     @if (session.user(); as user) {
+@@ -100,6 +101,7 @@ import { SettingStore } from '../settings/settings';
+         }
+         <app-people />
+         <app-duplicates />
++        <app-snapshot-compare />
+         <app-tree-search />
+         <app-audit-viewer />
+       } @else {
+diff --git a/src/main/frontend/src/app/features/snapshot-compare/snapshot-compare.ts b/src/main/frontend/src/app/features/snapshot-compare/snapshot-compare.ts
+new file mode 100644
+index 000000000..5c94d887f
+--- /dev/null
++++ b/src/main/frontend/src/app/features/snapshot-compare/snapshot-compare.ts
+@@ -0,0 +1,95 @@
++import { HttpClient, HttpParams } from '@angular/common/http';
++import { Component, effect, inject, signal } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++/** A person's due-total in each of the two snapshots compared: empty when there is none. */
++interface SnapshotLine {
++  name: string;
++  then: string;
++  now: string;
++}
++
++// Two snapshot dates compared, read afresh on each press: per person in list order, the due-total
++// of the SNAPSHOT written as the sheet's today left the from-date, and of the one for the to-date
++// (the person's due-total now when the to-date is blank).
++@Component({
++  selector: 'app-snapshot-compare',
++  template: `
++    <section aria-labelledby="snapshot-compare-heading">
++      <h2 id="snapshot-compare-heading">Compare snapshots</h2>
++      <form (submit)="compare($event)">
++        <label for="snapshot-from">From</label>
++        <input
++          id="snapshot-from"
++          type="date"
++          data-testid="snapshot-from"
++          [value]="from()"
++          (input)="from.set(value($event)); error.set(null)"
++        />
++        <label for="snapshot-to">To</label>
++        <input
++          id="snapshot-to"
++          type="date"
++          data-testid="snapshot-to"
++          [value]="to()"
++          (input)="to.set(value($event)); error.set(null)"
++        />
++        <button type="submit" data-testid="snapshot-compare">Compare</button>
++      </form>
++      @if (error(); as message) {
++        <p role="alert" data-testid="snapshot-error">{{ message }}</p>
++      }
++      <ul>
++        @for (l of lines(); track $index) {
++          <li data-testid="snapshot-line">{{ text(l) }}</li>
++        }
++      </ul>
++    </section>
++  `,
++})
++export class SnapshotCompare {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++  protected readonly from = signal('');
++  protected readonly to = signal('');
++  protected readonly lines = signal<SnapshotLine[]>([]);
++  protected readonly error = signal<string | null>(null);
++
++  constructor() {
++    // A sheet load clears the lines shown for the sheet before.
++    effect(() => {
++      this.session.loads();
++      this.lines.set([]);
++      this.error.set(null);
++    });
++  }
++
++  protected value(event: Event): string {
++    return (event.target as HTMLInputElement).value;
++  }
++
++  /** A line trimmed: an empty figure leaves no trailing space. */
++  protected text(l: SnapshotLine): string {
++    return [l.name, l.then, l.now].join(' ').trim();
++  }
++
++  protected async compare(event: Event): Promise<void> {
++    event.preventDefault();
++    this.error.set(null);
++    this.lines.set([]);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    let params = new HttpParams();
++    if (this.from()) params = params.set('from', this.from());
++    if (this.to()) params = params.set('to', this.to());
++    try {
++      const lines = await firstValueFrom(
++        this.http.get<SnapshotLine[]>(`/api/sheets/${encodeURIComponent(sheet)}/snapshot-compare`, { params }),
++      );
++      if (this.session.sheetId() === sheet) this.lines.set(lines);
++    } catch {
++      this.error.set('The snapshots could not be compared.');
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/person/SnapshotCompareController.java b/src/main/java/net/officefloor/hq/app/person/SnapshotCompareController.java
+new file mode 100644
+index 000000000..84f8e5f80
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/person/SnapshotCompareController.java
+@@ -0,0 +1,67 @@
++package net.officefloor.hq.app.person;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.format.annotation.DateTimeFormat;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@Validated
++@RequestMapping("/api/sheets/{sheetId}/snapshot-compare")
++public class SnapshotCompareController {
++
++    /** A person's due-total in each of two snapshots: empty when there is none. */
++    public record Line(String name, String then, String now) {
++    }
++
++    private final PersonService people;
++    private final PersonSnapshotRepository snapshots;
++    private final RollupService rollups;
++    private final SheetService sheets;
++
++    public SnapshotCompareController(PersonService people, PersonSnapshotRepository snapshots, RollupService rollups,
++            SheetService sheets) {
++        this.people = people;
++        this.snapshots = snapshots;
++        this.rollups = rollups;
++        this.sheets = sheets;
++    }
++
++    /** Per person in list order, the due-total of the SNAPSHOT written as the sheet's today left the
++     *  from-date and of the one written as it left the to-date (the person's due-total now when no
++     *  to-date is given); the last one written counts when a day was left more than once. */
++    @GetMapping
++    @Transactional(readOnly = true)
++    public List<Line> compare(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
++            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
++        String sheet = sheetId.trim();
++        Map<Long, String> fromDues = dueTotalsLeaving(sheet, from != null ? from : sheets.today(sheet));
++        Map<Long, String> toDues = to == null ? rollups.dueTotals(sheet) : dueTotalsLeaving(sheet, to);
++        return people.list(sheet).stream()
++                .map(p -> new Line(p.getName(), fromDues.getOrDefault(p.getId(), ""),
++                        toDues.getOrDefault(p.getId(), "")))
++                .toList();
++    }
++
++    /** Each person's due-total in the last snapshot written for a day, by person id. */
++    private Map<Long, String> dueTotalsLeaving(String sheet, LocalDate day) {
++        Map<Long, String> dues = new HashMap<>();
++        snapshots.findBySheetIdOrderByIdAsc(sheet).stream()
++                .filter(s -> s.getDay().equals(day))
++                .forEach(s -> dues.put(s.getPersonId(), s.getDueTotal()));
++        return dues;
++    }
++}
