@@ -1,0 +1,620 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 006505cb7..6da33d257 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -1,5 +1,5 @@
+ import { HttpClient } from '@angular/common/http';
+-import { Component, Injectable, computed, effect, inject, input, signal } from '@angular/core';
++import { Component, Injectable, computed, effect, inject, input, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ import { SettingStore } from '../settings/settings';
+@@ -36,6 +36,16 @@ export interface PoolPerson {
+   holds: { from: string; to: string | null }[];
+ }
+ 
++/** A period that has ended and, at the end of its to-date (day), the pot (two decimals; null for none),
++ *  the pools and the people as they stood. */
++export interface PeriodPools {
++  period: string;
++  day: string;
++  pot: string | null;
++  pools: Pool[];
++  people: PoolPerson[];
++}
++
+ /** Whether a hold of the person is in force on the date (none when there is no date). */
+ function heldOn(person: PoolPerson | undefined, today: string | null): boolean {
+   return (
+@@ -170,6 +180,17 @@ function cuts(pot: bigint, members: Share[]): bigint[] {
+   return list;
+ }
+ 
++/** A member's cut as it stood at the end of a period (two decimals): blank when the pool or the
++ *  membership had not been added by then, the pool showed no cuts or the member's dates left them out. */
++function cutThen(poolId: number, member: PoolMember, then: PeriodPools, cuts: Map<number, bigint[] | null>): string {
++  const pool = then.pools.find((p) => p.id === poolId);
++  const at = pool?.members.findIndex(
++    (m) => m.personId === member.personId && m.memberPoolId === member.memberPoolId,
++  ) ?? -1;
++  const cut = cuts.get(poolId);
++  return pool && cut && at >= 0 && !outOn(pool.members[at], then.day) ? figure(cut[at]) : '';
++}
++
+ /** A member chosen on a pool's row: a person or another pool, by id. */
+ export interface MemberChoice {
+   kind: 'person' | 'pool';
+@@ -194,16 +215,33 @@ export class PoolStore {
+   private readonly session = inject(Session);
+ 
+   readonly pools = signal<Pool[]>([]);
++  /** Each period whose to-date is on or before the sheet's today, the earliest first, with the pools as
++   *  they stood at the end of it. */
++  readonly byPeriod = signal<PeriodPools[]>([]);
++  /** The latest read of the pools by period asked for; an earlier answer arriving later is dropped. */
++  private byPeriodReads = 0;
+ 
+   constructor() {
+     effect(() => {
+       const sheet = this.session.sheetId();
+       const load = this.session.loads();
+       this.pools.set([]);
++      this.byPeriod.set([]);
+       if (sheet) void this.read(sheet, load);
+     });
+   }
+ 
++  /** Re-read the pools as they stood at the end of each period that has ended. */
++  async readByPeriod(): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const load = this.session.loads();
++    const read = ++this.byPeriodReads;
++    const list = await firstValueFrom(this.http.get<PeriodPools[]>(`${this.base(sheet)}/by-period`));
++    if (this.session.loads() !== load || this.byPeriodReads !== read) return;
++    this.byPeriod.set(list);
++  }
++
+   /** Re-read the active sheet's pools: a crew is a pool too, so a crew added or changed shows here. */
+   async reload(): Promise<void> {
+     const sheet = this.session.sheetId();
+@@ -253,7 +291,7 @@ interface PoolRow {
+   pool: Pool;
+   /** Each member with their cut of the pool's pot (two decimals); blank when the pool is unbalanced
+    *  or has no pot, or the member's dates leave them out on the sheet's today. A member's key is the person's id, or pool-<name> for a pool. */
+-  members: { key: string; name: string; share: string; cut: string }[];
++  members: { key: string; name: string; share: string; cut: string; past: { period: string; cut: string }[] }[];
+   /** The members' shares added up, a retired member's and one its dates leave out counting as 0.00
+    *  (two decimals). */
+   total: string;
+@@ -294,6 +332,9 @@ interface PoolRow {
+                 <li [attr.data-testid]="'pool-member-' + row.pool.name + '-' + m.key">
+                   {{ m.name }} <span data-testid="pool-share">{{ m.share }}</span>%, cut
+                   <span data-testid="pool-cut">{{ m.cut }}</span>
++                  @for (p of m.past; track p.period) {
++                    , {{ p.period }} <span [attr.data-testid]="'pool-cut-' + p.period">{{ p.cut }}</span>
++                  }
+                 </li>
+               }
+             </ul>
+@@ -362,6 +403,17 @@ export class Pools {
+   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
+   private readonly busy = signal(false);
+ 
++  constructor() {
++    // The cuts each period ended with are re-read whenever what they are worked out from may have changed.
++    effect(() => {
++      this.people();
++      this.store.pools();
++      this.settings.pot();
++      this.session.today();
++      untracked(() => void this.store.readByPeriod());
++    });
++  }
++
+   /** The pools that may be chosen as a member of another: the sheet's own, not its crews. */
+   protected readonly memberPools = computed(() => this.store.pools().filter((p) => !p.crew));
+ 
+@@ -371,6 +423,10 @@ export class Pools {
+     const poolById = new Map(pools.map((p) => [p.id, p]));
+     const today = this.session.today();
+     const cutsByPool = poolCuts(pools, this.people(), this.settings.pot(), today);
++    const past = this.store.byPeriod().map((then) => ({
++      then,
++      cuts: poolCuts(then.pools, then.people, then.pot ?? '', then.day),
++    }));
+     return pools.map((pool) => {
+       const total = totalOf(sharesOf(pool, byId, today));
+       const cut = cutsByPool.get(pool.id) ?? null;
+@@ -381,6 +437,7 @@ export class Pools {
+           name: m.personId !== null ? (byId.get(m.personId)?.name ?? '') : `pool:${member?.name ?? ''}`,
+           share: m.share,
+           cut: cut && !outOn(m, today) ? figure(cut[i]) : '',
++          past: past.map(({ then, cuts }) => ({ period: then.period, cut: cutThen(pool.id, m, then, cuts) })),
+         };
+       });
+       return { pool, members, total: figure(total), balanced: total === 10000n };
+diff --git a/src/main/java/net/officefloor/hq/app/crew/Crew.java b/src/main/java/net/officefloor/hq/app/crew/Crew.java
+index 853b5d18c..2767e1b61 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/Crew.java
++++ b/src/main/java/net/officefloor/hq/app/crew/Crew.java
+@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import java.time.LocalDate;
+ 
+ /** A crew on a sheet: a name, unique on the sheet, a lead from the sheet's people, and its members. */
+ @Entity
+@@ -25,6 +26,10 @@ public class Crew {
+     @Column(name = "lead_id", nullable = false)
+     private Long leadId;
+ 
++    /** The sheet's today when the crew was added; null for one added before this was kept. */
++    @Column(name = "made_on", updatable = false)
++    private LocalDate madeOn;
++
+     protected Crew() {
+     }
+ 
+@@ -54,4 +59,16 @@ public class Crew {
+     public void setLeadId(Long leadId) {
+         this.leadId = leadId;
+     }
++
++    /** Keep the sheet's today the crew is added on. */
++    public Crew madeOn(LocalDate day) {
++        this.madeOn = day;
++        return this;
++    }
++
++    /** Whether the crew stood at the end of a day: it was added while the sheet's today was on or
++     *  before it (one added before that was kept always stood). */
++    public boolean madeAsOf(LocalDate day) {
++        return madeOn == null || !madeOn.isAfter(day);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewMember.java b/src/main/java/net/officefloor/hq/app/crew/CrewMember.java
+index 0ab9a03ea..a6aa191c0 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/CrewMember.java
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewMember.java
+@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import java.time.LocalDate;
+ 
+ /** A person's membership of a crew, other than as its lead. */
+ @Entity
+@@ -22,6 +23,10 @@ public class CrewMember {
+     @Column(name = "person_id", nullable = false)
+     private Long personId;
+ 
++    /** The sheet's today when the membership was added; null for one added before this was kept. */
++    @Column(name = "made_on", updatable = false)
++    private LocalDate madeOn;
++
+     protected CrewMember() {
+     }
+ 
+@@ -46,4 +51,16 @@ public class CrewMember {
+     public void setPersonId(Long personId) {
+         this.personId = personId;
+     }
++
++    /** Keep the sheet's today the membership is added on. */
++    public CrewMember madeOn(LocalDate day) {
++        this.madeOn = day;
++        return this;
++    }
++
++    /** Whether the membership stood at the end of a day: it was added while the sheet's today was on or
++     *  before it (one added before that was kept always stood). */
++    public boolean madeAsOf(LocalDate day) {
++        return madeOn == null || !madeOn.isAfter(day);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewService.java b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+index 8bcad30b5..d923d061c 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/CrewService.java
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+@@ -66,7 +66,7 @@ public class CrewService {
+         if (pools.existsBySheetIdAndName(sheetId, key)) {
+             throw new CrewRefusedException("The pool " + key + " is on the sheet already");
+         }
+-        Crew saved = crews.saveAndFlush(new Crew(sheetId, key, lead.getId()));
++        Crew saved = crews.saveAndFlush(new Crew(sheetId, key, lead.getId()).madeOn(sheets.today(sheetId)));
+         audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user + " name=" + key + " lead="
+                 + lead.getName());
+         return new CrewWithMembers(saved, List.of());
+@@ -89,7 +89,7 @@ public class CrewService {
+         if (members.existsByCrewIdAndPersonId(crewId, personId)) {
+             throw new CrewRefusedException(person.getName() + " is in the crew " + crew.getName() + " already");
+         }
+-        members.saveAndFlush(new CrewMember(crewId, personId));
++        members.saveAndFlush(new CrewMember(crewId, personId).madeOn(sheets.today(sheetId)));
+         audit.recordOnCommit("CREW_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " crew=" + crew.getName()
+                 + " name=" + person.getName());
+         return new CrewWithMembers(crew, members.findByCrewIdInOrderByIdAsc(List.of(crewId)));
+diff --git a/src/main/java/net/officefloor/hq/app/pool/Pool.java b/src/main/java/net/officefloor/hq/app/pool/Pool.java
+index b64c518f5..0a54bf3e2 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/Pool.java
++++ b/src/main/java/net/officefloor/hq/app/pool/Pool.java
+@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import java.time.LocalDate;
+ 
+ /** A pool on a sheet: a name, unique on the sheet, whose members each hold a share percent. */
+ @Entity
+@@ -22,6 +23,10 @@ public class Pool {
+     @Column(name = "name", nullable = false)
+     private String name;
+ 
++    /** The sheet's today when the pool was added; null for one added before this was kept. */
++    @Column(name = "made_on", updatable = false)
++    private LocalDate madeOn;
++
+     protected Pool() {
+     }
+ 
+@@ -41,4 +46,16 @@ public class Pool {
+     public String getName() {
+         return name;
+     }
++
++    /** Keep the sheet's today the pool is added on. */
++    public Pool madeOn(LocalDate day) {
++        this.madeOn = day;
++        return this;
++    }
++
++    /** Whether the pool stood at the end of a day: it was added while the sheet's today was on or
++     *  before it (one added before that was kept always stood). */
++    public boolean madeAsOf(LocalDate day) {
++        return madeOn == null || !madeOn.isAfter(day);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index d428a6f75..7005635d8 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -7,7 +7,9 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
++import net.officefloor.hq.app.AsOf;
+ import net.officefloor.hq.app.SignedInUser;
++import net.officefloor.hq.app.person.PersonController;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.converter.HttpMessageNotReadableException;
+@@ -55,6 +57,28 @@ public class PoolController {
+         }
+     }
+ 
++    /** A person as a pool saw them at the end of a day: whether a retirement date was set, and the
++     *  holds put on them by then. */
++    public record PersonThenView(Long id, String name, boolean retired, List<PersonController.HoldView> holds) {
++        static PersonThenView of(PoolHistoryService.PersonThen then) {
++            return new PersonThenView(then.person().getId(), then.person().getName(), then.retired(),
++                    then.holds().stream().map(PersonController.HoldView::of).toList());
++        }
++    }
++
++    /** A period that has ended and, at the end of its to-date (day), the pot (two decimals; null for
++     *  none), the pools and crews as pools, and the people, as they stood. */
++    public record PeriodPoolsView(String period, LocalDate day, String pot, List<PoolView> pools,
++            List<PersonThenView> people) {
++        static PeriodPoolsView of(PoolHistoryService.PeriodPools then) {
++            List<PoolView> pools = new ArrayList<>(then.pools().stream().map(PoolView::of).toList());
++            then.crews().stream().map(PoolView::of).forEach(pools::add);
++            return new PeriodPoolsView(then.period(), then.day(),
++                    then.pot() != null ? then.pot().toPlainString() : null, pools,
++                    then.people().stream().map(PersonThenView::of).toList());
++        }
++    }
++
+     /** A pool: its name, trimmed as it is added. */
+     public record PoolRequest(@NotBlank @Size(max = 255) String name) {
+     }
+@@ -66,9 +90,11 @@ public class PoolController {
+     }
+ 
+     private final PoolService service;
++    private final PoolHistoryService pastPools;
+ 
+-    public PoolController(PoolService service) {
++    public PoolController(PoolService service, PoolHistoryService pastPools) {
+         this.service = service;
++        this.pastPools = pastPools;
+     }
+ 
+     /** The sheet's pools, in the order they were added, then its crews as pools, in the order they were added. */
+@@ -79,6 +105,15 @@ public class PoolController {
+         return list;
+     }
+ 
++    /** Each period whose to-date is on or before the sheet's today, the earliest first, with the pools
++     *  as they stood at the end of it; while the screen is set to an as-of date, that date stands in for
++     *  the sheet's today. */
++    @GetMapping("/by-period")
++    public List<PeriodPoolsView> byPeriod(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader(value = AsOf.HEADER, required = false) String asOfHeader) {
++        return pastPools.byPeriod(sheetId.trim(), AsOf.parse(asOfHeader)).stream().map(PeriodPoolsView::of).toList();
++    }
++
+     /** Add a pool to the sheet. */
+     @PostMapping
+     @ResponseStatus(HttpStatus.CREATED)
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolHistoryService.java b/src/main/java/net/officefloor/hq/app/pool/PoolHistoryService.java
+new file mode 100644
+index 000000000..0c2478ec2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolHistoryService.java
+@@ -0,0 +1,85 @@
++package net.officefloor.hq.app.pool;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Map;
++import net.officefloor.hq.app.history.History;
++import net.officefloor.hq.app.period.Period;
++import net.officefloor.hq.app.period.PeriodService;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonHold;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.person.PersonService;
++import net.officefloor.hq.app.setting.SettingService;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.stereotype.Service;
++
++/** The sheet's pools as they stood at the end of each period that has ended, so each member's cut can
++ *  be shown as it stood then. */
++@Service
++public class PoolHistoryService {
++
++    /** A person as a pool saw them at the end of a day: whether a retirement date was set, and the holds
++     *  put on them by then. */
++    public record PersonThen(Person person, boolean retired, List<PersonHold> holds) {
++    }
++
++    /** A period that has ended and, at the end of its to-date, the pot (null for none), the pools with
++     *  their members, the crews as pools and the people as they stood. */
++    public record PeriodPools(String period, LocalDate day, BigDecimal pot, List<PoolService.PoolWithMembers> pools,
++            List<PoolService.CrewPool> crews, List<PersonThen> people) {
++    }
++
++    private final PoolService pools;
++    private final PeriodService periods;
++    private final PersonService personService;
++    private final PersonRepository people;
++    private final SettingService settings;
++    private final SheetService sheets;
++    private final History history;
++
++    public PoolHistoryService(PoolService pools, PeriodService periods, PersonService personService,
++            PersonRepository people, SettingService settings, SheetService sheets, History history) {
++        this.pools = pools;
++        this.periods = periods;
++        this.personService = personService;
++        this.people = people;
++        this.settings = settings;
++        this.sheets = sheets;
++        this.history = history;
++    }
++
++    /** Each period whose to-date is on or before the sheet's today (the as-of date standing in for it
++     *  while one is set), the earliest first, with the sheet's pools as they stood at the end of it. */
++    public List<PeriodPools> byPeriod(String sheetId, LocalDate asOf) {
++        LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
++        List<Map.Entry<String, LocalDate>> ended = new ArrayList<>();
++        if (asOf == null) {
++            for (Period period : periods.list(sheetId)) {
++                ended.add(Map.entry(period.getName(), period.getTo()));
++            }
++        } else {
++            for (History.PeriodThen period : periods.listAsOf(sheetId, asOf)) {
++                ended.add(Map.entry(period.name(), period.to()));
++            }
++        }
++        List<Person> everyone = people.findBySheetIdOrderByIdAsc(sheetId);
++        List<PeriodPools> list = new ArrayList<>();
++        for (Map.Entry<String, LocalDate> period : ended) {
++            LocalDate day = period.getValue();
++            if (day.isAfter(today)) {
++                continue;
++            }
++            Map<Long, History.PersonThen> then = history.people(sheetId, day);
++            Map<Long, List<PersonHold>> holds = personService.holds(sheetId, day);
++            List<PersonThen> them = everyone.stream().map(p -> new PersonThen(p,
++                    then.containsKey(p.getId()) ? then.get(p.getId()).retiredFrom() != null : p.isRetired(),
++                    holds.getOrDefault(p.getId(), List.of()))).toList();
++            list.add(new PeriodPools(period.getKey(), day, settings.pot(sheetId, day), pools.list(sheetId, day),
++                    pools.crewPools(sheetId, day), them));
++        }
++        return list;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolMember.java b/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
+index ba986be91..120172712 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
+@@ -40,6 +40,10 @@ public class PoolMember {
+     @Column(name = "to_date")
+     private LocalDate to;
+ 
++    /** The sheet's today when the membership was added; null for one added before this was kept. */
++    @Column(name = "made_on", updatable = false)
++    private LocalDate madeOn;
++
+     protected PoolMember() {
+     }
+ 
+@@ -100,4 +104,16 @@ public class PoolMember {
+         this.to = to;
+         return this;
+     }
++
++    /** Keep the sheet's today the membership is added on. */
++    public PoolMember madeOn(LocalDate day) {
++        this.madeOn = day;
++        return this;
++    }
++
++    /** Whether the membership stood at the end of a day: it was added while the sheet's today was on or
++     *  before it (one added before that was kept always stood). */
++    public boolean madeAsOf(LocalDate day) {
++        return madeOn == null || !madeOn.isAfter(day);
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index f9da4374b..14f988fa2 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -60,9 +60,17 @@ public class PoolService {
+ 
+     /** The sheet's pools, in the order they were added, each with its members. */
+     public List<PoolWithMembers> list(String sheetId) {
+-        List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
++        return list(sheetId, null);
++    }
++
++    /** The sheet's pools as they stood at the end of a day (null: as they stand now), in the order
++     *  they were added, each with its members added by then. */
++    public List<PoolWithMembers> list(String sheetId, LocalDate day) {
++        List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .filter(p -> day == null || p.madeAsOf(day)).toList();
+         Map<Long, List<PoolMember>> byPool = members
+                 .findByPoolIdInOrderByIdAsc(list.stream().map(Pool::getId).toList()).stream()
++                .filter(m -> day == null || m.madeAsOf(day))
+                 .collect(Collectors.groupingBy(PoolMember::getPoolId));
+         return list.stream().map(p -> new PoolWithMembers(p, byPool.getOrDefault(p.getId(), List.of()))).toList();
+     }
+@@ -71,9 +79,17 @@ public class PoolService {
+      *  shares, 100.00 split as patrons' shares are (each rounded half to even), the remainder on the first.
+      *  A lead who has left the sheet (transferred or merged away) is not among them. */
+     public List<CrewPool> crewPools(String sheetId) {
+-        List<Crew> list = crews.findBySheetIdOrderByIdAsc(sheetId);
++        return crewPools(sheetId, null);
++    }
++
++    /** The sheet's crews as pools as they stood at the end of a day (null: as they stand now): those
++     *  added by then, each with its members added by then. */
++    public List<CrewPool> crewPools(String sheetId, LocalDate day) {
++        List<Crew> list = crews.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .filter(c -> day == null || c.madeAsOf(day)).toList();
+         Map<Long, List<CrewMember>> byCrew = crewMembers
+                 .findByCrewIdInOrderByIdAsc(list.stream().map(Crew::getId).toList()).stream()
++                .filter(m -> day == null || m.madeAsOf(day))
+                 .collect(Collectors.groupingBy(CrewMember::getCrewId));
+         Set<Long> onSheet = people.findBySheetIdOrderByIdAsc(sheetId).stream().map(Person::getId)
+                 .collect(Collectors.toSet());
+@@ -115,7 +131,7 @@ public class PoolService {
+         if (crews.existsBySheetIdAndName(sheetId, key)) {
+             throw new PoolRefusedException("The crew " + key + " is a pool on the sheet already");
+         }
+-        Pool saved = pools.saveAndFlush(new Pool(sheetId, key));
++        Pool saved = pools.saveAndFlush(new Pool(sheetId, key).madeOn(sheets.today(sheetId)));
+         audit.recordOnCommit("POOL_ADDED sheet=" + sheetId + " by=" + user + " name=" + key);
+         return new PoolWithMembers(saved, List.of());
+     }
+@@ -150,13 +166,15 @@ public class PoolService {
+             if (members.existsByPoolIdAndPersonId(poolId, personId)) {
+                 throw new PoolRefusedException(person.getName() + " is in the pool " + pool.getName() + " already");
+             }
+-            members.saveAndFlush(new PoolMember(poolId, personId, scaled).dated(from, to));
++            members.saveAndFlush(
++                    new PoolMember(poolId, personId, scaled).dated(from, to).madeOn(sheets.today(sheetId)));
+             name = person.getName();
+         } else {
+             Pool member = pools.findByIdAndSheetId(memberPoolId, sheetId)
+                     .orElseThrow(() -> new PoolRefusedException("No such pool on the sheet"));
+             checkNesting(sheetId, pool, member);
+-            members.saveAndFlush(PoolMember.ofPool(poolId, memberPoolId, scaled).dated(from, to));
++            members.saveAndFlush(
++                    PoolMember.ofPool(poolId, memberPoolId, scaled).dated(from, to).madeOn(sheets.today(sheetId)));
+             name = member.getName();
+         }
+         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index dbae7bade..8580eb2f2 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -741,6 +741,16 @@ public class SettingService {
+         return saved;
+     }
+ 
++    /** The sheet's pot as it stood set at the end of a day; null for none. A pot whose value was never
++     *  kept stands as it is now. */
++    public BigDecimal pot(String sheetId, LocalDate day) {
++        if (!history.settingsKept(sheetId).contains(POT)) {
++            return pot(sheetId);
++        }
++        String value = history.settings(sheetId, day).get(POT);
++        return value != null ? new BigDecimal(value) : null;
++    }
++
+     /** Change the sheet's pot, kept to two decimals; null leaves it blank (none). */
+     @Transactional
+     public Sheet setPot(String sheetId, String by, BigDecimal pot) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index c5797ac43..39727dc42 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -136,14 +136,14 @@ public class SheetCloneService {
+         // Pools, then their members: people and pools of the clone.
+         Map<Long, Long> pools = new HashMap<>();
+         for (Long id : ids("SELECT id FROM pool WHERE sheet_id = ? ORDER BY id", from)) {
+-            pools.put(id, insert("INSERT INTO pool (sheet_id, name) SELECT ?, name FROM pool WHERE id = ?", to, id));
++            pools.put(id, insert("INSERT INTO pool (sheet_id, name, made_on) SELECT ?, name, made_on FROM pool WHERE id = ?", to, id));
+         }
+         for (Map<String, Object> member : jdbc.queryForList("SELECT m.* FROM pool_member m JOIN pool p"
+                 + " ON p.id = m.pool_id WHERE p.sheet_id = ? ORDER BY m.id", from)) {
+-            jdbc.update("INSERT INTO pool_member (pool_id, person_id, member_pool_id, share, from_date, to_date)"
+-                    + " VALUES (?, ?, ?, ?, ?, ?)", pools.get(idOf(member.get("POOL_ID"))),
++            jdbc.update("INSERT INTO pool_member (pool_id, person_id, member_pool_id, share, from_date, to_date,"
++                    + " made_on) VALUES (?, ?, ?, ?, ?, ?, ?)", pools.get(idOf(member.get("POOL_ID"))),
+                     people.get(idOf(member.get("PERSON_ID"))), pools.get(idOf(member.get("MEMBER_POOL_ID"))),
+-                    member.get("SHARE"), member.get("FROM_DATE"), member.get("TO_DATE"));
++                    member.get("SHARE"), member.get("FROM_DATE"), member.get("TO_DATE"), member.get("MADE_ON"));
+         }
+ 
+         // Crews, then their members: people of the clone.
+@@ -154,16 +154,17 @@ public class SheetCloneService {
+             if (!people.containsKey(idOf(crew.get("LEAD_ID")))) {
+                 continue;
+             }
+-            crews.put(idOf(crew.get("ID")), insert("INSERT INTO crew (sheet_id, name, lead_id) SELECT ?, name, ? FROM crew"
+-                    + " WHERE id = ?", to, people.get(idOf(crew.get("LEAD_ID"))), idOf(crew.get("ID"))));
++            crews.put(idOf(crew.get("ID")), insert("INSERT INTO crew (sheet_id, name, lead_id, made_on)"
++                    + " SELECT ?, name, ?, made_on FROM crew WHERE id = ?", to, people.get(idOf(crew.get("LEAD_ID"))), idOf(crew.get("ID"))));
+         }
+         for (Map<String, Object> member : jdbc.queryForList("SELECT m.* FROM crew_member m JOIN crew c"
+                 + " ON c.id = m.crew_id WHERE c.sheet_id = ? ORDER BY m.id", from)) {
+             if (!crews.containsKey(idOf(member.get("CREW_ID")))) {
+                 continue;
+             }
+-            jdbc.update("INSERT INTO crew_member (crew_id, person_id) VALUES (?, ?)",
+-                    crews.get(idOf(member.get("CREW_ID"))), people.get(idOf(member.get("PERSON_ID"))));
++            jdbc.update("INSERT INTO crew_member (crew_id, person_id, made_on) VALUES (?, ?, ?)",
++                    crews.get(idOf(member.get("CREW_ID"))), people.get(idOf(member.get("PERSON_ID"))),
++                    member.get("MADE_ON"));
+         }
+ 
+         // Claims, person by person in the order they were listed, unnumbered, unbound and unlocked;
+diff --git a/src/main/resources/db/migration/V105__pool_made_on.sql b/src/main/resources/db/migration/V105__pool_made_on.sql
+new file mode 100644
+index 000000000..488f86860
+--- /dev/null
++++ b/src/main/resources/db/migration/V105__pool_made_on.sql
+@@ -0,0 +1,6 @@
++-- The sheet's today when each pool, crew and membership was added, so a pool's cuts can be read back
++-- as they stood at the end of a past day; null for one added before this was kept (it always stood).
++ALTER TABLE pool ADD COLUMN made_on DATE;
++ALTER TABLE pool_member ADD COLUMN made_on DATE;
++ALTER TABLE crew ADD COLUMN made_on DATE;
++ALTER TABLE crew_member ADD COLUMN made_on DATE;
