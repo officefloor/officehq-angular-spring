@@ -197,6 +197,11 @@ public class History {
                 sheetId);
     }
 
+    /** Forget every kept state of a period that is removed. */
+    public void periodRemoved(Long periodId) {
+        jdbc.update("DELETE FROM period_history WHERE period_id = ?", periodId);
+    }
+
     /** Figures by person id as person-id=figure pairs separated by commas. */
     private static String pairs(Map<Long, BigDecimal> figures) {
         return String.join(",", figures.entrySet().stream()

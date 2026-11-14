@@ -167,6 +167,15 @@ public class PeriodController {
         return new GenerateView(service.rollover(sheetId.trim(), SignedInUser.decode(user), request.year()));
     }
 
+    /** Undo the sheet's last rollover, removing the periods it generated and taking back the openings it
+     *  set; only the steward who made it may, on the day it was made. */
+    @PostMapping("/rollover/undo")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void undoRollover(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        service.undoRollover(sheetId.trim(), SignedInUser.decode(user));
+    }
+
     /** A calendar year to generate the quarterly periods of. */
     public record GenerateQuartersRequest(@NotNull @Min(1) @Max(9999) Integer year) {
     }

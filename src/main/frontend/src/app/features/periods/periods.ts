@@ -133,6 +133,17 @@ export class PeriodStore {
     return result.made;
   }
 
+  /** Undo the last rollover on the active sheet: the periods it generated are removed and the
+   *  openings it set taken back; the server refuses anyone but the steward who made it, a later day,
+   *  or a generated period a claim belongs to. */
+  async undoRollover(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const load = this.session.loads();
+    await firstValueFrom(this.http.post<void>(`/api/sheets/${encodeURIComponent(sheet)}/periods/rollover/undo`, {}));
+    if (this.session.sheetId() === sheet) await this.read(sheet, load);
+  }
+
   /** Generate the four calendar quarters of a year, <yyyy>-Q1 to <yyyy>-Q4, on the active sheet,
    *  leaving out quarters whose name is taken or whose days overlap a period. Resolves to how many
    *  were made. */
@@ -336,6 +347,7 @@ export class PeriodStore {
           (input)="rolloverYear.set(value($event)); rolloverError.set(null)"
         />
         <button type="submit" data-testid="rollover">Roll over</button>
+        <button type="button" data-testid="rollover-undo" (click)="undoRollover()">Undo last rollover</button>
         @if (rolledOver() !== null) {
           Made <strong data-testid="rollover-made">{{ rolledOver() }}</strong>
         }
@@ -536,6 +548,23 @@ export class Periods {
       this.rolledOver.set(await this.store.rollover(Number(year)));
     } catch {
       this.rolloverError.set(`FY${year} could not be rolled over: only a steward may, and the year needs periods.`);
+    } finally {
+      this.rollingOver.set(false);
+    }
+  }
+
+  /** Undo the last rollover; a refusal shows the rollover error. */
+  protected async undoRollover(): Promise<void> {
+    if (this.rollingOver()) return;
+    this.rolloverError.set(null);
+    this.rollingOver.set(true);
+    try {
+      await this.store.undoRollover();
+    } catch {
+      this.rolloverError.set(
+        'The last rollover could not be undone: only the steward who made it may, on the same day, ' +
+          'and no claim may belong to a period it generated.',
+      );
     } finally {
       this.rollingOver.set(false);
     }
