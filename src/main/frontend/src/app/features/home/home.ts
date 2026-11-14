@@ -2,12 +2,13 @@ import { Component, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
 import { AuditViewer } from '../audit/audit-viewer';
 import { People } from '../people/people';
+import { TreeSearch } from '../search/tree-search';
 import { SettingStore } from '../settings/settings';
 
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [AuditViewer, People],
+  imports: [AuditViewer, People, TreeSearch],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -76,6 +77,7 @@ import { SettingStore } from '../settings/settings';
           <p role="alert" data-testid="asof-error">{{ error }}</p>
         }
         <app-people />
+        <app-tree-search />
         <app-audit-viewer />
       } @else {
         <p data-testid="home-empty">No sheet loaded.</p>

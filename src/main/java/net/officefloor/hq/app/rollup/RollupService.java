@@ -145,6 +145,14 @@ public class RollupService {
         return new Headline(rollup.people().size(), rollup.dueTotal(), rollup.overdueTotal());
     }
 
+    /** Each person's due-total on the sheet as it shows it now ("n/a" for none), by person id in list order. */
+    @Transactional(readOnly = true)
+    public Map<Long, String> dueTotals(String sheetId) {
+        Map<Long, String> dues = new LinkedHashMap<>();
+        rollup(sheetId).people().forEach((personId, figures) -> dues.put(personId, text(figures.due())));
+        return dues;
+    }
+
     /** Record in the audit each person's due-total as it stands now, in list order: the figures of
      *  the day the sheet's today is about to leave; each is kept for the person with that day. */
     public void snapshot(String sheetId, String user) {
