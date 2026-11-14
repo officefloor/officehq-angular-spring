@@ -1,0 +1,218 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 59676f959..e014a2298 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -372,6 +372,14 @@ const NUMBER = /^\S+$/;
+           <button type="button" data-testid="claim-review" [attr.aria-label]="'Review claim ' + c.id" (click)="act(c, 'review')">
+             Review
+           </button>
++          <label [for]="'claim-settle-date-' + c.id">Settle as of</label>
++          <input
++            [id]="'claim-settle-date-' + c.id"
++            type="date"
++            data-testid="claim-settle-date"
++            [value]="settleDates()[c.id] ?? ''"
++            (input)="setSettleDate(c.id, value($event))"
++          />
+           <button type="button" data-testid="claim-settle" [attr.aria-label]="'Settle claim ' + c.id" (click)="act(c, 'settle')">
+             Settle
+           </button>
+@@ -643,6 +651,9 @@ export class PersonClaims {
+   /** The proof kind chosen on each claim's row, by claim id (receipt, photo, or blank for none chosen). */
+   protected readonly proofKindChoice = signal<Record<number, string>>({});
+ 
++  /** The date typed on each claim's row to settle it as of, by claim id (blank: as of now). */
++  protected readonly settleDates = signal<Record<number, string>>({});
++
+   /** The defer-until date typed on each claim's row, by claim id. */
+   protected readonly deferDates = signal<Record<number, string>>({});
+ 
+@@ -852,6 +863,11 @@ export class PersonClaims {
+     if (this.rowError()?.id === id) this.rowError.set(null);
+   }
+ 
++  protected setSettleDate(id: number, date: string): void {
++    this.settleDates.update((dates) => ({ ...dates, [id]: date }));
++    if (this.rowError()?.id === id) this.rowError.set(null);
++  }
++
+   protected setDeferDate(id: number, date: string): void {
+     this.deferDates.update((dates) => ({ ...dates, [id]: date }));
+     if (this.rowError()?.id === id) this.rowError.set(null);
+@@ -1293,12 +1309,21 @@ export class PersonClaims {
+       this.rowError.set({ id: claim.id, message: 'Choose the reason the claim is voided.' });
+       return;
+     }
++    const settleOn = (this.settleDates()[claim.id] ?? '').trim();
++    // A settle date is used for this settle only: it never carries into the next one.
++    if (action === 'settle') this.setSettleDate(claim.id, '');
+     const url =
+       `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/${action}`;
+     try {
+       const saved = await firstValueFrom(this.http.post<Claim>(
+           url,
+-          action === 'reject' ? { reason } : action === 'void' ? { reason: voidReason || null } : null,
++          action === 'reject'
++            ? { reason }
++            : action === 'void'
++              ? { reason: voidReason || null }
++              : action === 'settle' && settleOn !== ''
++                ? { on: settleOn }
++                : null,
+         ),
+       );
+       if (this.session.sheetId() !== sheet) return;
+@@ -1309,7 +1334,9 @@ export class PersonClaims {
+       this.rowError.set({
+         id: claim.id,
+         message:
+-          forbidden && action === 'settle'
++          !forbidden && action === 'settle' && settleOn !== ''
++            ? `The claim could not be settled as of ${settleOn}: the date must be on or before the sheet's today and the claim must have existed then, and its status must allow it.`
++            : forbidden && action === 'settle'
+             ? 'The claim could not be settled: whoever opened it cannot settle it, and your role must be allowed to settle.'
+             : !forbidden && (action === 'settle' || action === 'approve')
+               ? `The claim could not be ${PAST[action]}: one due above the proof threshold needs a proof first, and its status must allow it.`
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index d3f033b7b..6a099c07c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -115,6 +115,10 @@ public class ClaimController {
+     public record DeferRequest(@NotNull LocalDate until) {
+     }
+ 
++    /** The date a claim is settled as of, on or before the sheet's today; absent for now. */
++    public record SettleRequest(LocalDate on) {
++    }
++
+     /** The reason a claim is voided with, chosen from the sheet's list; blank or absent for none. */
+     public record VoidRequest(@Size(max = 255) String reason) {
+     }
+@@ -308,11 +312,16 @@ public class ClaimController {
+     }
+ 
+     /** Settle an OPEN claim; the user who opened it cannot. A clerk settling one whose due is above
+-     *  the clerk limit leaves it PENDING a steward's approval. */
++     *  the clerk limit leaves it PENDING a steward's approval. With a date, the due frozen is the
++     *  claim's due as it stood at the end of that day. */
+     @PostMapping("/people/{personId}/claims/{id}/settle")
+     public ClaimView settle(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+-            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+-        return changeStatus(sheetId, user, personId, id, ClaimStatus.SETTLED);
++            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
++            @RequestBody(required = false) SettleRequest request) {
++        String sheet = sheetId.trim();
++        String by = SignedInUser.decode(user);
++        LocalDate on = request == null ? null : request.on();
++        return view(sheet, rollups.track(sheet, by, () -> service.settle(sheet, by, personId, id, on)));
+     }
+ 
+     /** Settle the selected claims that can be settled, in list order, each by the rules of settling
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 69b5d16a3..bdcf8c7ab 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
+ import java.util.stream.Stream;
+ import java.util.NoSuchElementException;
+ import java.util.Optional;
++import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.holiday.HolidayService;
+ import net.officefloor.hq.app.person.Person;
+@@ -67,12 +68,14 @@ public class ClaimService {
+     private final PersonRetirementRepository retirements;
+     private final HolidayService holidays;
+     private final VoidReasonService voidReasons;
++    private final History history;
+     private final Audit audit;
+ 
+     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RateService rates,
+             PersonGradeService grades, SheetService sheets, PeriodRepository periods, SettingService settings, PersonWatchRepository watches,
+             HolidayService holidays, VoidReasonService voidReasons, ClaimCommentRepository comments, PersonRetirementRepository retirements,
+-            ClaimLineRepository lines, PersonTermsService personTerms, Audit audit) {
++            ClaimLineRepository lines, PersonTermsService personTerms, History history, Audit audit) {
++        this.history = history;
+         this.personTerms = personTerms;
+         this.lines = lines;
+         this.retirements = retirements;
+@@ -338,6 +341,15 @@ public class ClaimService {
+         refuseUnproved(sheetId, person, claim, dueOf(sheetId, person, claim));
+     }
+ 
++    /** Settle a claim as of a date on or before the sheet's today (null: as of now), by the rules of
++     *  settling it: the due frozen is the claim's due as it stood at the end of that day, that day
++     *  standing in for the sheet's today, and CLAIM_SETTLED ends with on=<date>. A date after the
++     *  sheet's today, or one the claim had not been added by, is refused. */
++    @Transactional
++    public Claim settle(String sheetId, String user, Long personId, Long id, LocalDate on) {
++        return changeStatus(sheetId, user, personId, id, ClaimStatus.SETTLED, null, false, on);
++    }
++
+     /** Settle a claim just split off another for the user, as settling it would, save that the
+      *  four-eyes rules and the proof rule were judged on the claim it was split from. */
+     @Transactional
+@@ -347,6 +359,11 @@ public class ClaimService {
+ 
+     private Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to,
+             String voidReason, boolean judgedOnOriginal) {
++        return changeStatus(sheetId, user, personId, id, to, voidReason, judgedOnOriginal, null);
++    }
++
++    private Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to,
++            String voidReason, boolean judgedOnOriginal, LocalDate settledOn) {
+         Person person = person(sheetId, personId);
+         // Lock the sheet first, so a claim opened at the same moment elsewhere waits and the claim
+         // read below is its latest state.
+@@ -385,7 +402,7 @@ public class ClaimService {
+         }
+         // Taken while the claim is still OPEN, so a settled due freezes in the late charge it has
+         // gathered by then.
+-        BigDecimal due = to == ClaimStatus.SETTLED ? dueOf(sheetId, person, claim) : null;
++        BigDecimal due = to == ClaimStatus.SETTLED ? settleDueOf(sheetId, person, claim, settledOn) : null;
+         if (to == ClaimStatus.SETTLED && !judgedOnOriginal) {
+             refuseUnproved(sheetId, person, claim, due);
+         }
+@@ -428,6 +445,9 @@ public class ClaimService {
+         String line = line(event, sheetId, user, person, saved, saved.getNumber());
+         if (to == ClaimStatus.SETTLED) {
+             line += " due=" + settledDueText(saved);
++            if (settledOn != null) {
++                line += " on=" + settledOn;
++            }
+         } else if (reversing) {
+             line += " reversed=" + settledDueText(saved);
+         }
+@@ -441,6 +461,20 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /** The due a claim is settled at: as it stands now, or (a date given) as it stood at the end of
++     *  that day; a date after the sheet's today, or one the claim had not been added by, is refused. */
++    private BigDecimal settleDueOf(String sheetId, Person person, Claim claim, LocalDate on) {
++        if (on == null) {
++            return dueOf(sheetId, person, claim);
++        }
++        if (on.isAfter(sheets.today(sheetId))) {
++            throw new StatusChangeRefusedException(claim.getStatus(), ClaimStatus.SETTLED);
++        }
++        Claim then = history.claim(claim.getId(), on)
++                .orElseThrow(() -> new StatusChangeRefusedException(claim.getStatus(), ClaimStatus.SETTLED));
++        return dueOf(sheetId, person, then, on);
++    }
++
+     /** Delete a DRAFT claim: it is DELETED, counts nowhere and cannot be edited, opened or voided;
+      *  its status log gains a DELETED line and CLAIM_DELETED is written. Any other claim, one dated in
+      *  a closed period, or one another user's editor locks, is refused. */
+diff --git a/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java
+index ec901f5f3..a94a0057b 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java
+@@ -32,6 +32,7 @@ public class ViewerGuard implements HandlerInterceptor {
+             "/api/sheets/{sheetId}/load",
+             "/api/sheets/{sheetId}/claims/open",
+             "/api/sheets/{sheetId}/claims/settle",
++            "/api/sheets/{sheetId}/claims/void",
+             "/api/sheets/{sheetId}/claims/reassign",
+             "/api/sheets/{sheetId}/people/grade",
+             "/api/sheets/{sheetId}/people/retire",
