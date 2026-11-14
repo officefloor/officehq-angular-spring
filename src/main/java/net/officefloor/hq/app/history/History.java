@@ -151,8 +151,8 @@ public class History {
         jdbc.update("INSERT INTO person_grade_history (sheet_id, person_id, grade, from_date, made_on)"
                 + " SELECT g.sheet_id, g.person_id, g.grade, g.from_date, s.today"
                 + " FROM person_grade g JOIN sheet s ON s.id = g.sheet_id WHERE g.sheet_id = ? ORDER BY g.id", sheetId);
-        jdbc.update("INSERT INTO sheet_setting_value_history (sheet_id, setting_key, from_date, setting_value, made_on)"
-                + " SELECT v.sheet_id, v.setting_key, v.from_date, v.setting_value, s.today"
+        jdbc.update("INSERT INTO sheet_setting_value_history (sheet_id, setting_key, from_date, setting_value,"
+                + " setting_text, made_on) SELECT v.sheet_id, v.setting_key, v.from_date, v.setting_value, v.setting_text, s.today"
                 + " FROM sheet_setting_value v JOIN sheet s ON s.id = v.sheet_id WHERE v.sheet_id = ? ORDER BY v.id",
                 sheetId);
         jdbc.update("INSERT INTO period_history (period_id, sheet_id, name, from_date, to_date, closed, soft_closed,"
@@ -257,7 +257,7 @@ public class History {
         jdbc.query("SELECT * FROM sheet_setting_value_history WHERE sheet_id = ? AND setting_key = ? AND made_on <= ?"
                         + " ORDER BY id",
                 (rs, n) -> new SettingValue(sheetId, key, rs.getObject("from_date", LocalDate.class),
-                        rs.getBigDecimal("setting_value")),
+                        rs.getBigDecimal("setting_value"), rs.getString("setting_text")),
                 sheetId, key, day).forEach(value -> byFrom.put(value.getFrom(), value));
         return byFrom.values().stream().filter(value -> !value.getFrom().isAfter(on))
                 .max((a, b) -> a.getFrom().compareTo(b.getFrom()));
@@ -269,7 +269,8 @@ public class History {
         Map<String, Map<LocalDate, SettingValue>> byKey = new TreeMap<>();
         jdbc.query("SELECT * FROM sheet_setting_value_history WHERE sheet_id = ? AND made_on <= ? ORDER BY id",
                 (rs, n) -> new SettingValue(sheetId, rs.getString("setting_key"),
-                        rs.getObject("from_date", LocalDate.class), rs.getBigDecimal("setting_value")),
+                        rs.getObject("from_date", LocalDate.class), rs.getBigDecimal("setting_value"),
+                        rs.getString("setting_text")),
                 sheetId, day).forEach(value -> byKey.computeIfAbsent(value.getKey(), k -> new TreeMap<>())
                         .put(value.getFrom(), value));
         Map<String, List<SettingValue>> dated = new TreeMap<>();

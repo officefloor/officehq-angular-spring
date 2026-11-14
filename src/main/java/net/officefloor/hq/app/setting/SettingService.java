@@ -428,8 +428,12 @@ public class SettingService {
         return sheets.load(sheetId).getGraceDays();
     }
 
-    /** How a claim dated on the given date rounds: half up before the policy date, half to even on or
-     *  after it. */
+    /** The rounding modes a sheet may set, by the word that names them. */
+    private static final Map<String, RoundingMode> ROUNDING_MODES = Map.of(
+            "half-up", RoundingMode.HALF_UP, "half-even", RoundingMode.HALF_EVEN);
+
+    /** How a claim dated on the given date rounds: by the rounding mode in force on it when one is,
+     *  else half up before the policy date, half to even on or after it. */
     public RoundingMode roundingOn(String sheetId, LocalDate date) {
         return roundingOn(sheetId, date, null);
     }
@@ -437,6 +441,11 @@ public class SettingService {
     /** How a claim dated on the given date rounds by the policy date as it stood set at the end of a
      *  day, the day standing in for the sheet's today (null: as it stands now). */
     public RoundingMode roundingOn(String sheetId, LocalDate date, LocalDate asOf) {
+        RoundingMode mode = inForce(sheetId, "rounding", date, asOf).map(SettingValue::getText)
+                .map(ROUNDING_MODES::get).orElse(null);
+        if (mode != null) {
+            return mode;
+        }
         LocalDate policy = asOf == null ? policyDate(sheetId) : history.policyDate(sheetId, asOf);
         if (policy == null) {
             policy = asOf;
@@ -525,6 +534,27 @@ public class SettingService {
     @Transactional
     public SettingValue setLatePct(String sheetId, String by, BigDecimal latePct, LocalDate from) {
         return record(sheetId, by, "late-pct", latePct.setScale(2, RoundingMode.UNNECESSARY), from);
+    }
+
+    /** Record the sheet's rounding mode (half-up or half-even) from a date (null for the sheet's today);
+     *  null records none (the policy date decides); any other is refused. */
+    @Transactional
+    public SettingValue setRounding(String sheetId, String by, String mode, LocalDate from) {
+        if (mode != null && !ROUNDING_MODES.containsKey(mode)) {
+            throw new IllegalArgumentException("No rounding mode " + mode);
+        }
+        sheets.lock(sheetId);
+        LocalDate on = from != null ? from : sheets.today(sheetId);
+        SettingValue saved = values.findBySheetIdAndKeyAndFrom(sheetId, "rounding", on)
+                .map(existing -> {
+                    existing.setText(mode);
+                    return existing;
+                })
+                .orElseGet(() -> new SettingValue(sheetId, "rounding", on, null, mode));
+        saved = values.saveAndFlush(saved);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=rounding value="
+                + (mode != null ? mode : "") + (from != null ? " from=" + from : ""));
+        return saved;
     }
 
     /** Record a dated setting's value from a date, the sheet's today when none is given, keeping the

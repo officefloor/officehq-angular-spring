@@ -49,7 +49,8 @@ public class SettingController {
      *  date (blank for the sheet's today) and the period numbering from (blank for off) and the grace days
      *  (null for off) and the entry date (blank for off), and the grades'
      *  own terms by grade (a grade not listed takes the sheet's terms); and every value recorded for the
-     *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold, note-threshold); and
+     *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold, note-threshold,
+     *  rounding); and
      *  the permission matrix, the roles each action allows by action (blank for the standing rule). */
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
             String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
@@ -59,10 +60,11 @@ public class SettingController {
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
-     *  terms, null for no clerk limit, cap, proof threshold or note threshold. */
+     *  terms, half-up or half-even for the rounding mode, null for no clerk limit, cap, proof threshold,
+     *  note threshold or rounding mode. */
     public record DatedView(String from, String value) {
         static DatedView of(SettingValue v) {
-            String value = v.getValue() == null ? null
+            String value = v.getText() != null ? v.getText() : v.getValue() == null ? null
                     : SettingService.wholeDays(v.getKey()) ? String.valueOf(v.getValue().intValue())
                     : v.getValue().toPlainString();
             return new DatedView(v.getFrom().toString(), value);
@@ -120,6 +122,10 @@ public class SettingController {
 
     /** The roles that may take an action, comma separated (clerk, steward); blank keeps the standing rule. */
     public record PermissionRequest(@Size(max = 200) String value) {
+    }
+
+    /** A rounding mode, half-up or half-even; null or blank records none. */
+    public record RoundingRequest(@Size(max = 20) String value, LocalDate from) {
     }
 
     /** A policy date; null leaves it blank (the sheet's today). */
@@ -332,6 +338,19 @@ public class SettingController {
                         .map(label -> Role.of(label).orElseThrow(() -> new IllegalArgumentException("No role " + label)))
                         .distinct().toList();
         service.setPermission(sheet, SignedInUser.decode(user), permission, allowed);
+        return view(sheet);
+    }
+
+    /** Record the sheet's rounding mode; one other than half-up or half-even is refused. The figures it
+     *  moves are followed in the audit. */
+    @PutMapping("/rounding")
+    public SettingsView setRounding(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated RoundingRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        String mode = request.value() == null || request.value().isBlank() ? null : request.value().trim();
+        rollups.track(sheet, by, () -> service.setRounding(sheet, by, mode, request.from()));
         return view(sheet);
     }
 

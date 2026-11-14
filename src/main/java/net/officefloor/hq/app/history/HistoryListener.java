@@ -32,7 +32,8 @@ public class HistoryListener {
             + " FROM person_grade g JOIN sheet s ON s.id = g.sheet_id WHERE g.id = ?";
 
     private static final String SETTING = "INSERT INTO sheet_setting_value_history (sheet_id, setting_key, from_date,"
-            + " setting_value, made_on) SELECT v.sheet_id, v.setting_key, v.from_date, v.setting_value, s.today"
+            + " setting_value, setting_text, made_on) SELECT v.sheet_id, v.setting_key, v.from_date, v.setting_value,"
+            + " v.setting_text, s.today"
             + " FROM sheet_setting_value v JOIN sheet s ON s.id = v.sheet_id WHERE v.id = ?";
 
     static final String PERSON = "INSERT INTO person_history (person_id, sheet_id, name, terms, retired_from,"

@@ -67,7 +67,7 @@ interface SettingsView {
   /** The grades' own terms in whole days, by grade; a grade not listed takes the sheet's terms. */
   gradeTerms: Record<string, number>;
   /** Every value recorded for the dated settings, by key (floor, late-pct, terms, terms-<grade>,
-   *  clerk-limit, cap, proof-threshold), each list by from-date. */
+   *  clerk-limit, cap, proof-threshold, rounding), each list by from-date. */
   dated: Record<string, DatedValue[]>;
   /** The permission matrix: the roles each action allows, comma separated, by action; blank keeps
    *  the standing rule. */
@@ -88,6 +88,9 @@ const FLOOR = '1.00';
 
 /** The terms a sheet starts with, in days. */
 const TERMS = 14;
+
+/** The rounding modes a sheet may set: how a claim's live figures round. */
+const ROUNDING_MODES = ['half-up', 'half-even'];
 
 /** The late percent a sheet starts with. */
 const LATE_PCT = '0.00';
@@ -138,6 +141,9 @@ export class SettingStore {
   readonly proofThreshold = computed(() => this.onToday('proof-threshold') ?? null);
   /** The note threshold in force on the sheet's today; null when there is none. */
   readonly noteThreshold = computed(() => this.onToday('note-threshold') ?? null);
+  /** The rounding mode in force on the sheet's today (half-up or half-even); null when there is none
+   *  (the policy date decides). */
+  readonly rounding = computed(() => this.onToday('rounding') ?? null);
   /** The terms in force on the sheet's today. */
   readonly terms = computed(() => Number(this.onToday('terms') ?? TERMS));
   /** The late percent in force on the sheet's today. */
@@ -156,6 +162,12 @@ export class SettingStore {
   readonly floorOn = computed(() => {
     const recorded = this.dated()['floor'];
     return (date: string) => valueOn(recorded, date) ?? FLOOR;
+  });
+  /** The rounding mode in force on a date (half-up or half-even): how a claim of that date rounds its
+   *  live figures; null when there is none (the policy date decides). */
+  readonly roundingOn = computed(() => {
+    const recorded = this.dated()['rounding'];
+    return (date: string) => valueOn(recorded, date) ?? null;
   });
   /** The late percent in force on a date: what an overdue claim of that date gains. */
   readonly latePctOn = computed(() => {
@@ -288,6 +300,18 @@ export class SettingStore {
     if (!sheet) throw new Error('No sheet loaded.');
     const saved = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/note-threshold`, { value, from }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
+  /** Record the active sheet's rounding mode from a date (null for the sheet's today); null records none.
+   *  The server refuses a mode other than half-up or half-even. */
+  async setRounding(value: string | null, from: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/rounding`, { value, from }),
     );
     if (this.session.sheetId() !== sheet) return;
     this.show(saved);
@@ -509,6 +533,8 @@ export class SettingStore {
 // the cap, the most a person's due-total can be, the proof threshold, above which a claim's due (by the threshold
 // in force on its date) cannot be settled or approved until the claim has a proof, the note threshold, above
 // which a claim's due (by the threshold in force on its date) cannot be opened while its note is empty,
+// the rounding mode (half-up or half-even), by which a claim whose date has one in force rounds its live
+// figures (with none in force, the policy date decides),
 // the terms, the days after its date a claim is due by (fixed when the claim is added), and each
 // grade's own terms, which a claim of that grade takes instead, and the late percent, what an overdue claim's
 // due gains of its figure for every full 30 days it is overdue, and the policy date, before which a
@@ -520,7 +546,7 @@ export class SettingStore {
 // the roles that may open, settle, void, reassign, close and reopen (blank keeps the standing rule).
 // The settings that carry a figure are dated: each is saved from the from-date typed beside it (blank
 // for the sheet's today), keeping the values recorded before, and the value in force on the sheet's
-// today is shown for each. Saving sends only the settings typed into since the last save; the clerk limit, the cap, the proof and note thresholds, the policy date,
+// today is shown for each. Saving sends only the settings typed into since the last save; the clerk limit, the cap, the proof and note thresholds, the rounding mode, the policy date,
 // the period numbering from, the entry date and the grace days count as typed into once focused, as a blank one (none, or the sheet's today) is a value of its own.
 @Component({
   selector: 'app-settings',
@@ -690,6 +716,22 @@ export class SettingStore {
           placeholder="yyyy-mm-dd"
           [value]="noteThresholdFrom()"
           (input)="noteThresholdFrom.set(value($event)); settingsError.set(null)"
+        />
+        <label for="setting-rounding">Rounding mode (half-up or half-even)</label>
+        <input
+          id="setting-rounding"
+          data-testid="setting-rounding"
+          [value]="rounding()"
+          (focus)="roundingTyped.set(true)"
+          (input)="rounding.set(value($event)); roundingTyped.set(true); settingsError.set(null)"
+        />
+        <label for="setting-rounding-from">Rounding mode from</label>
+        <input
+          id="setting-rounding-from"
+          data-testid="setting-rounding-from"
+          placeholder="yyyy-mm-dd"
+          [value]="roundingFrom()"
+          (input)="roundingFrom.set(value($event)); settingsError.set(null)"
         />
         <label for="setting-terms">Terms (business days)</label>
         <input
@@ -900,6 +942,13 @@ export class SettingStore {
         }
       </p>
       <p>
+        Rounding mode in force:
+        <strong data-testid="setting-rounding-current">{{ store.rounding() ?? '' }}</strong>
+        @if (store.rounding() === null) {
+          <span>none (the policy date decides)</span>
+        }
+      </p>
+      <p>
         Terms in force:
         <strong data-testid="setting-terms-current">{{ store.terms() }}</strong> days
       </p>
@@ -1029,6 +1078,9 @@ export class Settings {
   protected readonly noteThreshold = signal('');
   protected readonly noteThresholdTyped = signal(false);
   protected readonly noteThresholdFrom = signal('');
+  protected readonly rounding = signal('');
+  protected readonly roundingTyped = signal(false);
+  protected readonly roundingFrom = signal('');
   protected readonly terms = signal('');
   protected readonly termsTyped = signal(false);
   protected readonly termsFrom = signal('');
@@ -1179,6 +1231,8 @@ export class Settings {
     const saveThreshold = this.proofThresholdTyped();
     const noteThreshold = this.noteThreshold().trim();
     const saveNoteThreshold = this.noteThresholdTyped();
+    const rounding = this.rounding().trim();
+    const saveRounding = this.roundingTyped();
     const terms = this.terms().trim();
     const saveTerms = this.termsTyped();
     const gradeTerms = Object.entries(this.gradeTerms()).map(([grade, days]) => [grade, days.trim()] as const);
@@ -1210,6 +1264,7 @@ export class Settings {
     const capFrom = this.capFrom().trim();
     const thresholdFrom = this.proofThresholdFrom().trim();
     const noteThresholdFrom = this.noteThresholdFrom().trim();
+    const roundingFrom = this.roundingFrom().trim();
     const termsFrom = this.termsFrom().trim();
     const latePctFrom = this.latePctFrom().trim();
     const gradeTermsFrom: Record<string, string> = Object.fromEntries(
@@ -1227,6 +1282,7 @@ export class Settings {
       [saveCap, capFrom, 'the cap'],
       [saveThreshold, thresholdFrom, 'the proof threshold'],
       [saveNoteThreshold, noteThresholdFrom, 'the note threshold'],
+      [saveRounding, roundingFrom, 'the rounding mode'],
       [saveTerms, termsFrom, 'the terms'],
       ...gradeTerms.map(([grade]) => [true, gradeTermsFrom[grade] ?? '', `the terms for grade ${grade}`] as [boolean, string, string]),
       ...gradeThreshold.map(([grade]) => [true, gradeThresholdFrom[grade] ?? '', `the proof threshold for grade ${grade}`] as [boolean, string, string]),
@@ -1256,6 +1312,10 @@ export class Settings {
     }
     if (saveNoteThreshold && noteThreshold !== '' && !AMOUNT.test(noteThreshold)) {
       this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
+      return;
+    }
+    if (saveRounding && rounding !== '' && !ROUNDING_MODES.includes(rounding)) {
+      this.settingsError.set('Type a rounding mode of half-up or half-even, or leave it blank for none.');
       return;
     }
     if (saveTerms && !DAYS.test(terms)) {
@@ -1320,6 +1380,7 @@ export class Settings {
     this.capTyped.set(false);
     this.proofThresholdTyped.set(false);
     this.noteThresholdTyped.set(false);
+    this.roundingTyped.set(false);
     this.termsTyped.set(false);
     this.gradeTerms.set({});
     this.gradeProofThreshold.set({});
@@ -1346,6 +1407,7 @@ export class Settings {
         if (saveNoteThreshold) {
           await this.store.setNoteThreshold(noteThreshold === '' ? null : noteThreshold, fromOf(noteThresholdFrom));
         }
+        if (saveRounding) await this.store.setRounding(rounding === '' ? null : rounding, fromOf(roundingFrom));
         if (saveTerms) await this.store.setTerms(Number(terms), fromOf(termsFrom));
         for (const [grade, days] of gradeTerms) {
           await this.store.setGradeTerms(grade, Number(days), fromOf(gradeTermsFrom[grade] ?? ''));
@@ -1370,6 +1432,7 @@ export class Settings {
         if (saveCap) this.capTyped.set(true);
         if (saveThreshold) this.proofThresholdTyped.set(true);
         if (saveNoteThreshold) this.noteThresholdTyped.set(true);
+        if (saveRounding) this.roundingTyped.set(true);
         if (saveTerms) this.termsTyped.set(true);
         this.gradeTerms.update((typed) => ({ ...Object.fromEntries(gradeTerms), ...typed }));
         this.gradeProofThreshold.update((typed) => ({ ...Object.fromEntries(gradeThreshold), ...typed }));

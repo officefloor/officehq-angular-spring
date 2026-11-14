@@ -234,11 +234,12 @@ public class PersonService {
         return snapshots.findByPersonIdOrderByIdAsc(personId);
     }
 
-    /** Each person's snapshots on the sheet of days up to the end of a day (null: all), in the order
-     *  they were written, by person id; a person with none is absent. */
+    /** Each person's snapshots on the sheet as they stood at the end of a day (null: all), in the order
+     *  they were written, by person id; a person with none is absent. A snapshot is written as the
+     *  sheet's today leaves its day, so only those of days before it had been written by then. */
     public Map<Long, List<PersonSnapshot>> snapshots(String sheetId, LocalDate asOf) {
         return snapshots.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .filter(s -> asOf == null || !s.getDay().isAfter(asOf))
+                .filter(s -> asOf == null || s.getDay().isBefore(asOf))
                 .collect(Collectors.groupingBy(PersonSnapshot::getPersonId));
     }
 

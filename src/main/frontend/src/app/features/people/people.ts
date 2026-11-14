@@ -506,6 +506,7 @@ interface StatementTaken {
                   [floor]="floor()"
                   [latePct]="settings.latePctOn()"
                   [policyDate]="settings.policyDate()"
+                  [roundingOn]="settings.roundingOn()"
                   [graceOn]="settings.graceOn()"
                   [selectedIds]="selectedClaims()"
                   [people]="people()"
@@ -769,6 +770,7 @@ export class People {
     pct: this.settings.latePctOn(),
     today: this.session.today(),
     policyDate: this.settings.policyDate(),
+    rounding: this.settings.roundingOn(),
     grace: this.graceOf(),
   }));
   /** A claim's grace days: those in force on its date for its person's grade in force then. */

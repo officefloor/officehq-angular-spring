@@ -120,17 +120,22 @@ export function cents(amount: string): number {
 
 /** What a late charge works from: the sheet's late percent (two decimals) in force on a date, its today and
  *  a claim's grace days (see graceOn in the settings); and what a claim's figures round by: the sheet's
- *  policy date (blank for its today). */
+ *  rounding mode in force on a date (half-up or half-even; null for none), else its policy date (blank for
+ *  its today). */
 export interface Late {
   pct: (date: string) => string;
   today: string | null;
   policyDate: string;
+  rounding: (date: string) => string | null;
   grace: (claim: Claim) => number;
 }
 
-/** Whether a claim's live figures round half up: it rounds by a date before the sheet's policy date
- *  (its today when the policy date is blank); otherwise they round half to even. */
+/** Whether a claim's live figures round half up: by the rounding mode in force on the date it rounds by
+ *  when one is; else it rounds by a date before the sheet's policy date (its today when the policy date
+ *  is blank); otherwise they round half to even. */
 function roundsHalfUp(claim: Claim, late: Late): boolean {
+  const mode = late.rounding(claim.roundsBy);
+  if (mode !== null) return mode === 'half-up';
   const policy = late.policyDate !== '' ? late.policyDate : late.today;
   return policy !== null && claim.roundsBy < policy;
 }
@@ -519,6 +524,8 @@ export class PersonClaims {
   readonly latePct = input.required<(date: string) => string>();
   /** The sheet's policy date (yyyy-mm-dd); blank for its today. */
   readonly policyDate = input.required<string>();
+  /** The sheet's rounding mode in force on a date (half-up or half-even); null for none. */
+  readonly roundingOn = input.required<(date: string) => string | null>();
   /** The grace days in force on a date for a grade (0 for none). */
   readonly graceOn = input.required<(grade: string | null, date: string) => number>();
   /** The ids of the claims selected to act on together. */
@@ -612,6 +619,7 @@ export class PersonClaims {
       pct: this.latePct(),
       today: this.session.today(),
       policyDate: this.policyDate(),
+      rounding: this.roundingOn(),
       grace: (c: Claim) => this.graceOf(c),
     };
     const due = claimDueCents(claim, this.rates.ofGradeOn(this.grades(), claim.date), this.floor(), late);

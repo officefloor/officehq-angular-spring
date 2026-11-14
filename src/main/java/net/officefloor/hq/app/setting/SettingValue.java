@@ -12,9 +12,9 @@ import java.time.LocalDate;
 import net.officefloor.hq.app.history.HistoryListener;
 
 /** A value recorded for one of a sheet's dated settings (floor, late-pct, terms, terms-&lt;grade&gt;,
- *  clerk-limit, cap, proof-threshold, proof-threshold-&lt;grade&gt;, note-threshold): in force from its from-date until the
- *  next one recorded for the key. Null only for the clerk limit, the cap, a proof threshold or the note threshold, where
- *  it means none. */
+ *  clerk-limit, cap, proof-threshold, proof-threshold-&lt;grade&gt;, note-threshold, rounding): in force from its from-date
+ *  until the next one recorded for the key. A figure, but a word (its text) for the rounding mode. Null only for the clerk
+ *  limit, the cap, a proof threshold, the note threshold or the rounding mode, where it means none. */
 @Entity
 @Table(name = "sheet_setting_value")
 @EntityListeners(HistoryListener.class)
@@ -36,6 +36,9 @@ public class SettingValue {
     @Column(name = "setting_value", precision = 12, scale = 2)
     private BigDecimal value;
 
+    @Column(name = "setting_text", length = 20)
+    private String text;
+
     protected SettingValue() {
     }
 
@@ -44,6 +47,11 @@ public class SettingValue {
         this.key = key;
         this.from = from;
         this.value = value;
+    }
+
+    public SettingValue(String sheetId, String key, LocalDate from, BigDecimal value, String text) {
+        this(sheetId, key, from, value);
+        this.text = text;
     }
 
     public Long getId() {
@@ -64,5 +72,13 @@ public class SettingValue {
 
     public void setValue(BigDecimal value) {
         this.value = value;
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public void setText(String text) {
+        this.text = text;
     }
 }

@@ -94,7 +94,7 @@ public class SheetCloneService {
         LocalDate today = jdbc.queryForObject("SELECT today FROM sheet WHERE id = ?", LocalDate.class, to);
 
         // The sheet's own lists: settings, roles, rates, holidays, void reasons, templates and periods.
-        copyAll("sheet_setting_value", "setting_key, from_date, setting_value", from, to);
+        copyAll("sheet_setting_value", "setting_key, from_date, setting_value, setting_text", from, to);
         copyAll("sheet_permission", "action, roles", from, to);
         copyAll("sheet_role", "user_name, role", from, to);
         copyAll("sheet_tag", "tag", from, to);
