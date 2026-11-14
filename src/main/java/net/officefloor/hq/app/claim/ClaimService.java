@@ -54,13 +54,15 @@ public class ClaimService {
     }
 
     /** Add a claim for a person on the sheet; a missing date takes the sheet's today. Refused
-     *  (423) when the date is in a closed period. */
+     *  (423) when the date is in a closed period, and (422) when it is after the person's
+     *  retirement date. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseIfClosed(sheetId, on);
+        refuseIfRetired(person, on);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, noteOf(note)));
         record("CLAIM_ADDED", user, person, claim);
@@ -70,7 +72,8 @@ public class ClaimService {
 
     /** Change a DRAFT claim's amount, date and note; a missing date takes the sheet's today.
      *  Refused (409) once the claim is no longer a DRAFT (an open claim is voided and a new one
-     *  added instead), and (423) when its old or new date is in a closed period. */
+     *  added instead), and (423) when its old or new date is in a closed period, and (422) when the new
+     *  date is after the person's retirement date. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
         Claim claim = claims.findForUpdate(id, sheetId)
@@ -82,13 +85,14 @@ public class ClaimService {
                     "A " + claim.getStatus() + " claim cannot be edited");
         }
         refuseIfClosed(sheetId, on);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        refuseIfRetired(person, on);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setDate(on);
         claim.setNote(noteOf(note));
         claims.flush();
-        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         record("CLAIM_EDITED", user, person, claim);
         rollup.recordChanges(sheetId, user, before);
         return claim;
@@ -172,6 +176,14 @@ public class ClaimService {
     private void refuseIfClosed(String sheetId, LocalDate date) {
         sheets.lock(sheetId);
         periods.refuseIfClosed(sheetId, date);
+    }
+
+    /** Refuse (422) a claim dated after its person's retirement date. */
+    private static void refuseIfRetired(Person person, LocalDate date) {
+        if (person.retiredBefore(date)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "The date is after the person's retirement date");
+        }
     }
 
     /** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do. */

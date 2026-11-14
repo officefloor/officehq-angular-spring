@@ -7,7 +7,7 @@ import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
-import { GRADES, PeopleApi, Person, isStale, personError, statementError } from './people-api';
+import { GRADES, PeopleApi, Person, isStale, personError, retireError, statementError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed and their due-total; the sheet's claimed-total and due-total; and
@@ -50,12 +50,17 @@ import { GRADES, PeopleApi, Person, isStale, personError, statementError } from 
       </form>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <label>
+        <input type="checkbox" data-testid="show-retired" [checked]="session.showRetired()"
+          (change)="session.showRetired.set($any($event.target).checked)" />
+        Show retired
+      </label>
       <table data-testid="people-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
-          @for (p of people(); track p.id) {
+          @for (p of shownPeople(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
@@ -67,6 +72,15 @@ import { GRADES, PeopleApi, Person, isStale, personError, statementError } from 
                 <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
                 <button type="button" data-testid="person-statement" (click)="statement(p)"
                   [attr.aria-label]="'Take statement of ' + p.name">Statement</button>
+              </td>
+              <td>
+                <span data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</span>
+                <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
+                <label [for]="'person-retire-date-' + p.id" class="visually-hidden">Retire {{ p.name }} from</label>
+                <input [id]="'person-retire-date-' + p.id" type="date" data-testid="person-retire-date" #retireDate
+                  (input)="clearRowError(p.id)" />
+                <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
+                  [attr.aria-label]="'Retire ' + p.name">Retire</button>
               </td>
               <td>
                 <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)" [periods]="periods()"
@@ -87,7 +101,7 @@ import { GRADES, PeopleApi, Person, isStale, personError, statementError } from 
   `,
 })
 export class People {
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
   private readonly api = inject(PeopleApi);
   private readonly claimsApi = inject(ClaimsApi);
   private readonly ratesApi = inject(RatesApi);
@@ -95,6 +109,9 @@ export class People {
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
+  /** The people the list shows: retired ones (any with a retirement date) only with "show retired" on. */
+  protected readonly shownPeople = computed(() =>
+    this.session.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null));
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   /** Each person's claims (newest first) and claimed in cents (OPEN and SETTLED claims only), by person id. */
@@ -236,6 +253,23 @@ export class People {
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [p.id]: statementError(e) }));
     }
+  }
+
+  /** Retire a person from a date (blank: the sheet's today); the row then shows them retired. */
+  protected async retire(p: Person, from: string): Promise<void> {
+    this.clearRowError(p.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const retired = await this.api.retire(sheetId, p.id, from.trim());
+      if (this.session.sheetId() === sheetId) this.taken(retired);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: retireError(e) }));
+    }
+  }
+
+  protected clearRowError(id: number): void {
+    this.rowErrors.update(({ [id]: _, ...rest }) => rest);
   }
 
   /** Take in a rate just set, in place of the grade's old one for the same from-date. */

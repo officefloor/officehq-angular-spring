@@ -27,12 +27,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class PersonController {
 
     /** A person as the screen shows them, with their statement count and their last statement's
-     *  due-total (two decimals; null when it was n/a or they have none) and date. */
+     *  due-total (two decimals; null when it was n/a or they have none) and date, and the date
+     *  they are retired from (null while not retired). */
     public record PersonView(long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate) {
+            String statedTotal, LocalDate statementDate, LocalDate retiredFrom) {
         public static PersonView of(Person p, StatementSummary s) {
             return new PersonView(p.getId(), p.getName(), p.getGrade(), p.getVersion(), s.count(),
-                    s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate());
+                    s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
+                    p.getRetiredFrom());
         }
     }
 
@@ -42,6 +44,10 @@ public class PersonController {
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             Long version) {
+    }
+
+    /** A retirement as the row submits it; a missing date takes the sheet's today. */
+    public record RetireForm(LocalDate from) {
     }
 
     private final PersonService service;
@@ -84,6 +90,15 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm body) {
         return view(service.update(sheetId, user.trim(), id, body.version(), body.name(), body.grade()));
+    }
+
+    @PostMapping("/{id}/retire")
+    public PersonView retire(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) RetireForm body) {
+        return view(service.retire(sheetId, user.trim(), id, body == null ? null : body.from()));
     }
 
     private PersonView view(Person p) {

@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.person;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -95,6 +96,20 @@ public class PersonService {
         }
         record("PERSON_EDITED", sheetId, user, person);
         rollup.recordChanges(sheetId, user, before);
+        return person;
+    }
+
+    /** Retire a person from a date (a missing one takes the sheet's today); they count as retired
+     *  at once. Retiring them again moves the date. */
+    @Transactional
+    public Person retire(String sheetId, String user, long id, LocalDate from) {
+        Person person = people.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        LocalDate on = from != null ? from : sheets.today(sheetId);
+        person.setRetiredFrom(on);
+        people.flush();
+        audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " from=" + on);
         return person;
     }
 

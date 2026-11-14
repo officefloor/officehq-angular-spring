@@ -11,6 +11,9 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd): every date decision and default date uses it. */
   readonly today = signal<string | null>(null);
+  /** Whether the people list shows retired people too: off at first, and kept as it is when a
+   *  sheet is loaded. */
+  readonly showRetired = signal(false);
   /** Bumped on every sheet load, so a load of the same id again re-reads what the sheet holds. */
   readonly loads = signal(0);
 

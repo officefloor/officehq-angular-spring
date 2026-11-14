@@ -18,6 +18,8 @@ export interface Person {
   statedTotal: string | null;
   /** The sheet's today when the last statement was taken; null with none. */
   statementDate: string | null;
+  /** The date the person is retired from; null while not retired. Set, they count as retired. */
+  retiredFrom: string | null;
 }
 
 /** A statement just taken: the person as they now show, and all their claims, newest first. */
@@ -63,6 +65,13 @@ export class PeopleApi {
     );
   }
 
+  /** Retire a person from a date; a blank one takes the sheet's today. */
+  retire(sheetId: string, id: number, from: string): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/retire`, { from: from || null }, { headers: this.headers() }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}/people`;
   }
@@ -80,6 +89,12 @@ export function personError(e: unknown): string {
 }
 
 export function statementError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  return 'Something went wrong; try again.';
+}
+
+export function retireError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a date as yyyy-mm-dd.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   return 'Something went wrong; try again.';
 }
