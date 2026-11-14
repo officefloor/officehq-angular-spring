@@ -1,0 +1,64 @@
+{
+  "checkpoint": 229,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp229_grades-editable",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Grades can be added (an entry and a button; GRADE_ADDED grade=<grade>): a code of one to three\ncapital letters not yet a grade; anything else is refused. A new grade appears in every grade\nselect, the summary, the rates and the rate calendar.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nGrades can be added (an entry and a button; GRADE_ADDED grade=<grade>): a code of one to three\ncapital letters not yet a grade; anything else is refused. A new grade appears in every grade\nselect, the summary, the rates and the rate calendar.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c57f8f8164aa087f0171c5a601e716cb3615869a",
+  "reset_sha": "",
+  "preagent_sha": "4ab07ef10ae9d80ce71ce256d7f1a96a37079624",
+  "prev_sha": "4ab07ef10ae9d80ce71ce256d7f1a96a37079624",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.6307188000000006,
+    "input_tokens": 88,
+    "output_tokens": 19918,
+    "cache_read_tokens": 2914794,
+    "cache_creation_tokens": 81131,
+    "num_turns": 45,
+    "duration_ms": 637760,
+    "duration_api_ms": 207114,
+    "model": "claude-opus-5-5",
+    "session_id": "37ec93ff-3b51-4298-89b0-555969759d7b",
+    "stop_reason": "success",
+    "result_text": "You can now add grades, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it works:** the Grades section has a code entry (`grade-add-code`) and an **Add grade** button (`grade-add`). The input is trimmed, so `\" XY \"` is accepted as `XY`. A code must be one to three capital letters and not already a grade. Anything else (`dd`, `ABCD`, `E1`, or a repeat like `D`) shows `grade-error` and saves nothing. A successful add writes `GRADE_ADDED sheet=<id> by=<user> grade=<grade>` to the audit file. The screen checks the code first, and the server checks it again before saving.\n\n**Database:** a new migration, `V123__sheet_grade.sql`, adds a `sheet_grade` table that holds each sheet's added grades in the order they were added. Grade columns were one character wide, so it also widens them to three in `rate`, `rate_history`, `person_grade`, `person_grade_history`, `retired_grade` and `sheet.default_grade`.\n\n**Server:**\n- The grade list is now A, B, C followed by the sheet's added grades. Retiring, merging and listing grades all use that list.\n- Request checks that only allowed `[ABC]` now allow any code of one to three capital letters. This covers people, rates, per-grade settings, and person and rate imports.\n- Rates and person grades also refuse any grade the sheet doesn't actually have.\n\n**Front end:** every grade select and per-grade figure now reads the sheet's grades from one place in `grades.ts`. That covers the person form, inline grade, bulk grade, the rate forms, current rates, the rate calendar, the summary, consolidated figures and per-grade settings. Before the sheet's grades load, they show A/B/C.\n\n**Beyond what the request asked:** the default-grade setting now accepts an added grade, both in the server and on the settings screen, which used to allow only A/B/C. Its error message changed to match.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.6307188000000006,
+        "num_turns": 45,
+        "duration_ms": 637760,
+        "duration_api_ms": 207114,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp229.agent.jsonl",
+  "agent_diff_file": "cp229.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
