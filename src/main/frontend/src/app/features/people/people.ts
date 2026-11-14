@@ -47,6 +47,8 @@ interface Person {
   patronIds: number[];
   /** Whether the signed-in user watches the person. */
   watched: boolean;
+  /** The person's aliases, sorted as names are compared. */
+  aliases: string[];
 }
 
 /** A statement taken: the person's statements as their row shows them, and their claims as it
@@ -278,6 +280,7 @@ interface StatementTaken {
           <tr>
             <th scope="col"><span class="visually-hidden">Select</span></th>
             <th scope="col">Name</th>
+            <th scope="col">Aliases</th>
             <th scope="col">Grade</th>
             <th scope="col">Terms</th>
             <th scope="col">Contact</th>
@@ -322,6 +325,7 @@ interface StatementTaken {
                 />
               </td>
               <td data-testid="person-name">{{ p.name }}</td>
+              <td data-testid="person-aliases">{{ aliasesOf(p) }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
@@ -476,6 +480,21 @@ interface StatementTaken {
                   (click)="addPatron(p)"
                 >
                   Add patron
+                </button>
+                <label [for]="'person-alias-input-' + p.id">Alias</label>
+                <input
+                  [id]="'person-alias-input-' + p.id"
+                  data-testid="person-alias-input"
+                  [value]="aliasInputs()[p.id] ?? ''"
+                  (input)="setAliasInput(p.id, value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-alias-add"
+                  [attr.aria-label]="'Add an alias for ' + p.name"
+                  (click)="addAlias(p)"
+                >
+                  Add alias
                 </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
@@ -803,6 +822,8 @@ export class People {
   protected readonly statementDates = signal<Record<number, string>>({});
   /** The patron chosen on each person's row (a person id, or blank), by person id. */
   protected readonly patronChoices = signal<Record<number, string>>({});
+  /** The alias typed on each person's row, by person id. */
+  protected readonly aliasInputs = signal<Record<number, string>>({});
 
   constructor() {
     effect(() => {
@@ -815,6 +836,7 @@ export class People {
       this.retireDates.set({});
       this.holdDates.set({});
       this.patronChoices.set({});
+      this.aliasInputs.set({});
       this.selectedClaims.set(new Set());
       this.bulkOpenResult.set(null);
       this.bulkOpenError.set(null);
@@ -902,6 +924,41 @@ export class People {
           : `${patron?.name ?? 'That person'} could not be added as a patron of ${person.name}.`,
       );
     }
+  }
+
+  protected setAliasInput(personId: number, alias: string): void {
+    this.aliasInputs.update((inputs) => ({ ...inputs, [personId]: alias }));
+    if (this.rowError()?.id === personId) this.rowError.set(null);
+  }
+
+  /** Give a person the alias typed on their row; refused when blank or already a name or alias on
+   *  the sheet. */
+  protected async addAlias(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const alias = (this.aliasInputs()[person.id] ?? '').trim();
+    if (!alias) {
+      this.rowError.set({ id: person.id, message: 'Type an alias to add.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/aliases`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, { alias }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
+      this.aliasInputs.update((inputs) => ({ ...inputs, [person.id]: '' }));
+    } catch {
+      this.rowError.set({
+        id: person.id,
+        message: `${alias} could not be added as an alias of ${person.name}: it is already a name or alias on the sheet.`,
+      });
+    }
+  }
+
+  /** A person's aliases, as the server sorts them (as names are compared), comma and space separated. */
+  protected aliasesOf(person: Person): string {
+    return person.aliases.join(', ');
   }
 
   /** A person's patrons' names, sorted, comma and space separated. */

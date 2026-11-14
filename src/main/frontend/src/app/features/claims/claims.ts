@@ -566,8 +566,11 @@ export class PersonClaims {
     return this.graceOn()(gradeOn(this.grades(), claim.date), claim.date);
   }
 
+  /** Whether the row shows the claim deferred: the date it was deferred until is still after the
+   *  sheet's today, whatever its status now. */
   protected isDeferred(claim: Claim): boolean {
-    return deferred(claim, this.session.today());
+    const today = this.session.today();
+    return claim.deferredUntil !== null && today !== null && today < claim.deferredUntil;
   }
 
   /** The name of the period the claim's due-by falls in; empty when it falls in none. */

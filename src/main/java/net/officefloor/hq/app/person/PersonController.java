@@ -57,17 +57,19 @@ public class PersonController {
      *  grade they were given from the earliest, how many statements were taken for them and the
      *  last one's due-total and date (null when none was), and whether they are retired and from
      *  when (null when not), and the holds put on them in the order they were, and the ids of their patrons in the order
-     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none). */
+     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none), and their aliases sorted as names are compared. */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
-            List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact) {
+            List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
+            List<String> aliases) {
         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
-                StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched) {
+                StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched,
+                List<String> aliases) {
             return new PersonView(person.getId(), person.getName(), PersonGradeService.gradeOn(grades, today),
                     grades.stream().map(GradeView::of).toList(), person.getVersion(), statements.count(),
                     statements.lastDueTotal(), statements.lastDate(), person.isRetired(), person.getRetiredFrom(),
                     holds.stream().map(HoldView::of).toList(), patronIds, watched, person.getTerms(),
-                    person.getContact());
+                    person.getContact(), aliases);
         }
     }
 
@@ -105,6 +107,10 @@ public class PersonController {
 
     /** A hold: the date it runs from (blank takes the sheet's today) and an optional to-date. */
     public record HoldRequest(LocalDate from, LocalDate to) {
+    }
+
+    /** An alias to give a person. */
+    public record AliasRequest(@Size(max = 200) String alias) {
     }
 
     /** Whether the signed-in user is to watch the person. */
@@ -145,12 +151,14 @@ public class PersonController {
         Map<Long, List<Long>> patrons = service.patronIds(sheet, asOf);
         Map<Long, List<PersonGrade>> given = grades.bySheet(sheet, asOf);
         Map<Long, List<PersonHold>> holds = service.holds(sheet, asOf);
+        Map<Long, List<String>> aliases = service.aliases(sheet, asOf);
         LocalDate today = asOf != null ? asOf : sheets.today(sheet);
         return service.list(sheet, asOf).stream()
                 .map(p -> PersonView.of(p, given.getOrDefault(p.getId(), List.of()), today,
                         summaries.getOrDefault(p.getId(), StatementSummary.NONE),
                         holds.getOrDefault(p.getId(), List.of()),
-                        patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId())))
+                        patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId()),
+                        aliases.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
 
@@ -214,6 +222,15 @@ public class PersonController {
         return withStatements(service.addPatron(sheet, by, id, request.patronId()), by);
     }
 
+    /** Give a person an alias. */
+    @PostMapping("/{id}/aliases")
+    public PersonView addAlias(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated AliasRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return withStatements(service.addAlias(sheet, by, id, request.alias()), by);
+    }
+
     /** Start or stop the signed-in user watching a person. */
     @PostMapping("/{id}/watch")
     public PersonView watch(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
@@ -224,7 +241,8 @@ public class PersonController {
     }
 
     /** A date that is not a real yyyy-mm-dd date, or a hold that ends before it starts, is refused. */
-    @ExceptionHandler({HttpMessageNotReadableException.class, HoldRefusedException.class})
+    @ExceptionHandler({HttpMessageNotReadableException.class, HoldRefusedException.class,
+            AliasRefusedException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public void unreadable() {
     }
@@ -240,7 +258,8 @@ public class PersonController {
     private PersonView withStatements(Person person, String user) {
         return PersonView.of(person, grades.of(person.getId()), sheets.today(person.getSheetId()),
                 statements.summary(person.getSheetId(), person.getId()), service.holds(person.getId()),
-                service.patronIds(person.getId()), user != null && service.watches(person.getId(), user));
+                service.patronIds(person.getId()), user != null && service.watches(person.getId(), user),
+                service.aliases(person.getId()));
     }
 
     /** A save that raced another to the same version; the editor re-reads the person. */

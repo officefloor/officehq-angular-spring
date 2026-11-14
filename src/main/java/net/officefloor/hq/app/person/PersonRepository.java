@@ -12,8 +12,9 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
 
     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
 
-    /** The sheet's person with this name, ignoring case. */
-    @Query("select p from Person p where p.sheetId = :sheetId and lower(p.name) = lower(:name)")
+    /** The sheet's person with this name or alias, ignoring case. */
+    @Query("select p from Person p where p.sheetId = :sheetId and (lower(p.name) = lower(:name)"
+            + " or exists (select a from PersonAlias a where a.personId = p.id and a.aliasKey = lower(:name)))")
     Optional<Person> findByName(String sheetId, String name);
 
     /** Whether another person on the sheet (not {@code exceptId}) has this name, ignoring case. */

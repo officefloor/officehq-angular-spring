@@ -25,14 +25,16 @@ public class PersonService {
     private final PersonGradeService grades;
     private final PersonHoldRepository holds;
     private final PersonWatchRepository watches;
+    private final PersonAliasRepository aliases;
     private final SheetService sheets;
     private final EntityManager entityManager;
     private final History history;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonGradeService grades,
-            PersonHoldRepository holds, PersonWatchRepository watches, SheetService sheets,
-            EntityManager entityManager, History history, Audit audit) {
+            PersonHoldRepository holds, PersonWatchRepository watches, PersonAliasRepository aliases,
+            SheetService sheets, EntityManager entityManager, History history, Audit audit) {
+        this.aliases = aliases;
         this.history = history;
         this.people = people;
         this.watches = watches;
@@ -230,6 +232,46 @@ public class PersonService {
         return person;
     }
 
+    /** Give a person an alias, trimmed; refused when blank, or when it equals, as names are compared,
+     *  any name or alias on the sheet. */
+    @Transactional
+    public Person addAlias(String sheetId, String user, Long id, String alias) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+        String trimmed = alias == null ? "" : alias.trim();
+        if (trimmed.isEmpty()) {
+            throw new AliasRefusedException("An alias may not be blank");
+        }
+        if (people.nameInUse(sheetId, trimmed, null) || aliases.aliasInUse(sheetId, trimmed)) {
+            throw new NameInUseException(trimmed);
+        }
+        aliases.saveAndFlush(new PersonAlias(sheetId, id, trimmed, sheets.today(sheetId)));
+        audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " alias=" + trimmed);
+        return person;
+    }
+
+    /** A person's aliases, sorted as names are compared. */
+    public List<String> aliases(Long personId) {
+        return sorted(aliases.findByPersonIdOrderByIdAsc(personId).stream());
+    }
+
+    /** Each person's aliases on the sheet as they stood at the end of a day, sorted as names are
+     *  compared, by person id (null: as they stand now); a person with none is absent. */
+    public Map<Long, List<String>> aliases(String sheetId, LocalDate asOf) {
+        return aliases.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(alias -> asOf == null || alias.madeAsOf(asOf))
+                .collect(Collectors.groupingBy(PersonAlias::getPersonId,
+                        Collectors.collectingAndThen(Collectors.toList(), list -> sorted(list.stream()))));
+    }
+
+    private static List<String> sorted(java.util.stream.Stream<PersonAlias> stream) {
+        return stream.map(PersonAlias::getAlias)
+                .sorted(java.util.Comparator.comparing((String a) -> a.toLowerCase(Locale.ROOT))
+                        .thenComparing(java.util.Comparator.naturalOrder()))
+                .toList();
+    }
+
     /** Start or stop a user watching a person; a person already in that state is left as they are,
      *  writing nothing. */
     @Transactional
@@ -286,7 +328,7 @@ public class PersonService {
     }
 
     private void requireFreeName(String sheetId, String name, Long exceptId) {
-        if (people.nameInUse(sheetId, name, exceptId)) {
+        if (people.nameInUse(sheetId, name, exceptId) || aliases.aliasInUse(sheetId, name)) {
             throw new NameInUseException(name);
         }
     }
