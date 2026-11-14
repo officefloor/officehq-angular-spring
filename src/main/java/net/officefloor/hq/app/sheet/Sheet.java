@@ -15,6 +15,9 @@ public class Sheet {
     /** The floor a sheet starts with. */
     public static final BigDecimal DEFAULT_FLOOR = new BigDecimal("1.00");
 
+    /** The terms (in days) a sheet starts with. */
+    public static final int DEFAULT_TERMS = 14;
+
     @Id
     private String id;
 
@@ -36,6 +39,10 @@ public class Sheet {
     /** A claim's live due is at least this. */
     @Column(name = "due_floor", nullable = false, precision = 15, scale = 2)
     private BigDecimal floor = DEFAULT_FLOOR;
+
+    /** A claim is due by its date plus this many days. */
+    @Column(name = "terms", nullable = false)
+    private int terms = DEFAULT_TERMS;
 
     protected Sheet() {
     }
@@ -76,6 +83,14 @@ public class Sheet {
 
     public void setFloor(BigDecimal floor) {
         this.floor = floor;
+    }
+
+    public int getTerms() {
+        return terms;
+    }
+
+    public void setTerms(int terms) {
+        this.terms = terms;
     }
 
     /** Take the sheet's next claim number. */

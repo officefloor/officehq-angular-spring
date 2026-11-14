@@ -24,10 +24,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class SettingsController {
 
     /** The sheet's settings as the screen shows them: the clerk limit with two decimals, null for
-     *  none, and the floor with two decimals. */
-    public record SettingsView(String clerkLimit, String floor) {
-        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor) {
-            return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString());
+     *  none, the floor with two decimals, and the terms in days. */
+    public record SettingsView(String clerkLimit, String floor, int terms) {
+        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms) {
+            return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms);
         }
     }
 
@@ -37,6 +37,10 @@ public class SettingsController {
 
     /** The floor as the form submits it: 0.00 or more with up to two decimals, blank for the default. */
     public record FloorForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value) {
+    }
+
+    /** The terms as the form submits them: a whole number of days, blank for the default. */
+    public record TermsForm(@NotNull @Pattern(regexp = "(\\d{1,4})?") String value) {
     }
 
     /** A user name's role on the sheet. */
@@ -85,8 +89,18 @@ public class SettingsController {
         return view(sheetId);
     }
 
+    @PutMapping("/settings/terms")
+    public SettingsView setTerms(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody TermsForm body) {
+        int terms = body.value().isEmpty() ? Sheet.DEFAULT_TERMS : Integer.parseInt(body.value());
+        service.setTerms(sheetId, user.trim(), terms);
+        return view(sheetId);
+    }
+
     private SettingsView view(String sheetId) {
-        return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId));
+        return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId));
     }
 
     @GetMapping("/roles")

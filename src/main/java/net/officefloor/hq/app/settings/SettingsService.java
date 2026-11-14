@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The sheet's settings (its clerk limit and floor) and the role each user name holds on it. */
+/** The sheet's settings (its clerk limit, floor and terms) and the role each user name holds on it. */
 @Service
 public class SettingsService {
 
@@ -20,6 +20,8 @@ public class SettingsService {
     public static final String CLERK_LIMIT = "clerk-limit";
     /** The key the floor is audited under. */
     public static final String FLOOR = "floor";
+    /** The key the terms are audited under. */
+    public static final String TERMS = "terms";
 
     private final SheetRoleRepository roles;
     private final SheetService sheets;
@@ -71,6 +73,24 @@ public class SettingsService {
                 + " key=" + FLOOR + " value=" + scaled.toPlainString());
         rollup.recordChanges(sheetId, user, before);
         return scaled;
+    }
+
+    /** The sheet's terms: a claim is due by its date plus this many days. */
+    @Transactional(readOnly = true)
+    public int terms(String sheetId) {
+        return sheets.terms(sheetId);
+    }
+
+    /** Set the sheet's terms in days, the sheet created first if it was never loaded; every claim's
+     *  due-by (and so whether it is overdue) moves with them. */
+    @Transactional
+    public int setTerms(String sheetId, String user, int terms) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheet.setTerms(terms);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + TERMS + " value=" + terms);
+        return terms;
     }
 
     @Transactional(readOnly = true)

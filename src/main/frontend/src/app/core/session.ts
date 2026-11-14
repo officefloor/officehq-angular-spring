@@ -13,6 +13,8 @@ export class Session {
   readonly today = signal<string | null>(null);
   /** The active sheet's floor (two decimals): a claim's live due is at least it. */
   readonly floor = signal('1.00');
+  /** The active sheet's terms in days: a claim is due by its date plus them. */
+  readonly terms = signal(14);
   /** Whether the people list shows retired people too: off at first, and kept as it is when a
    *  sheet is loaded. */
   readonly showRetired = signal(false);
@@ -43,6 +45,7 @@ export class Session {
       this.sheetId.set(res.id);
       this.today.set(res.today);
       this.floor.set(res.floor);
+      this.terms.set(res.terms);
       this.loads.update((n) => n + 1);
       return null;
     } catch (e) {
@@ -73,6 +76,7 @@ interface SheetView {
   id: string;
   today: string;
   floor: string;
+  terms: number;
 }
 
 function message(e: unknown, invalid: string): string {

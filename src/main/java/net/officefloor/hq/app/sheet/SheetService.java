@@ -56,6 +56,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getFloor).orElse(Sheet.DEFAULT_FLOOR);
     }
 
+    /** The sheet's terms: a claim is due by its date plus this many days. */
+    @Transactional(readOnly = true)
+    public int terms(String id) {
+        return sheets.findById(id).map(Sheet::getTerms).orElse(Sheet.DEFAULT_TERMS);
+    }
+
     /** Take the sheet's next claim number (1 for the first), holding the sheet locked until the
      *  transaction ends so numbers are never shared and, if it rolls back, never skipped. */
     @Transactional

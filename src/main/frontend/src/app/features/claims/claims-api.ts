@@ -39,6 +39,17 @@ export function counts(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'SETTLED';
 }
 
+/** A claim's due-by (yyyy-mm-dd): its date plus the sheet's terms in days. */
+export function dueBy(c: Claim, terms: number): string {
+  const [y, m, d] = c.date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
+}
+
+/** Whether a claim is overdue: OPEN with its due-by before the sheet's today. */
+export function overdue(c: Claim, terms: number, today: string | null): boolean {
+  return c.status === 'OPEN' && today !== null && dueBy(c, terms) < today;
+}
+
 export interface ClaimForm {
   amount: string;
   /** null takes the sheet's today. */

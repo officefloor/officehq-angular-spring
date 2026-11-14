@@ -1,10 +1,10 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { LIMIT_PATTERN, ROLES, RoleGrant, SETTINGS_INVALID, SettingsApi, roleError, settingsError } from './settings-api';
+import { LIMIT_PATTERN, ROLES, TERMS_PATTERN, RoleGrant, SETTINGS_INVALID, SettingsApi, roleError, settingsError } from './settings-api';
 
 // The sheet's settings (its clerk limit: a clerk settles only claims whose due is at or below it;
-// its floor: a claim's live due is at least it) with the form that saves the ones changed in it, and the role each user name holds with the form that sets one.
+// its floor: a claim's live due is at least it; its terms: a claim is due by its date plus them) with the form that saves the ones changed in it, and the role each user name holds with the form that sets one.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -13,11 +13,14 @@ import { LIMIT_PATTERN, ROLES, RoleGrant, SETTINGS_INVALID, SettingsApi, roleErr
       <h2 id="settings-heading">Settings</h2>
       <p>Clerk limit in force <strong data-testid="setting-clerk-limit-current">{{ clerkLimit() ?? '' }}</strong></p>
       <p>Floor in force <strong data-testid="setting-floor-current">{{ session.floor() }}</strong></p>
+      <p>Terms in force (days) <strong data-testid="setting-terms-current">{{ session.terms() }}</strong></p>
       <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" aria-label="Settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit" inputmode="decimal" autocomplete="off" />
         <label for="setting-floor">Floor (blank: 1.00)</label>
         <input id="setting-floor" data-testid="setting-floor" formControlName="floor" inputmode="decimal" autocomplete="off" />
+        <label for="setting-terms">Terms in days (blank: 14)</label>
+        <input id="setting-terms" data-testid="setting-terms" formControlName="terms" inputmode="numeric" autocomplete="off" />
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsErr(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -77,6 +80,7 @@ export class Settings {
   protected readonly settingsForm = new FormGroup({
     clerkLimit: new FormControl('', { nonNullable: true }),
     floor: new FormControl('', { nonNullable: true }),
+    terms: new FormControl('', { nonNullable: true }),
   });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
@@ -94,7 +98,7 @@ export class Settings {
         this.grants.set([]);
         this.settingsErr.set(null);
         this.roleErr.set(null);
-        this.settingsForm.reset({ clerkLimit: '', floor: '' }, { emitEvent: false });
+        this.settingsForm.reset({ clerkLimit: '', floor: '', terms: '' }, { emitEvent: false });
         this.roleForm.reset({ user: '', role: '' }, { emitEvent: false });
         if (id) void this.read(id);
       });
@@ -106,14 +110,17 @@ export class Settings {
     this.settingsErr.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    const { clerkLimit, floor } = this.settingsForm.controls;
+    const { clerkLimit, floor, terms } = this.settingsForm.controls;
     // only the settings typed into since the last save are saved (the clerk limit when none is)
     const saveFloor = floor.dirty;
-    const saveLimit = clerkLimit.dirty || !saveFloor;
+    const saveTerms = terms.dirty;
+    const saveLimit = clerkLimit.dirty || !(saveFloor || saveTerms);
     const limitValue = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
+    const termsValue = terms.value.trim();
     if ((saveLimit && limitValue !== '' && !LIMIT_PATTERN.test(limitValue))
-        || (saveFloor && floorValue !== '' && !LIMIT_PATTERN.test(floorValue))) {
+        || (saveFloor && floorValue !== '' && !LIMIT_PATTERN.test(floorValue))
+        || (saveTerms && termsValue !== '' && !TERMS_PATTERN.test(termsValue))) {
       this.settingsErr.set(SETTINGS_INVALID);
       return;
     }
@@ -128,6 +135,11 @@ export class Settings {
         const saved = await this.api.setFloor(sheetId, floorValue);
         floor.markAsPristine();
         if (this.session.sheetId() === sheetId) this.session.floor.set(saved.floor);
+      }
+      if (saveTerms) {
+        const saved = await this.api.setTerms(sheetId, termsValue);
+        terms.markAsPristine();
+        if (this.session.sheetId() === sheetId) this.session.terms.set(saved.terms);
       }
     } catch (e) {
       this.settingsErr.set(settingsError(e));
@@ -172,6 +184,7 @@ export class Settings {
       if (seq === this.readSeq) {
         this.clerkLimit.set(settings.clerkLimit);
         this.session.floor.set(settings.floor);
+        this.session.terms.set(settings.terms);
         this.grants.set(grants);
       }
     } catch {

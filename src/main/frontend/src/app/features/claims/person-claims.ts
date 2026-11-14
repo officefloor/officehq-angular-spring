@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, money, statusError } from './claims-api';
+import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, dueBy, money, overdue, statusError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -38,6 +38,8 @@ import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, money
             <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
             <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
             <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
+            <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
+            <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
             <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'open')"
               [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
             <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'settle')"
@@ -97,6 +99,16 @@ export class PersonClaims {
   protected dueOf(c: Claim): string {
     const due = claimDueCents(this.rates(), c, cents(this.session.floor()));
     return due === null ? 'n/a' : money(due);
+  }
+
+  /** The claim's date plus the sheet's terms. */
+  protected dueByOf(c: Claim): string {
+    return dueBy(c, this.session.terms());
+  }
+
+  /** Whether the claim is OPEN with its due-by before the sheet's today. */
+  protected overdueOf(c: Claim): boolean {
+    return overdue(c, this.session.terms(), this.session.today());
   }
 
   /** The name of the period whose dates contain the claim's date; blank when none does. */

@@ -1,7 +1,7 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
-import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, counts, money, quickAddError } from '../claims/claims-api';
+import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, counts, money, overdue, quickAddError } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
@@ -10,7 +10,8 @@ import { Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
 import { GRADES, PeopleApi, Person, holdError, isStale, personError, retireError, statementError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
-// claims, what they have claimed and their due-total; the sheet's claimed-total and due-total; and
+// claims, what they have claimed, their due-total and their overdue claims; the sheet's claimed-total,
+// due-total and overdue claims; and
 // the one form that adds a person or, with a
 // person's editor open, saves that person.
 @Component({
@@ -50,6 +51,8 @@ import { GRADES, PeopleApi, Person, holdError, isStale, personError, retireError
       </form>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong>
+        totalling <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <label>
         <input type="checkbox" data-testid="show-retired" [checked]="session.showRetired()"
           (change)="session.showRetired.set($any($event.target).checked)" />
@@ -57,7 +60,7 @@ import { GRADES, PeopleApi, Person, holdError, isStale, personError, retireError
       </label>
       <table data-testid="people-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shownPeople(); track p.id) {
@@ -66,6 +69,10 @@ import { GRADES, PeopleApi, Person, holdError, isStale, personError, retireError
               <td data-testid="person-grade">{{ p.grade }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueOf(p) }}</td>
+              <td>
+                <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
+                <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span></span>
+              </td>
               <td>
                 <span data-testid="person-statement-count">{{ p.statementCount }}</span>
                 <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) }}</span></span>
@@ -158,6 +165,25 @@ export class People {
     }
     return out;
   });
+  /** Each person's overdue claims, by person id: how many of their counting claims are overdue
+   *  (OPEN with the due-by before the sheet's today), and the dues they show in cents (n/a ones skipped). */
+  private readonly overdueByPerson = computed(() => {
+    const out = new Map<number, { count: number; cents: number }>();
+    const floor = cents(this.session.floor());
+    const terms = this.session.terms();
+    const today = this.session.today();
+    for (const p of this.people()) {
+      const rates = this.ratesOf(p.grade);
+      const late = this.claimsOf(p.id).filter(this.countsLive()).filter((c) => overdue(c, terms, today));
+      out.set(p.id, { count: late.length, cents: late.reduce((sum, c) => sum + (claimDueCents(rates, c, floor) ?? 0), 0) });
+    }
+    return out;
+  });
+  protected readonly overdueCount = computed(() =>
+    [...this.overdueByPerson().values()].reduce((sum, o) => sum + o.count, 0));
+  protected readonly overdueTotal = computed(() =>
+    money([...this.overdueByPerson().values()].reduce((sum, o) => sum + o.cents, 0)));
+  protected readonly money = money;
   /** The sheet's periods, by from-date. */
   protected readonly periods = signal<Period[]>([]);
   /** Each period's due-total in cents, by period id: the dues (n/a ones skipped) of the OPEN and
@@ -234,6 +260,10 @@ export class People {
 
   protected claimsOf(personId: number): Claim[] {
     return this.byPerson().get(personId)?.claims ?? [];
+  }
+
+  protected overdueOf(personId: number): { count: number; cents: number } {
+    return this.overdueByPerson().get(personId) ?? { count: 0, cents: 0 };
   }
 
   protected claimedBy(personId: number): string {

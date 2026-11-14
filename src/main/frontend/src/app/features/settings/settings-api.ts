@@ -9,11 +9,16 @@ export const ROLES = ['clerk', 'steward'] as const;
 /** A limit of 0.00 or more with up to two decimals. */
 export const LIMIT_PATTERN = /^\d{1,13}(\.\d{1,2})?$/;
 
+/** Terms of a whole number of days. */
+export const TERMS_PATTERN = /^\d{1,4}$/;
+
 export interface Settings {
   /** Two decimals, as the server formats it; null when there is no limit. */
   clerkLimit: string | null;
   /** Two decimals, as the server formats it: a claim's live due is at least it. */
   floor: string;
+  /** Days: a claim is due by its date plus them. */
+  terms: number;
 }
 
 export interface RoleGrant {
@@ -43,6 +48,12 @@ export class SettingsApi {
     );
   }
 
+  setTerms(sheetId: string, value: string): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/terms`, { value }, { headers: this.headers() }),
+    );
+  }
+
   roles(sheetId: string): Promise<RoleGrant[]> {
     return firstValueFrom(this.http.get<RoleGrant[]>(`${this.url(sheetId)}/roles`, { headers: this.headers() }));
   }
@@ -61,7 +72,7 @@ export class SettingsApi {
 }
 
 export const SETTINGS_INVALID =
-  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00).';
+  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of days (blank: 14).';
 
 export function settingsError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return SETTINGS_INVALID;
