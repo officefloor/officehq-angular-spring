@@ -1,13 +1,16 @@
-import { Component, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
+import { Claim, ClaimsApi, cents, money } from '../claims/claims-api';
+import { PersonClaims } from '../claims/person-claims';
 import { GRADES, PeopleApi, Person, personError } from './people-api';
 
-// The people on the active sheet, in the order they were added, and the one form that adds a
-// person or, with a person's editor open, saves that person.
+// The people on the active sheet, in the order they were added, each with their claims and what
+// they have claimed; the sheet's claimed-total; and the one form that adds a person or, with a
+// person's editor open, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, PersonClaims],
   template: `
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -28,15 +31,21 @@ import { GRADES, PeopleApi, Person, personError } from './people-api';
           <p role="alert" data-testid="person-form-error">{{ err }}</p>
         }
       </form>
+      <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <table data-testid="people-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of people(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ p.grade }}</td>
+              <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
+              <td>
+                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)"
+                  (saved)="claimSaved($event)" />
+              </td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
@@ -51,9 +60,25 @@ import { GRADES, PeopleApi, Person, personError } from './people-api';
 export class People {
   private readonly session = inject(Session);
   private readonly api = inject(PeopleApi);
+  private readonly claimsApi = inject(ClaimsApi);
 
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
+  /** Every claim on the sheet, newest first. */
+  protected readonly claims = signal<Claim[]>([]);
+  /** Each person's claims (newest first) and claimed in cents, by person id. */
+  private readonly byPerson = computed(() => {
+    const out = new Map<number, { claims: Claim[]; cents: number }>();
+    for (const c of this.claims()) {
+      const entry = out.get(c.personId) ?? { claims: [], cents: 0 };
+      entry.claims.push(c);
+      entry.cents += cents(c.amount);
+      out.set(c.personId, entry);
+    }
+    return out;
+  });
+  protected readonly claimedTotal = computed(() =>
+    money(this.people().reduce((sum, p) => sum + (this.byPerson().get(p.id)?.cents ?? 0), 0)));
   protected readonly editingId = signal<number | null>(null);
   protected readonly error = signal<string | null>(null);
 
@@ -73,6 +98,7 @@ export class People {
       untracked(() => {
         this.reset();
         this.people.set([]);
+        this.claims.set([]);
         if (id) void this.read(id);
       });
     });
@@ -82,6 +108,21 @@ export class People {
     this.error.set(null);
     this.editingId.set(p.id);
     this.form.setValue({ name: p.name, grade: p.grade });
+  }
+
+  protected claimsOf(personId: number): Claim[] {
+    return this.byPerson().get(personId)?.claims ?? [];
+  }
+
+  protected claimedBy(personId: number): string {
+    return money(this.byPerson().get(personId)?.cents ?? 0);
+  }
+
+  /** Take in a claim just added (listed first, as the newest) or saved (in its place). */
+  protected claimSaved(claim: Claim): void {
+    this.claims.update((cs) => cs.some((c) => c.id === claim.id)
+      ? cs.map((c) => (c.id === claim.id ? claim : c))
+      : [claim, ...cs].sort((a, b) => b.id - a.id));
   }
 
   protected cancel(): void {
@@ -125,8 +166,11 @@ export class People {
   private async read(sheetId: string): Promise<void> {
     const seq = ++this.readSeq;
     try {
-      const people = await this.api.list(sheetId);
-      if (seq === this.readSeq) this.people.set(people);
+      const [people, claims] = await Promise.all([this.api.list(sheetId), this.claimsApi.list(sheetId)]);
+      if (seq === this.readSeq) {
+        this.claims.set(claims);
+        this.people.set(people);
+      }
     } catch {
       if (seq === this.readSeq) this.error.set('Something went wrong loading people; try again.');
     }
