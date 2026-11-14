@@ -1,0 +1,43 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 61c1af5bb..2fdbec8b6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -800,6 +800,14 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+                 >
+                   Export statement
+                 </button>
++                <button
++                  type="button"
++                  data-testid="person-export"
++                  [attr.aria-label]="'Download the row for ' + p.name + ' as CSV'"
++                  (click)="exportPerson(p)"
++                >
++                  Export row
++                </button>
+                 <button
+                   type="button"
+                   data-testid="person-move-up"
+@@ -2267,6 +2275,23 @@ export class People {
+     ]);
+   }
+ 
++  /** Download a person's row as CSV: one line per cell, with the value as the row shows it. */
++  protected exportPerson(person: Person): void {
++    this.downloadCsv(`person-${person.id}`, [
++      ['cell', 'value'],
++      ['person-name', this.labelOf(person)],
++      ['person-grade', this.gradeOf(person)],
++      ['person-claimed', this.claimedBy(person.id)],
++      ['person-due-total', this.dueBy(person)],
++      ['person-statement-count', String(person.statementCount)],
++      ['person-overdue-total', this.overdueTotalOf(person)],
++      ['person-hold', person.holds.length > 0 ? 'yes' : 'no'],
++      ['person-retired', person.retired ? 'yes' : 'no'],
++      ['person-aliases', this.aliasesOf(person)],
++      ['person-score', String(this.scoreOf(person))],
++    ]);
++  }
++
+   /** Download a person's statement as CSV: their claims bound by their last statement, oldest
+    *  first, with the number, date, amount, the bound figure and status as their rows show them. */
+   protected exportStatement(person: Person): void {
