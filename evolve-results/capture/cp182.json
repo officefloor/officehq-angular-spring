@@ -1,0 +1,64 @@
+{
+  "checkpoint": 182,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp182_claim-hold",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "An OPEN or PENDING claim can be held and released with a toggle on the claim (CLAIM_HELD and\nCLAIM_RELEASED naming the claim; any other status is refused with an error on the claim). A held\nclaim leaves every live total exactly as a held person's claims do (a figure bound by a statement\nstays in). Show held yes/no on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAn OPEN or PENDING claim can be held and released with a toggle on the claim (CLAIM_HELD and\nCLAIM_RELEASED naming the claim; any other status is refused with an error on the claim). A held\nclaim leaves every live total exactly as a held person's claims do (a figure bound by a statement\nstays in). Show held yes/no on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ba446692c39bad68da53fa51b0ebf24774411d3d",
+  "reset_sha": "",
+  "preagent_sha": "c53e7c551985df60a6ba72dd5d520db16755e299",
+  "prev_sha": "c53e7c551985df60a6ba72dd5d520db16755e299",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9297436000000001,
+    "input_tokens": 44,
+    "output_tokens": 9853,
+    "cache_read_tokens": 1060138,
+    "cache_creation_tokens": 65060,
+    "num_turns": 22,
+    "duration_ms": 364875,
+    "duration_api_ms": 97406,
+    "model": "claude-opus-5-5",
+    "session_id": "24cbfdb3-be86-42d9-99fb-247ccf577850",
+    "stop_reason": "success",
+    "result_text": "Claims can now be held and released, and all 4 tests in the spec pass when run with `bin/e2e`.\n\n**How it works**\n- **Toggle:** each claim row has a Hold/Release button (`claim-hold`) and shows held yes/no (`claim-held`). Holding an OPEN or PENDING claim writes `CLAIM_HELD`; pressing again releases it and writes `CLAIM_RELEASED`. Both audit lines name the claim. Any other status is refused with the claim's existing error (`claim-error`), and nothing is written.\n- **Totals:** a held claim is treated exactly like a claim of a held person, by reusing the existing check (`Claim.heldBy`) rather than adding a second rule. So an OPEN or PENDING held claim drops out of person, period, rollup and statement totals, but one bound by a statement keeps its figure. The front end's own live-totals filter in `people.ts` follows the same rule.\n- **After settling:** the held flag stays on a claim once it is settled, so it still shows \"yes\", as the spec expects. Because it is no longer OPEN or PENDING, it no longer affects totals.\n- **Data:** migration `V103__claim_held.sql` adds a `held` column to `claim` and to `claim_history`. Past-date views, sheet cloning and split-off claims carry the flag over.\n\n**Choices I made that the request didn't specify** (the tests don't exercise them):\n- A hold or release on a claim in a closed period is refused, like other changes to such claims.\n- Viewers are blocked by the app's existing viewer guard, as for any other change.\n- A claim split off a held claim starts held too.\n\n**Files changed:** `Claim.java`, `ClaimService.java` (new `toggleHold`), `ClaimController.java` (new `POST \u2026/claims/{id}/hold`), `HoldRefusedException.java` (new), `History.java`, `HistoryListener.java`, `SheetCloneService.java`, `claims.ts` and `people.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9297436000000001,
+        "num_turns": 22,
+        "duration_ms": 364875,
+        "duration_api_ms": 97406,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp182.agent.jsonl",
+  "agent_diff_file": "cp182.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
