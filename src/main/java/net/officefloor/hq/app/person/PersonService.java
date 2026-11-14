@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.person;
 
 import java.util.List;
+import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -13,10 +14,12 @@ public class PersonService {
 
     private final PersonRepository people;
     private final SheetService sheets;
+    private final Audit audit;
 
-    public PersonService(PersonRepository people, SheetService sheets) {
+    public PersonService(PersonRepository people, SheetService sheets, Audit audit) {
         this.people = people;
         this.sheets = sheets;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -30,15 +33,18 @@ public class PersonService {
         sheets.load(sheetId, user);
         String trimmed = name.trim();
         requireUnusedName(sheetId, null, trimmed);
+        Person person;
         try {
-            return people.saveAndFlush(new Person(sheetId, trimmed, grade));
+            person = people.saveAndFlush(new Person(sheetId, trimmed, grade));
         } catch (DataIntegrityViolationException e) {
             throw nameInUse(); // added by another user at the same moment
         }
+        record("PERSON_ADDED", sheetId, user, person);
+        return person;
     }
 
     @Transactional
-    public Person update(String sheetId, long id, String name, String grade) {
+    public Person update(String sheetId, String user, long id, String name, String grade) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         String trimmed = name.trim();
@@ -50,7 +56,13 @@ public class PersonService {
         } catch (DataIntegrityViolationException e) {
             throw nameInUse(); // taken by another user at the same moment
         }
+        record("PERSON_EDITED", sheetId, user, person);
         return person;
+    }
+
+    private void record(String event, String sheetId, String user, Person person) {
+        audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " grade=" + person.getGrade());
     }
 
     /** Refuse a name another person on the sheet already has (ignoring case). */
