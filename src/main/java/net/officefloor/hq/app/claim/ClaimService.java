@@ -633,6 +633,28 @@ public class ClaimService {
         return saved;
     }
 
+    /** A steward assigns a REVIEW claim's review to a user, trimmed, in place of anyone assigned before;
+     *  REVIEW_ASSIGNED is written. Anyone else, a claim in any other status, or a blank user, is refused. */
+    @Transactional
+    public Claim assignReview(String sheetId, String user, Long personId, Long id, String assignee) {
+        Person person = person(sheetId, personId);
+        Claim claim = claim(sheetId, personId, id);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ReviewAssignForbiddenException(user);
+        }
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ReviewAssignRefusedException("A " + claim.getStatus() + " claim's review cannot be assigned");
+        }
+        if (assignee == null || assignee.isBlank()) {
+            throw new ReviewAssignRefusedException("A review is assigned to a user");
+        }
+        claim.setReviewAssignee(assignee.trim());
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(line("REVIEW_ASSIGNED", sheetId, user, person, saved, saved.getNumber())
+                + " user=" + saved.getReviewAssignee());
+        return saved;
+    }
+
     /** A steward waives an OPEN or PENDING claim's late charge: it bears none from then on, whatever
      *  its overdue state, even one due by a day in a closed period, and CLAIM_WAIVED is written. Anyone
      *  else, a claim in any other status, or one already waived, is refused. */

@@ -85,6 +85,8 @@ export interface Claim {
   /** The shares of the claim other people on the sheet hold, in the order it was shared: each the
    *  holder's id and their share percent (two decimals). */
   shares: ClaimShare[];
+  /** The user a steward assigned the claim's review to; null when no one was. */
+  reviewAssignee: string | null;
 }
 
 /** A share of a claim another person holds: the holder's id and their share percent (two decimals). */
@@ -365,6 +367,7 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           <span data-testid="claim-period">{{ periodNameOf(c) }}</span>
           <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span>
+          <span data-testid="claim-review-assigned">{{ c.reviewAssignee ?? '' }}</span>
           <span data-testid="claim-review-late">{{ isReviewLate(c) ? 'yes' : 'no' }}</span>
           <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span>
           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
@@ -451,6 +454,16 @@ const NUMBER = /^\S+$/;
           </button>
           <button type="button" data-testid="claim-waive" [attr.aria-label]="'Waive the late charge of claim ' + c.id" (click)="waive(c)">
             Waive late charge
+          </button>
+          <label [for]="'claim-review-user-' + c.id">Assign review to</label>
+          <input
+            [id]="'claim-review-user-' + c.id"
+            data-testid="claim-review-user"
+            [value]="reviewUsers()[c.id] ?? ''"
+            (input)="setReviewUser(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-review-assign" [attr.aria-label]="'Assign the review of claim ' + c.id" (click)="assignReview(c)">
+            Assign review
           </button>
           <label [for]="'claim-defer-date-' + c.id">Defer until</label>
           <input
@@ -706,6 +719,7 @@ export class PersonClaims {
 
   /** The new date typed on each claim's row to re-date it to, by claim id. */
   protected readonly newDates = signal<Record<number, string>>({});
+  protected readonly reviewUsers = signal<Record<number, string>>({});
 
   /** The amount typed on each claim's row to split off it, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
@@ -1046,6 +1060,38 @@ export class PersonClaims {
       this.rowError.set({
         id: claim.id,
         message: "The late charge could not be waived: only a steward waives it, once, on an open or pending claim.",
+      });
+    }
+  }
+
+  protected setReviewUser(id: number, user: string): void {
+    this.reviewUsers.update((users) => ({ ...users, [id]: user }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  /** Assign a REVIEW claim's review to the user typed on its row; anyone but a steward, a claim in any
+   *  other status, or a blank user, is refused on the row. */
+  protected async assignReview(claim: Claim): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const user = (this.reviewUsers()[claim.id] ?? '').trim();
+    if (user === '') {
+      this.rowError.set({ id: claim.id, message: 'Type the user to assign the review to.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/review-assignee`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { user }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(saved);
+    } catch (e) {
+      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+      this.rowError.set({
+        id: claim.id,
+        message: forbidden
+          ? "The review could not be assigned: only a steward assigns a claim's review."
+          : 'The review could not be assigned: only a claim in review can have its review assigned.',
       });
     }
   }

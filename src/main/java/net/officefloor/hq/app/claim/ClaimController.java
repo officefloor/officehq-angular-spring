@@ -68,7 +68,7 @@ public class ClaimController {
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry,
             LocalDate remindedOn, String ref, List<String> tags, String voidReason, List<String> comments,
             Long batch, List<String> lines, boolean waived, int proofsReceipt, int proofsPhoto, boolean held,
-            List<ShareView> shares) {
+            List<ShareView> shares, String reviewAssignee) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log, List<String> comments) {
             return of(claim, roundsBy, log, comments, List.of());
         }
@@ -85,7 +85,7 @@ public class ClaimController {
                     claim.getRemindedOn(), claim.getRef(), claim.getTags(),
                     claim.getVoidReason(), comments, claim.getBatch(), lines, claim.isWaived(),
                     claim.getProofsReceipt(), claim.getProofsPhoto(), claim.isHeld(),
-                    claim.getShares().stream().map(ShareView::of).toList());
+                    claim.getShares().stream().map(ShareView::of).toList(), claim.getReviewAssignee());
         }
     }
 
@@ -145,6 +145,10 @@ public class ClaimController {
 
     /** Why a steward rejects a PENDING claim. */
     public record RejectRequest(@NotBlank @Size(max = 500) String reason) {
+    }
+
+    /** The user a REVIEW claim's review is assigned to. */
+    public record ReviewAssignRequest(@Size(max = 200) String user) {
     }
 
     /** The new date of an OPEN or PENDING claim. */
@@ -429,6 +433,15 @@ public class ClaimController {
         return view(sheet, service.remind(sheet, SignedInUser.decode(user), personId, id));
     }
 
+    /** Assign a REVIEW claim's review to a user: a steward only. */
+    @PostMapping("/people/{personId}/claims/{id}/review-assignee")
+    public ClaimView assignReview(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated ReviewAssignRequest request) {
+        String sheet = sheetId.trim();
+        return view(sheet, service.assignReview(sheet, SignedInUser.decode(user), personId, id, request.user()));
+    }
+
     /** Waive an OPEN or PENDING claim's late charge: a steward only, once. */
     @PostMapping("/people/{personId}/claims/{id}/waive")
     public ClaimView waive(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
@@ -609,24 +622,24 @@ public class ClaimController {
      *  a restore of one not deleted on the sheet's today, or a line on a correction, or an edit typing
      *  an amount other than the one a claim's lines add up to, or a waiver of a claim that is not OPEN or
      *  PENDING or is already waived, or a hold or release of a claim that is not OPEN or PENDING, or a share the claim or its shares do
-     *  not allow, is refused. */
+     *  not allow, or a review assigned on a claim not in REVIEW or to a blank user, is refused. */
     @ExceptionHandler({VoidRefusedException.class, StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
             DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class, NoteRequiredException.class,
             SplitRefusedException.class, RedateRefusedException.class, PeriodCapException.class, MaxOpenException.class, ClaimLockedException.class,
             RemindRefusedException.class, CommentRefusedException.class, DeleteRefusedException.class, RefInUseException.class, LinedAmountException.class,
             WaiveRefusedException.class, HoldRefusedException.class, ShareRefusedException.class,
-            DataIntegrityViolationException.class})
+            ReviewAssignRefusedException.class, DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }
 
     /** The user who opened a claim cannot settle or approve it, only a steward approves or rejects a
-     *  PENDING claim, re-settles a SETTLED one, re-dates a claim or waives its late charge, and only a role the sheet's permission matrix allows
+     *  PENDING claim, re-settles a SETTLED one, re-dates a claim, waives its late charge or assigns its review, and only a role the sheet's permission matrix allows
      *  opens, settles, voids or moves a claim to another person. */
     @ExceptionHandler({OwnClaimSettleRefusedException.class, ApprovalRefusedException.class, ReassignRefusedException.class,
             ResettleRefusedException.class, PermissionRefusedException.class, RedateForbiddenException.class,
-            WaiveForbiddenException.class})
+            WaiveForbiddenException.class, ReviewAssignForbiddenException.class})
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public void ownClaim() {
     }

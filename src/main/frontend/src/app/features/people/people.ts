@@ -162,6 +162,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
       [myDueTotal]="mine()?.dueTotal ?? ''"
       [myOverdueTotal]="mine()?.overdueTotal ?? ''"
       [myCrewDueTotal]="myCrewDue()"
+      [myReviewsCount]="myReviews()"
       [consolidatedPeopleCount]="consolidatedPeople()"
       [consolidatedDueTotal]="consolidatedDue()"
       [consolidatedOverdueTotal]="consolidatedOverdue()"
@@ -1243,6 +1244,11 @@ export class People {
     return this.people().find(
       (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
     );
+  });
+  /** How many of the sheet's REVIEW claims are assigned to the signed-in user. */
+  protected readonly myReviews = computed(() => {
+    const user = this.session.user();
+    return this.claims().filter((c) => c.status === 'REVIEW' && user != null && c.reviewAssignee === user).length;
   });
   /** The due-totals of the crews the signed-in user's person leads, added up; blank when they lead none. */
   protected readonly myCrewDue = computed(() => {

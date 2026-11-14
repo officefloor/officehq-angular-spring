@@ -85,6 +85,10 @@ public class Claim {
     @Column(name = "edited_by")
     private String editedBy;
 
+    /** The user a steward assigned the claim's review to; null for a claim never assigned. */
+    @Column(name = "review_assignee")
+    private String reviewAssignee;
+
     /** The number of the settle batch that settled the claim; null for one not settled by a bulk
      *  settle. */
     @Column(name = "settle_batch")
@@ -412,6 +416,14 @@ public class Claim {
 
     public void setEditedBy(String editedBy) {
         this.editedBy = editedBy;
+    }
+
+    public String getReviewAssignee() {
+        return reviewAssignee;
+    }
+
+    public void setReviewAssignee(String reviewAssignee) {
+        this.reviewAssignee = reviewAssignee;
     }
 
     /** Whether the user opened the claim or last edited it, and so may not settle or approve it. */
