@@ -232,9 +232,9 @@ interface StatementTaken {
           [value]="pasteText()"
           (input)="pasteText.set(value($event)); pasteError.set(null)"
         ></textarea>
-        <button type="submit" data-testid="paste-submit">Add pasted claims</button>
+        <button type="submit" data-testid="paste-submit">Open pasted claims</button>
         @if (pasteAdded() !== null) {
-          Added <strong data-testid="paste-added">{{ pasteAdded() }}</strong>
+          Opened <strong data-testid="paste-added">{{ pasteAdded() }}</strong>
         }
       </form>
       @if (pasteError(); as message) {
@@ -1076,7 +1076,7 @@ export class People {
   private readonly importBusy = signal(false);
   protected readonly importError = signal<string | null>(null);
   protected readonly pasteText = signal('');
-  /** How many claims the last paste added; null while it runs or before one. */
+  /** How many lines the last paste put through; null while it runs or before one. */
   protected readonly pasteAdded = signal<number | null>(null);
   /** Whether a paste is waiting for its answer; a second one meanwhile is dropped. */
   private readonly pasteBusy = signal(false);
@@ -2145,8 +2145,9 @@ export class People {
     }
   }
 
-  /** Add a DRAFT claim per pasted line of name,amount,date,note, for people on the sheet; when any
-   *  line is refused nothing is added. The added claims then show, and how many were. */
+  /** Open a claim per pasted line of name,amount,date,note, for people on the sheet: a line matching
+   *  a DRAFT of its person by date and note updates and opens that DRAFT, any other adds one. When any
+   *  line, or any open, is refused nothing changes. The claims then show, and how many lines went through. */
   protected async pasteClaims(event: Event): Promise<void> {
     event.preventDefault();
     if (this.pasteBusy()) return;
@@ -2170,9 +2171,11 @@ export class People {
       this.pasteText.set('');
     } catch {
       this.pasteError.set(
-        'The claims could not be added: every line needs a name on the sheet, an amount of 0.00 or more ' +
+        'The claims could not be opened: every line needs a name on the sheet, an amount of 0.00 or more ' +
           'with up to two decimals, and a date (or blank) outside a closed period and before the person retired; ' +
-          'a reference given as " #<reference>" at the end of a note must not already be used on the sheet.',
+          'a reference given as " #<reference>" at the end of a note must not already be used on the sheet; ' +
+          'a line matching a claim by person, date and note must match a DRAFT; and each claim must be one ' +
+          'you may open (a note where one is required, within its period\'s cap).',
       );
     } finally {
       this.pasteBusy.set(false);
