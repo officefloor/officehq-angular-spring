@@ -7,13 +7,16 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface PersonRepository extends JpaRepository<Person, Long> {
 
-    /** The sheet's people in the order they were added. */
+    /** The sheet's people in the order they were added; a person merged into another has left it. */
+    @Query("select p from Person p where p.sheetId = :sheetId and p.mergedInto is null order by p.id")
     List<Person> findBySheetIdOrderByIdAsc(String sheetId);
 
+    /** The person on the sheet; a person merged into another has left it. */
+    @Query("select p from Person p where p.id = :id and p.sheetId = :sheetId and p.mergedInto is null")
     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
 
-    /** The sheet's person with this name or alias, ignoring case. */
-    @Query("select p from Person p where p.sheetId = :sheetId and (lower(p.name) = lower(:name)"
+    /** The sheet's person with this name or alias, ignoring case; a person merged into another has left it. */
+    @Query("select p from Person p where p.sheetId = :sheetId and p.mergedInto is null and (lower(p.name) = lower(:name)"
             + " or exists (select a from PersonAlias a where a.personId = p.id and a.aliasKey = lower(:name)))")
     Optional<Person> findByName(String sheetId, String name);
 

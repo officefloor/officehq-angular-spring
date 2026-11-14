@@ -64,6 +64,11 @@ public class PersonAlias {
         return personId;
     }
 
+    /** Make the alias another person's. */
+    public void setPersonId(Long personId) {
+        this.personId = personId;
+    }
+
     public String getAlias() {
         return alias;
     }

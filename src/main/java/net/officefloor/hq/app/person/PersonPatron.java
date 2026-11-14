@@ -58,6 +58,11 @@ public class PersonPatron {
         return personId;
     }
 
+    /** Name another person as the patron instead. */
+    public void setPatronId(Long patronId) {
+        this.patronId = patronId;
+    }
+
     public Long getPatronId() {
         return patronId;
     }

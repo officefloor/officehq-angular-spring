@@ -48,6 +48,11 @@ public class Person {
     @Column(name = "added_on", updatable = false)
     private LocalDate addedOn;
 
+    /** The id of the person this one was merged into; null while they were not. A merged person has
+     *  left the sheet. */
+    @Column(name = "merged_into")
+    private Long mergedInto;
+
     protected Person() {
     }
 
@@ -121,6 +126,15 @@ public class Person {
 
     public void setContact(String contact) {
         this.contact = contact;
+    }
+
+    public Long getMergedInto() {
+        return mergedInto;
+    }
+
+    /** Merge the person into another: they leave the sheet. */
+    public void mergeInto(Long personId) {
+        this.mergedInto = personId;
     }
 
     /** Whether the person is retired: any retirement date set counts, even one after the sheet's today. */

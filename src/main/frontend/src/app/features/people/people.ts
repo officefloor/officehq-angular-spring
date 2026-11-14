@@ -500,6 +500,26 @@ interface StatementTaken {
                 >
                   Add alias
                 </button>
+                <label [for]="'person-merge-into-' + p.id">Merge into</label>
+                <select
+                  [id]="'person-merge-into-' + p.id"
+                  data-testid="person-merge-into"
+                  [value]="mergeChoices()[p.id] ?? ''"
+                  (change)="setMergeChoice(p.id, value($event))"
+                >
+                  <option value="" [selected]="!mergeChoices()[p.id]">Choose a person</option>
+                  @for (o of people(); track o.id) {
+                    <option [value]="'' + o.id" [selected]="mergeChoices()[p.id] === '' + o.id">{{ o.name }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  data-testid="person-merge"
+                  [attr.aria-label]="'Merge ' + p.name + ' into the chosen person'"
+                  (click)="merge(p)"
+                >
+                  Merge
+                </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
                     <p role="alert" [attr.data-testid]="e.testId ?? 'person-error'">{{ e.message }}</p>
@@ -828,6 +848,8 @@ export class People {
   protected readonly patronChoices = signal<Record<number, string>>({});
   /** The alias typed on each person's row, by person id. */
   protected readonly aliasInputs = signal<Record<number, string>>({});
+  /** The person chosen on each person's row to merge them into (a person id, or blank), by person id. */
+  protected readonly mergeChoices = signal<Record<number, string>>({});
 
   constructor() {
     effect(() => {
@@ -841,6 +863,7 @@ export class People {
       this.holdDates.set({});
       this.patronChoices.set({});
       this.aliasInputs.set({});
+      this.mergeChoices.set({});
       this.selectedClaims.set(new Set());
       this.bulkOpenResult.set(null);
       this.bulkOpenError.set(null);
@@ -958,6 +981,39 @@ export class People {
         message: `${alias} could not be added as an alias of ${person.name}: it is already a name or alias on the sheet.`,
       });
     }
+  }
+
+  protected setMergeChoice(personId: number, intoId: string): void {
+    this.mergeChoices.update((choices) => ({ ...choices, [personId]: intoId }));
+    if (this.rowError()?.id === personId) this.rowError.set(null);
+  }
+
+  /** Merge a person into the chosen person: their row leaves the list, and the people and claims are
+   *  read again, as the merge moves claims, names and patrons to the other. */
+  protected async merge(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const chosen = this.mergeChoices()[person.id] ?? '';
+    if (!chosen) {
+      this.rowError.set({ id: person.id, message: 'Choose a person to merge into.' });
+      return;
+    }
+    const intoId = Number(chosen);
+    const into = this.people().find((p) => p.id === intoId);
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/merge`;
+    try {
+      await firstValueFrom(this.http.post<Person>(url, { intoId }));
+    } catch {
+      this.rowError.set({
+        id: person.id,
+        message: `${person.name} could not be merged into ${into?.name ?? 'that person'}.`,
+      });
+      return;
+    }
+    if (this.session.sheetId() !== sheet) return;
+    this.mergeChoices.update((choices) => ({ ...choices, [person.id]: '' }));
+    await this.read(sheet, this.session.loads());
   }
 
   /** A person's aliases, as the server sorts them (as names are compared), comma and space separated. */
