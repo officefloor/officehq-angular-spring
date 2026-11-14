@@ -41,23 +41,25 @@ public class SheetService {
         return load(id).getToday();
     }
 
-    /** Take the sheet's next claim number: the one after the last given anywhere in its tree (the
-     *  sheets reached through parents and children from it). Every sheet of the tree is held locked
-     *  until the transaction ends so claims opened at the same moment get different numbers. */
+    /** Take the sheet's next claim number, FY<year>-<n>: the one after the last given in the fiscal
+     *  year (under the sheet's start month) of the date anywhere in its tree (the sheets reached
+     *  through parents and children from it). Every sheet of the tree is held locked until the
+     *  transaction ends so claims opened at the same moment get different numbers. */
     @Transactional
-    public long nextClaimNumber(String id) {
+    public String nextClaimNumber(String id, LocalDate date) {
         load(id);
         Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        int fiscalYear = sheet.fiscalYearOf(date);
         long lastInTree = 0;
         for (String other : treeOf(id)) {
             if (!other.equals(id)) {
                 lastInTree = Math.max(lastInTree,
-                        sheets.findLockedById(other).map(Sheet::getLastClaimNumber).orElse(0L));
+                        sheets.findLockedById(other).map(s -> s.getLastClaimNumber(fiscalYear)).orElse(0L));
             }
         }
-        long number = sheet.takeClaimNumberAfter(lastInTree);
+        long number = sheet.takeClaimNumberAfter(fiscalYear, lastInTree);
         sheets.saveAndFlush(sheet);
-        return number;
+        return "FY" + String.format("%04d", fiscalYear) + "-" + number;
     }
 
     /** The ids of the sheets in the sheet's tree, the sheet included, in id order: its topmost

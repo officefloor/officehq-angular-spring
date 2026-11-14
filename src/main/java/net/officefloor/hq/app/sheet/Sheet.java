@@ -1,11 +1,17 @@
 package net.officefloor.hq.app.sheet;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.Map;
 
 /** A sheet, identified by the id a user types. Everything else in the app is kept per sheet. */
 @Entity
@@ -19,9 +25,17 @@ public class Sheet {
     @Column(name = "today", nullable = false)
     private LocalDate today;
 
-    /** The last claim number given on the sheet; the next claim opened takes the one after. */
+    /** The last plain claim number (1, 2, ...) given on the sheet before numbering went per fiscal year. */
     @Column(name = "last_claim_number", nullable = false)
     private long lastClaimNumber;
+
+    /** The last claim number given on the sheet in each fiscal year (by the year it starts in); the
+     *  next claim opened in a fiscal year takes the one after. */
+    @ElementCollection
+    @CollectionTable(name = "sheet_fiscal_claim_number", joinColumns = @JoinColumn(name = "sheet_id"))
+    @MapKeyColumn(name = "fiscal_year")
+    @Column(name = "last_claim_number", nullable = false)
+    private Map<Integer, Long> lastFiscalClaimNumbers = new HashMap<>();
 
     /** The last settle batch number given on the sheet (0 for none); the next bulk settle that
      *  settles a claim takes the one after. */
@@ -149,15 +163,21 @@ public class Sheet {
         this.archived = true;
     }
 
-    /** The last claim number given on the sheet; 0 when there has been none. */
-    public long getLastClaimNumber() {
-        return lastClaimNumber;
+    /** The fiscal year a date falls in, by the year it starts in, under the sheet's start month. */
+    public int fiscalYearOf(LocalDate date) {
+        return date.getMonthValue() >= fiscalStartMonth ? date.getYear() : date.getYear() - 1;
     }
 
-    /** Take a claim number following the last given anywhere in the sheet's tree. */
-    public long takeClaimNumberAfter(long lastInTree) {
-        lastClaimNumber = Math.max(lastClaimNumber, lastInTree) + 1;
-        return lastClaimNumber;
+    /** The last claim number given on the sheet in a fiscal year; 0 when there has been none. */
+    public long getLastClaimNumber(int fiscalYear) {
+        return lastFiscalClaimNumbers.getOrDefault(fiscalYear, 0L);
+    }
+
+    /** Take a claim number in a fiscal year following the last given in it anywhere in the sheet's tree. */
+    public long takeClaimNumberAfter(int fiscalYear, long lastInTree) {
+        long number = Math.max(getLastClaimNumber(fiscalYear), lastInTree) + 1;
+        lastFiscalClaimNumbers.put(fiscalYear, number);
+        return number;
     }
 
     /** The last settle batch number given on the sheet; null when there has been none. */

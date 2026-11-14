@@ -822,10 +822,11 @@ public class ClaimService {
 
     /** The number a claim opened now takes: under period numbering (set, and the sheet's today on or
      *  after it) the next within the period its due-by falls in, <period>-<n>, or X-<n> when it falls
-     *  in none; otherwise the sheet's next sheet-wide number. Taken with the sheet locked. */
+     *  in none; otherwise the sheet's next sheet-wide number in the fiscal year of its due-by,
+     *  FY<year>-<n>. Taken with the sheet locked. */
     private String nextNumber(String sheetId, LocalDate date) {
         if (!periodNumbering(sheetId)) {
-            return String.valueOf(sheets.nextClaimNumber(sheetId));
+            return sheets.nextClaimNumber(sheetId, date);
         }
         String prefix = periodPrefixOf(sheetId, date);
         long last = Stream.concat(claims.numbers(sheetId).stream(), claims.retiredNumbers(sheetId).stream())

@@ -65,7 +65,8 @@ public class Claim {
     private ClaimStatus status = ClaimStatus.DRAFT;
 
     /** The claim's number, given when it is opened and kept when it is voided (never reused): the
-     *  sheet-wide number (1, 2, ...), or under period numbering <period>-<n> or X-<n>; null for a
+     *  sheet-wide number (FY<year>-1, FY<year>-2, ... within the fiscal year of its due-by; 1, 2, ...
+     *  before that), or under period numbering <period>-<n> or X-<n>; null for a
      *  claim never opened. */
     @Column(name = "claim_number")
     private String number;
