@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.List;
 import java.util.Set;
 import net.officefloor.hq.app.setting.SettingService;
 import org.springframework.beans.factory.ObjectProvider;
@@ -86,6 +87,15 @@ public class Audit {
                 record(entry);
             }
         });
+    }
+
+    /** Every line the audit file holds, in the order they were appended; none when there is no file yet. */
+    public synchronized List<String> lines() {
+        try {
+            return Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : List.of();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /** Truncate the audit file. */

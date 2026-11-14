@@ -1,11 +1,12 @@
 import { Component, inject, signal } from '@angular/core';
 import { Session } from '../../core/session';
+import { AuditViewer } from '../audit/audit-viewer';
 import { People } from '../people/people';
 
 // The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  imports: [People],
+  imports: [AuditViewer, People],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -62,6 +63,7 @@ import { People } from '../people/people';
           <p role="alert" data-testid="asof-error">{{ error }}</p>
         }
         <app-people />
+        <app-audit-viewer />
       } @else {
         <p data-testid="home-empty">No sheet loaded.</p>
       }
