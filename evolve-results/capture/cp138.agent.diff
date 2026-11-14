@@ -1,0 +1,85 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1d91c20b7..91f588b7a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -595,6 +595,24 @@ interface StatementTaken {
+                 >
+                   Hold
+                 </button>
++                <label [for]="'person-inline-grade-' + p.id">Grade</label>
++                <select
++                  [id]="'person-inline-grade-' + p.id"
++                  data-testid="person-inline-grade"
++                  (change)="setInlineGrade(p.id, value($event))"
++                >
++                  @for (g of grades; track g) {
++                    <option [value]="g" [selected]="(inlineGrades()[p.id] ?? gradeOf(p)) === g">{{ g }}</option>
++                  }
++                </select>
++                <button
++                  type="button"
++                  data-testid="person-inline-grade-save"
++                  [attr.aria-label]="'Save the chosen grade for ' + p.name"
++                  (click)="saveInlineGrade(p)"
++                >
++                  Save grade
++                </button>
+                 <label [for]="'person-patron-select-' + p.id">Patron</label>
+                 <select
+                   [id]="'person-patron-select-' + p.id"
+@@ -1086,6 +1104,8 @@ export class People {
+   /** The date typed to take each person's statement as of (blank: now), by person id. */
+   protected readonly statementDates = signal<Record<number, string>>({});
+   /** The patron chosen on each person's row (a person id, or blank), by person id. */
++  /** The grade chosen in each person's row select, by person id; none chosen shows their grade. */
++  protected readonly inlineGrades = signal<Record<number, string>>({});
+   protected readonly patronChoices = signal<Record<number, string>>({});
+   /** The alias typed on each person's row, by person id. */
+   protected readonly aliasInputs = signal<Record<number, string>>({});
+@@ -1191,6 +1211,46 @@ export class People {
+     }
+   }
+ 
++  protected setInlineGrade(personId: number, grade: string): void {
++    this.inlineGrades.update((choices) => ({ ...choices, [personId]: grade }));
++    if (this.rowError()?.id === personId) this.rowError.set(null);
++  }
++
++  /** Give a person the grade chosen on their row from the sheet's today, saved as the person form
++   *  would save it with their other fields as they are; their row then shows the grade. */
++  protected async saveInlineGrade(person: Person): Promise<void> {
++    this.rowError.set(null);
++    const sheet = this.session.sheetId();
++    if (!sheet) return;
++    const grade = this.inlineGrades()[person.id] ?? this.gradeOf(person);
++    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}`;
++    try {
++      const saved = await firstValueFrom(
++        this.http.put<Person>(url, {
++          name: person.name,
++          grade,
++          gradeFrom: null,
++          terms: person.terms,
++          contact: person.contact,
++          tags: null,
++          version: person.version,
++        }),
++      );
++      if (this.session.sheetId() !== sheet) return;
++      this.people.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
++      this.inlineGrades.update((choices) => {
++        const { [person.id]: _, ...rest } = choices;
++        return rest;
++      });
++    } catch (e) {
++      const message =
++        e instanceof HttpErrorResponse && e.status === 412
++          ? `${person.name} was saved by someone else since the sheet was loaded; reload it to give a grade.`
++          : `${person.name} could not be given grade ${grade}.`;
++      this.rowError.set({ id: person.id, message });
++    }
++  }
++
+   protected setPatronChoice(personId: number, patronId: string): void {
+     this.patronChoices.update((choices) => ({ ...choices, [personId]: patronId }));
+     if (this.rowError()?.id === personId) this.rowError.set(null);

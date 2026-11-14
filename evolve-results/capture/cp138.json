@@ -1,0 +1,64 @@
+{
+  "checkpoint": 138,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp138_inline-grade",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each person's row has a grade select and a save button that records the chosen grade from the\nsheet's today exactly as the person form would (PERSON_EDITED and the rollup lines).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach person's row has a grade select and a save button that records the chosen grade from the\nsheet's today exactly as the person form would (PERSON_EDITED and the rollup lines).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6e4d4cbdd6fd0a9c8f63b16ad2091ea8154ec35c",
+  "reset_sha": "",
+  "preagent_sha": "7d9da99109eb8d71eb8c641530a3df7fc210ed86",
+  "prev_sha": "7d9da99109eb8d71eb8c641530a3df7fc210ed86",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9228614000000003,
+    "input_tokens": 52,
+    "output_tokens": 8692,
+    "cache_read_tokens": 1241707,
+    "cache_creation_tokens": 62559,
+    "num_turns": 26,
+    "duration_ms": 465522,
+    "duration_api_ms": 100534,
+    "model": "claude-opus-5-5",
+    "session_id": "b58d6292-06b2-426e-b108-78f8823e5c49",
+    "stop_reason": "success",
+    "result_text": "Each person's row now has a grade select and a save button. Three of the four tests in `bin/e2e` pass, including both that use the new control. **\"inline grade scenario 1\" fails every time** (twice more when run alone), on something this change doesn't touch.\n\n**The change** (all in `src/main/frontend/src/app/features/people/people.ts`):\n- **Controls:** each row has a `person-inline-grade` select (A, B, C), starting on the grade the person has on the sheet's today, and a `person-inline-grade-save` button.\n- **Saving:** the button sends the same request the person form's save does: the chosen grade, no from-date (so it takes the sheet's today), and the person's current name, terms, contact and version, with their tags left as they are. The server's audit and permission handling therefore apply unchanged: `PERSON_EDITED` and the rollup lines as the form writes them, viewers refused, and a person editor someone opened earlier now counts as out of date.\n- **Errors:** a refusal shows `person-error` on the row. It clears when the select changes or the row's next action is taken.\n- No server or database changes were needed.\n\n**The failing test:** \"inline grade scenario 1\" never uses the inline grade. It fails at `acceptance.spec.ts:219`. Looking at the sheet as of 2026-04-02, it expects the people count to be 1 and one draft claim, for Fay, who was on the sheet that day and transferred away on 2026-04-04. The app shows 0 because a transfer moves the person and their claims to the other sheet, and the as-of view doesn't record that they were on the original sheet before. Fixing that means adding transfer history to the as-of view of people and claims. That's a separate feature beyond this request, so I left it alone.\n\nI didn't run the test without my change, but the transfer code and as-of person list have no transfer history and my edit touches neither. Do you want me to take on the transfer history as a follow-up?",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9228614000000003,
+        "num_turns": 26,
+        "duration_ms": 465522,
+        "duration_api_ms": 100534,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp138.agent.jsonl",
+  "agent_diff_file": "cp138.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
