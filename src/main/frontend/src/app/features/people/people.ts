@@ -1,7 +1,7 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
-import { Claim, ClaimsApi, cents, counts, money } from '../claims/claims-api';
+import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, counts, money, quickAddError } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
@@ -36,6 +36,16 @@ import { GRADES, PeopleApi, Person, isStale, personError, statementError } from 
         }
         @if (error(); as err) {
           <p role="alert" data-testid="person-form-error">{{ err }}</p>
+        }
+      </form>
+      <form [formGroup]="quickForm" (ngSubmit)="quickAdd()" aria-label="Quick add claim">
+        <label for="quick-name">Name</label>
+        <input id="quick-name" data-testid="quick-name" formControlName="name" autocomplete="off" />
+        <label for="quick-amount">Amount</label>
+        <input id="quick-amount" data-testid="quick-amount" formControlName="amount" inputmode="decimal" autocomplete="off" />
+        <button type="submit" data-testid="quick-submit">Quick add</button>
+        @if (quickError(); as err) {
+          <p role="alert" data-testid="quick-error">{{ err }}</p>
         }
       </form>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
@@ -152,17 +162,28 @@ export class People {
     grade: new FormControl<string>('A', { nonNullable: true, validators: Validators.required }),
   });
 
+  /** The quick-add bar: a name and an amount make a DRAFT claim for that person. */
+  protected readonly quickForm = new FormGroup({
+    name: new FormControl('', { nonNullable: true }),
+    amount: new FormControl('', { nonNullable: true }),
+  });
+  protected readonly quickError = signal<string | null>(null);
+  private quickAdding = false;
+
   /** Guards against a slower, older read landing over a newer one. */
   private readSeq = 0;
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(null));
+    this.quickForm.valueChanges.subscribe(() => this.quickError.set(null));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
       untracked(() => {
         this.reset();
         this.rowErrors.set({});
+        this.quickForm.reset({ name: '', amount: '' });
+        this.quickError.set(null);
         this.people.set([]);
         this.claims.set([]);
         this.rates.set([]);
@@ -268,6 +289,37 @@ export class People {
       this.error.set(personError(e));
     } finally {
       this.submitting = false;
+    }
+  }
+
+  /** Quick-add a DRAFT claim by name; the person is added first (grade A) when new. */
+  protected async quickAdd(): Promise<void> {
+    if (this.quickAdding) return;
+    this.quickError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const value = this.quickForm.getRawValue();
+    const amount = value.amount.trim();
+    if (!value.name.trim()) {
+      this.quickError.set('Enter a name.');
+      return;
+    }
+    if (!AMOUNT_PATTERN.test(amount)) {
+      this.quickError.set('Enter an amount of 0.00 or more with up to two decimals.');
+      return;
+    }
+    this.quickAdding = true;
+    try {
+      const added = await this.claimsApi.quickAdd(sheetId, { name: value.name, amount });
+      if (this.session.sheetId() !== sheetId) return;
+      if (added.personAdded) this.people.update((ps) => [...ps.filter((p) => p.id !== added.person.id), added.person]);
+      else this.taken(added.person);
+      this.claimSaved(added.claim);
+      this.quickForm.reset({ name: '', amount: '' }, { emitEvent: false });
+    } catch (e) {
+      this.quickError.set(quickAddError(e));
+    } finally {
+      this.quickAdding = false;
     }
   }
 

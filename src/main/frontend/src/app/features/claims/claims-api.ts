@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import type { Person } from '../people/people-api';
 
 /** An amount of 0.00 or more with up to two decimals. */
 export const AMOUNT_PATTERN = /^\d{1,13}(\.\d{1,2})?$/;
@@ -45,6 +46,18 @@ export interface ClaimForm {
   note: string;
 }
 
+export interface QuickAddForm {
+  name: string;
+  amount: string;
+}
+
+/** A quick-add's result: the person (just added when personAdded) and their new DRAFT claim. */
+export interface QuickAdd {
+  person: Person;
+  personAdded: boolean;
+  claim: Claim;
+}
+
 // The claims kept on the active sheet, read and written through the server.
 @Injectable({ providedIn: 'root' })
 export class ClaimsApi {
@@ -60,6 +73,11 @@ export class ClaimsApi {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/people/${personId}/claims`, form, { headers: this.headers() }),
     );
+  }
+
+  /** Add a DRAFT claim for the person with the name, adding them (grade A) first when new. */
+  quickAdd(sheetId: string, form: QuickAddForm): Promise<QuickAdd> {
+    return firstValueFrom(this.http.post<QuickAdd>(`${this.url(sheetId)}/quick-add`, form, { headers: this.headers() }));
   }
 
   update(sheetId: string, id: number, form: ClaimForm): Promise<Claim> {
@@ -85,6 +103,13 @@ export function claimError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount of 0.00 or more with up to two decimals.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'The date is in a closed period.';
+  return 'Something went wrong; try again.';
+}
+
+export function quickAddError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name and an amount of 0.00 or more with up to two decimals.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'That name was just added by someone else; try again.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return "The sheet's today is in a closed period.";
   return 'Something went wrong; try again.';
 }
 
