@@ -3,6 +3,7 @@ package net.officefloor.hq.app.settings;
 import java.math.BigDecimal;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -11,20 +12,24 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The sheet's settings (its clerk limit) and the role each user name holds on it. */
+/** The sheet's settings (its clerk limit and floor) and the role each user name holds on it. */
 @Service
 public class SettingsService {
 
     /** The key the clerk limit is audited under. */
     public static final String CLERK_LIMIT = "clerk-limit";
+    /** The key the floor is audited under. */
+    public static final String FLOOR = "floor";
 
     private final SheetRoleRepository roles;
     private final SheetService sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
-    public SettingsService(SheetRoleRepository roles, SheetService sheets, Audit audit) {
+    public SettingsService(SheetRoleRepository roles, SheetService sheets, RollupService rollup, Audit audit) {
         this.roles = roles;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -43,6 +48,28 @@ public class SettingsService {
         sheets.flush();
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + CLERK_LIMIT + " value=" + (scaled == null ? "" : scaled.toPlainString()));
+        return scaled;
+    }
+
+    /** The sheet's floor: a claim's live due is at least it. */
+    @Transactional(readOnly = true)
+    public BigDecimal floor(String sheetId) {
+        return sheets.floor(sheetId);
+    }
+
+    /** Set the sheet's floor, the sheet created first if it was never loaded; every live due (and
+     *  so every total) moves with it, while settled, bound and closed figures stay as they are. */
+    @Transactional
+    public BigDecimal setFloor(String sheetId, String user, BigDecimal floor) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal scaled = floor.setScale(2);
+        sheet.setFloor(scaled);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + FLOOR + " value=" + scaled.toPlainString());
+        rollup.recordChanges(sheetId, user, before);
         return scaled;
     }
 

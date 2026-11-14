@@ -227,11 +227,13 @@ public class ClaimService {
     }
 
     /** The claim's amount times its person's grade rate in force on the claim's date, divided by
-     *  100, rounded half to even; null with no rate in force then. */
+     *  100, rounded half to even, raised to the sheet's floor; null with no rate in force then. */
     private BigDecimal dueOf(Claim claim, Person person) {
+        BigDecimal floor = sheets.floor(claim.getSheetId());
         return rates.findInForce(claim.getSheetId(), person.getGrade(), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
+                .map(due -> due.max(floor))
                 .orElse(null);
     }
 

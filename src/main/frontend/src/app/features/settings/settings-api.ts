@@ -12,6 +12,8 @@ export const LIMIT_PATTERN = /^\d{1,13}(\.\d{1,2})?$/;
 export interface Settings {
   /** Two decimals, as the server formats it; null when there is no limit. */
   clerkLimit: string | null;
+  /** Two decimals, as the server formats it: a claim's live due is at least it. */
+  floor: string;
 }
 
 export interface RoleGrant {
@@ -35,6 +37,12 @@ export class SettingsApi {
     );
   }
 
+  setFloor(sheetId: string, value: string): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/floor`, { value }, { headers: this.headers() }),
+    );
+  }
+
   roles(sheetId: string): Promise<RoleGrant[]> {
     return firstValueFrom(this.http.get<RoleGrant[]>(`${this.url(sheetId)}/roles`, { headers: this.headers() }));
   }
@@ -52,8 +60,11 @@ export class SettingsApi {
   }
 }
 
+export const SETTINGS_INVALID =
+  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00).';
+
 export function settingsError(e: unknown): string {
-  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a clerk limit of 0.00 or more with up to two decimals, or leave it blank for no limit.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return SETTINGS_INVALID;
   return 'Something went wrong; try again.';
 }
 

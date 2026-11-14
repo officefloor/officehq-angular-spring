@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.sheet;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -47,6 +48,12 @@ public class SheetService {
     @Transactional(readOnly = true)
     public LocalDate today(String id) {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(LocalDate::now);
+    }
+
+    /** The sheet's floor: a claim's live due is at least it. */
+    @Transactional(readOnly = true)
+    public BigDecimal floor(String id) {
+        return sheets.findById(id).map(Sheet::getFloor).orElse(Sheet.DEFAULT_FLOOR);
     }
 
     /** Take the sheet's next claim number (1 for the first), holding the sheet locked until the

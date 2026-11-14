@@ -11,6 +11,8 @@ export class Session {
   readonly sheetId = signal<string | null>(null);
   /** The active sheet's today (yyyy-mm-dd): every date decision and default date uses it. */
   readonly today = signal<string | null>(null);
+  /** The active sheet's floor (two decimals): a claim's live due is at least it. */
+  readonly floor = signal('1.00');
   /** Whether the people list shows retired people too: off at first, and kept as it is when a
    *  sheet is loaded. */
   readonly showRetired = signal(false);
@@ -40,6 +42,7 @@ export class Session {
       );
       this.sheetId.set(res.id);
       this.today.set(res.today);
+      this.floor.set(res.floor);
       this.loads.update((n) => n + 1);
       return null;
     } catch (e) {
@@ -69,6 +72,7 @@ export class Session {
 interface SheetView {
   id: string;
   today: string;
+  floor: string;
 }
 
 function message(e: unknown, invalid: string): string {

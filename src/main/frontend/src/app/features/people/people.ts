@@ -146,6 +146,7 @@ export class People {
    *  the sum of the dues there are. */
   private readonly dueByPerson = computed(() => {
     const out = new Map<number, number | null>();
+    const floor = cents(this.session.floor());
     for (const p of this.people()) {
       const rates = this.ratesOf(p.grade);
       const counted = this.claimsOf(p.id).filter(this.countsLive());
@@ -153,7 +154,7 @@ export class People {
         out.set(p.id, null);
         continue;
       }
-      out.set(p.id, counted.reduce((sum, c) => sum + (claimDueCents(rates, c) ?? 0), 0));
+      out.set(p.id, counted.reduce((sum, c) => sum + (claimDueCents(rates, c, floor) ?? 0), 0));
     }
     return out;
   });
@@ -163,12 +164,13 @@ export class People {
    *  SETTLED claims whose date falls in it (a held person's OPEN ones left out). */
   protected readonly dueByPeriod = computed(() => {
     const out = new Map<number, number>();
+    const floor = cents(this.session.floor());
     for (const p of this.people()) {
       const rates = this.ratesOf(p.grade);
       for (const c of this.claimsOf(p.id).filter(this.countsLive())) {
         const period = periodOn(this.periods(), c.date);
         if (period === null) continue;
-        out.set(period.id, (out.get(period.id) ?? 0) + (claimDueCents(rates, c) ?? 0));
+        out.set(period.id, (out.get(period.id) ?? 0) + (claimDueCents(rates, c, floor) ?? 0));
       }
     }
     return out;

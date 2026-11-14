@@ -72,7 +72,9 @@ public class RollupService {
 
     /** The sheet's figures now, as the store (and this transaction) holds them. */
     public Snapshot snapshot(String sheetId) {
-        LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElseGet(LocalDate::now);
+        Optional<Sheet> sheet = sheets.findById(sheetId);
+        LocalDate today = sheet.map(Sheet::getToday).orElseGet(LocalDate::now);
+        BigDecimal floor = floorOf(sheet);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
         Set<Long> held = heldIds(sheetPeople);
@@ -87,7 +89,7 @@ public class RollupService {
             List<Rate> theirRates = sheetRates.stream().filter(r -> r.getGrade().equals(p.getGrade())).toList();
             List<Claim> theirs = counted.getOrDefault(p.getId(), List.of());
             BigDecimal claimed = theirs.stream().map(Claim::getAmount).reduce(zero(), BigDecimal::add);
-            out.put(p.getId(), new Figures(p.getName(), claimed, dueTotalOf(theirs, theirRates, today)));
+            out.put(p.getId(), new Figures(p.getName(), claimed, dueTotalOf(theirs, theirRates, today, floor)));
         }
         return new Snapshot(out);
     }
@@ -95,6 +97,7 @@ public class RollupService {
     /** The due-total of the period from {@code from} to {@code to}, inclusive: the dues (n/a ones
      *  skipped) its OPEN and SETTLED claims dated inside it show now (a held person's OPEN ones left out). */
     public BigDecimal dueTotalBetween(String sheetId, LocalDate from, LocalDate to) {
+        BigDecimal floor = floorOf(sheets.findById(sheetId));
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
         Set<Long> held = heldIds(sheetPeople);
@@ -105,7 +108,7 @@ public class RollupService {
         return claims.findBySheetIdOrderByIdDesc(sheetId).stream()
                 .filter(c -> counts(c, held))
                 .filter(c -> !c.getDate().isBefore(from) && !c.getDate().isAfter(to))
-                .map(c -> shownDueOf(c, ratesByPerson.getOrDefault(c.getPersonId(), List.of())))
+                .map(c -> shownDueOf(c, ratesByPerson.getOrDefault(c.getPersonId(), List.of()), floor))
                 .filter(Objects::nonNull)
                 .reduce(zero(), BigDecimal::add);
     }
@@ -141,21 +144,23 @@ public class RollupService {
     /** A person's due-total: the sum of the dues their counting claims show (n/a ones skipped);
      *  null (n/a) when their grade has no rate in force on the sheet's today, unless a claim keeps
      *  a fixed or bound due. */
-    private static BigDecimal dueTotalOf(List<Claim> counted, List<Rate> theirRates, LocalDate today) {
+    private static BigDecimal dueTotalOf(List<Claim> counted, List<Rate> theirRates, LocalDate today,
+            BigDecimal floor) {
         boolean kept = counted.stream()
                 .anyMatch(c -> c.getSettledDue() != null || (c.isStated() && c.getStatedDue() != null));
         if (inForce(theirRates, today).isEmpty() && !kept) {
             return null;
         }
         return counted.stream()
-                .map(c -> shownDueOf(c, theirRates))
+                .map(c -> shownDueOf(c, theirRates, floor))
                 .filter(Objects::nonNull)
                 .reduce(zero(), BigDecimal::add);
     }
 
     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it
-     *  to (null: n/a), else its amount times the rate in force on its date, rounded half to even. */
-    private static BigDecimal shownDueOf(Claim c, List<Rate> theirRates) {
+     *  to (null: n/a), else its amount times the rate in force on its date, rounded half to even,
+     *  raised to the sheet's floor. */
+    private static BigDecimal shownDueOf(Claim c, List<Rate> theirRates, BigDecimal floor) {
         if (c.getSettledDue() != null) {
             return c.getSettledDue();
         }
@@ -164,6 +169,7 @@ public class RollupService {
         }
         return inForce(theirRates, c.getDate())
                 .map(r -> c.getAmount().multiply(r.getPct()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_EVEN))
+                .map(due -> due.max(floor))
                 .orElse(null);
     }
 
@@ -171,6 +177,10 @@ public class RollupService {
         return theirRates.stream()
                 .filter(r -> r.appliesOn(on))
                 .max(Comparator.comparing(Rate::getFrom, Comparator.nullsFirst(Comparator.naturalOrder())));
+    }
+
+    private static BigDecimal floorOf(Optional<Sheet> sheet) {
+        return sheet.map(Sheet::getFloor).orElse(Sheet.DEFAULT_FLOOR);
     }
 
     private static BigDecimal zero() {

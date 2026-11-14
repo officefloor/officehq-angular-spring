@@ -21,9 +21,10 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class SheetController {
 
-    public record SheetView(String id, LocalDate today) {
+    /** A sheet as the screen takes it: its id, its today, and its floor with two decimals. */
+    public record SheetView(String id, LocalDate today, String floor) {
         static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday());
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString());
         }
     }
 
