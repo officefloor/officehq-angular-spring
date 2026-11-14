@@ -741,6 +741,16 @@ public class SettingService {
         return saved;
     }
 
+    /** The sheet's pot as it stood set at the end of a day; null for none. A pot whose value was never
+     *  kept stands as it is now. */
+    public BigDecimal pot(String sheetId, LocalDate day) {
+        if (!history.settingsKept(sheetId).contains(POT)) {
+            return pot(sheetId);
+        }
+        String value = history.settings(sheetId, day).get(POT);
+        return value != null ? new BigDecimal(value) : null;
+    }
+
     /** Change the sheet's pot, kept to two decimals; null leaves it blank (none). */
     @Transactional
     public Sheet setPot(String sheetId, String by, BigDecimal pot) {

@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 
 /** A pool on a sheet: a name, unique on the sheet, whose members each hold a share percent. */
 @Entity
@@ -21,6 +22,10 @@ public class Pool {
 
     @Column(name = "name", nullable = false)
     private String name;
+
+    /** The sheet's today when the pool was added; null for one added before this was kept. */
+    @Column(name = "made_on", updatable = false)
+    private LocalDate madeOn;
 
     protected Pool() {
     }
@@ -40,5 +45,17 @@ public class Pool {
 
     public String getName() {
         return name;
+    }
+
+    /** Keep the sheet's today the pool is added on. */
+    public Pool madeOn(LocalDate day) {
+        this.madeOn = day;
+        return this;
+    }
+
+    /** Whether the pool stood at the end of a day: it was added while the sheet's today was on or
+     *  before it (one added before that was kept always stood). */
+    public boolean madeAsOf(LocalDate day) {
+        return madeOn == null || !madeOn.isAfter(day);
     }
 }

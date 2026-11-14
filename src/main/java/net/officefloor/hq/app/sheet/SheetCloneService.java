@@ -136,14 +136,14 @@ public class SheetCloneService {
         // Pools, then their members: people and pools of the clone.
         Map<Long, Long> pools = new HashMap<>();
         for (Long id : ids("SELECT id FROM pool WHERE sheet_id = ? ORDER BY id", from)) {
-            pools.put(id, insert("INSERT INTO pool (sheet_id, name) SELECT ?, name FROM pool WHERE id = ?", to, id));
+            pools.put(id, insert("INSERT INTO pool (sheet_id, name, made_on) SELECT ?, name, made_on FROM pool WHERE id = ?", to, id));
         }
         for (Map<String, Object> member : jdbc.queryForList("SELECT m.* FROM pool_member m JOIN pool p"
                 + " ON p.id = m.pool_id WHERE p.sheet_id = ? ORDER BY m.id", from)) {
-            jdbc.update("INSERT INTO pool_member (pool_id, person_id, member_pool_id, share, from_date, to_date)"
-                    + " VALUES (?, ?, ?, ?, ?, ?)", pools.get(idOf(member.get("POOL_ID"))),
+            jdbc.update("INSERT INTO pool_member (pool_id, person_id, member_pool_id, share, from_date, to_date,"
+                    + " made_on) VALUES (?, ?, ?, ?, ?, ?, ?)", pools.get(idOf(member.get("POOL_ID"))),
                     people.get(idOf(member.get("PERSON_ID"))), pools.get(idOf(member.get("MEMBER_POOL_ID"))),
-                    member.get("SHARE"), member.get("FROM_DATE"), member.get("TO_DATE"));
+                    member.get("SHARE"), member.get("FROM_DATE"), member.get("TO_DATE"), member.get("MADE_ON"));
         }
 
         // Crews, then their members: people of the clone.
@@ -154,16 +154,17 @@ public class SheetCloneService {
             if (!people.containsKey(idOf(crew.get("LEAD_ID")))) {
                 continue;
             }
-            crews.put(idOf(crew.get("ID")), insert("INSERT INTO crew (sheet_id, name, lead_id) SELECT ?, name, ? FROM crew"
-                    + " WHERE id = ?", to, people.get(idOf(crew.get("LEAD_ID"))), idOf(crew.get("ID"))));
+            crews.put(idOf(crew.get("ID")), insert("INSERT INTO crew (sheet_id, name, lead_id, made_on)"
+                    + " SELECT ?, name, ?, made_on FROM crew WHERE id = ?", to, people.get(idOf(crew.get("LEAD_ID"))), idOf(crew.get("ID"))));
         }
         for (Map<String, Object> member : jdbc.queryForList("SELECT m.* FROM crew_member m JOIN crew c"
                 + " ON c.id = m.crew_id WHERE c.sheet_id = ? ORDER BY m.id", from)) {
             if (!crews.containsKey(idOf(member.get("CREW_ID")))) {
                 continue;
             }
-            jdbc.update("INSERT INTO crew_member (crew_id, person_id) VALUES (?, ?)",
-                    crews.get(idOf(member.get("CREW_ID"))), people.get(idOf(member.get("PERSON_ID"))));
+            jdbc.update("INSERT INTO crew_member (crew_id, person_id, made_on) VALUES (?, ?, ?)",
+                    crews.get(idOf(member.get("CREW_ID"))), people.get(idOf(member.get("PERSON_ID"))),
+                    member.get("MADE_ON"));
         }
 
         // Claims, person by person in the order they were listed, unnumbered, unbound and unlocked;

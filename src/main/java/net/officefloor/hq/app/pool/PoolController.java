@@ -7,7 +7,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import net.officefloor.hq.app.AsOf;
 import net.officefloor.hq.app.SignedInUser;
+import net.officefloor.hq.app.person.PersonController;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -55,6 +57,28 @@ public class PoolController {
         }
     }
 
+    /** A person as a pool saw them at the end of a day: whether a retirement date was set, and the
+     *  holds put on them by then. */
+    public record PersonThenView(Long id, String name, boolean retired, List<PersonController.HoldView> holds) {
+        static PersonThenView of(PoolHistoryService.PersonThen then) {
+            return new PersonThenView(then.person().getId(), then.person().getName(), then.retired(),
+                    then.holds().stream().map(PersonController.HoldView::of).toList());
+        }
+    }
+
+    /** A period that has ended and, at the end of its to-date (day), the pot (two decimals; null for
+     *  none), the pools and crews as pools, and the people, as they stood. */
+    public record PeriodPoolsView(String period, LocalDate day, String pot, List<PoolView> pools,
+            List<PersonThenView> people) {
+        static PeriodPoolsView of(PoolHistoryService.PeriodPools then) {
+            List<PoolView> pools = new ArrayList<>(then.pools().stream().map(PoolView::of).toList());
+            then.crews().stream().map(PoolView::of).forEach(pools::add);
+            return new PeriodPoolsView(then.period(), then.day(),
+                    then.pot() != null ? then.pot().toPlainString() : null, pools,
+                    then.people().stream().map(PersonThenView::of).toList());
+        }
+    }
+
     /** A pool: its name, trimmed as it is added. */
     public record PoolRequest(@NotBlank @Size(max = 255) String name) {
     }
@@ -66,9 +90,11 @@ public class PoolController {
     }
 
     private final PoolService service;
+    private final PoolHistoryService pastPools;
 
-    public PoolController(PoolService service) {
+    public PoolController(PoolService service, PoolHistoryService pastPools) {
         this.service = service;
+        this.pastPools = pastPools;
     }
 
     /** The sheet's pools, in the order they were added, then its crews as pools, in the order they were added. */
@@ -77,6 +103,15 @@ public class PoolController {
         List<PoolView> list = new ArrayList<>(service.list(sheetId.trim()).stream().map(PoolView::of).toList());
         service.crewPools(sheetId.trim()).stream().map(PoolView::of).forEach(list::add);
         return list;
+    }
+
+    /** Each period whose to-date is on or before the sheet's today, the earliest first, with the pools
+     *  as they stood at the end of it; while the screen is set to an as-of date, that date stands in for
+     *  the sheet's today. */
+    @GetMapping("/by-period")
+    public List<PeriodPoolsView> byPeriod(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(value = AsOf.HEADER, required = false) String asOfHeader) {
+        return pastPools.byPeriod(sheetId.trim(), AsOf.parse(asOfHeader)).stream().map(PeriodPoolsView::of).toList();
     }
 
     /** Add a pool to the sheet. */

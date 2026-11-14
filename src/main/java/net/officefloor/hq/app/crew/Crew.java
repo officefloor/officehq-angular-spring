@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 
 /** A crew on a sheet: a name, unique on the sheet, a lead from the sheet's people, and its members. */
 @Entity
@@ -24,6 +25,10 @@ public class Crew {
 
     @Column(name = "lead_id", nullable = false)
     private Long leadId;
+
+    /** The sheet's today when the crew was added; null for one added before this was kept. */
+    @Column(name = "made_on", updatable = false)
+    private LocalDate madeOn;
 
     protected Crew() {
     }
@@ -53,5 +58,17 @@ public class Crew {
     /** Make the crew led by another person. */
     public void setLeadId(Long leadId) {
         this.leadId = leadId;
+    }
+
+    /** Keep the sheet's today the crew is added on. */
+    public Crew madeOn(LocalDate day) {
+        this.madeOn = day;
+        return this;
+    }
+
+    /** Whether the crew stood at the end of a day: it was added while the sheet's today was on or
+     *  before it (one added before that was kept always stood). */
+    public boolean madeAsOf(LocalDate day) {
+        return madeOn == null || !madeOn.isAfter(day);
     }
 }

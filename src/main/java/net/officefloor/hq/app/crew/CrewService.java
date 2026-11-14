@@ -66,7 +66,7 @@ public class CrewService {
         if (pools.existsBySheetIdAndName(sheetId, key)) {
             throw new CrewRefusedException("The pool " + key + " is on the sheet already");
         }
-        Crew saved = crews.saveAndFlush(new Crew(sheetId, key, lead.getId()));
+        Crew saved = crews.saveAndFlush(new Crew(sheetId, key, lead.getId()).madeOn(sheets.today(sheetId)));
         audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user + " name=" + key + " lead="
                 + lead.getName());
         return new CrewWithMembers(saved, List.of());
@@ -89,7 +89,7 @@ public class CrewService {
         if (members.existsByCrewIdAndPersonId(crewId, personId)) {
             throw new CrewRefusedException(person.getName() + " is in the crew " + crew.getName() + " already");
         }
-        members.saveAndFlush(new CrewMember(crewId, personId));
+        members.saveAndFlush(new CrewMember(crewId, personId).madeOn(sheets.today(sheetId)));
         audit.recordOnCommit("CREW_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " crew=" + crew.getName()
                 + " name=" + person.getName());
         return new CrewWithMembers(crew, members.findByCrewIdInOrderByIdAsc(List.of(crewId)));

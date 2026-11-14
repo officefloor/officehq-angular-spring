@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, Injectable, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, Injectable, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { SettingStore } from '../settings/settings';
@@ -34,6 +34,16 @@ export interface PoolPerson {
   name: string;
   retired: boolean;
   holds: { from: string; to: string | null }[];
+}
+
+/** A period that has ended and, at the end of its to-date (day), the pot (two decimals; null for none),
+ *  the pools and the people as they stood. */
+export interface PeriodPools {
+  period: string;
+  day: string;
+  pot: string | null;
+  pools: Pool[];
+  people: PoolPerson[];
 }
 
 /** Whether a hold of the person is in force on the date (none when there is no date). */
@@ -170,6 +180,17 @@ function cuts(pot: bigint, members: Share[]): bigint[] {
   return list;
 }
 
+/** A member's cut as it stood at the end of a period (two decimals): blank when the pool or the
+ *  membership had not been added by then, the pool showed no cuts or the member's dates left them out. */
+function cutThen(poolId: number, member: PoolMember, then: PeriodPools, cuts: Map<number, bigint[] | null>): string {
+  const pool = then.pools.find((p) => p.id === poolId);
+  const at = pool?.members.findIndex(
+    (m) => m.personId === member.personId && m.memberPoolId === member.memberPoolId,
+  ) ?? -1;
+  const cut = cuts.get(poolId);
+  return pool && cut && at >= 0 && !outOn(pool.members[at], then.day) ? figure(cut[at]) : '';
+}
+
 /** A member chosen on a pool's row: a person or another pool, by id. */
 export interface MemberChoice {
   kind: 'person' | 'pool';
@@ -194,14 +215,31 @@ export class PoolStore {
   private readonly session = inject(Session);
 
   readonly pools = signal<Pool[]>([]);
+  /** Each period whose to-date is on or before the sheet's today, the earliest first, with the pools as
+   *  they stood at the end of it. */
+  readonly byPeriod = signal<PeriodPools[]>([]);
+  /** The latest read of the pools by period asked for; an earlier answer arriving later is dropped. */
+  private byPeriodReads = 0;
 
   constructor() {
     effect(() => {
       const sheet = this.session.sheetId();
       const load = this.session.loads();
       this.pools.set([]);
+      this.byPeriod.set([]);
       if (sheet) void this.read(sheet, load);
     });
+  }
+
+  /** Re-read the pools as they stood at the end of each period that has ended. */
+  async readByPeriod(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const load = this.session.loads();
+    const read = ++this.byPeriodReads;
+    const list = await firstValueFrom(this.http.get<PeriodPools[]>(`${this.base(sheet)}/by-period`));
+    if (this.session.loads() !== load || this.byPeriodReads !== read) return;
+    this.byPeriod.set(list);
   }
 
   /** Re-read the active sheet's pools: a crew is a pool too, so a crew added or changed shows here. */
@@ -253,7 +291,7 @@ interface PoolRow {
   pool: Pool;
   /** Each member with their cut of the pool's pot (two decimals); blank when the pool is unbalanced
    *  or has no pot, or the member's dates leave them out on the sheet's today. A member's key is the person's id, or pool-<name> for a pool. */
-  members: { key: string; name: string; share: string; cut: string }[];
+  members: { key: string; name: string; share: string; cut: string; past: { period: string; cut: string }[] }[];
   /** The members' shares added up, a retired member's and one its dates leave out counting as 0.00
    *  (two decimals). */
   total: string;
@@ -294,6 +332,9 @@ interface PoolRow {
                 <li [attr.data-testid]="'pool-member-' + row.pool.name + '-' + m.key">
                   {{ m.name }} <span data-testid="pool-share">{{ m.share }}</span>%, cut
                   <span data-testid="pool-cut">{{ m.cut }}</span>
+                  @for (p of m.past; track p.period) {
+                    , {{ p.period }} <span [attr.data-testid]="'pool-cut-' + p.period">{{ p.cut }}</span>
+                  }
                 </li>
               }
             </ul>
@@ -362,6 +403,17 @@ export class Pools {
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
 
+  constructor() {
+    // The cuts each period ended with are re-read whenever what they are worked out from may have changed.
+    effect(() => {
+      this.people();
+      this.store.pools();
+      this.settings.pot();
+      this.session.today();
+      untracked(() => void this.store.readByPeriod());
+    });
+  }
+
   /** The pools that may be chosen as a member of another: the sheet's own, not its crews. */
   protected readonly memberPools = computed(() => this.store.pools().filter((p) => !p.crew));
 
@@ -371,6 +423,10 @@ export class Pools {
     const poolById = new Map(pools.map((p) => [p.id, p]));
     const today = this.session.today();
     const cutsByPool = poolCuts(pools, this.people(), this.settings.pot(), today);
+    const past = this.store.byPeriod().map((then) => ({
+      then,
+      cuts: poolCuts(then.pools, then.people, then.pot ?? '', then.day),
+    }));
     return pools.map((pool) => {
       const total = totalOf(sharesOf(pool, byId, today));
       const cut = cutsByPool.get(pool.id) ?? null;
@@ -381,6 +437,7 @@ export class Pools {
           name: m.personId !== null ? (byId.get(m.personId)?.name ?? '') : `pool:${member?.name ?? ''}`,
           share: m.share,
           cut: cut && !outOn(m, today) ? figure(cut[i]) : '',
+          past: past.map(({ then, cuts }) => ({ period: then.period, cut: cutThen(pool.id, m, then, cuts) })),
         };
       });
       return { pool, members, total: figure(total), balanced: total === 10000n };

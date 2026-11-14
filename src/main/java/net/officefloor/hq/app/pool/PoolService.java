@@ -60,9 +60,17 @@ public class PoolService {
 
     /** The sheet's pools, in the order they were added, each with its members. */
     public List<PoolWithMembers> list(String sheetId) {
-        List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId);
+        return list(sheetId, null);
+    }
+
+    /** The sheet's pools as they stood at the end of a day (null: as they stand now), in the order
+     *  they were added, each with its members added by then. */
+    public List<PoolWithMembers> list(String sheetId, LocalDate day) {
+        List<Pool> list = pools.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(p -> day == null || p.madeAsOf(day)).toList();
         Map<Long, List<PoolMember>> byPool = members
                 .findByPoolIdInOrderByIdAsc(list.stream().map(Pool::getId).toList()).stream()
+                .filter(m -> day == null || m.madeAsOf(day))
                 .collect(Collectors.groupingBy(PoolMember::getPoolId));
         return list.stream().map(p -> new PoolWithMembers(p, byPool.getOrDefault(p.getId(), List.of()))).toList();
     }
@@ -71,9 +79,17 @@ public class PoolService {
      *  shares, 100.00 split as patrons' shares are (each rounded half to even), the remainder on the first.
      *  A lead who has left the sheet (transferred or merged away) is not among them. */
     public List<CrewPool> crewPools(String sheetId) {
-        List<Crew> list = crews.findBySheetIdOrderByIdAsc(sheetId);
+        return crewPools(sheetId, null);
+    }
+
+    /** The sheet's crews as pools as they stood at the end of a day (null: as they stand now): those
+     *  added by then, each with its members added by then. */
+    public List<CrewPool> crewPools(String sheetId, LocalDate day) {
+        List<Crew> list = crews.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(c -> day == null || c.madeAsOf(day)).toList();
         Map<Long, List<CrewMember>> byCrew = crewMembers
                 .findByCrewIdInOrderByIdAsc(list.stream().map(Crew::getId).toList()).stream()
+                .filter(m -> day == null || m.madeAsOf(day))
                 .collect(Collectors.groupingBy(CrewMember::getCrewId));
         Set<Long> onSheet = people.findBySheetIdOrderByIdAsc(sheetId).stream().map(Person::getId)
                 .collect(Collectors.toSet());
@@ -115,7 +131,7 @@ public class PoolService {
         if (crews.existsBySheetIdAndName(sheetId, key)) {
             throw new PoolRefusedException("The crew " + key + " is a pool on the sheet already");
         }
-        Pool saved = pools.saveAndFlush(new Pool(sheetId, key));
+        Pool saved = pools.saveAndFlush(new Pool(sheetId, key).madeOn(sheets.today(sheetId)));
         audit.recordOnCommit("POOL_ADDED sheet=" + sheetId + " by=" + user + " name=" + key);
         return new PoolWithMembers(saved, List.of());
     }
@@ -150,13 +166,15 @@ public class PoolService {
             if (members.existsByPoolIdAndPersonId(poolId, personId)) {
                 throw new PoolRefusedException(person.getName() + " is in the pool " + pool.getName() + " already");
             }
-            members.saveAndFlush(new PoolMember(poolId, personId, scaled).dated(from, to));
+            members.saveAndFlush(
+                    new PoolMember(poolId, personId, scaled).dated(from, to).madeOn(sheets.today(sheetId)));
             name = person.getName();
         } else {
             Pool member = pools.findByIdAndSheetId(memberPoolId, sheetId)
                     .orElseThrow(() -> new PoolRefusedException("No such pool on the sheet"));
             checkNesting(sheetId, pool, member);
-            members.saveAndFlush(PoolMember.ofPool(poolId, memberPoolId, scaled).dated(from, to));
+            members.saveAndFlush(
+                    PoolMember.ofPool(poolId, memberPoolId, scaled).dated(from, to).madeOn(sheets.today(sheetId)));
             name = member.getName();
         }
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()

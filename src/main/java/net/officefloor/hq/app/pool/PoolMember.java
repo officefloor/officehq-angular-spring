@@ -40,6 +40,10 @@ public class PoolMember {
     @Column(name = "to_date")
     private LocalDate to;
 
+    /** The sheet's today when the membership was added; null for one added before this was kept. */
+    @Column(name = "made_on", updatable = false)
+    private LocalDate madeOn;
+
     protected PoolMember() {
     }
 
@@ -99,5 +103,17 @@ public class PoolMember {
         this.from = from;
         this.to = to;
         return this;
+    }
+
+    /** Keep the sheet's today the membership is added on. */
+    public PoolMember madeOn(LocalDate day) {
+        this.madeOn = day;
+        return this;
+    }
+
+    /** Whether the membership stood at the end of a day: it was added while the sheet's today was on or
+     *  before it (one added before that was kept always stood). */
+    public boolean madeAsOf(LocalDate day) {
+        return madeOn == null || !madeOn.isAfter(day);
     }
 }
