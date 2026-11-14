@@ -65,6 +65,14 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, holdError, isStale, patron
         Show retired
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+      <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+      @if (bulkResult(); as r) {
+        <p role="status">Opened <strong data-testid="bulk-opened">{{ r.opened }}</strong>,
+          refused <strong data-testid="bulk-refused">{{ r.refused }}</strong></p>
+      }
+      @if (bulkError(); as err) {
+        <p role="alert" data-testid="bulk-error">{{ err }}</p>
+      }
       <table data-testid="people-list">
         <thead>
           <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
@@ -120,7 +128,7 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, holdError, isStale, patron
               </td>
               <td>
                 <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rates()" [grades]="p.grades" [periods]="periods()"
-                  (saved)="claimSaved($event)" />
+                  [selected]="selectedClaims()" (toggled)="claimToggled($event)" (saved)="claimSaved($event)" />
               </td>
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
@@ -245,6 +253,12 @@ export class People {
     money([...this.dueByPerson().values()].reduce<number>((sum, d) => sum + (d ?? 0), 0)));
   protected readonly claimedTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + (this.byPerson().get(p.id)?.cents ?? 0), 0)));
+  /** The ids of the claims selected for a bulk action. */
+  protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+  /** The last bulk open's counts; gone while one runs. */
+  protected readonly bulkResult = signal<{ opened: number; refused: number } | null>(null);
+  protected readonly bulkError = signal<string | null>(null);
+  private bulkOpening = false;
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the open editor loaded. */
   private editingVersion = 0;
@@ -286,6 +300,9 @@ export class People {
         this.patronErrors.set({});
         this.quickForm.reset({ name: '', amount: '' });
         this.quickError.set(null);
+        this.selectedClaims.set(new Set());
+        this.bulkResult.set(null);
+        this.bulkError.set(null);
         this.people.set([]);
         this.claims.set([]);
         this.rates.set([]);
@@ -435,6 +452,40 @@ export class People {
     this.claims.update((cs) => cs.some((c) => c.id === claim.id)
       ? cs.map((c) => (c.id === claim.id ? claim : c))
       : [claim, ...cs].sort((a, b) => b.id - a.id));
+  }
+
+  /** Select a claim for a bulk action, or take it out of the selection. */
+  protected claimToggled(t: { id: number; on: boolean }): void {
+    this.selectedClaims.update((ids) => {
+      const next = new Set(ids);
+      if (t.on) next.add(t.id);
+      else next.delete(t.id);
+      return next;
+    });
+  }
+
+  /** Open every selected claim that can be opened, numbered in list order; then show how many
+   *  were opened and refused, and the claims as the store now holds them. */
+  protected async bulkOpen(): Promise<void> {
+    if (this.bulkOpening) return;
+    this.bulkResult.set(null);
+    this.bulkError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const ids = [...this.selectedClaims()];
+    this.bulkOpening = true;
+    try {
+      const result = await this.claimsApi.bulkOpen(sheetId, ids);
+      const claims = await this.claimsApi.list(sheetId);
+      if (this.session.sheetId() !== sheetId) return;
+      this.claims.set(claims);
+      this.selectedClaims.set(new Set());
+      this.bulkResult.set(result);
+    } catch {
+      this.bulkError.set('Something went wrong opening the claims; try again.');
+    } finally {
+      this.bulkOpening = false;
+    }
   }
 
   /** Download the people as CSV, in list order, retired ones too: name, grade today, retired-from, due-total as shown. */

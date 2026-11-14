@@ -33,6 +33,9 @@ import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError,
       <ul [attr.aria-label]="'Claims of ' + personName()">
         @for (c of claims(); track c.id) {
           <li [attr.data-testid]="'claim-row-' + c.id">
+            <input type="checkbox" data-testid="claim-select" [checked]="selected().has(c.id)"
+              (change)="toggled.emit({ id: c.id, on: $any($event.target).checked })"
+              [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date" />
             <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
             <span data-testid="claim-amount">{{ c.amount }}</span>
             <span data-testid="claim-date">{{ c.date }}</span>
@@ -79,6 +82,10 @@ export class PersonClaims {
   readonly grades = input.required<DatedGrade[]>();
   /** The sheet's periods. */
   readonly periods = input.required<Period[]>();
+  /** The ids of the claims selected for a bulk action. */
+  readonly selected = input.required<ReadonlySet<number>>();
+  /** A claim's selection turned on or off. */
+  readonly toggled = output<{ id: number; on: boolean }>();
   /** A claim added or saved, for the sheet's list to take in. */
   readonly saved = output<Claim>();
 

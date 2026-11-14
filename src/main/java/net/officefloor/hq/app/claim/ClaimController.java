@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/sheets/{sheetId}")
@@ -60,6 +61,14 @@ public class ClaimController {
             LocalDate date,
             @Size(max = 1000) String note,
             @Positive Integer corrects) {
+    }
+
+    /** The claims selected for a bulk action, by id. */
+    public record BulkForm(@NotNull @Size(max = 10000) List<@NotNull Long> ids) {
+    }
+
+    /** A bulk open's result: how many of the selected claims were opened and how many refused. */
+    public record BulkOpenView(int opened, int refused) {
     }
 
     private final ClaimService service;
@@ -102,6 +111,26 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.OPEN));
+    }
+
+    /** Open each selected claim in list order (people in the order added, newest claim first),
+     *  each on its own, numbered in that order; a claim that cannot be opened is left as it is. */
+    @PostMapping("/claims/bulk-open")
+    public BulkOpenView bulkOpen(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkForm body) {
+        List<Long> ordered = service.inListOrder(sheetId, body.ids());
+        int opened = 0;
+        for (long id : ordered) {
+            try {
+                service.changeStatus(sheetId, user.trim(), id, ClaimStatus.OPEN);
+                opened++;
+            } catch (ResponseStatusException e) {
+                // refused: left as it is
+            }
+        }
+        return new BulkOpenView(opened, (int) body.ids().stream().distinct().count() - opened);
     }
 
     @PostMapping("/claims/{id}/settle")

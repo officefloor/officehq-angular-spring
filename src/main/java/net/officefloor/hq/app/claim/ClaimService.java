@@ -3,7 +3,13 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.Person;
@@ -54,6 +60,23 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
         return claims.findBySheetIdOrderByIdDesc(sheetId);
+    }
+
+    /** The claims of the ids on the sheet in list order: the people in the order they were added,
+     *  each person's claims newest first; ids not on the sheet are left out. */
+    @Transactional(readOnly = true)
+    public List<Long> inListOrder(String sheetId, Collection<Long> ids) {
+        Set<Long> wanted = new HashSet<>(ids);
+        Map<Long, Integer> personOrder = new HashMap<>();
+        List<Person> theirs = people.findBySheetIdOrderByIdAsc(sheetId);
+        for (int i = 0; i < theirs.size(); i++) {
+            personOrder.put(theirs.get(i).getId(), i);
+        }
+        return claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .filter(c -> wanted.contains(c.getId()))
+                .sorted(Comparator.comparingInt(c -> personOrder.getOrDefault(c.getPersonId(), Integer.MAX_VALUE)))
+                .map(Claim::getId)
+                .toList();
     }
 
     /** Add a claim for a person on the sheet; a missing date takes the sheet's today. Refused

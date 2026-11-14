@@ -123,6 +123,12 @@ export class ClaimsApi {
     );
   }
 
+  /** Open each of the claims, in list order; those that cannot be opened are left as they are. */
+  bulkOpen(sheetId: string, ids: number[]): Promise<{ opened: number; refused: number }> {
+    return firstValueFrom(this.http.post<{ opened: number; refused: number }>(`${this.url(sheetId)}/claims/bulk-open`, { ids },
+      { headers: this.headers() }));
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }
