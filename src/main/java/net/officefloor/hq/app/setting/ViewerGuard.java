@@ -31,7 +31,8 @@ public class ViewerGuard implements HandlerInterceptor {
             "/api/sheets/{sheetId}/claims/open",
             "/api/sheets/{sheetId}/claims/settle",
             "/api/sheets/{sheetId}/claims/reassign",
-            "/api/sheets/{sheetId}/people/grade");
+            "/api/sheets/{sheetId}/people/grade",
+            "/api/sheets/{sheetId}/people/retire");
 
     private final AntPathMatcher paths = new AntPathMatcher();
     private final SettingService settings;

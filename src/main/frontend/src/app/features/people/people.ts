@@ -298,6 +298,23 @@ interface StatementTaken {
       @if (bulkGradeError(); as message) {
         <p role="alert" data-testid="person-error">{{ message }}</p>
       }
+      <form (submit)="retireSelected($event)" aria-label="Retire the selected people">
+        <label for="bulk-retire-date">Retire the selected people from</label>
+        <input
+          type="date"
+          id="bulk-retire-date"
+          data-testid="bulk-retire-date"
+          [value]="bulkRetireFrom()"
+          (input)="bulkRetireFrom.set(value($event)); bulkRetireError.set(null)"
+        />
+        <button type="submit" data-testid="bulk-retire">Retire selected people</button>
+        @if (bulkRetired() !== null) {
+          Retired <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong>
+        }
+      </form>
+      @if (bulkRetireError(); as message) {
+        <p role="alert" data-testid="person-error">{{ message }}</p>
+      }
       <p>Claimed in total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
       <p>Due in total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Settled in total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong></p>
@@ -963,6 +980,14 @@ export class People {
   protected readonly bulkGradeError = signal<string | null>(null);
   /** Whether a bulk grade is waiting for its answer; a second press meanwhile is dropped. */
   private readonly bulkGradeBusy = signal(false);
+  /** The date the selected people are retired from; blank takes the sheet's today. */
+  protected readonly bulkRetireFrom = signal('');
+  /** How many people the last bulk retire retired; null while it runs or before one. */
+  protected readonly bulkRetired = signal<number | null>(null);
+  /** Why the last bulk retire could not be done; null when it was. */
+  protected readonly bulkRetireError = signal<string | null>(null);
+  /** Whether a bulk retire is waiting for its answer; a second press meanwhile is dropped. */
+  private readonly bulkRetireBusy = signal(false);
   /** The date typed to take each person's statement as of (blank: now), by person id. */
   protected readonly statementDates = signal<Record<number, string>>({});
   /** The patron chosen on each person's row (a person id, or blank), by person id. */
@@ -1002,6 +1027,9 @@ export class People {
       this.bulkGradeFrom.set('');
       this.bulkGraded.set(null);
       this.bulkGradeError.set(null);
+      this.bulkRetireFrom.set('');
+      this.bulkRetired.set(null);
+      this.bulkRetireError.set(null);
       this.reset();
       this.quickName.set('');
       this.quickAmount.set('');
@@ -1522,6 +1550,44 @@ export class People {
       return next;
     });
     this.bulkGradeError.set(null);
+    this.bulkRetireError.set(null);
+  }
+
+  /** Retire the selected people from the typed date (blank takes the sheet's today), in list order,
+   *  each as its row's retire would; the screen shows how many were retired. */
+  protected async retireSelected(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.bulkRetireBusy()) return;
+    this.bulkRetired.set(null);
+    this.bulkRetireError.set(null);
+    this.bulkGradeError.set(null);
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const personIds = [...this.selectedPeople()];
+    if (personIds.length === 0) {
+      this.bulkRetireError.set('Select the people to retire.');
+      return;
+    }
+    this.bulkRetireBusy.set(true);
+    try {
+      const retired = await firstValueFrom(
+        this.http.post<Person[]>(`/api/sheets/${encodeURIComponent(sheet)}/people/retire`, {
+          personIds,
+          from: this.bulkRetireFrom().trim() || null,
+        }),
+      );
+      if (this.session.sheetId() !== sheet) return;
+      const saved = new Map(retired.map((p) => [p.id, p]));
+      this.people.update((list) => list.map((p) => saved.get(p.id) ?? p));
+      this.selectedPeople.set(new Set());
+      this.bulkRetireFrom.set('');
+      this.bulkRetired.set(retired.length);
+    } catch {
+      this.bulkRetireError.set('The selected people could not be retired.');
+    } finally {
+      this.bulkRetireBusy.set(false);
+    }
   }
 
   /** Give the selected people the chosen grade from the typed date (blank takes the sheet's today),
@@ -1531,6 +1597,7 @@ export class People {
     if (this.bulkGradeBusy()) return;
     this.bulkGraded.set(null);
     this.bulkGradeError.set(null);
+    this.bulkRetireError.set(null);
     this.rowError.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
