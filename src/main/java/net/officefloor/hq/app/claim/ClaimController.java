@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.session.CurrentUser;
@@ -33,18 +34,27 @@ public class ClaimController {
      *  due as fixed when it was settled (null, so the due is live, when its grade had no rate then,
      *  and for other claims); who opened it (null while DRAFT); whether the person's last statement
      *  bound it, and the due it was bound to (null when unbound or n/a then); the number of the
-     *  claim a correction corrects (null for other claims). */
+     *  claim a correction corrects (null for other claims); its status log, oldest first. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
-            String statedDue, String corrects, long listed, LocalDate dueBy) {
-        static ClaimView of(Claim c) {
+            String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log) {
+        static ClaimView of(Claim c, List<ClaimLog> log) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
-                    c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy());
+                    c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
+                    log.stream().map(LogLineView::of).toList());
         }
 
         private static String money(BigDecimal value) {
             return value == null ? null : value.setScale(2).toPlainString();
+        }
+    }
+
+    /** A line of a claim's status log: the status, who moved the claim there, the sheet's today
+     *  then, and the claim's due at that moment with two decimals (null: n/a). */
+    public record LogLineView(ClaimStatus status, String by, LocalDate on, String due) {
+        static LogLineView of(ClaimLog line) {
+            return new LogLineView(line.getStatus(), line.getBy(), line.getOn(), ClaimView.money(line.getDue()));
         }
     }
 
@@ -82,6 +92,11 @@ public class ClaimController {
         return value == null ? null : value.trim();
     }
 
+    /** The claim as the screen shows it, with its status log. */
+    ClaimView view(Claim c) {
+        return ClaimView.of(c, service.logOf(c.getId()));
+    }
+
     private final ClaimService service;
     private final PersonService people;
 
@@ -94,7 +109,8 @@ public class ClaimController {
     public List<ClaimView> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId).stream().map(ClaimView::of).toList();
+        Map<Long, List<ClaimLog>> logs = service.logs(sheetId);
+        return service.list(sheetId).stream().map(c -> ClaimView.of(c, logs.getOrDefault(c.getId(), List.of()))).toList();
     }
 
     @PostMapping("/people/{personId}/claims")
@@ -104,7 +120,7 @@ public class ClaimController {
             @PathVariable long personId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm body) {
-        return ClaimView.of(service.add(sheetId, user.trim(), personId, new BigDecimal(body.amount()), body.date(), body.note(), trimmed(body.corrects())));
+        return view(service.add(sheetId, user.trim(), personId, new BigDecimal(body.amount()), body.date(), body.note(), trimmed(body.corrects())));
     }
 
     @PutMapping("/claims/{id}")
@@ -113,7 +129,7 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm body) {
-        return ClaimView.of(service.update(sheetId, user.trim(), id, new BigDecimal(body.amount()), body.date(), body.note(), trimmed(body.corrects())));
+        return view(service.update(sheetId, user.trim(), id, new BigDecimal(body.amount()), body.date(), body.note(), trimmed(body.corrects())));
     }
 
     @PostMapping("/claims/{id}/open")
@@ -121,7 +137,7 @@ public class ClaimController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.OPEN));
+        return view(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.OPEN));
     }
 
     /** Open each selected claim in list order (people in the order added, newest claim first),
@@ -149,7 +165,7 @@ public class ClaimController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED));
+        return view(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED));
     }
 
     @PostMapping("/claims/{id}/approve")
@@ -157,7 +173,7 @@ public class ClaimController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.approve(sheetId, user.trim(), id));
+        return view(service.approve(sheetId, user.trim(), id));
     }
 
     @PostMapping("/claims/{id}/reject")
@@ -166,7 +182,7 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody RejectForm body) {
-        return ClaimView.of(service.reject(sheetId, user.trim(), id, body.reason().trim()));
+        return view(service.reject(sheetId, user.trim(), id, body.reason().trim()));
     }
 
     @PostMapping("/claims/{id}/reassign")
@@ -175,7 +191,7 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ReassignForm body) {
-        return ClaimView.of(service.reassign(sheetId, user.trim(), id, body.personId()));
+        return view(service.reassign(sheetId, user.trim(), id, body.personId()));
     }
 
     @PostMapping("/claims/{id}/void")
@@ -183,7 +199,7 @@ public class ClaimController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return ClaimView.of(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.VOID));
+        return view(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.VOID));
     }
 
     @PostMapping("/people/{personId}/statement")
@@ -193,6 +209,6 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         ClaimService.Statement s = service.statement(sheetId, user.trim(), personId);
         return new StatementView(PersonView.of(s.person(), people.today(sheetId), s.summary(), people.patronIds(s.person().getId())),
-                s.claims().stream().map(ClaimView::of).toList());
+                s.claims().stream().map(this::view).toList());
     }
 }

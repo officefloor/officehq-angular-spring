@@ -3,6 +3,7 @@ package net.officefloor.hq.app.claim;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -37,6 +38,7 @@ public class ClaimService {
     private static final String NO_PERIOD = "X";
 
     private final ClaimRepository claims;
+    private final ClaimLogRepository log;
     private final PersonRepository people;
     private final PersonStatementRepository statements;
     private final RateRepository rates;
@@ -50,9 +52,10 @@ public class ClaimService {
     public record Statement(Person person, StatementSummary summary, List<Claim> claims) {
     }
 
-    public ClaimService(ClaimRepository claims, PersonRepository people, PersonStatementRepository statements,
+    public ClaimService(ClaimRepository claims, ClaimLogRepository log, PersonRepository people, PersonStatementRepository statements,
             RateRepository rates, SheetService sheets, RollupService rollup, PeriodService periods, SettingsService settings, Audit audit) {
         this.claims = claims;
+        this.log = log;
         this.people = people;
         this.statements = statements;
         this.rates = rates;
@@ -66,6 +69,22 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
         return claims.findBySheetIdOrderByListedDesc(sheetId);
+    }
+
+    /** The status logs of the sheet's claims, each oldest first, by claim id. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<ClaimLog>> logs(String sheetId) {
+        Map<Long, List<ClaimLog>> byClaim = new HashMap<>();
+        for (ClaimLog line : log.findBySheetIdOrderByIdAsc(sheetId)) {
+            byClaim.computeIfAbsent(line.getClaimId(), k -> new ArrayList<>()).add(line);
+        }
+        return byClaim;
+    }
+
+    /** A claim's status log, oldest first. */
+    @Transactional(readOnly = true)
+    public List<ClaimLog> logOf(long claimId) {
+        return log.findByClaimIdOrderByIdAsc(claimId);
     }
 
     /** The claims of the ids on the sheet in list order: the people in the order they were added,
@@ -105,6 +124,7 @@ public class ClaimService {
         // the sheet is locked (refuseIfClosed), so two claims added at once are listed one after the other
         fresh.setListed(claims.findLastListed(sheetId) + 1);
         Claim claim = claims.saveAndFlush(fresh);
+        logStatus(user, person, claim);
         record("CLAIM_ADDED", user, person, claim);
         rollup.recordChanges(sheetId, user, before);
         return claim;
@@ -180,6 +200,7 @@ public class ClaimService {
             claim.setSettledDue(settling);
         }
         claims.flush();
+        logStatus(user, person, claim);
         String event = switch (to) {
             case OPEN -> "CLAIM_OPENED";
             case PENDING -> "CLAIM_PENDING";
@@ -213,6 +234,7 @@ public class ClaimService {
         claim.setStatus(ClaimStatus.SETTLED);
         claim.setSettledDue(due);
         claims.flush();
+        logStatus(user, person, claim);
         record("CLAIM_APPROVED", user, person, claim, claim.getNumber(), " due=" + dueText(due));
         rollup.recordChanges(sheetId, user, before);
         return claim;
@@ -229,6 +251,7 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.OPEN);
         claims.flush();
+        logStatus(user, person, claim);
         record("CLAIM_REJECTED", user, person, claim, claim.getNumber(), " reason=" + reason);
         rollup.recordChanges(sheetId, user, before);
         return claim;
@@ -286,6 +309,14 @@ public class ClaimService {
                     "Only a steward approves or rejects a PENDING claim");
         }
         return claim;
+    }
+
+    /** Write the claim's status now to its log: by the user, on the sheet's today, with the due
+     *  it shows at this moment. */
+    private void logStatus(String user, Person person, Claim claim) {
+        BigDecimal due = shownDueOf(claim, person);
+        log.save(new ClaimLog(claim.getSheetId(), claim.getId(), claim.getStatus(), user,
+                sheets.today(claim.getSheetId()), due == null ? null : due.setScale(2, RoundingMode.HALF_EVEN)));
     }
 
     private static String dueText(BigDecimal due) {

@@ -38,10 +38,12 @@ public class QuickAddController {
 
     private final QuickAddService service;
     private final PersonService people;
+    private final ClaimService claims;
 
-    public QuickAddController(QuickAddService service, PersonService people) {
+    public QuickAddController(QuickAddService service, PersonService people, ClaimService claims) {
         this.service = service;
         this.people = people;
+        this.claims = claims;
     }
 
     @PostMapping
@@ -53,6 +55,6 @@ public class QuickAddController {
         QuickAddService.QuickAdd q = service.add(sheetId, user.trim(), body.name(), new BigDecimal(body.amount()));
         return new QuickAddView(PersonView.of(q.person(), people.today(sheetId), people.statementSummary(q.person().getId()),
                 people.patronIds(q.person().getId())),
-                q.personAdded(), ClaimView.of(q.claim()));
+                q.personAdded(), ClaimView.of(q.claim(), claims.logOf(q.claim().getId())));
     }
 }

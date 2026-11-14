@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, dueBy, money, overdue, reassignError, roundsHalfUp, statusError } from './claims-api';
+import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, dueBy, logLineText, money, overdue, reassignError, roundsHalfUp, statusError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -48,6 +48,11 @@ import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError,
             <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
             <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
             <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
+            <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
+              @for (l of c.log; track $index) {
+                <li data-testid="claim-log-line">{{ logText(l) }}</li>
+              }
+            </ol>
             <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'open')"
               [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
             <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'settle')"
@@ -138,6 +143,11 @@ export class PersonClaims {
       today: this.session.today(), latePct: this.session.latePct(),
     }, roundsHalfUp(c, this.claims(), this.session.policyDate(), this.session.today()));
     return due === null ? 'n/a' : money(due);
+  }
+
+  /** A line of the claim's status log as the screen shows it. */
+  protected logText(l: ClaimLogLine): string {
+    return logLineText(l);
   }
 
   /** The claim's due-by, fixed when it was created. */

@@ -47,6 +47,22 @@ export interface Claim {
   /** yyyy-mm-dd: fixed when the claim was created, its date plus the terms of its person's grade
    *  in force on that date; later changes to the terms or its date leave it. */
   dueBy: string;
+  /** The claim's status log, oldest first: one line per status it has had. */
+  log: ClaimLogLine[];
+}
+
+/** A line of a claim's status log: the status, who moved the claim there, the sheet's today then
+ *  (yyyy-mm-dd), and the claim's due at that moment with two decimals (null: n/a). */
+export interface ClaimLogLine {
+  status: ClaimStatus;
+  by: string;
+  on: string;
+  due: string | null;
+}
+
+/** A status log line as the screen shows it: <STATUS> by <user> on <date> due=<due>. */
+export function logLineText(l: ClaimLogLine): string {
+  return `${l.status} by ${l.by} on ${l.on} due=${l.due ?? 'n/a'}`;
 }
 
 /** Claims as they are listed: newest (or most recently reassigned) first. */
