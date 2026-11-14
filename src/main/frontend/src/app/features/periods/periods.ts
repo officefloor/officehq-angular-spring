@@ -1,12 +1,13 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { money } from '../claims/claims-api';
-import { Period, PeriodsApi, periodError } from './periods-api';
+import { cents, money } from '../claims/claims-api';
+import { Period, PeriodsApi, closeError, periodError } from './periods-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// The sheet's periods, by from-date, each with its due-total, and the form that adds a period.
+// The sheet's periods, by from-date, each with its due-total and whether it is closed (with the
+// button that closes it), and the form that adds a period.
 @Component({
   selector: 'app-periods',
   imports: [ReactiveFormsModule],
@@ -27,7 +28,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       </form>
       <table data-testid="periods-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -36,6 +37,14 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueOf(p) }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td>
+                <button type="button" data-testid="period-close" (click)="close(p)"
+                  [attr.aria-label]="'Close period ' + p.name">Close</button>
+                @if (rowErrors()[p.id]; as err) {
+                  <p role="alert" data-testid="period-error">{{ err }}</p>
+                }
+              </td>
             </tr>
           }
         </tbody>
@@ -51,10 +60,12 @@ export class Periods {
   readonly periods = input.required<Period[]>();
   /** Each period's due-total in cents, by period id. */
   readonly dueTotals = input.required<Map<number, number>>();
-  /** A period just added, for the sheet to take in. */
-  readonly added = output<Period>();
+  /** A period just added or closed, for the sheet to take in. */
+  readonly saved = output<Period>();
 
   protected readonly error = signal<string | null>(null);
+  /** The error of each period's last refused action, by period id. */
+  protected readonly rowErrors = signal<Record<number, string>>({});
   /** Whether a submit is waiting for its answer; a second submit meanwhile is ignored. */
   private submitting = false;
 
@@ -68,8 +79,23 @@ export class Periods {
     this.form.valueChanges.subscribe(() => this.error.set(null));
   }
 
+  /** A closed period shows the due-total fixed when it was closed; an open one its live total. */
   protected dueOf(p: Period): string {
+    if (p.closed && p.closedTotal !== null) return money(cents(p.closedTotal));
     return money(this.dueTotals().get(p.id) ?? 0);
+  }
+
+  /** Close a period, fixing its due-total; a refusal shows an error on the period. */
+  protected async close(p: Period): Promise<void> {
+    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const closed = await this.api.close(sheetId, p.id);
+      if (this.session.sheetId() === sheetId) this.saved.emit(closed);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: closeError(e) }));
+    }
   }
 
   protected async submit(): Promise<void> {
@@ -104,7 +130,7 @@ export class Periods {
     this.submitting = true;
     try {
       const period = await this.api.add(sheetId, name, from, to);
-      if (this.session.sheetId() === sheetId) this.added.emit(period);
+      if (this.session.sheetId() === sheetId) this.saved.emit(period);
       this.form.reset({ name: '', from: '', to: '' }, { emitEvent: false });
     } catch (e) {
       this.error.set(periodError(e));

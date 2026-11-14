@@ -88,6 +88,22 @@ public class RollupService {
         return new Snapshot(out);
     }
 
+    /** The due-total of the period from {@code from} to {@code to}, inclusive: the dues (n/a ones
+     *  skipped) its OPEN and SETTLED claims dated inside it show now. */
+    public BigDecimal dueTotalBetween(String sheetId, LocalDate from, LocalDate to) {
+        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
+        Map<Long, List<Rate>> ratesByPerson = new LinkedHashMap<>();
+        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+            ratesByPerson.put(p.getId(), sheetRates.stream().filter(r -> r.getGrade().equals(p.getGrade())).toList());
+        }
+        return claims.findBySheetIdOrderByIdDesc(sheetId).stream()
+                .filter(RollupService::counts)
+                .filter(c -> !c.getDate().isBefore(from) && !c.getDate().isAfter(to))
+                .map(c -> shownDueOf(c, ratesByPerson.getOrDefault(c.getPersonId(), List.of())))
+                .filter(Objects::nonNull)
+                .reduce(zero(), BigDecimal::add);
+    }
+
     /** Record, once the transaction commits, a ROLLUP line for each person whose figures moved
      *  since {@code before}, then a TOTALS line when the sheet's totals moved. */
     public void recordChanges(String sheetId, String user, Snapshot before) {

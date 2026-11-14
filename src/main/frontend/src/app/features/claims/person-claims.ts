@@ -106,6 +106,10 @@ export class PersonClaims {
   protected edit(c: Claim): void {
     this.error.set(null);
     this.clearRowError(c.id);
+    if (periodOn(this.periods(), c.date)?.closed) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'This claim is dated in a closed period.' }));
+      return;
+    }
     this.editingId.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note });
   }

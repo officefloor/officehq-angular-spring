@@ -84,6 +84,7 @@ export class ClaimsApi {
 export function claimError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount of 0.00 or more with up to two decimals.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'The date is in a closed period.';
   return 'Something went wrong; try again.';
 }
 
@@ -91,6 +92,7 @@ export function statusError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status.';
   if (e instanceof HttpErrorResponse && e.status === 403) return 'The user who opened this claim cannot settle it.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
   return 'Something went wrong; try again.';
 }
 

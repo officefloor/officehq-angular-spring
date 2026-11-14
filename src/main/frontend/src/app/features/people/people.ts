@@ -18,7 +18,7 @@ import { GRADES, PeopleApi, Person, isStale, personError, statementError } from 
   imports: [ReactiveFormsModule, PersonClaims, Periods, Rates],
   template: `
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
-    <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (added)="periodAdded($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
@@ -222,8 +222,8 @@ export class People {
     this.rates.update((rs) => [...rs.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
   }
 
-  /** Take in a period just added, in its place by from-date. */
-  protected periodAdded(period: Period): void {
+  /** Take in a period just added or closed, in its place by from-date. */
+  protected periodSaved(period: Period): void {
     this.periods.update((ps) => [...ps.filter((p) => p.id !== period.id), period].sort((a, b) => a.from.localeCompare(b.from)));
   }
 

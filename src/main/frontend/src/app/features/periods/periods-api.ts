@@ -10,6 +10,9 @@ export interface Period {
   from: string;
   /** The last date (yyyy-mm-dd) of the period, inclusive. */
   to: string;
+  closed: boolean;
+  /** The due-total fixed when the period was closed (two decimals); null while open. */
+  closedTotal: string | null;
 }
 
 /** The period whose dates contain a date (yyyy-mm-dd), or null when none does. */
@@ -31,6 +34,10 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<Period>(this.url(sheetId), { name, from, to }, { headers: this.headers() }));
   }
 
+  close(sheetId: string, id: number): Promise<Period> {
+    return firstValueFrom(this.http.post<Period>(`${this.url(sheetId)}/${id}/close`, null, { headers: this.headers() }));
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}/periods`;
   }
@@ -43,5 +50,11 @@ export class PeriodsApi {
 export function periodError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name without spaces and a from-date on or before the to-date, as yyyy-mm-dd.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The name is in use on the sheet, or the dates overlap another period.';
+  return 'Something went wrong; try again.';
+}
+
+export function closeError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is already closed.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That period is no longer on this sheet.';
   return 'Something went wrong; try again.';
 }

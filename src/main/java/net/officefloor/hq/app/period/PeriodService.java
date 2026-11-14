@@ -1,8 +1,10 @@
 package net.officefloor.hq.app.period;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -15,11 +17,13 @@ public class PeriodService {
 
     private final PeriodRepository periods;
     private final SheetService sheets;
+    private final RollupService rollup;
     private final Audit audit;
 
-    public PeriodService(PeriodRepository periods, SheetService sheets, Audit audit) {
+    public PeriodService(PeriodRepository periods, SheetService sheets, RollupService rollup, Audit audit) {
         this.periods = periods;
         this.sheets = sheets;
+        this.rollup = rollup;
         this.audit = audit;
     }
 
@@ -56,6 +60,37 @@ public class PeriodService {
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user
                 + " period=" + trimmed + " from=" + from + " to=" + to);
         return period;
+    }
+
+    /** Close a period, fixing its due-total at the figure it shows now; refused (409) when it is
+     *  already closed. */
+    @Transactional
+    public Period close(String sheetId, String user, long id) {
+        // held until the transaction ends, so no claim in the period changes while it is closed
+        sheets.lock(sheetId);
+        Period period = periods.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such period"));
+        if (period.isClosed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed");
+        }
+        BigDecimal total = rollup.dueTotalBetween(sheetId, period.getFrom(), period.getTo());
+        period.close(total);
+        periods.flush();
+        audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user
+                + " period=" + period.getName() + " total=" + total.toPlainString());
+        return period;
+    }
+
+    /** Refuse (423) a change to a claim dated {@code date} when a closed period contains it. */
+    @Transactional(readOnly = true)
+    public void refuseIfClosed(String sheetId, LocalDate date) {
+        periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(p -> p.isClosed() && p.contains(date))
+                .findFirst()
+                .ifPresent(p -> {
+                    throw new ResponseStatusException(HttpStatus.LOCKED,
+                            "The claim's date is in closed period " + p.getName());
+                });
     }
 
     private static ResponseStatusException nameInUse() {

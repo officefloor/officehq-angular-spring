@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonStatement;
@@ -28,6 +29,7 @@ public class ClaimService {
     private final RateRepository rates;
     private final SheetService sheets;
     private final RollupService rollup;
+    private final PeriodService periods;
     private final Audit audit;
 
     /** A statement just taken: the person, their statement summary now, and their claims, newest first. */
@@ -35,13 +37,14 @@ public class ClaimService {
     }
 
     public ClaimService(ClaimRepository claims, PersonRepository people, PersonStatementRepository statements,
-            RateRepository rates, SheetService sheets, RollupService rollup, Audit audit) {
+            RateRepository rates, SheetService sheets, RollupService rollup, PeriodService periods, Audit audit) {
         this.claims = claims;
         this.people = people;
         this.statements = statements;
         this.rates = rates;
         this.sheets = sheets;
         this.rollup = rollup;
+        this.periods = periods;
         this.audit = audit;
     }
 
@@ -50,27 +53,33 @@ public class ClaimService {
         return claims.findBySheetIdOrderByIdDesc(sheetId);
     }
 
-    /** Add a claim for a person on the sheet; a missing date takes the sheet's today. */
+    /** Add a claim for a person on the sheet; a missing date takes the sheet's today. Refused
+     *  (423) when the date is in a closed period. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        RollupService.Snapshot before = rollup.snapshot(sheetId);
         LocalDate on = date != null ? date : sheets.today(sheetId);
+        refuseIfClosed(sheetId, on);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.saveAndFlush(new Claim(sheetId, personId, amount, on, noteOf(note)));
         record("CLAIM_ADDED", user, person, claim);
         rollup.recordChanges(sheetId, user, before);
         return claim;
     }
 
-    /** Change a claim's amount, date and note; a missing date takes the sheet's today. */
+    /** Change a claim's amount, date and note; a missing date takes the sheet's today. Refused
+     *  (423) when its old or new date is in a closed period. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
-        RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim claim = claims.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        LocalDate on = date != null ? date : sheets.today(sheetId);
+        refuseIfClosed(sheetId, claim.getDate());
+        refuseIfClosed(sheetId, on);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
-        claim.setDate(date != null ? date : sheets.today(sheetId));
+        claim.setDate(on);
         claim.setNote(noteOf(note));
         claims.flush();
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
@@ -81,11 +90,13 @@ public class ClaimService {
     }
 
     /** Move a claim to a new status; a move its status does not allow is refused (409), as is
-     *  settling by the user who opened the claim (403). */
+     *  settling by the user who opened the claim (403), and any move of a claim dated in a closed
+     *  period (423). */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus to) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        refuseIfClosed(sheetId, claim.getDate());
         if (!claim.getStatus().canMoveTo(to)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + to);
@@ -151,6 +162,13 @@ public class ClaimService {
                 + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counted.size());
         rollup.recordChanges(sheetId, user, before);
         return new Statement(person, StatementSummary.of(statements.findByPersonIdOrderByIdAsc(personId)), theirs);
+    }
+
+    /** Refuse (423) a change to a claim dated in a closed period, holding the sheet locked until
+     *  the transaction ends so a period cannot be closed meanwhile. */
+    private void refuseIfClosed(String sheetId, LocalDate date) {
+        sheets.lock(sheetId);
+        periods.refuseIfClosed(sheetId, date);
     }
 
     /** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do. */
