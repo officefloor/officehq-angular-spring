@@ -7,7 +7,7 @@ import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
-import { GRADES, PeopleApi, Person, isStale, personError, retireError, statementError } from './people-api';
+import { GRADES, PeopleApi, Person, holdError, isStale, personError, retireError, statementError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed and their due-total; the sheet's claimed-total and due-total; and
@@ -57,7 +57,7 @@ import { GRADES, PeopleApi, Person, isStale, personError, retireError, statement
       </label>
       <table data-testid="people-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shownPeople(); track p.id) {
@@ -81,6 +81,11 @@ import { GRADES, PeopleApi, Person, isStale, personError, retireError, statement
                   (input)="clearRowError(p.id)" />
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
                   [attr.aria-label]="'Retire ' + p.name">Retire</button>
+              </td>
+              <td>
+                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                <button type="button" data-testid="person-hold-toggle" (click)="hold(p)"
+                  [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">{{ p.held ? 'Release' : 'Hold' }}</button>
               </td>
               <td>
                 <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)" [periods]="periods()"
@@ -114,13 +119,21 @@ export class People {
     this.session.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null));
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
-  /** Each person's claims (newest first) and claimed in cents (OPEN and SETTLED claims only), by person id. */
+  /** The ids of the people on hold: their OPEN claims count in no live total. */
+  private readonly heldIds = computed(() => new Set(this.people().filter((p) => p.held).map((p) => p.id)));
+  /** Whether a claim counts in the live totals: OPEN and SETTLED ones, but of a held person only SETTLED ones. */
+  private readonly countsLive = computed(() => {
+    const held = this.heldIds();
+    return (c: Claim) => counts(c) && !(c.status === 'OPEN' && held.has(c.personId));
+  });
+  /** Each person's claims (newest first) and claimed in cents (counting claims only), by person id. */
   private readonly byPerson = computed(() => {
     const out = new Map<number, { claims: Claim[]; cents: number }>();
+    const live = this.countsLive();
     for (const c of this.claims()) {
       const entry = out.get(c.personId) ?? { claims: [], cents: 0 };
       entry.claims.push(c);
-      if (counts(c)) entry.cents += cents(c.amount);
+      if (live(c)) entry.cents += cents(c.amount);
       out.set(c.personId, entry);
     }
     return out;
@@ -128,14 +141,14 @@ export class People {
   /** The sheet's rates (a percent with two decimals), each for a grade from a from-date. */
   protected readonly rates = signal<Rate[]>([]);
   /** Each person's due-total in cents, by person id: the sum of the dues their OPEN and SETTLED
-   *  claims show (each already rounded). Null (n/a) when their grade has no rate in force on the
+   *  claims show (each already rounded; a held person's OPEN ones left out). Null (n/a) when their grade has no rate in force on the
    *  sheet's today, unless a settled claim keeps a fixed due or a stated claim a bound one: then
    *  the sum of the dues there are. */
   private readonly dueByPerson = computed(() => {
     const out = new Map<number, number | null>();
     for (const p of this.people()) {
       const rates = this.ratesOf(p.grade);
-      const counted = this.claimsOf(p.id).filter(counts);
+      const counted = this.claimsOf(p.id).filter(this.countsLive());
       if (pctOn(rates, this.session.today()) === null && !counted.some((c) => c.settledDue !== null || c.statedDue !== null)) {
         out.set(p.id, null);
         continue;
@@ -147,12 +160,12 @@ export class People {
   /** The sheet's periods, by from-date. */
   protected readonly periods = signal<Period[]>([]);
   /** Each period's due-total in cents, by period id: the dues (n/a ones skipped) of the OPEN and
-   *  SETTLED claims whose date falls in it. */
+   *  SETTLED claims whose date falls in it (a held person's OPEN ones left out). */
   protected readonly dueByPeriod = computed(() => {
     const out = new Map<number, number>();
     for (const p of this.people()) {
       const rates = this.ratesOf(p.grade);
-      for (const c of this.claimsOf(p.id).filter(counts)) {
+      for (const c of this.claimsOf(p.id).filter(this.countsLive())) {
         const period = periodOn(this.periods(), c.date);
         if (period === null) continue;
         out.set(period.id, (out.get(period.id) ?? 0) + (claimDueCents(rates, c) ?? 0));
@@ -265,6 +278,19 @@ export class People {
       if (this.session.sheetId() === sheetId) this.taken(retired);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [p.id]: retireError(e) }));
+    }
+  }
+
+  /** Put a person on hold, or take them off it when held; the row then shows the new state. */
+  protected async hold(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const saved = await this.api.hold(sheetId, p.id, !p.held);
+      if (this.session.sheetId() === sheetId) this.taken(saved);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: holdError(e) }));
     }
   }
 

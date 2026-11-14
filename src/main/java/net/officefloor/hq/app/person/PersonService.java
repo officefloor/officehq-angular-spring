@@ -113,6 +113,24 @@ public class PersonService {
         return person;
     }
 
+    /** Put a person on hold ({@code held} true) or take them off it; their OPEN claims count in no
+     *  live total while held. Setting the state they already have changes nothing. */
+    @Transactional
+    public Person hold(String sheetId, String user, long id, boolean held) {
+        Person person = people.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (person.isHeld() == held) {
+            return person;
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        person.setHeld(held);
+        people.flush();
+        audit.recordOnCommit((held ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName());
+        rollup.recordChanges(sheetId, user, before);
+        return person;
+    }
+
     private void record(String event, String sheetId, String user, Person person) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " grade=" + person.getGrade());

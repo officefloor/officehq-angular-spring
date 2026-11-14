@@ -28,13 +28,13 @@ public class PersonController {
 
     /** A person as the screen shows them, with their statement count and their last statement's
      *  due-total (two decimals; null when it was n/a or they have none) and date, and the date
-     *  they are retired from (null while not retired). */
+     *  they are retired from (null while not retired), and whether they are on hold. */
     public record PersonView(long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate, LocalDate retiredFrom) {
+            String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held) {
         public static PersonView of(Person p, StatementSummary s) {
             return new PersonView(p.getId(), p.getName(), p.getGrade(), p.getVersion(), s.count(),
                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
-                    p.getRetiredFrom());
+                    p.getRetiredFrom(), p.isHeld());
         }
     }
 
@@ -48,6 +48,10 @@ public class PersonController {
 
     /** A retirement as the row submits it; a missing date takes the sheet's today. */
     public record RetireForm(LocalDate from) {
+    }
+
+    /** A hold as the row submits it: true puts the person on hold, false takes them off it. */
+    public record HoldForm(@NotNull Boolean held) {
     }
 
     private final PersonService service;
@@ -99,6 +103,15 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @RequestBody(required = false) RetireForm body) {
         return view(service.retire(sheetId, user.trim(), id, body == null ? null : body.from()));
+    }
+
+    @PostMapping("/{id}/hold")
+    public PersonView hold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody HoldForm body) {
+        return view(service.hold(sheetId, user.trim(), id, body.held()));
     }
 
     private PersonView view(Person p) {

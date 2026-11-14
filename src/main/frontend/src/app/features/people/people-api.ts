@@ -20,6 +20,8 @@ export interface Person {
   statementDate: string | null;
   /** The date the person is retired from; null while not retired. Set, they count as retired. */
   retiredFrom: string | null;
+  /** Whether the person is on hold: their OPEN claims then count in no live total. */
+  held: boolean;
 }
 
 /** A statement just taken: the person as they now show, and all their claims, newest first. */
@@ -72,6 +74,13 @@ export class PeopleApi {
     );
   }
 
+  /** Put a person on hold (true) or take them off it (false). */
+  hold(sheetId: string, id: number, held: boolean): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/hold`, { held }, { headers: this.headers() }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}/people`;
   }
@@ -95,6 +104,11 @@ export function statementError(e: unknown): string {
 
 export function retireError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a date as yyyy-mm-dd.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  return 'Something went wrong; try again.';
+}
+
+export function holdError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   return 'Something went wrong; try again.';
 }

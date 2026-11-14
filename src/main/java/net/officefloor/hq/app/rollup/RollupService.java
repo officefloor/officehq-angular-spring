@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -72,14 +74,16 @@ public class RollupService {
     public Snapshot snapshot(String sheetId) {
         LocalDate today = sheets.findById(sheetId).map(Sheet::getToday).orElseGet(LocalDate::now);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
+        List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
+        Set<Long> held = heldIds(sheetPeople);
         Map<Long, List<Claim>> counted = new LinkedHashMap<>();
         for (Claim c : claims.findBySheetIdOrderByIdDesc(sheetId)) {
-            if (counts(c)) {
+            if (counts(c, held)) {
                 counted.computeIfAbsent(c.getPersonId(), id -> new ArrayList<>()).add(c);
             }
         }
         Map<Long, Figures> out = new LinkedHashMap<>();
-        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person p : sheetPeople) {
             List<Rate> theirRates = sheetRates.stream().filter(r -> r.getGrade().equals(p.getGrade())).toList();
             List<Claim> theirs = counted.getOrDefault(p.getId(), List.of());
             BigDecimal claimed = theirs.stream().map(Claim::getAmount).reduce(zero(), BigDecimal::add);
@@ -89,15 +93,17 @@ public class RollupService {
     }
 
     /** The due-total of the period from {@code from} to {@code to}, inclusive: the dues (n/a ones
-     *  skipped) its OPEN and SETTLED claims dated inside it show now. */
+     *  skipped) its OPEN and SETTLED claims dated inside it show now (a held person's OPEN ones left out). */
     public BigDecimal dueTotalBetween(String sheetId, LocalDate from, LocalDate to) {
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
+        List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
+        Set<Long> held = heldIds(sheetPeople);
         Map<Long, List<Rate>> ratesByPerson = new LinkedHashMap<>();
-        for (Person p : people.findBySheetIdOrderByIdAsc(sheetId)) {
+        for (Person p : sheetPeople) {
             ratesByPerson.put(p.getId(), sheetRates.stream().filter(r -> r.getGrade().equals(p.getGrade())).toList());
         }
         return claims.findBySheetIdOrderByIdDesc(sheetId).stream()
-                .filter(RollupService::counts)
+                .filter(c -> counts(c, held))
                 .filter(c -> !c.getDate().isBefore(from) && !c.getDate().isAfter(to))
                 .map(c -> shownDueOf(c, ratesByPerson.getOrDefault(c.getPersonId(), List.of())))
                 .filter(Objects::nonNull)
@@ -121,9 +127,15 @@ public class RollupService {
         }
     }
 
-    /** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do. */
-    private static boolean counts(Claim c) {
-        return c.getStatus() == ClaimStatus.OPEN || c.getStatus() == ClaimStatus.SETTLED;
+    /** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do, and
+     *  of a held person (by id in {@code held}) only SETTLED ones. */
+    private static boolean counts(Claim c, Set<Long> held) {
+        return c.getStatus() == ClaimStatus.SETTLED
+                || (c.getStatus() == ClaimStatus.OPEN && !held.contains(c.getPersonId()));
+    }
+
+    private static Set<Long> heldIds(List<Person> sheetPeople) {
+        return sheetPeople.stream().filter(Person::isHeld).map(Person::getId).collect(Collectors.toSet());
     }
 
     /** A person's due-total: the sum of the dues their counting claims show (n/a ones skipped);

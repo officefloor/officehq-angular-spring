@@ -32,6 +32,10 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    /** Whether the person is on hold: their OPEN claims then count in no live total. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     /** Raised on every save, so an edit of a version someone else has since saved is refused. */
     @Version
     @Column(name = "version", nullable = false)
@@ -85,6 +89,14 @@ public class Person {
     /** Whether a claim dated {@code date} is refused for the person: one after their retirement date. */
     public boolean retiredBefore(LocalDate date) {
         return retiredFrom != null && date.isAfter(retiredFrom);
+    }
+
+    public boolean isHeld() {
+        return held;
+    }
+
+    public void setHeld(boolean held) {
+        this.held = held;
     }
 
     public long getVersion() {
