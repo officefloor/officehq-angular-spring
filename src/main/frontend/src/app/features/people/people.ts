@@ -171,6 +171,9 @@ interface StatementTaken {
         @if (importAdded() !== null) {
           Added <strong data-testid="import-added">{{ importAdded() }}</strong>
         }
+        @if (importUpdated() !== null) {
+          Updated <strong data-testid="import-updated">{{ importUpdated() }}</strong>
+        }
       </form>
       @if (importError(); as message) {
         <p role="alert" data-testid="import-error">{{ message }}</p>
@@ -872,6 +875,8 @@ export class People {
   protected readonly importText = signal('');
   /** How many people the last import added; null while it runs or before one. */
   protected readonly importAdded = signal<number | null>(null);
+  /** How many people the last import updated; null while it runs or before one. */
+  protected readonly importUpdated = signal<number | null>(null);
   /** Whether an import is waiting for its answer; a second one meanwhile is dropped. */
   private readonly importBusy = signal(false);
   protected readonly importError = signal<string | null>(null);
@@ -967,6 +972,7 @@ export class People {
       this.pasteError.set(null);
       this.importText.set('');
       this.importAdded.set(null);
+      this.importUpdated.set(null);
       this.importError.set(null);
       if (sheet) void this.read(sheet, load);
     });
@@ -1686,13 +1692,15 @@ export class People {
     }
   }
 
-  /** Add a person per pasted line of name,grade,terms,contact, each as the person form would; when
-   *  any line is refused nobody is added. The added people then show, and how many were. */
+  /** Add a person per pasted line of name,grade,terms,contact, each as the person form would, or update
+   *  the person on the sheet the line's name matches; when any line is refused nothing is imported. The
+   *  added and updated people then show, and how many of each there were. */
   protected async importPeople(event: Event): Promise<void> {
     event.preventDefault();
     if (this.importBusy()) return;
     this.importError.set(null);
     this.importAdded.set(null);
+    this.importUpdated.set(null);
     const sheet = this.session.sheetId();
     if (!sheet) return;
     const text = this.importText();
@@ -1703,16 +1711,21 @@ export class People {
     this.importBusy.set(true);
     try {
       const result = await firstValueFrom(
-        this.http.post<{ added: Person[] }>(`/api/sheets/${encodeURIComponent(sheet)}/people/import`, { text }),
+        this.http.post<{ added: Person[]; updated: Person[] }>(
+          `/api/sheets/${encodeURIComponent(sheet)}/people/import`,
+          { text },
+        ),
       );
       if (this.session.sheetId() !== sheet) return;
-      this.people.update((list) => [...list, ...result.added]);
+      const updated = new Map(result.updated.map((p) => [p.id, p]));
+      this.people.update((list) => [...list.map((p) => updated.get(p.id) ?? p), ...result.added]);
       this.importAdded.set(result.added.length);
+      this.importUpdated.set(result.updated.length);
       this.importText.set('');
     } catch {
       this.importError.set(
-        'The people could not be imported: every line needs a name not already a name or alias on the sheet ' +
-          'or its tree, a grade of A, B or C, terms of a whole number of days (or blank) and a contact no one ' +
+        'The people could not be imported: every line needs a name that is a person on the sheet (to update ' +
+          'them) or not already a name or alias on the sheet or its tree, a grade of A, B or C, terms of a whole number of days (or blank) and a contact no one ' +
           'else has (or blank); no name or contact may be repeated in the paste.',
       );
     } finally {

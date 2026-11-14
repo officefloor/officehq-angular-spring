@@ -125,8 +125,8 @@ public class PersonController {
     public record ImportRequest(@NotNull @Size(max = 1_000_000) String text) {
     }
 
-    /** The people an import added, in the order of their lines. */
-    public record ImportView(List<PersonView> added) {
+    /** The people an import added and those it updated, each in the order of their lines. */
+    public record ImportView(List<PersonView> added, List<PersonView> updated) {
     }
 
     /** A merge: the id of the other person on the sheet to merge into. */
@@ -208,15 +208,16 @@ public class PersonController {
                 request.name(), request.grade(), request.gradeFrom(), request.terms(), request.contact())), by);
     }
 
-    /** Add a person per pasted line, in order, each as the form would; none when any line is refused. */
+    /** Add or update a person per pasted line, in order, each as the form would; none when any line is refused. */
     @PostMapping("/import")
     @ResponseStatus(HttpStatus.CREATED)
     public ImportView importPeople(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated ImportRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
-        return new ImportView(imports.importPeople(sheet, by, request.text()).stream()
-                .map(person -> withStatements(person, by)).toList());
+        PersonImportService.Result result = imports.importPeople(sheet, by, request.text());
+        return new ImportView(result.added().stream().map(person -> withStatements(person, by)).toList(),
+                result.updated().stream().map(person -> withStatements(person, by)).toList());
     }
 
     /** Give the selected people a grade from a date, in list order, each as its editor would; the
