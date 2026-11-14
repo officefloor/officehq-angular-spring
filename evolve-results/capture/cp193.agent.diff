@@ -1,0 +1,48 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7988acd55..950d0ad96 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -464,6 +464,9 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
+       <p>Overdue in total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+       <p>Cuts in total <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
++      <p>Due aged 0–30 in total <strong data-testid="rollup-aged-0-30">{{ agedTotal()[0] }}</strong></p>
++      <p>Due aged 31–60 in total <strong data-testid="rollup-aged-31-60">{{ agedTotal()[1] }}</strong></p>
++      <p>Due aged 61+ in total <strong data-testid="rollup-aged-61">{{ agedTotal()[2] }}</strong></p>
+       @if (tagTotals().length > 0) {
+         <ul aria-label="Due in total by tag">
+           @for (t of tagTotals(); track t.tag) {
+@@ -1227,6 +1230,12 @@ export class People {
+     }
+     return map;
+   });
++  /** Everyone's age buckets added up, bucket by bucket (not trimmed). */
++  protected readonly agedTotal = computed(() => {
++    const sums = [0, 0, 0];
++    for (const p of this.people()) this.agedCentsOf(p).forEach((due, i) => (sums[i] += due));
++    return sums.map((due) => money(due));
++  });
+   /** How many claims that count are overdue on the sheet. */
+   protected readonly overdueCount = computed(() =>
+     [...this.overdueByPerson().values()].reduce((n, list) => n + list.length, 0),
+@@ -2051,6 +2060,11 @@ export class People {
+    *  sheet's today, the days from its date: 0 to 30 (a claim dated after today too), 31 to 60, and 61
+    *  or more (a claim with no figure adds nothing). */
+   protected agedOf(person: Person): [string, string, string] {
++    const [fresh, middle, old] = this.agedCentsOf(person);
++    return [money(fresh), money(middle), money(old)];
++  }
++
++  private agedCentsOf(person: Person): [number, number, number] {
+     const today = this.session.today();
+     const floor = this.floor();
+     const late = this.late();
+@@ -2061,7 +2075,7 @@ export class People {
+       const bucket = age <= 30 ? 0 : age <= 60 ? 1 : 2;
+       sums[bucket] += claimDueCents(c, this.rates.ofGradeOn(person.grades, c), floor, late) ?? 0;
+     }
+-    return [money(sums[0]), money(sums[1]), money(sums[2])];
++    return [sums[0], sums[1], sums[2]];
+   }
+ 
+   private overdueCentsOf(person: Person): number {
