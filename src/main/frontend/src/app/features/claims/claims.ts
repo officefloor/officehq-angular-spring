@@ -141,11 +141,10 @@ function roundsHalfUp(claim: Claim, late: Late): boolean {
   return policy !== null && claim.roundsBy < policy;
 }
 
-/** A claim's figure in cents: the figure a statement bound it to, unless it is PENDING (no statement
- *  binds it then); otherwise its amount times the rate in force on its date among its grade's rates;
- *  null when it has no figure. The floor is not applied here (see claimDueCents). */
+/** A claim's figure in cents: the figure a statement bound it to; otherwise its amount times the
+ *  rate in force on its date among its grade's rates; null when it has no figure. The floor is not applied here (see claimDueCents). */
 function figureCents(claim: Claim, rates: Rate[], halfUp: boolean): number | null {
-  if (claim.stated && claim.status !== 'PENDING') return claim.statedDue === null ? null : cents(claim.statedDue);
+  if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   const rate = rateOn(rates, claim.date);
   if (rate === null) return null;
   return dueCents(cents(claim.amount), rate, halfUp);

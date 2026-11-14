@@ -899,9 +899,8 @@ public class ClaimService {
                 .findFirst().map(Period::getName).orElse(NO_PERIOD) + "-";
     }
 
-    /** The figure a claim shows: the due fixed when it was settled, else (unless it is PENDING, which
-     *  no statement binds) the figure its person's last statement bound it to, else its due at the
-     *  person's grade rate; null when it has none. */
+    /** The figure a claim shows: the due fixed when it was settled, else the figure its person's last
+     *  statement bound it to, else its due at the person's grade rate; null when it has none. */
     public BigDecimal figureOf(String sheetId, Person person, Claim claim) {
         return figureOf(sheetId, person, claim, null);
     }
@@ -916,7 +915,7 @@ public class ClaimService {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue()
+        return claim.isStated() ? claim.getStatedDue()
                 : liveFigureOf(sheetId, person, claim, asOf, override);
     }
 
