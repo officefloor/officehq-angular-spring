@@ -1,0 +1,113 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 86a9a8541..9284c88a8 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -119,6 +119,8 @@ interface StatementTaken {
+       [periods]="periodSummary()"
+       [statuses]="statusSummary()"
+       [voids]="voidReasonSummary()"
++      [classicPeriods]="classicPeriodSummary()"
++      [classicDueTotal]="classicDueTotal()"
+     />
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+@@ -1003,6 +1005,37 @@ export class People {
+       ]),
+     );
+   });
++  /** The classic summary per period, in cents by period id: while the period is open, the dues shown
++   *  now on the claims whose due-by falls in it that count by their status now (OPEN, PENDING or
++   *  SETTLED) and the live rules leave in (a claim with no figure adds nothing); once it is closed or
++   *  soft-closed, the figures fixed then, for the people on the sheet. */
++  protected readonly classicPeriodSummary = computed(() => {
++    const periods = this.periods.periods();
++    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
++    const totals = new Map<number, number>();
++    for (const period of periods) {
++      const fixed = Object.entries(period.closed || period.softClosed ? period.closedPersonTotals : {});
++      totals.set(
++        period.id,
++        fixed.reduce((sum, [id, total]) => (grades.has(Number(id)) ? sum + cents(total) : sum), 0),
++      );
++    }
++    const keep = this.liveRulesKeep();
++    for (const c of this.claims()) {
++      const period = periodOf(periods, c.dueBy);
++      const theirs = grades.get(c.personId);
++      if (period === null || period.closed || period.softClosed || theirs === undefined) continue;
++      if (!['OPEN', 'PENDING', 'SETTLED'].includes(c.status) || !keep(c)) continue;
++      const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c.date), this.floor(), this.late()) ?? 0;
++      totals.set(period.id, totals.get(period.id)! + due);
++    }
++    return periods.map((p) => ({ name: p.name, dueTotal: money(totals.get(p.id) ?? 0) }));
++  });
++  /** The classic sheet due-total: everyone's due-total added up, skipping those with no figure, not
++   *  trimmed. */
++  protected readonly classicDueTotal = computed(() =>
++    money(this.people().reduce((sum, p) => sum + (this.dueCentsBy(p) ?? 0), 0)),
++  );
+   /** Per grade: the people not retired on it on the sheet's today, their due-totals added up
+    *  (skipping those with no figure), as their rows show them, and how many of them are active. */
+   protected readonly gradeSummary = computed(() => {
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 34acbe2cf..f660e39a2 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -19,6 +19,13 @@ export interface PeriodSummary {
+   change: string;
+ }
+ 
++export interface ClassicPeriodSummary {
++  name: string;
++  /** The period's due-total counting each claim by its status now; a closed period's figure fixed
++   *  when it closed (two decimals). */
++  dueTotal: string;
++}
++
+ export interface StatusSummary {
+   status: string;
+   /** How many of the sheet's claims have the status. */
+@@ -32,7 +39,7 @@ export interface VoidReasonSummary {
+ }
+ 
+ // The sheet in figures, each worked out from what the list shows: per grade, per period and per
+-// claim status and void reason.
++// claim status and void reason; and beside it the classic summary.
+ @Component({
+   selector: 'app-summary',
+   template: `
+@@ -113,6 +120,27 @@ export interface VoidReasonSummary {
+         </tbody>
+       </table>
+     </section>
++    <section aria-labelledby="classic-summary-heading">
++      <h2 id="classic-summary-heading">Classic summary</h2>
++      <table>
++        <caption>By period</caption>
++        <thead>
++          <tr>
++            <th scope="col">Period</th>
++            <th scope="col">Due</th>
++          </tr>
++        </thead>
++        <tbody>
++          @for (p of classicPeriods(); track p.name) {
++            <tr>
++              <th scope="row">{{ p.name }}</th>
++              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ p.dueTotal }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++      <p>Sheet due-total: <span data-testid="classic-due-total">{{ classicDueTotal() }}</span></p>
++    </section>
+   `,
+ })
+ export class Summary {
+@@ -120,4 +148,6 @@ export class Summary {
+   readonly periods = input.required<PeriodSummary[]>();
+   readonly statuses = input.required<StatusSummary[]>();
+   readonly voids = input.required<VoidReasonSummary[]>();
++  readonly classicPeriods = input.required<ClassicPeriodSummary[]>();
++  readonly classicDueTotal = input.required<string>();
+ }

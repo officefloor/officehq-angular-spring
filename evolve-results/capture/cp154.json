@@ -1,0 +1,64 @@
+{
+  "checkpoint": 154,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp154_classic-summary",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Add a classic summary beside the summary: per period, the due-total counting each claim by its\nstatus now (OPEN, SETTLED and PENDING count; a closed period shows the figure fixed when it closed),\nand the sheet's due-total with no trimming (everyone's due-total added up). Both summaries show at\nonce and both must be right.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAdd a classic summary beside the summary: per period, the due-total counting each claim by its\nstatus now (OPEN, SETTLED and PENDING count; a closed period shows the figure fixed when it closed),\nand the sheet's due-total with no trimming (everyone's due-total added up). Both summaries show at\nonce and both must be right.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "9357cbe865de485b6bb163e8e08a92b42c2162c0",
+  "reset_sha": "",
+  "preagent_sha": "c64b4821a91ef50d89e174f0ff452bb7a2a28696",
+  "prev_sha": "c64b4821a91ef50d89e174f0ff452bb7a2a28696",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5911770000000001,
+    "input_tokens": 32,
+    "output_tokens": 5501,
+    "cache_read_tokens": 563345,
+    "cache_creation_tokens": 46045,
+    "num_turns": 17,
+    "duration_ms": 339444,
+    "duration_api_ms": 59439,
+    "model": "claude-opus-5-5",
+    "session_id": "0e7f4c06-6ed9-43c0-88d5-351633147807",
+    "stop_reason": "success",
+    "result_text": "I added the classic summary, and it shows beside the existing summary. `bin/e2e` passes all 4 tests in the spec.\n\n**Per period:** each period's due-total counts the claims whose due-by falls in it by their status now. OPEN, PENDING and SETTLED claims count. The existing summary uses the status a claim had at the end of the period instead. A closed or soft-closed period shows the figures fixed when it closed, counting only people still on the sheet.\n\n**Sheet total:** everyone's due-total added up with no trimming, skipping anyone whose due-total shows n/a. The existing header total drops the highest and lowest person when there are three or more people.\n\n**Two choices I made where the request doesn't say:**\n- Per period, the classic figure still applies the existing rules that leave claims out of live totals: deferred claims, claims under a hold, and claims of retired people. That keeps it consistent with what the period rows show.\n- Claims are placed in a period by their due-by date, not the date of the claim, as the existing per-period figures do.\n\nBoth match every value the test checks.\n\nIt's a front-end change only; the server and stored data didn't need to change:\n- `features/people/people.ts` has two new computed values, `classicPeriodSummary` and `classicDueTotal`, passed to the summary component.\n- `features/summary/summary.ts` has a new \"Classic summary\" section showing `classic-period-<name>-due-total` for each period and `classic-due-total` for the sheet.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5911770000000001,
+        "num_turns": 17,
+        "duration_ms": 339444,
+        "duration_api_ms": 59439,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp154.agent.jsonl",
+  "agent_diff_file": "cp154.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
