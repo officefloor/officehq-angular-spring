@@ -41,15 +41,47 @@ public class SheetService {
         return load(id).getToday();
     }
 
-    /** Take the sheet's next claim number, holding the sheet locked until the transaction ends so
-     *  claims opened at the same moment get different numbers. */
+    /** Take the sheet's next claim number: the one after the last given anywhere in its tree (the
+     *  sheets reached through parents and children from it). Every sheet of the tree is held locked
+     *  until the transaction ends so claims opened at the same moment get different numbers. */
     @Transactional
     public long nextClaimNumber(String id) {
         load(id);
         Sheet sheet = sheets.findLockedById(id).orElseThrow();
-        long number = sheet.nextClaimNumber();
+        long lastInTree = 0;
+        for (String other : treeOf(id)) {
+            if (!other.equals(id)) {
+                lastInTree = Math.max(lastInTree,
+                        sheets.findLockedById(other).map(Sheet::getLastClaimNumber).orElse(0L));
+            }
+        }
+        long number = sheet.takeClaimNumberAfter(lastInTree);
         sheets.saveAndFlush(sheet);
         return number;
+    }
+
+    /** The ids of the sheets in the sheet's tree, the sheet included, in id order: its topmost
+     *  ancestor and every sheet below it. */
+    private List<String> treeOf(String id) {
+        Set<String> seen = new HashSet<>();
+        String root = id;
+        seen.add(root);
+        String parent = sheets.findById(root).map(Sheet::getParentId).orElse(null);
+        while (parent != null && seen.add(parent)) {
+            root = parent;
+            parent = sheets.findById(root).map(Sheet::getParentId).orElse(null);
+        }
+        Set<String> tree = new HashSet<>();
+        List<String> todo = new ArrayList<>(List.of(root));
+        while (!todo.isEmpty()) {
+            String next = todo.remove(todo.size() - 1);
+            if (tree.add(next)) {
+                sheets.findByParentIdOrderByIdAsc(next).forEach(child -> todo.add(child.getId()));
+            }
+        }
+        List<String> ids = new ArrayList<>(tree);
+        ids.sort(null);
+        return ids;
     }
 
     /** Take the sheet's next settle batch number, holding the sheet locked until the transaction

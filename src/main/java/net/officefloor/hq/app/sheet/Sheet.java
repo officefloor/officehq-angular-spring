@@ -137,9 +137,15 @@ public class Sheet {
         this.archived = true;
     }
 
-    /** Take the sheet's next claim number. */
-    public long nextClaimNumber() {
-        return ++lastClaimNumber;
+    /** The last claim number given on the sheet; 0 when there has been none. */
+    public long getLastClaimNumber() {
+        return lastClaimNumber;
+    }
+
+    /** Take a claim number following the last given anywhere in the sheet's tree. */
+    public long takeClaimNumberAfter(long lastInTree) {
+        lastClaimNumber = Math.max(lastClaimNumber, lastInTree) + 1;
+        return lastClaimNumber;
     }
 
     /** The last settle batch number given on the sheet; null when there has been none. */
