@@ -171,7 +171,7 @@ public class PeriodService {
      *  as {@link #generateFiscalYear} does, then each person's open figure at the end of the old year's
      *  last period (the dues of their claims that count, due by a day in a period of the old year, and
      *  OPEN or PENDING at the end of that last period's last day) is added to their opening balance for
-     *  the new year's first period. A period belongs to the fiscal year its from-date falls in. Anyone
+     *  the new year's first period (a figure of 0.00 adds nothing and writes nothing). A period belongs to the fiscal year its from-date falls in. Anyone
      *  but a steward, or an old year with no periods on the sheet, is refused. Returns how many periods
      *  were made. */
     @Transactional
@@ -217,6 +217,9 @@ public class PeriodService {
         }
         for (Person person : everyone) {
             BigDecimal amount = open.get(person.getId());
+            if (amount.signum() == 0) {
+                continue;
+            }
             first.addOpening(person.getId(), amount);
             audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                     + " period=" + first.getName() + " amount=" + amount.toPlainString());

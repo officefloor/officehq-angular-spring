@@ -151,7 +151,7 @@ public class ClaimController {
     public record BulkOpenRequest(@NotNull @Size(max = 10000) Set<@NotNull Long> claimIds) {
     }
 
-    /** What a bulk open did: the claims it opened, in the order it numbered them, and how many of the
+    /** What a bulk open did: the claims it opened, in list order, and how many of the
      *  selected claims it refused. */
     public record BulkOpenView(List<ClaimView> opened, int refused) {
     }
@@ -301,7 +301,7 @@ public class ClaimController {
         return changeStatus(sheetId, user, personId, id, ClaimStatus.OPEN);
     }
 
-    /** Open the selected claims that can be opened, numbered in list order; the rest are refused
+    /** Open the selected claims that can be opened, in list order; the rest are refused
      *  and left as they are. */
     @PostMapping("/claims/open")
     public BulkOpenView openAll(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -344,7 +344,7 @@ public class ClaimController {
         return view(sheet, rollups.track(sheet, by, () -> service.approve(sheet, by, personId, id)));
     }
 
-    /** Review a REVIEW claim: a steward makes it OPEN, numbered then. */
+    /** Review a REVIEW claim: a steward makes it OPEN, numbered once settled. */
     @PostMapping("/people/{personId}/claims/{id}/review")
     public ClaimView review(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
             @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
