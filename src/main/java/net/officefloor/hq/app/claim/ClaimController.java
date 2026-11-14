@@ -45,7 +45,7 @@ public class ClaimController {
 
     /** A claim as the screen shows it; the amount and the due fixed on settling (null when none
      *  was) are strings with two decimals; openedBy is null for a claim never opened; stated tells
-     *  whether a statement bound the claim, statedDue the figure it bound it to (null when none);
+     *  whether a statement bound the claim, statedDue the due it bound it to, late charge included (null when none);
      *  corrects is the number of the claim a correction corrects (null when it is not one); roundsBy
      *  is the date its live figures round by against the sheet's policy date (its own date, or for a
      *  correction the date of the claim it corrects); dueBy is the date it is due by, fixed when it was

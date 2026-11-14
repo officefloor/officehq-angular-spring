@@ -922,8 +922,8 @@ public class ClaimService {
                 .findFirst().map(Period::getName).orElse(NO_PERIOD) + "-";
     }
 
-    /** The figure a claim shows: the due fixed when it was settled, else the figure its person's last
-     *  statement bound it to, else its due at the person's grade rate; null when it has none. */
+    /** The figure a claim shows: the due fixed when it was settled, else the due its person's last
+     *  statement bound it to (late charge included), else its due at the person's grade rate; null when it has none. */
     public BigDecimal figureOf(String sheetId, Person person, Claim claim) {
         return figureOf(sheetId, person, claim, null);
     }
@@ -942,7 +942,8 @@ public class ClaimService {
                 : liveFigureOf(sheetId, person, claim, asOf, override);
     }
 
-    /** The due a claim shows: a settled claim's frozen due; otherwise the greater of the sheet's floor in
+    /** The due a claim shows: a settled claim's frozen due; else the due its person's last statement
+     *  bound it to; otherwise the greater of the sheet's floor in
      *  force on its date (none for a correction) and its figure plus its late charge (none while it is
      *  deferred: it is not overdue then); null when it has no figure. */
     public BigDecimal dueOf(String sheetId, Person person, Claim claim) {
@@ -961,6 +962,10 @@ public class ClaimService {
     private BigDecimal dueOf(String sheetId, Person person, Claim claim, LocalDate asOf, RateOverride override) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
+        }
+        // A statement binds the due as shown, late charge and floor included.
+        if (claim.isStated()) {
+            return claim.getStatedDue();
         }
         BigDecimal figure = figureOf(sheetId, person, claim, asOf, override);
         boolean open = claim.getStatus().isOpen() && !claim.deferredOn(todayOr(sheetId, asOf));
@@ -990,8 +995,8 @@ public class ClaimService {
      *  the figure for every 30-day boundary it is overdue past (its due-by plus its grace plus 30, 60, 90 ...
      *  days), compounding: the late percent in force on that boundary date of the figure plus the charges
      *  of the boundaries before it, rounded to two decimals as the claim's date decides (see roundingOf), the
-     *  charges added up. Never bound by a statement: it follows the
-     *  sheet's today. A waived claim bears none. Whether the claim counts as open is given, so a re-settle can charge a SETTLED
+     *  charges added up. It follows the sheet's today until a statement binds the
+     *  claim's due, charge included. A waived claim bears none. Whether the claim counts as open is given, so a re-settle can charge a SETTLED
      *  claim as if it were still OPEN. */
     private BigDecimal lateChargeOf(String sheetId, Person person, Claim claim, BigDecimal figure, boolean open,
             LocalDate asOf) {

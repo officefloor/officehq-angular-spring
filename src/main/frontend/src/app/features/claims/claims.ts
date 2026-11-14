@@ -143,7 +143,7 @@ function roundsHalfUp(claim: Claim, late: Late): boolean {
   return policy !== null && claim.roundsBy < policy;
 }
 
-/** A claim's figure in cents: the figure a statement bound it to; otherwise its amount times the
+/** A claim's figure in cents: the due a statement bound it to; otherwise its amount times the
  *  rate in force on its date among its grade's rates; null when it has no figure. The floor is not applied here (see claimDueCents). */
 function figureCents(claim: Claim, rates: Rate[], halfUp: boolean): number | null {
   if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
@@ -156,11 +156,12 @@ function figureCents(claim: Claim, rates: Rate[], halfUp: boolean): number | nul
  *  in force on its date (none for a correction) and its figure plus its late charge: for every full 30
  *  days an OPEN or PENDING claim is overdue, the late percent in force on that boundary (its due-by plus
  *  30, 60, 90 ... days) of the figure plus the charges of the boundaries before it (compounding), rounded
- *  like a due, the charges added up (a statement never binds
- *  the charge; settling freezes the due; a correction or a waived claim has none); null when it has no
+ *  like a due, the charges added up (a statement binds the due,
+ *  charge included; settling freezes the due; a correction or a waived claim has none); null when it has no
  *  figure. */
 export function claimDueCents(claim: Claim, rates: Rate[], floor: (date: string) => number, late: Late): number | null {
   if (claim.settledDue !== null) return cents(claim.settledDue);
+  if (claim.stated) return claim.statedDue === null ? null : cents(claim.statedDue);
   const halfUp = roundsHalfUp(claim, late);
   const figure = figureCents(claim, rates, halfUp);
   if (figure === null) return null;

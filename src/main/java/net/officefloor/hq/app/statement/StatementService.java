@@ -25,7 +25,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** The statements taken for people on a sheet. Taking one records the person's due-total and binds
- *  each claim of theirs that counts to the figure it shows then; the rest are left unbound. */
+ *  each claim of theirs that counts to the due it shows then, late charge included; the rest are left
+ *  unbound. */
 @Service
 public class StatementService {
 
@@ -119,13 +120,14 @@ public class StatementService {
                 claim.unbind();
                 continue;
             }
-            // The statement binds the figure; the late charge on top keeps following the sheet's today.
-            BigDecimal figure = claimService.figureOf(sheetId, person, then, asOf);
-            if (figure != null) {
-                total = total.add(claimService.dueOf(sheetId, person, then, asOf));
+            // The statement binds the due as shown, late charge included: one an earlier statement bound
+            // stays as it is.
+            BigDecimal due = claimService.dueOf(sheetId, person, then, asOf);
+            if (due != null) {
+                total = total.add(due);
                 anyFigure = true;
             }
-            claim.bind(figure);
+            claim.bind(due);
             counted++;
         }
         claims.saveAllAndFlush(theirs);
