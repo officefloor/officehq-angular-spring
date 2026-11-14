@@ -1,0 +1,60 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 1267dddf1..75edd0866 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -139,6 +139,7 @@ const PERMISSIONS: { action: string; label: string; standing: string }[] = [
+   { action: 'reassign', label: 'Reassign', standing: 'steward' },
+   { action: 'close', label: 'Close a period', standing: 'clerk, restricted and steward' },
+   { action: 'reopen', label: 'Reopen a period', standing: 'steward' },
++  { action: 'today', label: "Change the sheet's today", standing: 'clerk, restricted and steward' },
+ ];
+ 
+ /** Whether a permission entry is blank or a comma separated list of roles. */
+diff --git a/src/main/java/net/officefloor/hq/app/setting/Permission.java b/src/main/java/net/officefloor/hq/app/setting/Permission.java
+index 198a489e6..5f6f5c65c 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/Permission.java
++++ b/src/main/java/net/officefloor/hq/app/setting/Permission.java
+@@ -12,7 +12,8 @@ public enum Permission {
+     VOID(EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD)),
+     REASSIGN(EnumSet.of(Role.STEWARD)),
+     CLOSE(EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD)),
+-    REOPEN(EnumSet.of(Role.STEWARD));
++    REOPEN(EnumSet.of(Role.STEWARD)),
++    TODAY(EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD));
+ 
+     private final Set<Role> standing;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index c99486d02..18828ec70 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -14,6 +14,8 @@ import net.officefloor.hq.app.SignedInUser;
+ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.period.PeriodService;
+ import net.officefloor.hq.app.rollup.RollupService;
++import net.officefloor.hq.app.setting.Permission;
++import net.officefloor.hq.app.setting.PermissionRefusedException;
+ import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingService;
+ import org.springframework.http.HttpStatus;
+@@ -169,6 +171,7 @@ public class SheetController {
+             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated TodayRequest request) {
+         String sheet = id.trim();
+         String by = SignedInUser.decode(user);
++        settings.refuseUnless(sheet, by, Permission.TODAY);
+         return SheetView.of(rollups.track(sheet, by,
+                 () -> {
+                     LocalDate was = service.today(sheet);
+@@ -205,6 +208,12 @@ public class SheetController {
+         return new CloneView(to);
+     }
+ 
++    /** A role the permission matrix does not let change the sheet's today is refused. */
++    @ExceptionHandler(PermissionRefusedException.class)
++    @ResponseStatus(HttpStatus.FORBIDDEN)
++    public void refused() {
++    }
++
+     /** A date that is not a real yyyy-mm-dd date is refused. */
+     @ExceptionHandler(HttpMessageNotReadableException.class)
+     @ResponseStatus(HttpStatus.BAD_REQUEST)

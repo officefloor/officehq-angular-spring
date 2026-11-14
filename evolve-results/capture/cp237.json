@@ -1,0 +1,64 @@
+{
+  "checkpoint": 237,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp237_today-permission",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The permission matrix gains today: which roles may change the sheet's today (SETTING_CHANGED\nkey=perm-today value=<roles>; blank keeps the standing rule, anyone but a viewer). A change by a\nrole not allowed is refused with the sheet's error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe permission matrix gains today: which roles may change the sheet's today (SETTING_CHANGED\nkey=perm-today value=<roles>; blank keeps the standing rule, anyone but a viewer). A change by a\nrole not allowed is refused with the sheet's error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3d16169861b141de25ec5a889d22ae3ea1a2cd9f",
+  "reset_sha": "",
+  "preagent_sha": "3a8b4e3b9ba764e6aab784d6275852314a9e51bb",
+  "prev_sha": "3a8b4e3b9ba764e6aab784d6275852314a9e51bb",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.45472680000000004,
+    "input_tokens": 34,
+    "output_tokens": 4390,
+    "cache_read_tokens": 504594,
+    "cache_creation_tokens": 33234,
+    "num_turns": 17,
+    "duration_ms": 293817,
+    "duration_api_ms": 47739,
+    "model": "claude-opus-5-5",
+    "session_id": "ffa49b9b-7e82-49a9-ac09-0a04ec8be02e",
+    "stop_reason": "success",
+    "result_text": "The permission matrix now has a \"today\" entry that controls which roles may change the sheet's today. All 4 tests pass in `bin/e2e`.\n\n- **Server:** I added `TODAY` to `Permission.java`. When it's left blank, the old rule applies: clerk, restricted and steward may change today, and a viewer may not. Setting it records `SETTING_CHANGED sheet=\u2026 by=\u2026 key=perm-today value=<roles>` in the audit file, through the same code as the other permissions.\n- **Refusal:** In `SheetController.setToday`, the role is now checked first. A refused change returns 403, so the screen shows the sheet's error (`sheet-error`), and nothing is written to the store or the audit file.\n- **Front end:** The settings screen has a new \"Change the sheet's today\" entry in its list of permissions. It uses the test ids `setting-perm-today` and `setting-perm-today-current`.\n- **Stored data:** No migration was needed, because the table holding the permission matrix accepts any action name.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.45472680000000004,
+        "num_turns": 17,
+        "duration_ms": 293817,
+        "duration_api_ms": 47739,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp237.agent.jsonl",
+  "agent_diff_file": "cp237.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
