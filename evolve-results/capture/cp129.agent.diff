@@ -1,0 +1,68 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b0aa4e814..cf212cc97 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -233,6 +233,7 @@ interface StatementTaken {
+         Show retired
+       </label>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
++      <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
+       <p>
+         <button type="button" data-testid="bulk-open" (click)="openSelected()">Open selected claims</button>
+         @if (bulkOpenResult(); as r) {
+@@ -1346,18 +1347,47 @@ export class People {
+   /** Download everyone, retired people included, in list order as CSV: name, the grade in force
+    *  on the sheet's today, the retired-from date (or nothing) and the due-total as shown. */
+   protected exportCsv(): void {
+-    const field = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+-    const lines = [
+-      'name,grade,retired-from,due-total',
+-      ...this.people().map((p) =>
+-        [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueBy(p)].map(field).join(','),
++    this.downloadCsv('people', [
++      ['name', 'grade', 'retired-from', 'due-total'],
++      ...this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueBy(p)]),
++    ]);
++  }
++
++  /** Download every claim as CSV: people in list order, retired people included, each person's
++   *  claims oldest first, with the number, due, status and period as their rows show them. */
++  protected exportClaims(): void {
++    const periods = this.periods.periods();
++    const floor = this.floor();
++    const late = this.late();
++    this.downloadCsv('claims', [
++      ['person', 'number', 'date', 'amount', 'due', 'status', 'period'],
++      ...this.people().flatMap((p) =>
++        [...this.claimsOf(p.id)].reverse().map((c) => {
++          const due = claimDueCents(c, this.rates.ofGradeOn(p.grades, c.date), floor, late);
++          return [
++            p.name,
++            c.number ?? '',
++            c.date,
++            c.amount,
++            due === null ? NO_RATE : money(due),
++            c.status,
++            periodOf(periods, c.dueBy)?.name ?? '',
++          ];
++        }),
+       ),
+-    ];
+-    const blob = new Blob([lines.map((l) => l + '\n').join('')], { type: 'text/csv' });
++    ]);
++  }
++
++  /** Download rows as a CSV file named for the sheet: a field holding a quote, comma or line break
++   *  is quoted (quotes doubled), and every line ends with a line feed. */
++  private downloadCsv(name: string, rows: string[][]): void {
++    const field = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
++    const text = rows.map((r) => r.map(field).join(',') + '\n').join('');
++    const blob = new Blob([text], { type: 'text/csv' });
+     const url = URL.createObjectURL(blob);
+     const link = document.createElement('a');
+     link.href = url;
+-    link.download = `people-${this.session.sheetId() ?? 'sheet'}.csv`;
++    link.download = `${name}-${this.session.sheetId() ?? 'sheet'}.csv`;
+     link.click();
+     setTimeout(() => URL.revokeObjectURL(url));
+   }
