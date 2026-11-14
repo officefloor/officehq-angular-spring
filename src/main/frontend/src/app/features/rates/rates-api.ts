@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { Claim, cents } from '../claims/claims-api';
 
 /** A percent of 0.00 or more with up to two decimals. */
 export const PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
@@ -57,8 +58,18 @@ export function rateError(e: unknown): string {
 }
 
 /** Whole cents times a percent (in hundredths of a percent), divided by 100, in whole cents,
- *  rounded half up (away from zero). Worked in BigInt so large amounts stay exact. */
+ *  rounded half to even. Worked in BigInt so large amounts stay exact. */
 export function dueCents(cents: number, pctHundredths: number): number {
   const product = BigInt(cents) * BigInt(pctHundredths);
-  return Number((product + 5000n) / 10000n);
+  const whole = product / 10000n;
+  const rest = product % 10000n;
+  return Number(rest > 5000n || (rest === 5000n && whole % 2n === 1n) ? whole + 1n : whole);
+}
+
+/** A claim's due in cents: the due fixed when it was settled, else its amount times its grade's
+ *  rate in force on its date, rounded half to even; null (n/a) with no rate in force then. */
+export function claimDueCents(rates: readonly Rate[], c: Claim): number | null {
+  if (c.settledDue !== null) return cents(c.settledDue);
+  const pct = pctOn(rates, c.date);
+  return pct === null ? null : dueCents(cents(c.amount), cents(pct));
 }

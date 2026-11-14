@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Claim, ClaimsApi, cents, counts, money } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Rates } from '../rates/rates';
-import { Rate, RatesApi, dueCents, pctOn } from '../rates/rates-api';
+import { Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
 import { GRADES, PeopleApi, Person, personError } from './people-api';
 
 // The sheet's rates; the people on the active sheet, in the order they were added, each with their
@@ -86,13 +86,19 @@ export class People {
   });
   /** The sheet's rates (a percent with two decimals), each for a grade from a from-date. */
   protected readonly rates = signal<Rate[]>([]);
-  /** Each person's due-total in cents, by person id, at their grade's rate in force on the sheet's
-   *  today; null (n/a) when it has none then. */
+  /** Each person's due-total in cents, by person id: the sum of the dues their OPEN and SETTLED
+   *  claims show (each already rounded). Null (n/a) when their grade has no rate in force on the
+   *  sheet's today, unless a settled claim keeps a fixed due: then the sum of the dues there are. */
   private readonly dueByPerson = computed(() => {
     const out = new Map<number, number | null>();
     for (const p of this.people()) {
-      const pct = this.pctOf(p.grade);
-      out.set(p.id, pct === null ? null : dueCents(this.byPerson().get(p.id)?.cents ?? 0, cents(pct)));
+      const rates = this.ratesOf(p.grade);
+      const counted = this.claimsOf(p.id).filter(counts);
+      if (pctOn(rates, this.session.today()) === null && !counted.some((c) => c.settledDue !== null)) {
+        out.set(p.id, null);
+        continue;
+      }
+      out.set(p.id, counted.reduce((sum, c) => sum + (claimDueCents(rates, c) ?? 0), 0));
     }
     return out;
   });
@@ -139,11 +145,6 @@ export class People {
 
   protected claimedBy(personId: number): string {
     return money(this.byPerson().get(personId)?.cents ?? 0);
-  }
-
-  /** The rate for a grade in force on the sheet's today, or null when it has none then. */
-  protected pctOf(grade: string): string | null {
-    return pctOn(this.ratesOf(grade), this.session.today());
   }
 
   /** Every rate the sheet has for a grade. */

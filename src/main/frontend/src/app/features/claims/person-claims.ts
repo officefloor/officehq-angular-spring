@@ -1,8 +1,8 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { Rate, dueCents, pctOn } from '../rates/rates-api';
-import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError, money, statusError } from './claims-api';
+import { Rate, claimDueCents } from '../rates/rates-api';
+import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, claimError, money, statusError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -84,11 +84,10 @@ export class PersonClaims {
   }
 
   /** The claim's amount times the rate in force on the claim's date, divided by 100, rounded half
-   *  up; n/a with no rate in force then. A claim settled with a due shows the due fixed then. */
+   *  to even; n/a with no rate in force then. A claim settled with a due shows the due fixed then. */
   protected dueOf(c: Claim): string {
-    if (c.settledDue !== null) return c.settledDue;
-    const pct = pctOn(this.rates(), c.date);
-    return pct === null ? 'n/a' : money(dueCents(cents(c.amount), cents(pct)));
+    const due = claimDueCents(this.rates(), c);
+    return due === null ? 'n/a' : money(due);
   }
 
   protected edit(c: Claim): void {
