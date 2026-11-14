@@ -12,6 +12,7 @@ import { SettingStore, Settings } from '../settings/settings';
 import { Summary } from '../summary/summary';
 import { PersonPlans, PlanGenerate } from '../plans/plans';
 import { Counters } from '../counters/counters';
+import { Dashboard, DashboardCounts } from '../dashboard/dashboard';
 import { PoolStore, Pools, figure, personCutTotals } from '../pools/pools';
 import { CrewStore, Crews, crewDueCents } from '../crews/crews';
 
@@ -131,7 +132,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
 // saves their changes.
 @Component({
   selector: 'app-people',
-  imports: [ClaimTemplates, Counters, Crews, Holidays, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, Summary, VoidReasons],
+  imports: [ClaimTemplates, Counters, Crews, Dashboard, Holidays, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, Summary, VoidReasons],
   template: `
     <app-counters
       [peopleCount]="people().length"
@@ -145,6 +146,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
       [consolidatedDueTotal]="consolidatedDue()"
       [consolidatedOverdueTotal]="consolidatedOverdue()"
     />
+    <app-dashboard [counts]="dashboard()" />
     <app-settings />
     <app-rates />
     <app-periods [dueTotals]="periodDueTotals()" />
@@ -899,6 +901,25 @@ export class People {
     // A delegation of the steward role in force on the sheet's today makes the user a steward.
     const delegated = today !== null && this.settings.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
     return !delegated && this.settings.roles().some((r) => r.user === user && r.role === 'viewer');
+  });
+  /** Whether the signed-in user is a steward on the sheet: by their own role, or by a delegation of the
+   *  steward role in force on the sheet's today. */
+  private readonly steward = computed(() => {
+    const user = this.session.user();
+    const today = this.session.today();
+    const delegated = today !== null && this.settings.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
+    return delegated || this.settings.roles().some((r) => r.user === user && r.role === 'steward');
+  });
+  /** The steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that count;
+   *  null for a user who is not a steward. */
+  protected readonly dashboard = computed<DashboardCounts | null>(() => {
+    if (!this.steward()) return null;
+    const claims = this.claims();
+    return {
+      pending: claims.filter((c) => c.status === 'PENDING').length,
+      review: claims.filter((c) => c.status === 'REVIEW').length,
+      overdue: this.overdueCount(),
+    };
   });
   /** The sheet's floor in cents in force on a date. */
   protected readonly floor = computed(() => {

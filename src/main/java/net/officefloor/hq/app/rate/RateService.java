@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.history.History;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -45,20 +46,29 @@ public class RateService {
         this.audit = audit;
     }
 
-    /** The sheet's parent sheet's id; null when it has none. The parent is not kept in the sheet's
-     *  history: a sheet shown as of a past day falls back to its parent as it stands now. */
-    private String parentOf(String sheetId) {
+    /** The sheet's parent sheet's id as it stood at the end of a day (null: as it stands now); null
+     *  when it had none. A sheet whose parent was never kept in its history has it as it stands now. */
+    private String parentOf(String sheetId, LocalDate asOf) {
+        if (asOf != null && history.settingsKept(sheetId).contains(SettingService.PARENT)) {
+            return history.settings(sheetId, asOf).get(SettingService.PARENT);
+        }
         return sheetRepository.findById(sheetId).map(Sheet::getParentId).orElse(null);
     }
 
     /** The sheets the sheet's rates fall back to, nearest first: its parent, the parent's parent, up
      *  to {@link #PARENT_LEVELS} levels up. */
     public List<String> ancestors(String sheetId) {
+        return ancestors(sheetId, null);
+    }
+
+    /** The sheets the sheet's rates fall back to as they stood at the end of a day (null: now),
+     *  nearest first: the parent each had then. */
+    public List<String> ancestors(String sheetId, LocalDate asOf) {
         List<String> found = new ArrayList<>();
-        String sheet = parentOf(sheetId);
+        String sheet = parentOf(sheetId, asOf);
         while (sheet != null && found.size() < PARENT_LEVELS && !sheet.equals(sheetId) && !found.contains(sheet)) {
             found.add(sheet);
-            sheet = parentOf(sheet);
+            sheet = parentOf(sheet, asOf);
         }
         return found;
     }
@@ -106,7 +116,7 @@ public class RateService {
     }
 
     /** The grade's rate in force on a date as the sheet's rates stood at the end of a day (null: as
-     *  they stand now), falling back to its parent sheets' rates as they stood at the end of that day. */
+     *  they stand now), falling back to the rates of the parent sheets it had then, as they stand now. */
     public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date, LocalDate asOf) {
         return rateFor(sheetId, grade, date, null, asOf);
     }
@@ -120,10 +130,10 @@ public class RateService {
         if (own.isPresent()) {
             return own;
         }
-        // Read as of a day, the sheet falls back to its parents' rates as they stood at the end of it
-        // (a rate a parent was given while its today was after the day does not count).
-        for (String ancestor : ancestors(sheetId)) {
-            Optional<Rate> theirs = ownRateFor(ancestor, grade, date, claimId, asOf);
+        // Read as of a day, the sheet falls back to the parents it had at the end of it, their rates as
+        // they stand now: a parent keeps its own today, so its history does not follow the sheet's.
+        for (String ancestor : ancestors(sheetId, asOf)) {
+            Optional<Rate> theirs = ownRateFor(ancestor, grade, date, claimId, null);
             if (theirs.isPresent()) {
                 return theirs;
             }

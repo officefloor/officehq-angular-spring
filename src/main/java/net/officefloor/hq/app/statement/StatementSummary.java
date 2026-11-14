@@ -20,9 +20,10 @@ public record StatementSummary(int count, String lastDueTotal, LocalDate lastDat
             return NONE;
         }
         Statement last = statements.get(statements.size() - 1);
-        // Oldest first by date, so those a merge or transfer brought over fall among the person's own.
+        // In the order they were taken (one taken as of a past day falls where it was taken); those a
+        // merge brought over fall before the person's own.
         List<Line> lines = statements.stream()
-                .sorted(Comparator.comparing(Statement::getTakenOn).thenComparingLong(Statement::getOrder))
+                .sorted(Comparator.comparingLong(Statement::getOrder))
                 .map(statement -> new Line(statement.getTakenOn(), statement.getDueTotal())).toList();
         return new StatementSummary(statements.size(), last.getDueTotal(), last.getTakenOn(), lines);
     }

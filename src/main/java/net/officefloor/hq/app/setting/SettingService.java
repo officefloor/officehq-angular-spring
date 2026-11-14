@@ -71,6 +71,9 @@ public class SettingService {
     private static final String POT = "pot";
     private static final String ALERT_THRESHOLD = "alert-threshold";
     private static final String FISCAL_START_MONTH = "fiscal-start-month";
+    /** The key the sheet's parent is kept under, so its rates fall back as of a past day to the parent
+     *  it had then (see RateService#ancestors); the screen still shows the parent as it stands now. */
+    public static final String PARENT = "parent";
 
     /** The sheet's settings as they stood at the end of a past day: each value as it stood set then,
      *  the day standing in for the sheet's today in those in force on a date. */
@@ -429,8 +432,8 @@ public class SettingService {
         return sheets.load(sheetId).getAlertThreshold();
     }
 
-    /** The sheet's parent sheet's id; null when it has none. Not kept in the sheet's history: the
-     *  sheet shown as of a past day shows its parent as it stands now. */
+    /** The sheet's parent sheet's id; null when it has none. The sheet shown as of a past day shows
+     *  its parent as it stands now. */
     public String parent(String sheetId) {
         return sheets.load(sheetId).getParentId();
     }
@@ -790,6 +793,7 @@ public class SettingService {
         Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
         sheet.setParentId(parentId);
         Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, PARENT, parentId);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=parent value="
                 + (parentId != null ? parentId : ""));
         return saved;
