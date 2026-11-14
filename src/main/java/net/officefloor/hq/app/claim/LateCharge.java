@@ -25,7 +25,15 @@ public record LateCharge(LocalDate today, BigDecimal pct) {
 
     /** The claim's figure (null: n/a, which stays n/a) with its late charge, rounded by {@code mode}, added. */
     public BigDecimal addTo(Claim claim, BigDecimal figure, RoundingMode mode) {
-        if (figure == null || !claim.getStatus().isOpen() || claim.isCorrection()) {
+        if (!claim.getStatus().isOpen()) {
+            return figure;
+        }
+        return addToOpen(claim, figure, mode);
+    }
+
+    /** The figure with the late charge the claim would gain were it open, whatever its status. */
+    public BigDecimal addToOpen(Claim claim, BigDecimal figure, RoundingMode mode) {
+        if (figure == null || claim.isCorrection()) {
             return figure;
         }
         long overdue = ChronoUnit.DAYS.between(claim.getDueBy(), today);

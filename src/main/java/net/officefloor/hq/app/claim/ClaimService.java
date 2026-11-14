@@ -240,6 +240,36 @@ public class ClaimService {
         return claim;
     }
 
+    /** A steward re-settles a SETTLED claim: its due is frozen again at the figure it would show
+     *  today as an open claim bound by no statement (today's rates, grades, floor and late
+     *  charge). Refused (404) when missing, (423) when dated in a closed period, (403) for anyone
+     *  but a steward, and (409) unless SETTLED. */
+    @Transactional
+    public Claim resettle(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward re-settles a claim");
+        }
+        if (claim.getStatus() != ClaimStatus.SETTLED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only a SETTLED claim is re-settled, not a " + claim.getStatus() + " one");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal old = claim.getSettledDue();
+        BigDecimal due = LateCharge.of(sheets.find(sheetId)).addToOpen(claim, dueOf(claim, person), roundingOf(claim));
+        claim.setSettledDue(due);
+        claims.flush();
+        logStatus(user, person, claim);
+        record("CLAIM_RESETTLED", user, person, claim, claim.getNumber(),
+                " old=" + dueText(old) + " new=" + dueText(due));
+        rollup.recordChanges(sheetId, user, before);
+        return claim;
+    }
+
     /** A steward rejects a PENDING claim with a reason: it goes back to OPEN, bound again by the
      *  person's last statement if that statement bound it. Refused (409) unless PENDING, (403) for
      *  a clerk, and (423) when it is dated in a closed period. */

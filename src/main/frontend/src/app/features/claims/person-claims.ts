@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, dueBy, logLineText, money, overdue, reassignError, roundsHalfUp, statusError } from './claims-api';
+import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, statusError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -59,6 +59,8 @@ import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cent
               [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
             <button type="button" data-testid="claim-approve" (click)="changeStatus(c, 'approve')"
               [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
+            <button type="button" data-testid="claim-resettle" (click)="changeStatus(c, 'resettle')"
+              [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date">Re-settle</button>
             <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
             <input [id]="'claim-reject-reason-' + c.id" data-testid="claim-reject-reason" autocomplete="off"
               [value]="rejectReasons()[c.id] ?? ''" (input)="reasonChanged(c.id, $any($event.target).value)" />
@@ -246,7 +248,7 @@ export class PersonClaims {
     }
   }
 
-  /** Open, settle, approve or void a claim; a move its status does not allow shows an error on the claim. */
+  /** Open, settle, approve, re-settle or void a claim; a move its status does not allow shows an error on the claim. */
   protected async changeStatus(c: Claim, action: ClaimAction): Promise<void> {
     this.clearRowError(c.id);
     const sheetId = this.session.sheetId();
@@ -255,7 +257,8 @@ export class PersonClaims {
       const claim = await this.api.changeStatus(sheetId, c.id, action);
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
-      this.rowErrors.update((errs) => ({ ...errs, [c.id]: statusError(e, c.openedBy === this.session.user()) }));
+      const err = action === 'resettle' ? resettleError(e) : statusError(e, c.openedBy === this.session.user());
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: err }));
     }
   }
 

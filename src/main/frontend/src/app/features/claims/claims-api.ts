@@ -16,7 +16,7 @@ export const CLAIM_AMOUNT_PATTERN = /^-?\d{1,13}(\.\d{1,2})?$/;
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A move of a claim's status, as the server names it. */
-export type ClaimAction = 'open' | 'settle' | 'void' | 'approve';
+export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'resettle';
 
 export interface Claim {
   id: number;
@@ -227,6 +227,15 @@ export function statusError(e: unknown, opener: boolean): string {
   if (e instanceof HttpErrorResponse && e.status === 403) {
     return opener ? 'The user who opened this claim cannot settle or approve it.' : 'Only a steward can approve or reject a pending claim.';
   }
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
+  return 'Something went wrong; try again.';
+}
+
+/** Why a re-settle was refused. */
+export function resettleError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can re-settle a claim.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a settled claim can be re-settled.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
   return 'Something went wrong; try again.';

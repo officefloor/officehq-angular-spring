@@ -202,6 +202,14 @@ public class ClaimController {
         return view(service.approve(sheetId, user.trim(), id));
     }
 
+    @PostMapping("/claims/{id}/resettle")
+    public ClaimView resettle(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return view(service.resettle(sheetId, user.trim(), id));
+    }
+
     @PostMapping("/claims/{id}/reject")
     public ClaimView reject(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
