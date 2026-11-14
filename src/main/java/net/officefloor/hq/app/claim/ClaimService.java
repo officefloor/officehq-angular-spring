@@ -579,8 +579,8 @@ public class ClaimService {
     }
 
     /** A steward waives an OPEN or PENDING claim's late charge: it bears none from then on, whatever
-     *  its overdue state, and CLAIM_WAIVED is written. Anyone else, a claim in any other status, one
-     *  already waived, or one dated in a closed period, is refused. */
+     *  its overdue state, even one due by a day in a closed period, and CLAIM_WAIVED is written. Anyone
+     *  else, a claim in any other status, or one already waived, is refused. */
     @Transactional
     public Claim waive(String sheetId, String user, Long personId, Long id) {
         Person person = person(sheetId, personId);
@@ -594,15 +594,14 @@ public class ClaimService {
         if (claim.isWaived()) {
             throw new WaiveRefusedException("The claim's late charge is already waived");
         }
-        refuseClosed(sheetId, claim.getDueBy());
         claim.waive();
         Claim saved = claims.saveAndFlush(claim);
         record("CLAIM_WAIVED", sheetId, user, person, saved);
         return saved;
     }
 
-    /** Hold an OPEN or PENDING claim, or release it when it is held: while held it is left out of the
-     *  live totals as a held person's claims are, and CLAIM_HELD or CLAIM_RELEASED is written. A claim
+    /** Hold an OPEN or PENDING claim, or release it when it is held: while held its due is left out of the
+     *  live totals as a held person's claims' are, its amount still claimed, and CLAIM_HELD or CLAIM_RELEASED is written. A claim
      *  in any other status, or one dated in a closed period, is refused. */
     @Transactional
     public Claim toggleHold(String sheetId, String user, Long personId, Long id) {

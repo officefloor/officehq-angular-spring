@@ -186,15 +186,15 @@ public class RollupService {
         sheetPeople.forEach(person -> retiredFrom.put(person.getId(), person.getRetiredFrom()));
         List<Claim> sheetClaims = claims.findBySheetIdOrderByListedDesc(sheetId);
         Map<Long, List<Claim>> counted = (asOf == null ? sheetClaims : history.claims(sheetClaims, asOf)).stream()
-                .filter(claim -> claim.countsLive(holds.getOrDefault(claim.getPersonId(), List.of()),
-                        retiredFrom.get(claim.getPersonId()), today))
+                .filter(claim -> claim.countsClaimed(retiredFrom.get(claim.getPersonId()), today))
                 .collect(Collectors.groupingBy(Claim::getPersonId));
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = NONE;
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
         for (Person person : sheetPeople) {
-            Figures f = figuresOf(sheetId, today, asOf, person, counted.getOrDefault(person.getId(), List.of()));
+            Figures f = figuresOf(sheetId, today, asOf, person, counted.getOrDefault(person.getId(), List.of()),
+                    holds.getOrDefault(person.getId(), List.of()), retiredFrom.get(person.getId()));
             figures.put(person.getId(), f);
             claimedTotal = claimedTotal.add(f.claimed());
             if (f.due() != null) {
@@ -216,11 +216,12 @@ public class RollupService {
     }
 
     /** A person's figures from their claims that count: the sum of their amounts, leaving out those
-     *  that correct another claim, and the sum of the
-     *  figures they show, or none when the grade in force on the sheet's today has no rate in force
+     *  that correct another claim (a held claim's included), and the sum of the
+     *  figures shown by those not held, or none when the grade in force on the sheet's today has no rate in force
      *  then and no claim of theirs shows a figure; the sum is held to the sheet's cap. The overdue-total
      *  sums the dues of those that are OPEN or PENDING with a due-by plus their grace before the sheet's today. */
-    private Figures figuresOf(String sheetId, LocalDate today, LocalDate asOf, Person person, List<Claim> counted) {
+    private Figures figuresOf(String sheetId, LocalDate today, LocalDate asOf, Person person, List<Claim> counted,
+            List<PersonHold> holds, LocalDate retiredFrom) {
         BigDecimal claimed = NONE;
         BigDecimal due = NONE;
         BigDecimal overdue = NONE;
@@ -228,6 +229,9 @@ public class RollupService {
         for (Claim claim : counted) {
             if (claim.getCorrects() == null) {
                 claimed = claimed.add(claim.getAmount());
+            }
+            if (!claim.countsLive(holds, retiredFrom, today)) {
+                continue;
             }
             BigDecimal figure = claimService.dueOf(sheetId, person, claim, asOf);
             if (figure != null) {

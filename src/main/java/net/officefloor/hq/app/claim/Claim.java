@@ -536,6 +536,13 @@ public class Claim {
         return counts() && !deferredOn(today) && (stated || !(heldBy(holds) || retiredOn(retiredFrom, today)));
     }
 
+    /** Whether the claim counts in live claimed figures on the sheet's today given its person's
+     *  retirement date: as for {@link #countsLive}, except that a hold does not take it out; a held
+     *  claim's amount is still claimed, only its due leaves the totals. */
+    public boolean countsClaimed(LocalDate retiredFrom, LocalDate today) {
+        return counts() && !deferredOn(today) && (stated || !retiredOn(retiredFrom, today));
+    }
+
     /** Whether the claim counts in a period's live figures, given the status it had at the end of the
      *  period's last day (null when it was added after): that status counts, and the live rules leave
      *  it in (not deferred on the sheet's today, and not held or retired out unless bound by a statement). */

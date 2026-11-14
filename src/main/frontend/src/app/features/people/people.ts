@@ -1056,6 +1056,23 @@ export class People {
     };
     return (c: Claim) => !deferred(c, today) && (c.stated || !(held(c) || retired(c)));
   });
+  /** The claims that count toward what is claimed: as the live ones, except that a hold does not take
+   *  a claim out; a held claim's amount is still claimed, only its due leaves the totals. */
+  private readonly claimedLive = computed(() => {
+    const retiredFrom = new Map(this.people().map((p) => [p.id, p.retiredFrom]));
+    const today = this.session.today();
+    const retired = (c: Claim) => {
+      const from = retiredFrom.get(c.personId) ?? null;
+      return isOpen(c) && from !== null && today !== null && from <= today;
+    };
+    return this.claims().filter((c) => counts(c) && !deferred(c, today) && (c.stated || !retired(c)));
+  });
+  /** Each person's claims that count toward what is claimed, held ones included, by person id. */
+  private readonly claimedByPerson = computed(() => {
+    const map = new Map<number, Claim[]>();
+    for (const c of this.claimedLive()) map.set(c.personId, [...(map.get(c.personId) ?? []), c]);
+    return map;
+  });
   /** Each person's claims that count toward what is claimed and due, by person id. */
   private readonly countedByPerson = computed(() => {
     const map = new Map<number, Claim[]>();
@@ -1081,7 +1098,7 @@ export class People {
     return map;
   });
   protected readonly claimedTotal = computed(() =>
-    money(this.live().reduce((sum, c) => sum + claimedCents(c), 0)),
+    money(this.claimedLive().reduce((sum, c) => sum + claimedCents(c), 0)),
   );
   /** Everyone's due-total added up, skipping those whose grade has no rate, trimmed. */
   protected readonly dueTotal = computed(() =>
@@ -1916,7 +1933,7 @@ export class People {
   }
 
   protected claimedBy(personId: number): string {
-    return money(this.countedOf(personId).reduce((sum, c) => sum + claimedCents(c), 0));
+    return money((this.claimedByPerson().get(personId) ?? []).reduce((sum, c) => sum + claimedCents(c), 0));
   }
 
   /** The grade in force on the sheet's today among a person's grades. */
