@@ -101,7 +101,9 @@ public class PlanService {
     }
 
     /** Change the plan's amount on the sheet's today: an amount of 0.00 or more with up to two decimals.
-     *  The claims it generates from then on take it; those it made already keep theirs. */
+     *  The claims it generates from then on take it, as do those it made already that are still DRAFT,
+     *  each edited as the claim form would (on the sheet it was made on, passed over there when the user
+     *  is a viewer or the form would refuse it); those in any other status keep theirs. */
     @Transactional
     public Plan changeAmount(String sheetId, String user, Long planId, String amount) {
         sheets.lock(sheetId);
@@ -112,6 +114,16 @@ public class PlanService {
         changes.saveAndFlush(new PlanChange(planId, sheets.today(sheetId), figure));
         audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " start=" + plan.getStart() + " amount=" + figure.toPlainString());
+        String on = plan.getTargetSheetId() != null ? plan.getTargetSheetId() : sheetId;
+        if (!on.equals(sheetId)) {
+            if (settings.isViewer(on, user)) {
+                return plan;
+            }
+            sheets.lock(on);
+        }
+        for (PlanClaim c : made.findByPlanIdInOrderByIdAsc(List.of(planId))) {
+            claims.updateAmount(on, user, c.getClaimId(), figure);
+        }
         return plan;
     }
 

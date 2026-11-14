@@ -209,6 +209,26 @@ public class ClaimService {
         return saved;
     }
 
+    /** Change a DRAFT claim's amount as the claim form would, keeping its date, note, correction,
+     *  reference and tags, writing CLAIM_EDITED. A claim in any other status, or one the form would
+     *  refuse, is passed over and keeps its amount: null then. */
+    @Transactional
+    public Claim updateAmount(String sheetId, String user, Long id, BigDecimal amount) {
+        Optional<Claim> found = claims.findById(id).filter(c -> c.getSheetId().equals(sheetId));
+        if (found.isEmpty() || found.get().getStatus() != ClaimStatus.DRAFT) {
+            return null;
+        }
+        Claim claim = found.get();
+        try {
+            return update(sheetId, user, claim.getPersonId(), id, amount, claim.getDate(), claim.getNote(),
+                    claim.getCorrects(), claim.getRef(), String.join(",", claim.getTags()));
+        } catch (ClaimNotEditableException | ClaimLockedException | PeriodClosedException
+                | PersonRetiredException | CorrectionRefusedException | RefInUseException
+                | LinedAmountException e) {
+            return null;
+        }
+    }
+
     /** Add a line to a DRAFT claim, counting as an edit of it: its amount becomes the quantities times
      *  the unit amounts of its lines added up, and CLAIM_LINE_ADDED is written ending with the line. A
      *  claim that is not a DRAFT, a correction, one due by a day in a closed period, one another user's

@@ -125,7 +125,8 @@ public class PlanController {
     public PlanView amount(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long planId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated AmountRequest request) {
         String sheet = sheetId.trim();
-        Plan plan = service.changeAmount(sheet, SignedInUser.decode(user), planId, request.amount());
+        String by = SignedInUser.decode(user);
+        Plan plan = rollups.track(sheet, by, () -> service.changeAmount(sheet, by, planId, request.amount()));
         return views(sheet, null).stream().filter(v -> v.id().equals(plan.getId())).findFirst().orElseThrow();
     }
 
