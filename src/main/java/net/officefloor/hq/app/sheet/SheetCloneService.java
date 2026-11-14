@@ -88,9 +88,9 @@ public class SheetCloneService {
     private void copy(String from, String to) {
         jdbc.update("INSERT INTO sheet (id, today, last_claim_number, last_batch_number, policy_date,"
                 + " period_numbering_from, grace_days, entry_date, pot, parent_id, archived, fiscal_start_month,"
-                + " alert_threshold)"
+                + " alert_threshold, escalate_after)"
                 + " SELECT ?, today, 0, 0, policy_date, period_numbering_from, grace_days, entry_date, pot, parent_id,"
-                + " FALSE, fiscal_start_month, alert_threshold FROM sheet WHERE id = ?", to, from);
+                + " FALSE, fiscal_start_month, alert_threshold, escalate_after FROM sheet WHERE id = ?", to, from);
         LocalDate today = jdbc.queryForObject("SELECT today FROM sheet WHERE id = ?", LocalDate.class, to);
 
         // The sheet's own lists: settings, roles, rates, holidays, void reasons, templates and periods.
@@ -152,10 +152,10 @@ public class SheetCloneService {
             for (Long id : ids("SELECT id FROM claim WHERE person_id = ? ORDER BY listed, id", person.getKey())) {
                 Long is = insert("INSERT INTO claim (sheet_id, person_id, amount, claim_date, note, status,"
                         + " settled_due, opened_by, stated, corrects_number, due_by, deferred_until, proofs, split_from,"
-                        + " late_entry, reminded_on, ref, ref_key, tags, void_reason, edited_by)"
+                        + " late_entry, reminded_on, ref, ref_key, tags, void_reason, edited_by, escalated)"
                         + " SELECT ?, ?, amount, claim_date, note, status, settled_due, opened_by, FALSE, corrects_number,"
                         + " due_by, deferred_until, proofs, split_from, late_entry, reminded_on, ref, ref_key, tags,"
-                        + " void_reason, edited_by FROM claim WHERE id = ?", to, person.getValue(), id);
+                        + " void_reason, edited_by, escalated FROM claim WHERE id = ?", to, person.getValue(), id);
                 jdbc.update("INSERT INTO claim_status_log (sheet_id, claim_id, status, changed_by, changed_on, due)"
                         + " SELECT ?, ?, status, changed_by, changed_on, due FROM claim_status_log WHERE claim_id = ?"
                         + " ORDER BY id", to, is, id);

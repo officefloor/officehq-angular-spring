@@ -63,6 +63,7 @@ public class SettingService {
     private static final String PERMISSION = "perm:";
     private static final String NUMBERING_FROM = "period-numbering-from";
     private static final String GRACE_DAYS = "grace-days";
+    private static final String ESCALATE_AFTER = "escalate-after";
     private static final String ENTRY_DATE = "entry-date";
     private static final String POT = "pot";
     private static final String ALERT_THRESHOLD = "alert-threshold";
@@ -74,7 +75,7 @@ public class SettingService {
             Integer graceDays, List<Delegation> delegations, BigDecimal clerkLimit, BigDecimal floor, BigDecimal cap,
             int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
             Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent,
-            int fiscalStartMonth, BigDecimal alertThreshold) {
+            int fiscalStartMonth, BigDecimal alertThreshold, Integer escalateAfter) {
     }
 
     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
@@ -102,6 +103,8 @@ public class SettingService {
                 : Objects.toString(periodNumberingFrom(sheetId), null);
         String entry = kept.contains(ENTRY_DATE) ? then.get(ENTRY_DATE) : Objects.toString(entryDate(sheetId), null);
         String grace = kept.contains(GRACE_DAYS) ? then.get(GRACE_DAYS) : Objects.toString(graceDays(sheetId), null);
+        String escalate = kept.contains(ESCALATE_AFTER) ? then.get(ESCALATE_AFTER)
+                : Objects.toString(escalateAfter(sheetId), null);
         BigDecimal potNow = pot(sheetId);
         String pot = kept.contains(POT) ? then.get(POT) : potNow != null ? potNow.toPlainString() : null;
         BigDecimal alertNow = alertThreshold(sheetId);
@@ -127,7 +130,8 @@ public class SettingService {
                 inForce(sheetId, "terms", day, day).map(v -> v.getValue().intValue()).orElse(START_TERMS),
                 latePct(sheetId, day, day), history.policyDate(sheetId, day), gradeTerms, dated,
                 entry != null ? LocalDate.parse(entry) : null, pot != null ? new BigDecimal(pot) : null, parent,
-                fiscal != null ? Integer.parseInt(fiscal) : 1, alert != null ? new BigDecimal(alert) : null);
+                fiscal != null ? Integer.parseInt(fiscal) : 1, alert != null ? new BigDecimal(alert) : null,
+                escalate != null ? Integer.valueOf(escalate) : null);
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -434,6 +438,11 @@ public class SettingService {
         return sheets.load(sheetId).getGraceDays();
     }
 
+    /** The sheet's escalation gap in days; null when it is blank (off). */
+    public Integer escalateAfter(String sheetId) {
+        return sheets.load(sheetId).getEscalateAfter();
+    }
+
     /** The rounding modes a sheet may set, by the word that names them. */
     private static final Map<String, RoundingMode> ROUNDING_MODES = Map.of(
             "half-up", RoundingMode.HALF_UP, "half-even", RoundingMode.HALF_EVEN);
@@ -642,6 +651,19 @@ public class SettingService {
         Sheet saved = sheetRepository.saveAndFlush(sheet);
         history.settingSet(sheetId, GRACE_DAYS, days != null ? days.toString() : null);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=grace-days value="
+                + (days != null ? days.toString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's escalation gap; null leaves it blank (off). */
+    @Transactional
+    public Sheet setEscalateAfter(String sheetId, String by, Integer days) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setEscalateAfter(days);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, ESCALATE_AFTER, days != null ? days.toString() : null);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=escalate-after value="
                 + (days != null ? days.toString() : ""));
         return saved;
     }

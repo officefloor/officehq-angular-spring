@@ -57,7 +57,7 @@ public class SettingController {
             String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
             Map<String, List<DatedView>> dated, Map<String, String> permissions, List<DelegationView> delegations,
             String entryDate, String pot, String parent, int fiscalStartMonth,
-            String alertThreshold) {
+            String alertThreshold, Integer escalateAfter) {
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
@@ -161,6 +161,10 @@ public class SettingController {
     public record FiscalStartMonthRequest(@NotNull @Min(1) @Max(12) Integer value) {
     }
 
+    /** An escalation gap of 0 or more whole days; null leaves it blank (off). */
+    public record EscalateAfterRequest(@Min(0) @Max(36500) Integer value) {
+    }
+
     /** Grace days of 0 or more whole days; null leaves them blank (off). */
     public record GraceDaysRequest(@Min(0) @Max(36500) Integer value) {
     }
@@ -197,7 +201,8 @@ public class SettingController {
                 then.delegations().stream().map(DelegationView::of).toList(),
                 then.entryDate() != null ? then.entryDate().toString() : "",
                 then.pot() != null ? then.pot().toPlainString() : null, then.parent() != null ? then.parent() : "",
-                then.fiscalStartMonth(), then.alertThreshold() != null ? then.alertThreshold().toPlainString() : null);
+                then.fiscalStartMonth(), then.alertThreshold() != null ? then.alertThreshold().toPlainString() : null,
+                then.escalateAfter());
     }
 
     /** Assign a user name a role; a role other than clerk or steward is refused. */
@@ -411,6 +416,16 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Change the sheet's escalation gap; a reminder escalates a claim only when it is set. */
+    @PutMapping("/escalate-after")
+    public SettingsView setEscalateAfter(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated EscalateAfterRequest request) {
+        String sheet = sheetId.trim();
+        service.setEscalateAfter(sheet, SignedInUser.decode(user), request.value());
+        return view(sheet);
+    }
+
     /** Change the sheet's fiscal year start month; the fiscal year each period falls in follows it. */
     @PutMapping("/fiscal-start-month")
     public SettingsView setFiscalStartMonth(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -474,7 +489,7 @@ public class SettingController {
                 service.permissions(sheet), service.delegations(sheet).stream().map(DelegationView::of).toList(),
                 entryDate != null ? entryDate.toString() : "", pot != null ? pot.toPlainString() : null,
                 parent != null ? parent : "", service.fiscalStartMonth(sheet),
-                alert != null ? alert.toPlainString() : null);
+                alert != null ? alert.toPlainString() : null, service.escalateAfter(sheet));
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */

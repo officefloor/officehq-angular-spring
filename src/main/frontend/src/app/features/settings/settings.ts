@@ -51,6 +51,9 @@ interface SettingsView {
   /** The grace days: when the sheet's today is changed, every open period whose to-date plus them is
    *  before the new today is closed; null for off. */
   graceDays: number | null;
+  /** The escalation gap: reminding a claim whose previous reminder was at least this many days before
+   *  the sheet's today escalates it; null for off. */
+  escalateAfter: number | null;
   /** The fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it. */
   fiscalStartMonth: number;
   /** The pot (two decimals): each member of a balanced pool shows a cut of it; null for none. */
@@ -191,6 +194,8 @@ export class SettingStore {
   readonly entryDate = signal('');
   /** The grace days as text: whole days, blank for off. */
   readonly graceDays = signal('');
+  /** The escalation gap as text: whole days, blank for off. */
+  readonly escalateAfter = signal('');
   /** The fiscal year start month, 1 to 12; 1 unless set. */
   readonly fiscalStartMonth = signal(1);
   /** The pot as text: two decimals, blank for none. */
@@ -217,6 +222,7 @@ export class SettingStore {
       this.periodNumberingFrom.set('');
       this.entryDate.set('');
       this.graceDays.set('');
+      this.escalateAfter.set('');
       this.fiscalStartMonth.set(1);
       this.pot.set('');
       this.alertThreshold.set('');
@@ -455,6 +461,17 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Change the active sheet's escalation gap; null leaves it blank (off). */
+  async setEscalateAfter(value: number | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/escalate-after`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   /** Change the active sheet's fiscal year start month (1 to 12); the server refuses any other. */
   async setFiscalStartMonth(value: number): Promise<void> {
     const sheet = this.session.sheetId();
@@ -531,6 +548,7 @@ export class SettingStore {
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
     this.entryDate.set(settings.entryDate);
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
+    this.escalateAfter.set(settings.escalateAfter === null ? '' : String(settings.escalateAfter));
     this.fiscalStartMonth.set(settings.fiscalStartMonth);
     this.pot.set(settings.pot ?? '');
     this.alertThreshold.set(settings.alertThreshold ?? '');
@@ -889,6 +907,15 @@ export class SettingStore {
           (focus)="graceDaysTyped.set(true)"
           (input)="graceDays.set(value($event)); graceDaysTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-escalate-after">Escalate after (days)</label>
+        <input
+          id="setting-escalate-after"
+          data-testid="setting-escalate-after"
+          inputmode="numeric"
+          [value]="escalateAfter()"
+          (focus)="escalateAfterTyped.set(true)"
+          (input)="escalateAfter.set(value($event)); escalateAfterTyped.set(true); settingsError.set(null)"
+        />
         <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
         <input
           id="setting-fiscal-start-month"
@@ -1053,6 +1080,13 @@ export class SettingStore {
         }
       </p>
       <p>
+        Escalate after:
+        <strong data-testid="setting-escalate-after-current">{{ store.escalateAfter() }}</strong>
+        @if (store.escalateAfter() === '') {
+          <span>off</span>
+        }
+      </p>
+      <p>
         Fiscal year start month:
         <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() }}</strong>
       </p>
@@ -1149,6 +1183,8 @@ export class Settings {
   protected readonly entryDateTyped = signal(false);
   protected readonly graceDays = signal('');
   protected readonly graceDaysTyped = signal(false);
+  protected readonly escalateAfter = signal('');
+  protected readonly escalateAfterTyped = signal(false);
   protected readonly fiscalStartMonth = signal('');
   protected readonly fiscalStartMonthTyped = signal(false);
   protected readonly pot = signal('');
@@ -1292,6 +1328,8 @@ export class Settings {
     const saveEntryDate = this.entryDateTyped();
     const graceDays = this.graceDays().trim();
     const saveGraceDays = this.graceDaysTyped();
+    const escalateAfter = this.escalateAfter().trim();
+    const saveEscalateAfter = this.escalateAfterTyped();
     const fiscalStartMonth = this.fiscalStartMonth().trim();
     const saveFiscalStartMonth = this.fiscalStartMonthTyped();
     const pot = this.pot().trim();
@@ -1407,6 +1445,10 @@ export class Settings {
       this.settingsError.set('Type grace days of 0 or more whole days, or leave them blank for off.');
       return;
     }
+    if (saveEscalateAfter && escalateAfter !== '' && !DAYS.test(escalateAfter)) {
+      this.settingsError.set('Type an escalation gap of 0 or more whole days, or leave it blank for off.');
+      return;
+    }
     if (saveFiscalStartMonth && !MONTH.test(fiscalStartMonth)) {
       this.settingsError.set('Type a fiscal year start month of 1 to 12.');
       return;
@@ -1441,6 +1483,7 @@ export class Settings {
     this.periodNumberingFromTyped.set(false);
     this.entryDateTyped.set(false);
     this.graceDaysTyped.set(false);
+    this.escalateAfterTyped.set(false);
     this.fiscalStartMonthTyped.set(false);
     this.potTyped.set(false);
     this.alertThresholdTyped.set(false);
@@ -1474,6 +1517,7 @@ export class Settings {
         if (saveNumberingFrom) await this.store.setPeriodNumberingFrom(numberingFrom === '' ? null : numberingFrom);
         if (saveEntryDate) await this.store.setEntryDate(entryDate === '' ? null : entryDate);
         if (saveGraceDays) await this.store.setGraceDays(graceDays === '' ? null : Number(graceDays));
+        if (saveEscalateAfter) await this.store.setEscalateAfter(escalateAfter === '' ? null : Number(escalateAfter));
         if (saveFiscalStartMonth) await this.store.setFiscalStartMonth(Number(fiscalStartMonth));
         if (savePot) await this.store.setPot(pot === '' ? null : pot);
         if (saveAlertThreshold) await this.store.setAlertThreshold(alertThreshold === '' ? null : alertThreshold);
@@ -1497,6 +1541,7 @@ export class Settings {
         if (saveNumberingFrom) this.periodNumberingFromTyped.set(true);
         if (saveEntryDate) this.entryDateTyped.set(true);
         if (saveGraceDays) this.graceDaysTyped.set(true);
+        if (saveEscalateAfter) this.escalateAfterTyped.set(true);
         if (saveFiscalStartMonth) this.fiscalStartMonthTyped.set(true);
         if (savePot) this.potTyped.set(true);
         if (saveAlertThreshold) this.alertThresholdTyped.set(true);

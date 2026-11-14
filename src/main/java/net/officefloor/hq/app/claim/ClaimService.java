@@ -570,7 +570,9 @@ public class ClaimService {
     }
 
     /** Remind an OPEN or PENDING claim: REMIND is written and the claim's reminded date is the sheet's
-     *  today. A claim in any other status, or one already reminded on the sheet's today, is refused. */
+     *  today. A claim in any other status, or one already reminded on the sheet's today, is refused. When
+     *  the sheet has an escalation gap and the claim's previous reminder was at least that many days before
+     *  the sheet's today, ESCALATE is written after REMIND, once per claim ever. */
     @Transactional
     public Claim remind(String sheetId, String user, Long personId, Long id) {
         Person person = person(sheetId, personId);
@@ -584,9 +586,19 @@ public class ClaimService {
         if (today.equals(claim.getRemindedOn())) {
             throw new RemindRefusedException("The claim was already reminded on " + today);
         }
+        LocalDate previous = claim.getRemindedOn();
+        Integer gap = settings.escalateAfter(sheetId);
+        boolean escalate = gap != null && previous != null && !claim.isEscalated()
+                && !previous.plusDays(gap).isAfter(today);
         claim.setRemindedOn(today);
+        if (escalate) {
+            claim.setEscalated(true);
+        }
         Claim saved = claims.saveAndFlush(claim);
         record("REMIND", sheetId, user, person, saved);
+        if (escalate) {
+            record("ESCALATE", sheetId, user, person, saved);
+        }
         return saved;
     }
 
