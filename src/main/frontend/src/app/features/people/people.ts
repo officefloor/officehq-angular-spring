@@ -92,6 +92,8 @@ interface StatementTaken {
       [statuses]="statusSummary()"
       [dueTotal]="dueTotal()"
       [overdueTotal]="overdueTotal()"
+      [myDueTotal]="mine()?.dueTotal ?? ''"
+      [myOverdueTotal]="mine()?.overdueTotal ?? ''"
       [consolidatedPeopleCount]="consolidatedPeople()"
       [consolidatedDueTotal]="consolidatedDue()"
       [consolidatedOverdueTotal]="consolidatedOverdue()"
@@ -771,6 +773,15 @@ export class People {
       ),
     ),
   );
+  /** The signed-in user's own figures: those of the person whose name or an alias is the user's
+   *  name, as names are compared; null when there is no such person. */
+  protected readonly mine = computed(() => {
+    const user = this.session.user()?.toLowerCase();
+    const me = this.people().find(
+      (p) => p.name.toLowerCase() === user || p.aliases.some((a) => a.toLowerCase() === user),
+    );
+    return me ? { dueTotal: this.dueBy(me), overdueTotal: this.overdueTotalOf(me) } : null;
+  });
   /** The sheet's descendants' figures added up, as the store last told them. */
   protected readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
   /** The consolidated figures: the sheet's own as it shows them now (read from the server while the
