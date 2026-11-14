@@ -1,0 +1,355 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 689c0ac75..9b8f457ca 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -33,6 +33,8 @@ interface Person {
+   terms: number | null;
+   /** The person's contact, trimmed and lower-cased; null for none. */
+   contact: string | null;
++  /** The person's tags, lower case and sorted; empty when they have none. */
++  tags: string[];
+   /** The sheet the person was transferred from; null for one not transferred in. */
+   origin: string | null;
+   /** How many statements were taken for the person. */
+@@ -156,6 +158,13 @@ interface StatementTaken {
+           [value]="contact()"
+           (input)="contact.set(value($event)); error.set(null)"
+         />
++        <label for="person-form-tags">Tags (comma separated)</label>
++        <input
++          id="person-form-tags"
++          data-testid="person-form-tags"
++          [value]="tags()"
++          (input)="tags.set(value($event)); error.set(null)"
++        />
+         <button type="submit" data-testid="person-form-submit">
+           {{ editingId() === null ? 'Add person' : 'Save person' }}
+         </button>
+@@ -355,6 +364,7 @@ interface StatementTaken {
+             <th scope="col">Grade</th>
+             <th scope="col">Terms</th>
+             <th scope="col">Contact</th>
++            <th scope="col">Tags</th>
+             <th scope="col">Came from</th>
+             <th scope="col">Claimed</th>
+             <th scope="col">Due</th>
+@@ -405,6 +415,7 @@ interface StatementTaken {
+               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
++              <td data-testid="person-tags">{{ p.tags.join(', ') }}</td>
+               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
+               <td data-testid="person-due-total">{{ dueBy(p) }}</td>
+@@ -809,20 +820,24 @@ export class People {
+   });
+   /** Every tag ever used on the sheet, as the store last told it. */
+   private readonly usedTags = signal<string[]>([]);
+-  /** Per tag ever used on the sheet, sorted: the dues shown on the claims that count which carry it
+-   *  added up (a claim with no figure adds nothing; one with two tags counts in both). */
++  /** Per tag ever used on the sheet, sorted: the dues shown on the claims that count which carry it,
++   *  or whose person carries it, added up (a claim with no figure adds nothing; one with two tags
++   *  counts in both; one carrying a tag its person carries too counts once). */
+   protected readonly tagTotals = computed(() => {
+     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
++    const personTags = new Map(this.people().map((p) => [p.id, p.tags]));
+     const floor = this.floor();
+     const late = this.late();
+     const totals = new Map<string, number>();
+     for (const tag of this.usedTags()) totals.set(tag, 0);
+     for (const c of this.claims()) for (const tag of c.tags) if (!totals.has(tag)) totals.set(tag, 0);
++    for (const p of this.people()) for (const tag of p.tags) if (!totals.has(tag)) totals.set(tag, 0);
+     for (const c of this.live()) {
+       const theirs = grades.get(c.personId);
+-      if (theirs === undefined || c.tags.length === 0) continue;
++      const tags = new Set([...c.tags, ...(personTags.get(c.personId) ?? [])]);
++      if (theirs === undefined || tags.size === 0) continue;
+       const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c.date), floor, late) ?? 0;
+-      for (const tag of c.tags) totals.set(tag, (totals.get(tag) ?? 0) + due);
++      for (const tag of tags) totals.set(tag, (totals.get(tag) ?? 0) + due);
+     }
+     return [...totals.keys()].sort().map((tag) => ({ tag, dueTotal: money(totals.get(tag)!) }));
+   });
+@@ -957,6 +972,8 @@ export class People {
+   protected readonly terms = signal('');
+   /** The person's contact; blank for none. */
+   protected readonly contact = signal('');
++  /** The person's tags as typed, comma separated; blank for none. */
++  protected readonly tags = signal('');
+   protected readonly editingId = signal<number | null>(null);
+   /** The version of the person the editor loaded. */
+   private readonly editingVersion = signal(0);
+@@ -1793,6 +1810,7 @@ export class People {
+     this.gradeFrom.set('');
+     this.terms.set(person.terms === null ? '' : String(person.terms));
+     this.contact.set(person.contact ?? '');
++    this.tags.set(person.tags.join(', '));
+     this.error.set(null);
+   }
+ 
+@@ -1803,6 +1821,7 @@ export class People {
+     this.gradeFrom.set('');
+     this.terms.set('');
+     this.contact.set('');
++    this.tags.set('');
+     this.error.set(null);
+   }
+ 
+@@ -1819,6 +1838,7 @@ export class People {
+       grade: this.grade(),
+       terms: terms === '' ? null : Number(terms),
+       contact: contact === '' ? null : contact,
++      tags: this.tags(),
+     };
+     if (!body.name) {
+       this.error.set('Type a name for the person.');
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 5778bfc12..8b268bf13 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -9,6 +9,9 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import jakarta.persistence.Version;
+ import java.time.LocalDate;
++import java.util.Collection;
++import java.util.List;
++import java.util.TreeSet;
+ import net.officefloor.hq.app.history.HistoryListener;
+ import org.hibernate.annotations.Generated;
+ 
+@@ -45,6 +48,10 @@ public class Person {
+     @Column(name = "contact")
+     private String contact;
+ 
++    /** The person's tags, lower case, sorted and comma separated; null when they have none. */
++    @Column(name = "tags")
++    private String tags;
++
+     /** The sheet's today when the person was added; null for one added before it was kept. */
+     @Column(name = "added_on", updatable = false)
+     private LocalDate addedOn;
+@@ -82,6 +89,7 @@ public class Person {
+         was.terms = terms;
+         was.retiredFrom = retiredFrom;
+         was.contact = contact;
++        was.tags = tags;
+         was.originSheetId = originSheetId;
+         return was;
+     }
+@@ -151,6 +159,16 @@ public class Person {
+         this.contact = contact;
+     }
+ 
++    /** The person's tags, sorted; empty when they have none. */
++    public List<String> getTags() {
++        return tags == null ? List.of() : List.of(tags.split(","));
++    }
++
++    /** Give the person their tags (already trimmed, lower case and without repeats), or none (empty). */
++    public void setTags(Collection<String> tags) {
++        this.tags = tags.isEmpty() ? null : String.join(",", new TreeSet<>(tags));
++    }
++
+     public String getOriginSheetId() {
+         return originSheetId;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 72e03b431..9decdb13e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -64,11 +64,12 @@ public class PersonController {
+      *  grade they were given from the earliest, how many statements were taken for them and the
+      *  last one's due-total and date (null when none was), and whether they are retired and from
+      *  when (null when not), and the holds put on them in the order they were, and the ids of their patrons in the order
+-     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none), and their aliases sorted as names are compared, and the sheet they were transferred from (null for none), and their past retirements in the order they ended. */
++     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none), and their aliases sorted as names are compared, and the sheet they were transferred from (null for none), and their past retirements in the order they ended, and their tags sorted (empty for none). */
+     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
+             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
+             List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
+-            List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements) {
++            List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
++            List<String> tags) {
+         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
+                 StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched,
+                 List<String> aliases, boolean clashing, List<PersonRetirement> retirements) {
+@@ -77,7 +78,7 @@ public class PersonController {
+                     statements.lastDueTotal(), statements.lastDate(), person.isRetired(), person.getRetiredFrom(),
+                     holds.stream().map(HoldView::of).toList(), patronIds, watched, person.getTerms(),
+                     person.getContact(), aliases, clashing, person.getOriginSheetId(),
+-                    retirements.stream().map(RetirementView::of).toList());
++                    retirements.stream().map(RetirementView::of).toList(), person.getTags());
+         }
+     }
+ 
+@@ -87,7 +88,8 @@ public class PersonController {
+             @NotBlank @Size(max = 200) String name,
+             @NotNull @Pattern(regexp = "[ABC]") String grade,
+             @Min(0) @Max(36500) Integer terms,
+-            @Size(max = 200) String contact) {
++            @Size(max = 200) String contact,
++            @Size(max = 2000) String tags) {
+     }
+ 
+     /** A person's fields as saved from an editor: the grade applies from its from-date (blank takes
+@@ -98,6 +100,7 @@ public class PersonController {
+             LocalDate gradeFrom,
+             @Min(0) @Max(36500) Integer terms,
+             @Size(max = 200) String contact,
++            @Size(max = 2000) String tags,
+             @NotNull Long version) {
+     }
+ 
+@@ -217,7 +220,7 @@ public class PersonController {
+         String sheet = sheetId.trim();
+         String by = SignedInUser.decode(user);
+         return withStatements(rollups.track(sheet, by, () -> service.add(sheet, by, request.name(),
+-                request.grade(), request.terms(), request.contact())), by);
++                request.grade(), request.terms(), request.contact(), request.tags())), by);
+     }
+ 
+     /** Change a person's name and give them a grade from a date; refused when the person was saved since the editor loaded them. */
+@@ -227,7 +230,7 @@ public class PersonController {
+         String sheet = sheetId.trim();
+         String by = SignedInUser.decode(user);
+         return withStatements(rollups.track(sheet, by, () -> service.update(sheet, by, id, request.version(),
+-                request.name(), request.grade(), request.gradeFrom(), request.terms(), request.contact())), by);
++                request.name(), request.grade(), request.gradeFrom(), request.terms(), request.contact(), request.tags())), by);
+     }
+ 
+     /** Add or update a person per pasted line, in order, each as the form would; none when any line is refused. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index cda472ca0..87821b5fe 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -11,6 +11,8 @@ import java.util.Objects;
+ import java.util.Set;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+@@ -31,11 +33,13 @@ public class PersonService {
+     private final EntityManager entityManager;
+     private final History history;
+     private final Audit audit;
++    private final ClaimRepository claims;
+ 
+     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonGradeService grades,
+             PersonHoldRepository holds, PersonWatchRepository watches, PersonAliasRepository aliases,
+             PersonRetirementRepository retirements, SheetService sheets, EntityManager entityManager,
+-            History history, Audit audit) {
++            History history, Audit audit, ClaimRepository claims) {
++        this.claims = claims;
+         this.retirements = retirements;
+         this.aliases = aliases;
+         this.history = history;
+@@ -96,6 +100,14 @@ public class PersonService {
+      *  the grade they are given applies from the beginning of time. */
+     @Transactional
+     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
++        return add(sheetId, user, name, grade, terms, contact, null);
++    }
++
++    /** Add a person as above, carrying the tags typed comma separated (blank: none); see
++     *  {@link ClaimService#tagsOf}. */
++    @Transactional
++    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
++            String tags) {
+         LocalDate today = sheets.today(sheetId);
+         String trimmed = name.trim();
+         requireFreeName(sheetId, trimmed, null);
+@@ -104,7 +116,9 @@ public class PersonService {
+         Person person = new Person(sheetId, trimmed, today);
+         person.setTerms(terms);
+         person.setContact(key);
++        person.setTags(ClaimService.tagsOf(tags));
+         Person added = people.saveAndFlush(person);
++        useTags(sheetId, added);
+         grades.give(added, grade, null);
+         record("PERSON_ADDED", sheetId, user, added, grade, (terms != null ? " terms=" + terms : "")
+                 + (key != null ? " contact=" + key : ""));
+@@ -117,6 +131,14 @@ public class PersonService {
+     @Transactional
+     public Person update(String sheetId, String user, Long id, long version, String name, String grade,
+             LocalDate gradeFrom, Integer terms, String contact) {
++        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, contact, null);
++    }
++
++    /** Update a person as above, giving them the tags typed comma separated (blank: none; null keeps
++     *  the tags they have); see {@link ClaimService#tagsOf}. */
++    @Transactional
++    public Person update(String sheetId, String user, Long id, long version, String name, String grade,
++            LocalDate gradeFrom, Integer terms, String contact, String tags) {
+         Person person = people.findByIdAndSheetId(id, sheetId)
+                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+         if (person.getVersion() != version) {
+@@ -139,6 +161,9 @@ public class PersonService {
+         person.setTerms(terms);
+         String contactBefore = person.getContact();
+         person.setContact(key);
++        if (tags != null) {
++            person.setTags(ClaimService.tagsOf(tags));
++        }
+         LocalDate today = sheets.today(sheetId);
+         if (gradeFrom != null || !grade.equals(grades.gradeOn(id, today))) {
+             grades.give(person, grade, gradeFrom != null ? gradeFrom : today);
+@@ -146,6 +171,7 @@ public class PersonService {
+             entityManager.lock(person, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+         }
+         Person saved = people.saveAndFlush(person);
++        useTags(sheetId, saved);
+         record("PERSON_EDITED", sheetId, user, saved, grades.gradeOn(id, today),
+                 (Objects.equals(before, terms) ? "" : " terms=" + (terms != null ? terms : ""))
+                 + (Objects.equals(contactBefore, key) ? "" : " contact=" + (key != null ? key : "")));
+@@ -382,6 +408,11 @@ public class PersonService {
+                 + " name=" + person.getName() + " grade=" + grade + terms);
+     }
+ 
++    /** Keep the person's tags on the sheet's list of the tags ever used. */
++    private void useTags(String sheetId, Person person) {
++        person.getTags().forEach(tag -> claims.useTag(sheetId, tag));
++    }
++
+     /** A contact as kept: trimmed and lower-cased; null for a blank one. */
+     private static String contactKey(String contact) {
+         if (contact == null || contact.isBlank()) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index d91443b03..ffa6d537d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -142,7 +142,8 @@ public class PersonTransferService {
+                 .toList();
+         Map<String, String> oldNumbers = new HashMap<>();
+         numbered.forEach(claim -> oldNumbers.put(String.valueOf(claim.getId()), claim.getNumber()));
+-        List<String> tags = theirClaims.stream().flatMap(claim -> claim.getTags().stream()).distinct().toList();
++        List<String> tags = Stream.concat(person.getTags().stream(),
++                theirClaims.stream().flatMap(claim -> claim.getTags().stream())).distinct().toList();
+         LocalDate today = sheets.today(to);
+         Long personId = person.getId();
+         entities.flush();
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index b889fb42f..d295eed84 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -109,8 +109,8 @@ public class SheetCloneService {
+         // People, in list order, then what each one has.
+         Map<Long, Long> people = new LinkedHashMap<>();
+         for (Long id : ids("SELECT id FROM person WHERE sheet_id = ? ORDER BY list_position, id", from)) {
+-            people.put(id, insert("INSERT INTO person (sheet_id, name, retired_from, terms, added_on, contact,"
+-                    + " origin_sheet_id) SELECT ?, name, retired_from, terms, added_on, contact, origin_sheet_id"
++            people.put(id, insert("INSERT INTO person (sheet_id, name, retired_from, terms, added_on, contact, tags,"
++                    + " origin_sheet_id) SELECT ?, name, retired_from, terms, added_on, contact, tags, origin_sheet_id"
+                     + " FROM person WHERE id = ?", to, id));
+         }
+         for (Map.Entry<Long, Long> person : people.entrySet()) {
+diff --git a/src/main/resources/db/migration/V78__person_tags.sql b/src/main/resources/db/migration/V78__person_tags.sql
+new file mode 100644
+index 000000000..b8f73de7e
+--- /dev/null
++++ b/src/main/resources/db/migration/V78__person_tags.sql
+@@ -0,0 +1,3 @@
++-- A person may carry tags, kept as a claim's are: lower case, trimmed, no repeats, sorted and comma
++-- separated (no spaces); null when the person has none. Their tags go on the sheet's list of tags too.
++ALTER TABLE person ADD COLUMN tags VARCHAR(2000);
