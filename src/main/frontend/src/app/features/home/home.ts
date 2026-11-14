@@ -1,9 +1,73 @@
-import { Component } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
+import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Session } from '../../core/session';
 
-// The base home page (empty). A page is an Angular component like this one, plus one entry in
-// app.routes.ts.
+// The one screen: sign in by name, then load a sheet by id.
 @Component({
   selector: 'app-home',
-  template: `<p data-testid="home-empty">Nothing here yet.</p>`,
+  imports: [ReactiveFormsModule],
+  template: `
+    @if (session.user(); as user) {
+      <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+      <form [formGroup]="sheetForm" (ngSubmit)="load()" aria-label="Load sheet">
+        <label for="sheet-id">Sheet id</label>
+        <input id="sheet-id" data-testid="sheet-id-input" formControlName="sheetId" autocomplete="off" />
+        <button type="submit" data-testid="sheet-load">Load</button>
+        @if (sheetError(); as err) {
+          <p role="alert" data-testid="sheet-error">{{ err }}</p>
+        }
+      </form>
+      @if (session.sheetId(); as id) {
+        <p>Sheet <strong data-testid="sheet-current-id">{{ id }}</strong></p>
+      } @else {
+        <p data-testid="home-empty">Load a sheet to begin.</p>
+      }
+    } @else {
+      <form [formGroup]="signinForm" (ngSubmit)="signIn()" aria-label="Sign in">
+        <label for="signin-name">Name</label>
+        <input id="signin-name" data-testid="signin-name" formControlName="name" autocomplete="username" />
+        <button type="submit" data-testid="signin-submit">Sign in</button>
+        @if (signinError(); as err) {
+          <p role="alert" data-testid="signin-error">{{ err }}</p>
+        }
+      </form>
+    }
+  `,
 })
-export class Home {}
+export class Home {
+  protected readonly session = inject(Session);
+
+  protected readonly signinForm = new FormGroup({
+    name: new FormControl('', { nonNullable: true, validators: Validators.required }),
+  });
+  protected readonly sheetForm = new FormGroup({
+    sheetId: new FormControl('', { nonNullable: true, validators: Validators.required }),
+  });
+  protected readonly signinError = signal<string | null>(null);
+  protected readonly sheetError = signal<string | null>(null);
+
+  constructor() {
+    this.signinForm.valueChanges.subscribe(() => this.signinError.set(null));
+    this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(null));
+  }
+
+  protected async signIn(): Promise<void> {
+    this.signinError.set(null);
+    const name = this.signinForm.controls.name.value.trim();
+    if (!name) {
+      this.signinError.set('Enter a name to sign in.');
+      return;
+    }
+    this.signinError.set(await this.session.signIn(name));
+  }
+
+  protected async load(): Promise<void> {
+    this.sheetError.set(null);
+    const id = this.sheetForm.controls.sheetId.value.trim();
+    if (!id) {
+      this.sheetError.set('Enter a sheet id.');
+      return;
+    }
+    this.sheetError.set(await this.session.loadSheet(id));
+  }
+}

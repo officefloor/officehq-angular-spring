@@ -1,0 +1,12 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch(); const p = await b.newPage();
+p.on('console', m => console.log('console', m.type(), m.text()));
+p.on('pageerror', e => console.log('pageerror', e.message));
+await p.goto('http://localhost:3011/');
+await p.waitForTimeout(1500);
+console.log(await p.content());
+await p.getByTestId('signin-name').fill('uma');
+await p.getByTestId('signin-submit').click();
+await p.waitForTimeout(1500);
+console.log(await p.locator('app-home').innerHTML());
+await b.close();
