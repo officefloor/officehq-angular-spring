@@ -4,7 +4,12 @@ import { GRADES } from '../people/people-api';
 import { Period, periodDueCents } from '../periods/periods-api';
 
 /** The statuses the summary counts, in the order it lists them. */
-const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+
+/** How many of the claims have each status, in the order the summary lists them. */
+export function statusCounts(claims: Claim[]): { status: string; count: number }[] {
+  return STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === (status as string)).length }));
+}
 
 /** A person as the summary counts them: their grade in force on the sheet's today, whether they
  *  are retired, and their due-total in cents (null: n/a). */
@@ -82,9 +87,7 @@ export class Summary {
     return { grade, count: on.length, cents: on.reduce((sum, p) => sum + (p.due ?? 0), 0) };
   }));
 
-  protected readonly byStatus = computed(() => STATUSES.map((status) => ({
-    status, count: this.claims().filter((c) => c.status === (status as string)).length,
-  })));
+  protected readonly byStatus = computed(() => statusCounts(this.claims()));
 
   protected periodDue(p: Period): number {
     return periodDueCents(p, this.dueTotals());

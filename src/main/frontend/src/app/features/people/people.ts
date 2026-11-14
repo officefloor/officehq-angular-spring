@@ -7,18 +7,20 @@ import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
+import { Header } from '../header/header';
 import { Lateness, Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
 import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, retireError, statementError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total, their overdue claims, and their patrons and backing; the sheet's claimed-total,
-// due-total and overdue claims; a summary of them by grade, period and status; and
+// due-total and overdue claims; a header of counters repeating them; a summary of them by grade, period and status; and
 // the one form that adds a person or, with a
 // person's editor open, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, PersonClaims, Periods, Rates, Summary],
+  imports: [ReactiveFormsModule, Header, PersonClaims, Periods, Rates, Summary],
   template: `
+    <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
