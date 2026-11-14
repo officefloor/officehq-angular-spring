@@ -65,6 +65,12 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     Optional<Claim> findByIdAndSheetIdAndPersonId(Long id, String sheetId, Long personId);
 
+    /** How many of a person's claims are OPEN or PENDING. */
+    @Query("select count(c) from Claim c where c.sheetId = :sheetId and c.personId = :personId"
+            + " and c.status in (net.officefloor.hq.app.claim.ClaimStatus.OPEN,"
+            + " net.officefloor.hq.app.claim.ClaimStatus.PENDING)")
+    long countOpen(@Param("sheetId") String sheetId, @Param("personId") Long personId);
+
     /** How many of a person's claims due by a day between two dates (inclusive) are OPEN or PENDING. */
     @Query("select count(c) from Claim c where c.sheetId = :sheetId and c.personId = :personId"
             + " and c.status in (net.officefloor.hq.app.claim.ClaimStatus.OPEN,"

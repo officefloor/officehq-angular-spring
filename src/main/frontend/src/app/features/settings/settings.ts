@@ -63,6 +63,8 @@ interface SettingsView {
   /** The review SLA: a REVIEW claim whose review day plus this many days is before the sheet's
    *  today is late for review; null for none. */
   reviewSla: number | null;
+  /** The most OPEN or PENDING claims a person may have: opening one more is refused; null for none. */
+  maxOpen: number | null;
   /** The score thresholds, whole numbers: while both are set each person shows a band; null for
    *  blank. */
   scoreMid: number | null;
@@ -218,6 +220,8 @@ export class SettingStore {
   readonly defaultGrade = signal('');
   /** The review SLA as text: whole days, blank for none. */
   readonly reviewSla = signal('');
+  /** The maximum of open claims per person as text: a whole number, blank for none. */
+  readonly maxOpen = signal('');
   /** The score thresholds as text: whole numbers, blank for none. */
   readonly scoreMid = signal('');
   readonly scoreHigh = signal('');
@@ -253,6 +257,7 @@ export class SettingStore {
       this.proofKinds.set('');
       this.defaultGrade.set('');
       this.reviewSla.set('');
+      this.maxOpen.set('');
       this.scoreMid.set('');
       this.scoreHigh.set('');
       this.scoreLog.set('');
@@ -559,6 +564,17 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Change the active sheet's maximum of open claims per person; null leaves it blank (none). */
+  async setMaxOpen(value: number | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/max-open`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   /** Change one of the active sheet's score thresholds, mid or high; null leaves it blank. */
   async setScoreThreshold(which: 'mid' | 'high', value: number | null): Promise<void> {
     const sheet = this.session.sheetId();
@@ -663,6 +679,7 @@ export class SettingStore {
     this.proofKinds.set(settings.proofKinds);
     this.defaultGrade.set(settings.defaultGrade);
     this.reviewSla.set(settings.reviewSla === null ? '' : String(settings.reviewSla));
+    this.maxOpen.set(settings.maxOpen === null ? '' : String(settings.maxOpen));
     this.scoreMid.set(settings.scoreMid === null ? '' : String(settings.scoreMid));
     this.scoreHigh.set(settings.scoreHigh === null ? '' : String(settings.scoreHigh));
     this.scoreLog.set(settings.scoreLog);
@@ -1079,6 +1096,15 @@ export class SettingStore {
           (focus)="reviewSlaTyped.set(true)"
           (input)="reviewSla.set(value($event)); reviewSlaTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-max-open">Max open claims per person</label>
+        <input
+          id="setting-max-open"
+          data-testid="setting-max-open"
+          inputmode="numeric"
+          [value]="maxOpen()"
+          (focus)="maxOpenTyped.set(true)"
+          (input)="maxOpen.set(value($event)); maxOpenTyped.set(true); settingsError.set(null)"
+        />
         <label for="setting-score-mid">Score mid threshold</label>
         <input
           id="setting-score-mid"
@@ -1306,6 +1332,13 @@ export class SettingStore {
         }
       </p>
       <p>
+        Max open claims per person:
+        <strong data-testid="setting-max-open-current">{{ store.maxOpen() }}</strong>
+        @if (store.maxOpen() === '') {
+          <span>none</span>
+        }
+      </p>
+      <p>
         Score mid threshold:
         <strong data-testid="setting-score-mid-current">{{ store.scoreMid() }}</strong>
         @if (store.scoreMid() === '') {
@@ -1435,6 +1468,8 @@ export class Settings {
   protected readonly defaultGradeTyped = signal(false);
   protected readonly reviewSla = signal('');
   protected readonly reviewSlaTyped = signal(false);
+  protected readonly maxOpen = signal('');
+  protected readonly maxOpenTyped = signal(false);
   protected readonly scoreMid = signal('');
   protected readonly scoreMidTyped = signal(false);
   protected readonly scoreHigh = signal('');
@@ -1607,6 +1642,8 @@ export class Settings {
     const saveDefaultGrade = this.defaultGradeTyped();
     const reviewSla = this.reviewSla().trim();
     const saveReviewSla = this.reviewSlaTyped();
+    const maxOpen = this.maxOpen().trim();
+    const saveMaxOpen = this.maxOpenTyped();
     const scoreMid = this.scoreMid().trim();
     const saveScoreMid = this.scoreMidTyped();
     const scoreHigh = this.scoreHigh().trim();
@@ -1753,6 +1790,10 @@ export class Settings {
       this.settingsError.set('Type a review SLA of 0 or more whole days, or leave it blank for none.');
       return;
     }
+    if (saveMaxOpen && maxOpen !== '' && !DAYS.test(maxOpen)) {
+      this.settingsError.set('Type a maximum of open claims as a whole number of 0 or more, or leave it blank for none.');
+      return;
+    }
     if (saveScoreMid && scoreMid !== '' && !SCORE.test(scoreMid)) {
       this.settingsError.set('Type a score mid threshold as a whole number, or leave it blank for none.');
       return;
@@ -1804,6 +1845,7 @@ export class Settings {
     this.proofKindsTyped.set(false);
     this.defaultGradeTyped.set(false);
     this.reviewSlaTyped.set(false);
+    this.maxOpenTyped.set(false);
     this.scoreMidTyped.set(false);
     this.scoreHighTyped.set(false);
     this.scoreLogTyped.set(false);
@@ -1847,6 +1889,7 @@ export class Settings {
         if (saveProofKinds) await this.store.setProofKinds(proofKinds === '' ? null : proofKinds);
         if (saveDefaultGrade) await this.store.setDefaultGrade(defaultGrade === '' ? null : defaultGrade);
         if (saveReviewSla) await this.store.setReviewSla(reviewSla === '' ? null : Number(reviewSla));
+        if (saveMaxOpen) await this.store.setMaxOpen(maxOpen === '' ? null : Number(maxOpen));
         if (saveScoreMid) await this.store.setScoreThreshold('mid', scoreMid === '' ? null : Number(scoreMid));
         if (saveScoreHigh) await this.store.setScoreThreshold('high', scoreHigh === '' ? null : Number(scoreHigh));
         if (saveScoreLog) await this.store.setScoreLog(scoreLog === 'on');
@@ -1878,6 +1921,7 @@ export class Settings {
         if (saveProofKinds) this.proofKindsTyped.set(true);
         if (saveDefaultGrade) this.defaultGradeTyped.set(true);
         if (saveReviewSla) this.reviewSlaTyped.set(true);
+        if (saveMaxOpen) this.maxOpenTyped.set(true);
         if (saveScoreMid) this.scoreMidTyped.set(true);
         if (saveScoreHigh) this.scoreHighTyped.set(true);
         if (saveScoreLog) this.scoreLogTyped.set(true);

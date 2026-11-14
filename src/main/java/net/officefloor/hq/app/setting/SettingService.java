@@ -71,6 +71,7 @@ public class SettingService {
     private static final String PROOF_KINDS = "proof-kinds";
     private static final String DEFAULT_GRADE = "default-grade";
     private static final String REVIEW_SLA = "review-sla";
+    private static final String MAX_OPEN = "max-open";
     private static final String SCORE_MID = "score-mid";
     private static final String SCORE_HIGH = "score-high";
     private static final String SCORE_LOG = "score-log";
@@ -89,7 +90,8 @@ public class SettingService {
             int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
             Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent,
             int fiscalStartMonth, BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla,
-            List<String> proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh, boolean scoreLog) {
+            List<String> proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh, boolean scoreLog,
+            Integer maxOpen) {
     }
 
     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
@@ -123,6 +125,7 @@ public class SettingService {
         String defaultGrade = kept.contains(DEFAULT_GRADE) ? then.get(DEFAULT_GRADE)
                 : sheets.load(sheetId).getDefaultGrade();
         String sla = kept.contains(REVIEW_SLA) ? then.get(REVIEW_SLA) : Objects.toString(reviewSla(sheetId), null);
+        String maxOpen = kept.contains(MAX_OPEN) ? then.get(MAX_OPEN) : Objects.toString(maxOpen(sheetId), null);
         String scoreMid = kept.contains(SCORE_MID) ? then.get(SCORE_MID) : Objects.toString(scoreMid(sheetId), null);
         String scoreHigh = kept.contains(SCORE_HIGH) ? then.get(SCORE_HIGH) : Objects.toString(scoreHigh(sheetId), null);
         boolean scoreLog = kept.contains(SCORE_LOG) ? then.get(SCORE_LOG) != null : scoreLog(sheetId);
@@ -154,7 +157,8 @@ public class SettingService {
                 fiscal != null ? Integer.parseInt(fiscal) : 1, alert != null ? new BigDecimal(alert) : null,
                 escalate != null ? Integer.valueOf(escalate) : null, sla != null ? Integer.valueOf(sla) : null,
                 kindsOf(kinds), defaultGrade, scoreMid != null ? Integer.valueOf(scoreMid) : null,
-                scoreHigh != null ? Integer.valueOf(scoreHigh) : null, scoreLog);
+                scoreHigh != null ? Integer.valueOf(scoreHigh) : null, scoreLog,
+                maxOpen != null ? Integer.valueOf(maxOpen) : null);
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -506,6 +510,11 @@ public class SettingService {
         return sheets.load(sheetId).getReviewSla();
     }
 
+    /** The most OPEN or PENDING claims a person on the sheet may have; null when it is blank (none). */
+    public Integer maxOpen(String sheetId) {
+        return sheets.load(sheetId).getMaxOpen();
+    }
+
     /** The sheet's mid score threshold; null when it is blank. */
     public Integer scoreMid(String sheetId) {
         return sheets.load(sheetId).getScoreMid();
@@ -799,6 +808,19 @@ public class SettingService {
         history.settingSet(sheetId, REVIEW_SLA, days != null ? days.toString() : null);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=review-sla value="
                 + (days != null ? days.toString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's maximum of open claims per person; null leaves it blank (none). */
+    @Transactional
+    public Sheet setMaxOpen(String sheetId, String by, Integer max) {
+        sheets.load(sheetId);
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setMaxOpen(max);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, MAX_OPEN, max != null ? max.toString() : null);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=max-open value="
+                + (max != null ? max.toString() : ""));
         return saved;
     }
 

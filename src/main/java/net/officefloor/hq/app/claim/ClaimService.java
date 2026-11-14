@@ -409,6 +409,7 @@ public class ClaimService {
         if (to == ClaimStatus.OPEN) {
             refuseUnnoted(sheetId, person, claim);
             refuseOverCap(sheetId, claim);
+            refuseOverMaxOpen(sheetId, claim);
         }
         if (to == ClaimStatus.SETTLED && overClerkLimit(sheetId, person, user, due)) {
             to = ClaimStatus.PENDING;
@@ -1297,6 +1298,15 @@ public class ClaimService {
                         throw new PeriodCapException(period.getName(), period.getCap());
                     }
                 });
+    }
+
+    /** A claim cannot be opened while its person already has the sheet's maximum of OPEN or PENDING
+     *  claims (none while it is blank). */
+    private void refuseOverMaxOpen(String sheetId, Claim claim) {
+        Integer max = settings.maxOpen(sheetId);
+        if (max != null && claims.countOpen(sheetId, claim.getPersonId()) >= max) {
+            throw new MaxOpenException(max);
+        }
     }
 
     /** A claim whose due-by falls inside a closed period cannot be added, edited, opened, settled or voided. */

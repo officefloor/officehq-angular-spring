@@ -60,7 +60,7 @@ public class SettingController {
             Map<String, List<DatedView>> dated, Map<String, String> permissions, List<DelegationView> delegations,
             String entryDate, String pot, String parent, int fiscalStartMonth,
             String alertThreshold, Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade,
-            Integer scoreMid, Integer scoreHigh, String scoreLog) {
+            Integer scoreMid, Integer scoreHigh, String scoreLog, Integer maxOpen) {
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
@@ -184,6 +184,10 @@ public class SettingController {
     public record ReviewSlaRequest(@Min(0) @Max(36500) Integer value) {
     }
 
+    /** A maximum of open claims per person, a whole number of 0 or more; null leaves it blank (none). */
+    public record MaxOpenRequest(@Min(0) @Max(1_000_000) Integer value) {
+    }
+
     /** A score threshold, a whole number; null leaves it blank. */
     public record ScoreThresholdRequest(@Min(-1_000_000_000) @Max(1_000_000_000) Integer value) {
     }
@@ -227,7 +231,7 @@ public class SettingController {
                 then.fiscalStartMonth(), then.alertThreshold() != null ? then.alertThreshold().toPlainString() : null,
                 then.escalateAfter(), then.reviewSla(), String.join(",", then.proofKinds()),
                 then.defaultGrade() != null ? then.defaultGrade() : "", then.scoreMid(), then.scoreHigh(),
-                then.scoreLog() ? "on" : "");
+                then.scoreLog() ? "on" : "", then.maxOpen());
     }
 
     /** Assign a user name a role; a role other than clerk or steward is refused. */
@@ -497,6 +501,16 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Change the sheet's maximum of open claims per person; opening a claim is refused only when it is set. */
+    @PutMapping("/max-open")
+    public SettingsView setMaxOpen(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated MaxOpenRequest request) {
+        String sheet = sheetId.trim();
+        service.setMaxOpen(sheet, SignedInUser.decode(user), request.value());
+        return view(sheet);
+    }
+
     /** Change the sheet's mid score threshold; each person shows a band only while both are set. */
     @PutMapping("/score-mid")
     public SettingsView setScoreMid(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -595,7 +609,7 @@ public class SettingController {
                 alert != null ? alert.toPlainString() : null, service.escalateAfter(sheet),
                 service.reviewSla(sheet), String.join(",", service.proofKinds(sheet)),
                 defaultGrade != null ? defaultGrade : "", service.scoreMid(sheet), service.scoreHigh(sheet),
-                service.scoreLog(sheet) ? "on" : "");
+                service.scoreLog(sheet) ? "on" : "", service.maxOpen(sheet));
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */

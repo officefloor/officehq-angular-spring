@@ -12,6 +12,7 @@ import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.claim.CorrectionRefusedException;
 import net.officefloor.hq.app.claim.LinedAmountException;
 import net.officefloor.hq.app.claim.NoteRequiredException;
+import net.officefloor.hq.app.claim.MaxOpenException;
 import net.officefloor.hq.app.claim.PeriodCapException;
 import net.officefloor.hq.app.claim.RefInUseException;
 import net.officefloor.hq.app.claim.StatusChangeRefusedException;
@@ -68,7 +69,7 @@ public class PasteController {
     /** A line the claim form would refuse, dated in a closed period or after its person retired, or a
      *  claim the open button (or the editor, for a matched DRAFT) would refuse. */
     @ExceptionHandler({PasteRefusedException.class, PeriodClosedException.class, PersonRetiredException.class,
-            NoteRequiredException.class, PeriodCapException.class, StatusChangeRefusedException.class,
+            NoteRequiredException.class, PeriodCapException.class, MaxOpenException.class, StatusChangeRefusedException.class,
             ClaimNotEditableException.class, ClaimLockedException.class, RefInUseException.class,
             LinedAmountException.class, CorrectionRefusedException.class})
     @ResponseStatus(HttpStatus.CONFLICT)

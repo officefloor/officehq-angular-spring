@@ -72,6 +72,11 @@ public class Sheet {
     @Column(name = "review_sla")
     private Integer reviewSla;
 
+    /** The most OPEN or PENDING claims a person may have: opening one more is refused; null for
+     *  none. */
+    @Column(name = "max_open")
+    private Integer maxOpen;
+
     /** The score thresholds, whole numbers: while both are set each person shows a band; null for
      *  blank. */
     @Column(name = "score_mid")
@@ -195,6 +200,14 @@ public class Sheet {
 
     public void setReviewSla(Integer reviewSla) {
         this.reviewSla = reviewSla;
+    }
+
+    public Integer getMaxOpen() {
+        return maxOpen;
+    }
+
+    public void setMaxOpen(Integer maxOpen) {
+        this.maxOpen = maxOpen;
     }
 
     public Integer getScoreMid() {
