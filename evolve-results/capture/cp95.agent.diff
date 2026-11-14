@@ -1,0 +1,289 @@
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index 9d75bd5d4..0b28d8420 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -67,6 +67,14 @@ function byGradeAndFrom(a: Rate, b: Rate): number {
+   return a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '');
+ }
+ 
++/** How a candidate rate would change the dues of a grade's open claims. */
++export interface RatePreview {
++  /** How many OPEN and PENDING claims would show a different due. */
++  count: number;
++  /** The sum of the differences (new due minus current due), two decimals. */
++  diff: string;
++}
++
+ const PERCENT = /^\d{1,5}(\.\d{1,2})?$/;
+ 
+ // The active sheet's rates for each grade, each from its from-date, re-read whenever a sheet is
+@@ -130,6 +138,17 @@ export class RateStore {
+     );
+   }
+ 
++  /** Preview a candidate rate for a grade on the active sheet; nothing is saved. */
++  async preview(grade: string, rate: string): Promise<RatePreview> {
++    const sheet = this.session.sheetId();
++    if (!sheet) throw new Error('No sheet loaded.');
++    return firstValueFrom(
++      this.http.get<RatePreview>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}/preview`, {
++        params: { rate },
++      }),
++    );
++  }
++
+   private async read(sheet: string, load: number): Promise<void> {
+     const list = await firstValueFrom(
+       this.http.get<Rate[]>(`/api/sheets/${encodeURIComponent(sheet)}/rates`),
+@@ -187,6 +206,37 @@ export class RateStore {
+       @if (error(); as message) {
+         <p role="alert" data-testid="rate-form-error">{{ message }}</p>
+       }
++      <form (submit)="runPreview($event)">
++        <label for="rate-preview-grade">Preview grade</label>
++        <select
++          id="rate-preview-grade"
++          data-testid="rate-preview-grade"
++          [value]="previewGrade()"
++          (change)="previewGrade.set(value($event)); previewChanged()"
++        >
++          @for (g of grades; track g) {
++            <option [value]="g" [selected]="g === previewGrade()">{{ g }}</option>
++          }
++        </select>
++        <label for="rate-preview-pct">Candidate rate (%)</label>
++        <input
++          id="rate-preview-pct"
++          data-testid="rate-preview-pct"
++          inputmode="decimal"
++          [value]="previewPct()"
++          (input)="previewPct.set(value($event)); previewChanged()"
++        />
++        <button type="submit" data-testid="rate-preview">Preview</button>
++      </form>
++      @if (previewError(); as message) {
++        <p role="alert" data-testid="rate-preview-error">{{ message }}</p>
++      }
++      @if (previewResult(); as result) {
++        <p>
++          Claims that would change: <span data-testid="rate-preview-count">{{ result.count }}</span>;
++          difference: <span data-testid="rate-preview-diff">{{ result.diff }}</span>
++        </p>
++      }
+       <table>
+         <caption>In force today</caption>
+         <thead>
+@@ -237,6 +287,10 @@ export class Rates {
+   protected readonly from = signal('');
+   protected readonly to = signal('');
+   protected readonly error = signal<string | null>(null);
++  protected readonly previewGrade = signal('A');
++  protected readonly previewPct = signal('');
++  protected readonly previewError = signal<string | null>(null);
++  protected readonly previewResult = signal<RatePreview | null>(null);
+   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
+   private readonly busy = signal(false);
+ 
+@@ -244,6 +298,28 @@ export class Rates {
+     return (event.target as HTMLInputElement | HTMLSelectElement).value;
+   }
+ 
++  /** A changed grade or rate drops the last preview and its error: they were for the old one. */
++  protected previewChanged(): void {
++    this.previewError.set(null);
++    this.previewResult.set(null);
++  }
++
++  protected async runPreview(event: Event): Promise<void> {
++    event.preventDefault();
++    this.previewError.set(null);
++    this.previewResult.set(null);
++    const pct = this.previewPct().trim();
++    if (!PERCENT.test(pct)) {
++      this.previewError.set('Type a rate of 0.00 or more, with up to two decimals.');
++      return;
++    }
++    try {
++      this.previewResult.set(await this.store.preview(this.previewGrade(), pct));
++    } catch {
++      this.previewError.set('The rate could not be previewed.');
++    }
++  }
++
+   protected async submit(event: Event): Promise<void> {
+     event.preventDefault();
+     if (this.busy()) return;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 6b6029bd4..33c191c26 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -13,6 +13,7 @@ import java.util.Map;
+ import java.util.stream.Collectors;
+ import java.util.stream.Stream;
+ import java.util.NoSuchElementException;
++import java.util.Optional;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.holiday.HolidayService;
+ import net.officefloor.hq.app.person.Person;
+@@ -490,7 +491,7 @@ public class ClaimService {
+         }
+         refuseClosed(sheetId, claim.getDueBy());
+         String old = settledDueText(claim);
+-        BigDecimal figure = liveFigureOf(sheetId, person, claim, null);
++        BigDecimal figure = liveFigureOf(sheetId, person, claim, null, null);
+         claim.setSettledDue(figure == null ? null
+                 : floored(sheetId, claim, figure.add(lateChargeOf(sheetId, person, claim, figure, true, null)), null));
+         Claim saved = claims.saveAndFlush(claim);
+@@ -701,11 +702,15 @@ public class ClaimService {
+     /** The figure a claim (as it stood at the end of a day) showed then, the sheet's grades and rates
+      *  as they stood then (null: the figure it shows now). */
+     public BigDecimal figureOf(String sheetId, Person person, Claim claim, LocalDate asOf) {
++        return figureOf(sheetId, person, claim, asOf, null);
++    }
++
++    private BigDecimal figureOf(String sheetId, Person person, Claim claim, LocalDate asOf, RateOverride override) {
+         if (claim.getSettledDue() != null) {
+             return claim.getSettledDue();
+         }
+         return claim.isStated() && claim.getStatus() != ClaimStatus.PENDING ? claim.getStatedDue()
+-                : liveFigureOf(sheetId, person, claim, asOf);
++                : liveFigureOf(sheetId, person, claim, asOf, override);
+     }
+ 
+     /** The due a claim shows: a settled claim's frozen due; otherwise the greater of the sheet's floor in
+@@ -719,10 +724,16 @@ public class ClaimService {
+      *  sheet's today, and the floor, late percent, grades and rates are as they stood then (null: the
+      *  due it shows now). */
+     public BigDecimal dueOf(String sheetId, Person person, Claim claim, LocalDate asOf) {
++        return dueOf(sheetId, person, claim, asOf, null);
++    }
++
++    /** The due a claim would show were a grade's rate the one given on every date (null: as the rates
++     *  stand). */
++    private BigDecimal dueOf(String sheetId, Person person, Claim claim, LocalDate asOf, RateOverride override) {
+         if (claim.getSettledDue() != null) {
+             return claim.getSettledDue();
+         }
+-        BigDecimal figure = figureOf(sheetId, person, claim, asOf);
++        BigDecimal figure = figureOf(sheetId, person, claim, asOf, override);
+         boolean open = claim.getStatus().isOpen() && !claim.deferredOn(todayOr(sheetId, asOf));
+         return figure == null ? null
+                 : floored(sheetId, claim, figure.add(lateChargeOf(sheetId, person, claim, figure, open, asOf)), asOf);
+@@ -779,15 +790,56 @@ public class ClaimService {
+      *  on the claim's date: amount times rate
+      *  divided by 100, rounded to two decimals as the claim's date decides (see roundingOf); the floor is
+      *  not applied here (see dueOf); null when no rate applies. */
+-    private BigDecimal liveFigureOf(String sheetId, Person person, Claim claim, LocalDate asOf) {
++    private BigDecimal liveFigureOf(String sheetId, Person person, Claim claim, LocalDate asOf,
++            RateOverride override) {
+         BigDecimal amount = claim.getAmount();
+         RoundingMode rounding = roundingOf(sheetId, claim, asOf);
+-        return rates.rateOn(sheetId, grades.gradeOn(person.getId(), claim.getDate(), asOf), claim.getDate(), asOf)
+-                .map(Rate::getRate)
++        String grade = grades.gradeOn(person.getId(), claim.getDate(), asOf);
++        Optional<BigDecimal> inForce = override != null && override.grade().equals(grade) ? Optional.of(override.rate())
++                : rates.rateOn(sheetId, grade, claim.getDate(), asOf).map(Rate::getRate);
++        return inForce
+                 .map(rate -> amount.multiply(rate).movePointLeft(2).setScale(2, rounding))
+                 .orElse(null);
+     }
+ 
++    /** A grade's rate taken to apply on every date in place of the rates set for it. */
++    private record RateOverride(String grade, BigDecimal rate) {
++    }
++
++    /** What a rate preview finds: how many claims would show a different due, and the sum of the
++     *  differences (new due minus current due). */
++    public record RatePreview(int count, BigDecimal diff) {
++    }
++
++    /** How the OPEN and PENDING claims of people on a grade (the grade in force on the claim's date)
++     *  would change were the rate given the grade's rate on every date: how many would show a different
++     *  due and the sum of the differences (a due of n/a counts as 0.00). A claim a statement binds keeps
++     *  its figure. Nothing is saved. */
++    @Transactional(readOnly = true)
++    public RatePreview previewRate(String sheetId, String grade, BigDecimal rate) {
++        RateOverride override = new RateOverride(grade, rate);
++        Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
++                .collect(Collectors.toMap(Person::getId, person -> person));
++        int count = 0;
++        BigDecimal diff = BigDecimal.ZERO.setScale(2);
++        for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
++            Person person = byId.get(claim.getPersonId());
++            if (person == null || !claim.getStatus().isOpen()
++                    || !grade.equals(grades.gradeOn(person.getId(), claim.getDate(), null))) {
++                continue;
++            }
++            BigDecimal now = dueOf(sheetId, person, claim, null);
++            BigDecimal then = dueOf(sheetId, person, claim, null, override);
++            BigDecimal was = now == null ? BigDecimal.ZERO : now;
++            BigDecimal will = then == null ? BigDecimal.ZERO : then;
++            if ((now == null) != (then == null) || was.compareTo(will) != 0) {
++                count++;
++                diff = diff.add(will.subtract(was));
++            }
++        }
++        return new RatePreview(count, diff.setScale(2, RoundingMode.HALF_UP));
++    }
++
+     /** The date a claim's live figures round by: its own, or for a correction the date of the claim
+      *  it corrects. */
+     public LocalDate roundsBy(String sheetId, Claim claim) {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index f663051d0..bd46cd1f6 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -11,6 +11,7 @@ import java.time.LocalDate;
+ import java.util.List;
+ import net.officefloor.hq.app.AsOf;
+ import net.officefloor.hq.app.SignedInUser;
++import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import org.springframework.dao.DataIntegrityViolationException;
+ import org.springframework.http.HttpStatus;
+@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.PutMapping;
+ import org.springframework.web.bind.annotation.RequestBody;
+ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
+ 
+@@ -45,12 +47,19 @@ public class RateController {
+             LocalDate from, LocalDate to) {
+     }
+ 
++    /** A rate preview as the screen shows it: how many claims would show a different due, and the
++     *  sum of the differences with two decimals. */
++    public record RatePreviewView(int count, String diff) {
++    }
++
+     private final RateService service;
+     private final RollupService rollups;
++    private final ClaimService claims;
+ 
+-    public RateController(RateService service, RollupService rollups) {
++    public RateController(RateService service, RollupService rollups, ClaimService claims) {
+         this.service = service;
+         this.rollups = rollups;
++        this.claims = claims;
+     }
+ 
+     /** The sheet's rates by grade, each grade's from the earliest; a grade with no rate is not listed.
+@@ -72,6 +81,16 @@ public class RateController {
+                 request.to(), request.rate())));
+     }
+ 
++    /** Preview a candidate rate for a grade (A, B or C): how the dues of the OPEN and PENDING claims of
++     *  people on the grade would change were it the grade's rate on every date. Nothing is saved. */
++    @GetMapping("/{grade}/preview")
++    public RatePreviewView preview(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @PathVariable @Pattern(regexp = "[ABC]") String grade,
++            @RequestParam @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String rate) {
++        ClaimService.RatePreview preview = claims.previewRate(sheetId.trim(), grade, new BigDecimal(rate).setScale(2));
++        return new RatePreviewView(preview.count(), preview.diff().toPlainString());
++    }
++
+     /** A rate that is not a number or a from-date that is not a real date is refused. */
+     @ExceptionHandler(HttpMessageNotReadableException.class)
+     @ResponseStatus(HttpStatus.BAD_REQUEST)
