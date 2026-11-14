@@ -358,6 +358,7 @@ public class ClaimService {
         }
         if (to == ClaimStatus.OPEN) {
             refuseUnnoted(sheetId, person, claim);
+            refuseOverCap(sheetId, claim);
         }
         if (to == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, due)) {
             to = ClaimStatus.PENDING;
@@ -1078,6 +1079,20 @@ public class ClaimService {
         if (refInUse(sheetId, ref, exceptId)) {
             throw new RefInUseException("The reference " + ref + " is already used on the sheet");
         }
+    }
+
+    /** A claim cannot be opened while its person already has as many OPEN or PENDING claims in the
+     *  period its due-by falls in as that period's cap. */
+    private void refuseOverCap(String sheetId, Claim claim) {
+        periods.findBySheetIdOrderByFromAsc(sheetId).stream()
+                .filter(period -> period.getCap() != null && period.contains(claim.getDueBy()))
+                .findFirst()
+                .ifPresent(period -> {
+                    if (claims.countOpenDueBetween(sheetId, claim.getPersonId(), period.getFrom(), period.getTo())
+                            >= period.getCap()) {
+                        throw new PeriodCapException(period.getName(), period.getCap());
+                    }
+                });
     }
 
     /** A claim whose due-by falls inside a closed period cannot be added, edited, opened, settled or voided. */

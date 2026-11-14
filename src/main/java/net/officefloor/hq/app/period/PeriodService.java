@@ -75,12 +75,16 @@ public class PeriodService {
         return saved;
     }
 
-    /** Add a period from and to a date, inclusive. Refused when another period on the sheet has the
+    /** Add a period from and to a date, inclusive, capping each person's OPEN and PENDING claims in
+     *  it (null: no cap). Refused when the cap is below 1, when another period on the sheet has the
      *  name, the from-date is after the to-date, or it shares a day with another period. The sheet
      *  is held locked so periods added at the same moment are checked against each other. */
     @Transactional
-    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to) {
+    public Period add(String sheetId, String user, String name, LocalDate from, LocalDate to, Integer cap) {
         sheets.lock(sheetId);
+        if (cap != null && cap < 1) {
+            throw new PeriodRefusedException("The period's cap is not a whole number of at least 1");
+        }
         if (from.isAfter(to)) {
             throw new PeriodRefusedException("The period's from-date is after its to-date");
         }
@@ -90,9 +94,9 @@ public class PeriodService {
         if (periods.findBySheetIdOrderByFromAsc(sheetId).stream().anyMatch(p -> p.overlaps(from, to))) {
             throw new PeriodRefusedException("The period overlaps another on the sheet");
         }
-        Period saved = save(new Period(sheetId, name, from, to));
+        Period saved = save(new Period(sheetId, name, from, to, cap));
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user + " period=" + name
-                + " from=" + from + " to=" + to);
+                + " from=" + from + " to=" + to + (cap != null ? " cap=" + cap : ""));
         return saved;
     }
 

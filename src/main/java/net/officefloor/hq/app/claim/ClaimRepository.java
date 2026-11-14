@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.claim;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -63,4 +64,12 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     void useTag(@Param("sheetId") String sheetId, @Param("tag") String tag);
 
     Optional<Claim> findByIdAndSheetIdAndPersonId(Long id, String sheetId, Long personId);
+
+    /** How many of a person's claims due by a day between two dates (inclusive) are OPEN or PENDING. */
+    @Query("select count(c) from Claim c where c.sheetId = :sheetId and c.personId = :personId"
+            + " and c.status in (net.officefloor.hq.app.claim.ClaimStatus.OPEN,"
+            + " net.officefloor.hq.app.claim.ClaimStatus.PENDING)"
+            + " and c.dueBy >= :from and c.dueBy <= :to")
+    long countOpenDueBetween(@Param("sheetId") String sheetId, @Param("personId") Long personId,
+            @Param("from") LocalDate from, @Param("to") LocalDate to);
 }

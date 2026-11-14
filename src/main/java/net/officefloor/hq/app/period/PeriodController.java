@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -35,28 +36,29 @@ public class PeriodController {
     /** A period as the screen shows it; closedPersonTotals is each person's due-total for it fixed
      *  when it was closed, by person id (empty while it is open). */
     public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed,
-            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals) {
+            boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals, Integer cap) {
         static PeriodView of(Period period) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.getPersonTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
                     period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() != null ? period.getClosedTotal().toPlainString() : null,
-                    personTotals);
+                    personTotals, period.getCap());
         }
 
-        static PeriodView of(History.PeriodThen period) {
+        static PeriodView of(History.PeriodThen period, Integer cap) {
             Map<Long, String> personTotals = new TreeMap<>();
             period.personTotals().forEach((id, total) -> personTotals.put(id, total.toPlainString()));
             return new PeriodView(period.id(), period.name(), period.from(), period.to(), period.closed(),
                     period.softClosed(), period.closedTotal() != null ? period.closedTotal().toPlainString() : null,
-                    personTotals);
+                    personTotals, cap);
         }
     }
 
-    /** A period: a name and its from and to dates. */
+    /** A period: a name, its from and to dates, and the most OPEN and PENDING claims a person may
+     *  have in it (null: no cap). */
     public record PeriodRequest(@NotBlank @Size(max = 200) String name,
-            @NotNull LocalDate from, @NotNull LocalDate to) {
+            @NotNull LocalDate from, @NotNull LocalDate to, @Min(1) Integer cap) {
     }
 
     private final PeriodService service;
@@ -72,7 +74,11 @@ public class PeriodController {
             @RequestHeader(value = AsOf.HEADER, required = false) String asOfHeader) {
         LocalDate asOf = AsOf.parse(asOfHeader);
         if (asOf != null) {
-            return service.listAsOf(sheetId.trim(), asOf).stream().map(PeriodView::of).toList();
+            // A period's cap is fixed when it is added, so the period as it stood then has the cap it has now.
+            Map<Long, Integer> caps = new HashMap<>();
+            service.list(sheetId.trim()).forEach(period -> caps.put(period.getId(), period.getCap()));
+            return service.listAsOf(sheetId.trim(), asOf).stream()
+                    .map(period -> PeriodView.of(period, caps.get(period.id()))).toList();
         }
         return service.list(sheetId.trim()).stream().map(PeriodView::of).toList();
     }
@@ -83,7 +89,7 @@ public class PeriodController {
     public PeriodView add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated PeriodRequest request) {
         return PeriodView.of(service.add(sheetId.trim(), SignedInUser.decode(user), request.name().trim(),
-                request.from(), request.to()));
+                request.from(), request.to(), request.cap()));
     }
 
     /** Monthly periods to generate: the dates whose months they run from and to; a blank date is the

@@ -1117,7 +1117,7 @@ export class PersonClaims {
             : !forbidden && action === 'restore'
               ? 'The claim could not be restored: only a deleted claim can, on the same day it was deleted.'
             : !forbidden && action === 'open'
-              ? 'The claim could not be opened: one due above the note threshold needs a note first, and its status and period must allow it.'
+              ? 'The claim could not be opened: one due above the note threshold needs a note first, its status and period must allow it, and its person must be under the cap on open claims its period sets.'
             : forbidden && action === 'resettle'
               ? 'The claim could not be re-settled: only a steward can re-settle a claim.'
               : !forbidden && action === 'void' && this.voidReasons.reasons().length > 0

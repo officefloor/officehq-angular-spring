@@ -21,6 +21,8 @@ export interface Period {
   /** Each person's due-total for the period fixed when it was closed (two decimals), by person id;
    *  empty while it is open. */
   closedPersonTotals: Record<string, string>;
+  /** The most OPEN and PENDING claims a person may have in the period; null for no cap. */
+  cap: number | null;
 }
 
 /** The period whose dates contain a date; null when none does. Periods never overlap, so at most
@@ -39,6 +41,7 @@ export function fiscalYearOf(date: string, startMonth: number): string {
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const YEAR = /^\d{4}$/;
+const CAP = /^\d+$/;
 
 // The active sheet's periods, the earliest first, re-read whenever a sheet is loaded.
 @Injectable({ providedIn: 'root' })
@@ -57,13 +60,14 @@ export class PeriodStore {
     });
   }
 
-  /** Add a period to the active sheet; the server refuses a name taken, dates running backwards or
-   *  an overlap with another period. */
-  async add(name: string, from: string, to: string): Promise<void> {
+  /** Add a period to the active sheet, capping each person's OPEN and PENDING claims in it (null:
+   *  no cap); the server refuses a name taken, dates running backwards, an overlap with another
+   *  period or a cap below 1. */
+  async add(name: string, from: string, to: string, cap: number | null): Promise<void> {
     const sheet = this.session.sheetId();
     if (!sheet) throw new Error('No sheet loaded.');
     const saved = await firstValueFrom(
-      this.http.post<Period>(`/api/sheets/${encodeURIComponent(sheet)}/periods`, { name, from, to }),
+      this.http.post<Period>(`/api/sheets/${encodeURIComponent(sheet)}/periods`, { name, from, to, cap }),
     );
     if (this.session.sheetId() !== sheet) return;
     this.periods.update((list) =>
@@ -192,6 +196,14 @@ export class PeriodStore {
           [value]="to()"
           (input)="to.set(value($event)); error.set(null)"
         />
+        <label for="period-form-cap">Open claims cap per person (blank: none)</label>
+        <input
+          id="period-form-cap"
+          data-testid="period-form-cap"
+          inputmode="numeric"
+          [value]="cap()"
+          (input)="cap.set(value($event)); error.set(null)"
+        />
         <button type="submit" data-testid="period-form-submit">Add period</button>
       </form>
       @if (error(); as message) {
@@ -242,6 +254,7 @@ export class PeriodStore {
             <th scope="col">Fiscal year</th>
             <th scope="col">Due</th>
             <th scope="col">Closed</th>
+            <th scope="col">Cap</th>
             <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
@@ -254,6 +267,7 @@ export class PeriodStore {
               <td data-testid="period-fy">{{ fiscalYearOf(p.from, settings.fiscalStartMonth()) }}</td>
               <td data-testid="period-due-total">{{ dueTotals().get(p.id) ?? '0.00' }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
               <td>
                 <button
                   type="button"
@@ -302,6 +316,7 @@ export class Periods {
   protected readonly name = signal('');
   protected readonly from = signal('');
   protected readonly to = signal('');
+  protected readonly cap = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly generateFrom = signal('');
   protected readonly generateTo = signal('');
@@ -423,12 +438,18 @@ export class Periods {
       this.error.set('The period must not end before it starts.');
       return;
     }
+    const cap = this.cap().trim();
+    if (cap && (!CAP.test(cap) || Number(cap) < 1)) {
+      this.error.set('Type the cap as a whole number of at least 1, or leave it blank for none.');
+      return;
+    }
     this.busy.set(true);
     try {
-      await this.store.add(name, from, to);
+      await this.store.add(name, from, to, cap ? Number(cap) : null);
       this.name.set('');
       this.from.set('');
       this.to.set('');
+      this.cap.set('');
     } catch {
       this.error.set(`The period ${name} could not be added: its name is taken or it overlaps another period.`);
     } finally {
