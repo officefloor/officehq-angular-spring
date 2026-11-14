@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, plusDays, reviewLate, statusAsOf } from '../claims/claims';
+import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, plusDays, reviewLate, sharePartCents, statusAsOf } from '../claims/claims';
 import { Holidays } from '../holidays/holidays';
 import { Notes } from '../notes/notes';
 import { VoidReasonStore, VoidReasons } from '../void-reasons/void-reasons';
@@ -1164,6 +1164,38 @@ export class People {
     for (const c of this.live()) map.set(c.personId, [...(map.get(c.personId) ?? []), c]);
     return map;
   });
+  /** What the shares of the claims that count move in each person's figures, in cents, by person id:
+   *  each holder gains their part of a claim's due (see sharePartCents) and the claim's own person
+   *  loses it, in all, among SETTLED claims and among OPEN and PENDING ones; held tells a holder's
+   *  part of a claim with a figure is one. A claim with no figure moves nothing. */
+  private readonly sharedByPerson = computed(() => {
+    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+    const floor = this.floor();
+    const late = this.late();
+    const map = new Map<number, { all: number; settled: number; open: number; held: boolean }>();
+    const move = (personId: number, claim: Claim, part: number, held: boolean) => {
+      const was = map.get(personId) ?? { all: 0, settled: 0, open: 0, held: false };
+      map.set(personId, {
+        all: was.all + part,
+        settled: was.settled + (claim.status === 'SETTLED' ? part : 0),
+        open: was.open + (isOpen(claim) ? part : 0),
+        held: was.held || held,
+      });
+    };
+    for (const c of this.live()) {
+      const theirs = grades.get(c.personId);
+      if (theirs === undefined || (c.shares ?? []).length === 0) continue;
+      const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c), floor, late);
+      if (due === null) continue;
+      for (const s of c.shares) {
+        if (!grades.has(s.personId)) continue;
+        const part = sharePartCents(due, s.share);
+        move(s.personId, c, part, true);
+        move(c.personId, c, -part, false);
+      }
+    }
+    return map;
+  });
   /** The ids of the people who are active: they have an OPEN or PENDING claim that counts dated
    *  within the 30 days up to and including the sheet's today. */
   protected readonly activeIds = computed(() => {
@@ -2158,22 +2190,23 @@ export class People {
     const dues = this.countedOf(person.id).map((c) =>
       claimDueCents(c, this.rates.ofGradeOn(person.grades, c), floor, late),
     );
-    if (!this.rates.current().has(this.gradeOf(person)) && dues.every((due) => due === null)) {
+    const shared = this.sharedByPerson().get(person.id);
+    if (!this.rates.current().has(this.gradeOf(person)) && dues.every((due) => due === null) && !shared?.held) {
       return null;
     }
-    return dues.reduce<number>((sum, due) => sum + (due ?? 0), 0);
+    return dues.reduce<number>((sum, due) => sum + (due ?? 0), 0) + (shared?.all ?? 0);
   }
 
   /** The dues of a person's SETTLED claims that count added up, at their frozen figures, corrections
-   *  included (a claim with no figure adds nothing). */
+   *  included (a claim with no figure adds nothing), with what shares of SETTLED claims move. */
   protected settledCentsOf(person: Person): number {
-    return this.dueCentsWhere(person, (c) => c.status === 'SETTLED');
+    return this.dueCentsWhere(person, (c) => c.status === 'SETTLED') + (this.sharedByPerson().get(person.id)?.settled ?? 0);
   }
 
   /** The dues of a person's OPEN and PENDING claims that count added up (a claim with no figure adds
-   *  nothing). With the settled-total it makes the due-total before the cap. */
+   *  nothing), with what shares of OPEN and PENDING claims move. With the settled-total it makes the due-total before the cap. */
   protected openCentsOf(person: Person): number {
-    return this.dueCentsWhere(person, isOpen);
+    return this.dueCentsWhere(person, isOpen) + (this.sharedByPerson().get(person.id)?.open ?? 0);
   }
 
   private dueCentsWhere(person: Person, keep: (c: Claim) => boolean): number {

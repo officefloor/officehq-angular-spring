@@ -672,6 +672,42 @@ public class ClaimService {
         return saved;
     }
 
+    /** Share a claim with another person on the sheet at a share percent (two decimals, more than
+     *  0.00): CLAIM_SHARED is written ending with the holder and their share. The claim's own person,
+     *  a person already holding a share, shares totalling more than 100.00, a SETTLED, VOID or DELETED
+     *  claim, or one dated in a closed period, is refused. */
+    @Transactional
+    public Claim share(String sheetId, String user, Long personId, Long id, Long withPersonId, BigDecimal share) {
+        Person person = person(sheetId, personId);
+        Claim claim = claim(sheetId, personId, id);
+        Person holder = person(sheetId, withPersonId);
+        ClaimStatus status = claim.getStatus();
+        if (status == ClaimStatus.SETTLED || status == ClaimStatus.VOID || status == ClaimStatus.DELETED) {
+            throw new ShareRefusedException("A " + status + " claim cannot be shared");
+        }
+        refuseClosed(sheetId, claim.getDueBy());
+        if (holder.getId().equals(person.getId())) {
+            throw new ShareRefusedException("A claim cannot be shared with its own person");
+        }
+        if (share.signum() <= 0 || share.scale() > 2) {
+            throw new ShareRefusedException("A share must be more than 0.00, with two decimals");
+        }
+        List<ClaimShare> held = claim.getShares();
+        if (held.stream().anyMatch(s -> s.personId().equals(holder.getId()))) {
+            throw new ShareRefusedException(holder.getName() + " already holds a share of the claim");
+        }
+        BigDecimal total = held.stream().map(ClaimShare::share).reduce(share, BigDecimal::add);
+        if (total.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new ShareRefusedException("The shares of a claim cannot total more than 100.00");
+        }
+        BigDecimal scaledShare = share.setScale(2);
+        claim.addShare(new ClaimShare(holder.getId(), scaledShare, sheets.today(sheetId)));
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(line("CLAIM_SHARED", sheetId, user, person, saved, saved.getNumber())
+                + " with=" + holder.getName() + " share=" + scaledShare.toPlainString());
+        return saved;
+    }
+
     /** Remind an OPEN or PENDING claim: REMIND is written and the claim's reminded date is the sheet's
      *  today. A claim in any other status, or one already reminded on the sheet's today, is refused. When
      *  the sheet has an escalation gap and the claim's previous reminder was at least that many days before

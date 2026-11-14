@@ -82,6 +82,29 @@ export interface Claim {
   waived: boolean;
   /** Whether the claim itself is held: it still counts in every total. */
   held: boolean;
+  /** The shares of the claim other people on the sheet hold, in the order it was shared: each the
+   *  holder's id and their share percent (two decimals). */
+  shares: ClaimShare[];
+}
+
+/** A share of a claim another person holds: the holder's id and their share percent (two decimals). */
+export interface ClaimShare {
+  personId: number;
+  share: string;
+}
+
+/** A holder's part of a claim's due in cents: the due times their share divided by 100, rounded
+ *  half to even. */
+export function sharePartCents(dueCents: number, share: string): number {
+  // The share in hundredths of a percent, so the part is dueCents * hundredths / 10,000.
+  const hundredths = Math.round(Number(share) * 100);
+  const scaled = dueCents * hundredths;
+  const sign = scaled < 0 ? -1 : 1;
+  const abs = Math.abs(scaled);
+  let whole = Math.floor(abs / 10_000);
+  const rest = abs - whole * 10_000;
+  if (rest > 5_000 || (rest === 5_000 && whole % 2 !== 0)) whole += 1;
+  return sign * whole;
 }
 
 /** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
@@ -337,6 +360,7 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span>
           <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span>
           <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span>
+          <span data-testid="claim-shares">{{ sharesOf(c) }}</span>
           <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span>
           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
           <span data-testid="claim-period">{{ periodNameOf(c) }}</span>
@@ -402,6 +426,28 @@ const NUMBER = /^\S+$/;
           </button>
           <button type="button" data-testid="claim-hold" [attr.aria-label]="(c.held ? 'Release claim ' : 'Hold claim ') + c.id" (click)="toggleHold(c)">
             {{ c.held ? 'Release' : 'Hold' }}
+          </button>
+          <label [for]="'claim-share-select-' + c.id">Share with</label>
+          <select
+            [id]="'claim-share-select-' + c.id"
+            data-testid="claim-share-select"
+            (change)="setShareWith(c.id, value($event))"
+          >
+            <option value="" [selected]="!shareWith()[c.id]">Choose a person</option>
+            @for (o of people(); track o.id) {
+              <option [value]="o.id" [selected]="shareWith()[c.id] === '' + o.id">{{ o.name }}</option>
+            }
+          </select>
+          <label [for]="'claim-share-pct-' + c.id">Share percent</label>
+          <input
+            [id]="'claim-share-pct-' + c.id"
+            data-testid="claim-share-pct"
+            inputmode="decimal"
+            [value]="sharePcts()[c.id] ?? ''"
+            (input)="setSharePct(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-share-add" [attr.aria-label]="'Share claim ' + c.id" (click)="share(c)">
+            Share
           </button>
           <button type="button" data-testid="claim-waive" [attr.aria-label]="'Waive the late charge of claim ' + c.id" (click)="waive(c)">
             Waive late charge
@@ -676,6 +722,11 @@ export class PersonClaims {
   /** The new amount typed on each claim's row to save in place, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
 
+  /** The person chosen on each claim's row to share it with, by claim id (a person id, or blank). */
+  protected readonly shareWith = signal<Record<number, string>>({});
+  /** The share percent typed on each claim's row, by claim id. */
+  protected readonly sharePcts = signal<Record<number, string>>({});
+
   /** The person chosen on each claim's row to move it to, by claim id (a person id, or blank). */
   protected readonly reassignTo = signal<Record<number, string>>({});
   /** Each claim's timeline as last shown: the audit lines about it, newest first. */
@@ -932,6 +983,50 @@ export class PersonClaims {
       this.rowError.set({
         id: claim.id,
         message: 'The claim could not be held or released: only an open or pending claim can be.',
+      });
+    }
+  }
+
+  /** The claim's holders as <name> <share>, comma and space separated, in the order it was shared. */
+  protected sharesOf(claim: Claim): string {
+    const names = new Map(this.people().map((p) => [p.id, p.name]));
+    return (claim.shares ?? []).map((s) => `${names.get(s.personId) ?? ''} ${s.share}`).join(', ');
+  }
+
+  protected setShareWith(id: number, personId: string): void {
+    this.shareWith.update((chosen) => ({ ...chosen, [id]: personId }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  protected setSharePct(id: number, pct: string): void {
+    this.sharePcts.update((pcts) => ({ ...pcts, [id]: pct }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  /** Share a claim with the person chosen on its row at the share percent typed there; no person
+   *  chosen, a share that is not more than 0.00 with two decimals, the claim's own person, a person
+   *  already holding a share, shares totalling more than 100.00, or a settled, voided or deleted
+   *  claim, is refused on the row. */
+  protected async share(claim: Claim): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const to = this.shareWith()[claim.id] ?? '';
+    const pct = (this.sharePcts()[claim.id] ?? '').trim();
+    if (to === '' || !/^\d{1,3}(\.\d{1,2})?$/.test(pct)) {
+      this.rowError.set({ id: claim.id, message: 'Choose the person to share the claim with and type a share, e.g. 25.00.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/shares`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { personId: Number(to), share: pct }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(saved);
+    } catch {
+      this.rowError.set({
+        id: claim.id,
+        message:
+          "The claim could not be shared: not with its own person or someone already holding a share, for more than 0.00, with the shares totalling at most 100.00, and never once it is settled, voided or deleted.",
       });
     }
   }

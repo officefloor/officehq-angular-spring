@@ -11,10 +11,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import net.officefloor.hq.app.history.HistoryListener;
 
 /** A claim a person on a sheet makes: an amount (two decimals), a date, a note and a status (DRAFT
@@ -155,6 +158,11 @@ public class Claim {
     /** The claim's tags, lower case, sorted and comma separated; null when it has none. */
     @Column(name = "tags")
     private String tags;
+
+    /** The people the claim is shared with, in the order it was shared (see {@link ClaimShare});
+     *  null when it is shared with no one. */
+    @Column(name = "shares")
+    private String shares;
 
     /** The reason on the sheet's list the claim was voided with; null when it was given none. */
     @Column(name = "void_reason")
@@ -332,6 +340,24 @@ public class Claim {
     /** Give the claim its tags (already trimmed, lower case and without repeats), or none (empty). */
     public void setTags(Collection<String> tags) {
         this.tags = tags.isEmpty() ? null : String.join(",", new TreeSet<>(tags));
+    }
+
+    /** The shares of the claim others hold, in the order it was shared; empty when it has none. */
+    public List<ClaimShare> getShares() {
+        return shares == null ? List.of() : Stream.of(shares.split(",")).map(ClaimShare::parse).toList();
+    }
+
+    /** Give the claim its shares, in the order it was shared, or none (empty). */
+    public void setShares(List<ClaimShare> shares) {
+        this.shares = shares.isEmpty() ? null
+                : shares.stream().map(ClaimShare::text).collect(Collectors.joining(","));
+    }
+
+    /** Share the claim with one more person. */
+    public void addShare(ClaimShare share) {
+        List<ClaimShare> all = new ArrayList<>(getShares());
+        all.add(share);
+        setShares(all);
     }
 
     /** The reason the claim was voided with; null when it was given none. */

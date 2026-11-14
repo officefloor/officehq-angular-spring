@@ -10,12 +10,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimShare;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.person.Person;
@@ -247,12 +249,14 @@ public class RollupService {
         Map<Long, List<Claim>> counted = (asOf == null ? sheetClaims : history.claims(sheetClaims, asOf)).stream()
                 .filter(claim -> claim.countsLive(retiredFrom.get(claim.getPersonId()), today))
                 .collect(Collectors.groupingBy(Claim::getPersonId));
+        Map<Long, BigDecimal> shared = sharedParts(sheetId, asOf, sheetPeople, counted);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = NONE;
         List<BigDecimal> dues = new ArrayList<>();
         List<BigDecimal> overdues = new ArrayList<>();
         for (Person person : sheetPeople) {
-            Figures f = figuresOf(sheetId, today, asOf, person, counted.getOrDefault(person.getId(), List.of()));
+            Figures f = figuresOf(sheetId, today, asOf, person, counted.getOrDefault(person.getId(), List.of()),
+                    shared.get(person.getId()));
             figures.put(person.getId(), f);
             claimedTotal = claimedTotal.add(f.claimed());
             if (f.due() != null) {
@@ -261,6 +265,36 @@ public class RollupService {
             overdues.add(f.overdue());
         }
         return new Rollup(figures, claimedTotal, trimmedSum(dues), trimmedSum(overdues));
+    }
+
+    /** What the shares of the claims that count move in each person's due-total, by person id: each
+     *  holder gains their part of a claim's figure (its due times their share divided by 100, rounded
+     *  half to even), and the claim's own person loses it. A person whose figures no share moves is
+     *  not listed; a claim with no figure moves nothing. */
+    private Map<Long, BigDecimal> sharedParts(String sheetId, LocalDate asOf, List<Person> sheetPeople,
+            Map<Long, List<Claim>> counted) {
+        Map<Long, BigDecimal> parts = new HashMap<>();
+        Set<Long> onSheet = sheetPeople.stream().map(Person::getId).collect(Collectors.toSet());
+        for (Person person : sheetPeople) {
+            for (Claim claim : counted.getOrDefault(person.getId(), List.of())) {
+                if (claim.getShares().isEmpty()) {
+                    continue;
+                }
+                BigDecimal figure = claimService.dueOf(sheetId, person, claim, asOf);
+                if (figure == null) {
+                    continue;
+                }
+                for (ClaimShare share : claim.getShares()) {
+                    if (!onSheet.contains(share.personId())) {
+                        continue;
+                    }
+                    BigDecimal part = share.partOf(figure);
+                    parts.merge(share.personId(), part, BigDecimal::add);
+                    parts.merge(person.getId(), part.negate(), BigDecimal::add);
+                }
+            }
+        }
+        return parts;
     }
 
     /** The figures added up, leaving out the single highest and the single lowest when there are
@@ -278,8 +312,11 @@ public class RollupService {
      *  figures they show (a held one's included), or none when the grade in force on the sheet's today has no rate in force
      *  then and no claim of theirs shows a figure; the sum is held to the sheet's cap. The overdue-total
      *  sums the dues of those that are OPEN or PENDING with a due-by plus their grace before the sheet's today.
-     *  The settled figures, for the score, sum those of SETTLED claims that correct nothing. */
-    private Figures figuresOf(String sheetId, LocalDate today, LocalDate asOf, Person person, List<Claim> counted) {
+     *  The settled figures, for the score, sum those of SETTLED claims that correct nothing. The
+     *  due-total takes in what the shares of claims move (null: none moves it): a holder's parts, less
+     *  the parts others hold of the person's own claims. */
+    private Figures figuresOf(String sheetId, LocalDate today, LocalDate asOf, Person person, List<Claim> counted,
+            BigDecimal sharedPart) {
         BigDecimal claimed = NONE;
         BigDecimal due = NONE;
         BigDecimal overdue = NONE;
@@ -306,6 +343,10 @@ public class RollupService {
                 }
             }
             anyFigure |= figure != null;
+        }
+        if (sharedPart != null) {
+            due = due.add(sharedPart);
+            anyFigure = true;
         }
         boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), today, asOf), today, asOf).isPresent();
         return new Figures(person.getName(), claimed, hasRate || anyFigure ? settings.capped(sheetId, due, asOf) : null,

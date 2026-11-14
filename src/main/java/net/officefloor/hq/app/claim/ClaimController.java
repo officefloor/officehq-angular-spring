@@ -60,13 +60,15 @@ public class ClaimController {
      *  is the number of the settle batch that settled it (null when a bulk settle did not); lines are
      *  its lines, oldest first, each as <label> <qty> x <unit> (empty when it has none); waived is
      *  whether a steward waived its late charge; proofsReceipt and proofsPhoto are how many of its
-     *  proofs are receipts and photos; held is whether the claim itself is held. */
+     *  proofs are receipts and photos; held is whether the claim itself is held; shares are the
+     *  shares of it other people hold, in the order it was shared (empty when it has none). */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry,
             LocalDate remindedOn, String ref, List<String> tags, String voidReason, List<String> comments,
-            Long batch, List<String> lines, boolean waived, int proofsReceipt, int proofsPhoto, boolean held) {
+            Long batch, List<String> lines, boolean waived, int proofsReceipt, int proofsPhoto, boolean held,
+            List<ShareView> shares) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log, List<String> comments) {
             return of(claim, roundsBy, log, comments, List.of());
         }
@@ -82,8 +84,22 @@ public class ClaimController {
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
                     claim.getRemindedOn(), claim.getRef(), claim.getTags(),
                     claim.getVoidReason(), comments, claim.getBatch(), lines, claim.isWaived(),
-                    claim.getProofsReceipt(), claim.getProofsPhoto(), claim.isHeld());
+                    claim.getProofsReceipt(), claim.getProofsPhoto(), claim.isHeld(),
+                    claim.getShares().stream().map(ShareView::of).toList());
         }
+    }
+
+    /** A share of a claim another person holds: the holder's id and their share percent (two decimals). */
+    public record ShareView(Long personId, String share) {
+        static ShareView of(ClaimShare share) {
+            return new ShareView(share.personId(), share.share().toPlainString());
+        }
+    }
+
+    /** A share of a claim given to another person on the sheet: the holder and a share percent with up
+     *  to two decimals. */
+    public record ShareRequest(@NotNull Long personId,
+            @NotNull @Digits(integer = 3, fraction = 2) BigDecimal share) {
     }
 
     /** A claim's fields: an amount with up to two decimals (a negative one is a correction), a date
@@ -431,6 +447,17 @@ public class ClaimController {
         return view(sheet, rollups.track(sheet, by, () -> service.toggleHold(sheet, by, personId, id)));
     }
 
+    /** Share a claim that is not SETTLED, VOID or DELETED with another person on the sheet. */
+    @PostMapping("/people/{personId}/claims/{id}/shares")
+    public ClaimView share(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated ShareRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, rollups.track(sheet, by,
+                () -> service.share(sheet, by, personId, id, request.personId(), request.share())));
+    }
+
     /** Re-date an OPEN or PENDING claim: a steward only. */
     @PostMapping("/people/{personId}/claims/{id}/redate")
     public ClaimView redate(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
@@ -581,13 +608,15 @@ public class ClaimController {
      *  reminded on the sheet's today, or an empty comment, or a delete of a claim that is not a DRAFT or
      *  a restore of one not deleted on the sheet's today, or a line on a correction, or an edit typing
      *  an amount other than the one a claim's lines add up to, or a waiver of a claim that is not OPEN or
-     *  PENDING or is already waived, or a hold or release of a claim that is not OPEN or PENDING, is refused. */
+     *  PENDING or is already waived, or a hold or release of a claim that is not OPEN or PENDING, or a share the claim or its shares do
+     *  not allow, is refused. */
     @ExceptionHandler({VoidRefusedException.class, StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
             DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class, NoteRequiredException.class,
             SplitRefusedException.class, RedateRefusedException.class, PeriodCapException.class, MaxOpenException.class, ClaimLockedException.class,
             RemindRefusedException.class, CommentRefusedException.class, DeleteRefusedException.class, RefInUseException.class, LinedAmountException.class,
-            WaiveRefusedException.class, HoldRefusedException.class, DataIntegrityViolationException.class})
+            WaiveRefusedException.class, HoldRefusedException.class, ShareRefusedException.class,
+            DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }

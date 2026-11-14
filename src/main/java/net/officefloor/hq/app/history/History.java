@@ -80,6 +80,7 @@ public class History {
                     if (is != null) {
                         was.setRef(is.getRef());
                         was.setTags(is.getTags());
+                        was.setShares(is.getShares().stream().filter(share -> !share.on().isAfter(day)).toList());
                         was.setBatch(is.getBatch());
                         // Only the last reminder is kept: it shows when it was written by then.
                         if (is.getRemindedOn() != null && !is.getRemindedOn().isAfter(day)) {
