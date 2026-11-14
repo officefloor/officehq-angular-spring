@@ -142,7 +142,8 @@ export function figure(hundredths: bigint): string {
 /** Each member's cut of the pot in hundredths, in the members' order: a retired member's, a held
  *  member's and one its dates leave out 0, their shares spread over the others in proportion; any other's the pot times their share divided by the shares of the members with a cut
  *  added up, rounded half to even. The remainder, the pot minus the cuts added up, goes to the member
- *  with a cut with the largest share, the earliest added on a tie; with no such member every cut is 0. */
+ *  with the smallest non-zero cut, the latest added on a tie (a member with no cut gets none); with
+ *  no non-zero cut, to the last member with a cut; with no such member every cut is 0. */
 function cuts(pot: bigint, members: Share[]): bigint[] {
   const cutting = (m: Share) => !m.retired && !m.held && !m.out;
   const shares = members.filter(cutting).reduce((sum, m) => sum + m.share, 0n);
@@ -155,11 +156,15 @@ function cuts(pot: bigint, members: Share[]): bigint[] {
     if (rest > shares || (rest === shares && cut % 2n === 1n)) cut += 1n;
     return cut;
   });
-  let largest = -1;
+  let smallest = -1;
+  let last = -1;
   members.forEach((m, i) => {
-    if (cutting(m) && (largest < 0 || m.share > members[largest].share)) largest = i;
+    if (!cutting(m)) return;
+    last = i;
+    if (list[i] !== 0n && (smallest < 0 || list[i] <= list[smallest])) smallest = i;
   });
-  if (largest >= 0) list[largest] += pot - list.reduce((sum, c) => sum + c, 0n);
+  const taker = smallest >= 0 ? smallest : last;
+  if (taker >= 0) list[taker] += pot - list.reduce((sum, c) => sum + c, 0n);
   return list;
 }
 
