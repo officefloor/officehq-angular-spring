@@ -9,7 +9,7 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import org.springframework.stereotype.Component;
 
-/** Puts a selection of a sheet's claims in list order: people in the order they were added, each
+/** Puts a selection of a sheet's claims in list order: people in list order (by position), each
  *  person's claims newest first. */
 @Component
 public class ClaimListOrder {

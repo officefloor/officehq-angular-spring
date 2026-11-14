@@ -45,7 +45,7 @@ public class RollupService {
         }
     }
 
-    /** The sheet's figures: each person's, by id in the order they were added, and the totals. */
+    /** The sheet's figures: each person's, in list order, and the totals. */
     private record Rollup(Map<Long, Figures> people, BigDecimal claimedTotal, BigDecimal dueTotal,
             BigDecimal overdueTotal) {
     }

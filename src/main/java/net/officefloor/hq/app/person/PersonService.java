@@ -46,9 +46,34 @@ public class PersonService {
         this.audit = audit;
     }
 
-    /** The sheet's people in the order they were added. */
+    /** The sheet's people in list order. */
     public List<Person> list(String sheetId) {
         return people.findBySheetIdOrderByIdAsc(sheetId);
+    }
+
+    /** Move a person up or down the list, swapping them with the person above or below; retired people
+     *  are passed over unless {@code includeRetired} (the list shows them). Refused when there is no one
+     *  to swap with: the top person cannot move up nor the bottom one down. */
+    @Transactional
+    public Person move(String sheetId, String user, Long id, boolean up, boolean includeRetired) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+        List<Person> listed = list(sheetId);
+        List<Person> shown = listed.stream()
+                .filter(p -> includeRetired || !p.isRetired() || p.getId().equals(id)).toList();
+        int at = shown.indexOf(person);
+        int to = up ? at - 1 : at + 1;
+        if (at < 0 || to < 0 || to >= shown.size()) {
+            throw new MoveRefusedException(person.getName() + " cannot move " + (up ? "up" : "down"));
+        }
+        Person other = shown.get(to);
+        person.swapPositionWith(other);
+        people.saveAndFlush(person);
+        people.saveAndFlush(other);
+        int position = list(sheetId).indexOf(person) + 1;
+        audit.recordOnCommit("PERSON_MOVED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " position=" + position);
+        return person;
     }
 
     /** Add a person to the sheet; the grade they are given applies from the beginning of time. */

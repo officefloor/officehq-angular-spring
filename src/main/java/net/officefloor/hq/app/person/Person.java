@@ -10,6 +10,7 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
 import net.officefloor.hq.app.history.HistoryListener;
+import org.hibernate.annotations.Generated;
 
 /** A person on a sheet, with a name; their grades, each dated, are kept as {@link PersonGrade}s. */
 @Entity
@@ -53,6 +54,11 @@ public class Person {
     @Column(name = "merged_into")
     private Long mergedInto;
 
+    /** The person's place in the list, ascending; set by the store when they are added, so they go to the end. */
+    @Generated
+    @Column(name = "list_position", insertable = false, nullable = false)
+    private Long position;
+
     protected Person() {
     }
 
@@ -68,6 +74,7 @@ public class Person {
         Person was = new Person(sheetId, name, addedOn);
         was.id = id;
         was.version = version;
+        was.position = position;
         was.terms = terms;
         was.retiredFrom = retiredFrom;
         was.contact = contact;
@@ -84,6 +91,17 @@ public class Person {
 
     public long getVersion() {
         return version;
+    }
+
+    public Long getPosition() {
+        return position;
+    }
+
+    /** Swap the person's place in the list with another's. */
+    public void swapPositionWith(Person other) {
+        Long mine = position;
+        position = other.position;
+        other.position = mine;
     }
 
     public String getName() {

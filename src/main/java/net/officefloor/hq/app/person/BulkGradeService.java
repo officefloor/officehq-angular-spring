@@ -30,7 +30,7 @@ public class BulkGradeService {
         this.sheets = sheets;
     }
 
-    /** Give each selected person, in list order (the order they were added), the grade from a date
+    /** Give each selected person, in list order, the grade from a date
      *  (null takes the sheet's today) exactly as saving them from the editor with their name and terms
      *  unchanged would, each followed by the figures it moved. Refused as a whole, writing nothing,
      *  when any selected person is not on the sheet. A viewer, or anyone on an archived sheet, gives

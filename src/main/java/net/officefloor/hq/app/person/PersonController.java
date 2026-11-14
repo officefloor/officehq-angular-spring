@@ -117,6 +117,10 @@ public class PersonController {
     public record WatchRequest(@NotNull Boolean watched) {
     }
 
+    /** A move up or down the list, and whether the list shows retired people (they are passed over when not). */
+    public record MoveRequest(@NotNull @Pattern(regexp = "up|down") String direction, boolean includeRetired) {
+    }
+
     /** A patron to name: the id of another person on the sheet. */
     public record PatronRequest(@NotNull Long patronId) {
     }
@@ -161,7 +165,7 @@ public class PersonController {
         this.sheets = sheets;
     }
 
-    /** The sheet's people in the order they were added: as they stand now, or as they stood at the
+    /** The sheet's people in list order: as they stand now, or as they stood at the
      *  end of the screen's as-of date (those added by then, the date standing in for the sheet's today). */
     @GetMapping
     public List<PersonView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId,
@@ -295,6 +299,15 @@ public class PersonController {
         return withStatements(service.watch(sheet, by, id, request.watched()), by);
     }
 
+    /** Move a person up or down the list, swapping them with their neighbour there. */
+    @PostMapping("/{id}/move")
+    public PersonView move(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated MoveRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return withStatements(service.move(sheet, by, id, request.direction().equals("up"), request.includeRetired()), by);
+    }
+
     /** A date that is not a real yyyy-mm-dd date, or a hold that ends before it starts, is refused. */
     @ExceptionHandler({HttpMessageNotReadableException.class, HoldRefusedException.class,
             AliasRefusedException.class, ImportRefusedException.class})
@@ -332,7 +345,7 @@ public class PersonController {
      *  not be made, or the transfer may not be made; a concurrent
      *  save is caught by the unique index. */
     @ExceptionHandler({NameInUseException.class, ContactInUseException.class, PatronRefusedException.class,
-            MergeRefusedException.class, TransferRefusedException.class, DataIntegrityViolationException.class})
+            MergeRefusedException.class, TransferRefusedException.class, MoveRefusedException.class, DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void nameInUse() {
     }

@@ -458,6 +458,22 @@ interface StatementTaken {
                 </button>
                 <button
                   type="button"
+                  data-testid="person-move-up"
+                  [attr.aria-label]="'Move ' + p.name + ' up the list'"
+                  (click)="move(p, 'up')"
+                >
+                  Up
+                </button>
+                <button
+                  type="button"
+                  data-testid="person-move-down"
+                  [attr.aria-label]="'Move ' + p.name + ' down the list'"
+                  (click)="move(p, 'down')"
+                >
+                  Down
+                </button>
+                <button
+                  type="button"
                   data-testid="person-watch"
                   [attr.aria-label]="(p.watched ? 'Stop watching ' : 'Watch ') + p.name"
                   [attr.aria-pressed]="p.watched"
@@ -1193,6 +1209,23 @@ export class People {
     } catch {
       this.rowError.set({ id: person.id, message: `${person.name} could not be put on hold.` });
     }
+  }
+
+  /** Move a person up or down the list, swapping them with the person above or below; the people
+   *  are then read again in their new order. The top person cannot move up nor the bottom one down. */
+  protected async move(person: Person, direction: 'up' | 'down'): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/move`;
+    try {
+      await firstValueFrom(this.http.post<Person>(url, { direction, includeRetired: this.showRetired() }));
+    } catch {
+      this.rowError.set({ id: person.id, message: `${person.name} could not be moved ${direction}.` });
+      return;
+    }
+    if (this.session.sheetId() !== sheet) return;
+    await this.read(sheet, this.session.loads());
   }
 
   /** Start or stop the signed-in user watching a person; their row then shows it. */
