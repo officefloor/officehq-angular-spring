@@ -1,0 +1,64 @@
+{
+  "checkpoint": 109,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp109_parent-sheet-rates",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A sheet may name a parent sheet (settings, SETTING_CHANGED key=parent value=<sheet id>; not\ndated). A sheet cannot be its own parent, nor name a sheet that has this sheet as an ancestor; and\nthe parent must be a sheet that exists (has been loaded); each is refused with an error on the\nsettings. When a grade has no rate in force on a date on this sheet, the parent's rate for that grade\nand date is used, then the parent's parent, up to three levels up. Show the parent sheet id on the\nscreen (nothing when none).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA sheet may name a parent sheet (settings, SETTING_CHANGED key=parent value=<sheet id>; not\ndated). A sheet cannot be its own parent, nor name a sheet that has this sheet as an ancestor; and\nthe parent must be a sheet that exists (has been loaded); each is refused with an error on the\nsettings. When a grade has no rate in force on a date on this sheet, the parent's rate for that grade\nand date is used, then the parent's parent, up to three levels up. Show the parent sheet id on the\nscreen (nothing when none).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a7f2d730c55517c157569bf65a88611afadfa873",
+  "reset_sha": "",
+  "preagent_sha": "9bab9f9f00d504236a17eeb25fda994aa1913e74",
+  "prev_sha": "9bab9f9f00d504236a17eeb25fda994aa1913e74",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.9666347999999998,
+    "input_tokens": 66,
+    "output_tokens": 23247,
+    "cache_read_tokens": 2740994,
+    "cache_creation_tokens": 119154,
+    "num_turns": 35,
+    "duration_ms": 643854,
+    "duration_api_ms": 224805,
+    "model": "claude-opus-5-5",
+    "session_id": "34f70cc8-87de-4e30-9d16-7e6c971b7a0b",
+    "stop_reason": "success",
+    "result_text": "A sheet can now name a parent sheet, and `bin/e2e` passes all 4 tests in the spec.\n\n**What it does**\n- **Setting the parent:** there's a new \"Parent sheet\" field in settings. Saving it writes `SETTING_CHANGED \u2026 key=parent value=<id>` to the audit file. Any due totals the change moves are logged as `ROLLUP`/`TOTALS` lines, as the floor, cap and terms settings already do. Saving it blank removes the parent.\n- **Refusals:** three cases show `settings-error` and write nothing: naming the sheet itself, naming a sheet that has this sheet as an ancestor, and naming a sheet that has never been loaded.\n- **Rate fallback:** when a grade has no rate in force on a claim's date, the parent's rate for that date is used, then the grandparent's, then the great-grandparent's. This works in two places:\n  - **Server:** `RateService.rateOn` now falls back, so audited dues, rollups and statements all use it.\n  - **Screen:** claim dues are worked out in the browser, so a new endpoint, `GET /rates/inherited`, sends the ancestor sheets' rates and `RateStore` falls back the same way. That also covers the \"in force today\" rates (`rate-current-*`).\n- **Display:** `sheet-parent` sits next to \"Archived\" and is empty when there's no parent. The settings panel also shows it as `setting-parent-current`.\n- **Storage:** a new nullable `sheet.parent_id` column, added in migration `V68__sheet_parent.sql`.\n\n**A design choice the test forced:** the parent link has no history. The test expects the parent to show even when viewing the sheet as of a date before the parent was set. So in that past view the sheet uses its current parent, while the parent's own rates are still read as they stood on that date.\n\nWhen a save fails, including one of these refusals, the screen shows the existing generic \"The settings could not be saved.\" message rather than a parent-specific one.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.9666347999999998,
+        "num_turns": 35,
+        "duration_ms": 643854,
+        "duration_api_ms": 224805,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp109.agent.jsonl",
+  "agent_diff_file": "cp109.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
