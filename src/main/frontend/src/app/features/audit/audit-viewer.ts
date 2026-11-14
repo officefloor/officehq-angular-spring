@@ -29,6 +29,16 @@ import { Session } from '../../core/session';
           <li data-testid="audit-line">{{ line }}</li>
         }
       </ol>
+      <h3 id="activity-heading">Activity</h3>
+      <button type="button" data-testid="activity-show" (click)="showActivity()">Show activity</button>
+      @if (activityError(); as message) {
+        <p role="alert" data-testid="activity-error">{{ message }}</p>
+      }
+      <ul aria-labelledby="activity-heading">
+        @for (line of activity(); track $index) {
+          <li data-testid="activity-line">{{ line }}</li>
+        }
+      </ul>
     </section>
   `,
 })
@@ -38,8 +48,13 @@ export class AuditViewer {
   protected readonly filter = signal('');
   protected readonly lines = signal<string[]>([]);
   protected readonly error = signal<string | null>(null);
+  /** The sheet's activity as last shown: one "<user> <EVENT> <count>" line per user and event. */
+  protected readonly activity = signal<string[]>([]);
+  protected readonly activityError = signal<string | null>(null);
   /** Counts presses, so only the latest press's answer is shown. */
   private shows = 0;
+  /** Counts activity presses, so only the latest press's answer is shown. */
+  private activityShows = 0;
 
   constructor() {
     // A sheet (re-)load clears what an earlier press showed.
@@ -48,6 +63,9 @@ export class AuditViewer {
       this.session.loads();
       this.shows++;
       this.lines.set([]);
+      this.activityShows++;
+      this.activity.set([]);
+      this.activityError.set(null);
     });
   }
 
@@ -73,6 +91,23 @@ export class AuditViewer {
       if (press === this.shows) this.lines.set(lines);
     } catch {
       if (press === this.shows) this.error.set('The audit could not be read.');
+    }
+  }
+
+  /** Read the sheet's activity: its audit lines counted per user and event. */
+  protected async showActivity(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const press = ++this.activityShows;
+    this.activityError.set(null);
+    this.activity.set([]);
+    try {
+      const lines = await firstValueFrom(
+        this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheet)}/activity`),
+      );
+      if (press === this.activityShows) this.activity.set(lines);
+    } catch {
+      if (press === this.activityShows) this.activityError.set('The activity could not be read.');
     }
   }
 }

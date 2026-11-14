@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
@@ -66,6 +67,28 @@ public class AuditViewService {
             }
         }
         Collections.reverse(found);
+        return found;
+    }
+
+    /**
+     * The sheet's activity: for every user and every event in the sheet's audit lines, one line
+     * "<user> <EVENT> <count>", sorted by user then event.
+     */
+    public List<String> activity(String sheetId) {
+        TreeMap<String, TreeMap<String, Integer>> counts = new TreeMap<>();
+        for (String line : audit.lines()) {
+            if (!field(line, "sheet").filter(sheetId::equals).isPresent()) {
+                continue;
+            }
+            Optional<String> by = field(line, "by").map(user -> user.split(" ", 2)[0]);
+            if (by.isEmpty() || by.get().isEmpty()) {
+                continue;
+            }
+            String event = line.split(" ", 2)[0];
+            counts.computeIfAbsent(by.get(), user -> new TreeMap<>()).merge(event, 1, Integer::sum);
+        }
+        List<String> found = new ArrayList<>();
+        counts.forEach((user, events) -> events.forEach((event, n) -> found.add(user + " " + event + " " + n)));
         return found;
     }
 
