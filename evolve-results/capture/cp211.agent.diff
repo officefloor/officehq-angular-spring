@@ -1,0 +1,434 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 2fa868051..34cf1d496 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -67,6 +67,8 @@ interface SettingsView {
+    *  blank. */
+   scoreMid: number | null;
+   scoreHigh: number | null;
++  /** The score log switch: on, or blank for off. */
++  scoreLog: string;
+   /** The fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it. */
+   fiscalStartMonth: number;
+   /** The pot (two decimals): each member of a balanced pool shows a cut of it; null for none. */
+@@ -219,6 +221,8 @@ export class SettingStore {
+   /** The score thresholds as text: whole numbers, blank for none. */
+   readonly scoreMid = signal('');
+   readonly scoreHigh = signal('');
++  /** The score log switch: on, or blank for off. */
++  readonly scoreLog = signal('');
+   /** The fiscal year start month, 1 to 12; 1 unless set. */
+   readonly fiscalStartMonth = signal(1);
+   /** The pot as text: two decimals, blank for none. */
+@@ -251,6 +255,7 @@ export class SettingStore {
+       this.reviewSla.set('');
+       this.scoreMid.set('');
+       this.scoreHigh.set('');
++      this.scoreLog.set('');
+       this.fiscalStartMonth.set(1);
+       this.pot.set('');
+       this.alertThreshold.set('');
+@@ -565,6 +570,19 @@ export class SettingStore {
+     this.show(saved);
+   }
+ 
++  /** Turn the active sheet's score log on or off (blank). */
++  async setScoreLog(on: boolean): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) throw new Error('No sheet loaded.');
++    const saved = await firstValueFrom(
++      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/score-log`, {
++        value: on ? 'on' : '',
++      }),
++    );
++    if (this.session.sheetId() !== sheet) return;
++    this.show(saved);
++  }
++
+   /** Change the active sheet's fiscal year start month (1 to 12); the server refuses any other. */
+   async setFiscalStartMonth(value: number): Promise<void> {
+     const sheet = this.session.sheetId();
+@@ -647,6 +665,7 @@ export class SettingStore {
+     this.reviewSla.set(settings.reviewSla === null ? '' : String(settings.reviewSla));
+     this.scoreMid.set(settings.scoreMid === null ? '' : String(settings.scoreMid));
+     this.scoreHigh.set(settings.scoreHigh === null ? '' : String(settings.scoreHigh));
++    this.scoreLog.set(settings.scoreLog);
+     this.fiscalStartMonth.set(settings.fiscalStartMonth);
+     this.pot.set(settings.pot ?? '');
+     this.alertThreshold.set(settings.alertThreshold ?? '');
+@@ -1078,6 +1097,14 @@ export class SettingStore {
+           (focus)="scoreHighTyped.set(true)"
+           (input)="scoreHigh.set(value($event)); scoreHighTyped.set(true); settingsError.set(null)"
+         />
++        <label for="setting-score-log">Score log (on, or blank for off)</label>
++        <input
++          id="setting-score-log"
++          data-testid="setting-score-log"
++          [value]="scoreLog()"
++          (focus)="scoreLogTyped.set(true)"
++          (input)="scoreLog.set(value($event)); scoreLogTyped.set(true); settingsError.set(null)"
++        />
+         <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
+         <input
+           id="setting-fiscal-start-month"
+@@ -1292,6 +1319,13 @@ export class SettingStore {
+           <span>none</span>
+         }
+       </p>
++      <p>
++        Score log:
++        <strong data-testid="setting-score-log-current">{{ store.scoreLog() }}</strong>
++        @if (store.scoreLog() === '') {
++          <span>off</span>
++        }
++      </p>
+       <p>
+         Fiscal year start month:
+         <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() }}</strong>
+@@ -1405,6 +1439,8 @@ export class Settings {
+   protected readonly scoreMidTyped = signal(false);
+   protected readonly scoreHigh = signal('');
+   protected readonly scoreHighTyped = signal(false);
++  protected readonly scoreLog = signal('');
++  protected readonly scoreLogTyped = signal(false);
+   protected readonly fiscalStartMonth = signal('');
+   protected readonly fiscalStartMonthTyped = signal(false);
+   protected readonly pot = signal('');
+@@ -1575,6 +1611,8 @@ export class Settings {
+     const saveScoreMid = this.scoreMidTyped();
+     const scoreHigh = this.scoreHigh().trim();
+     const saveScoreHigh = this.scoreHighTyped();
++    const scoreLog = this.scoreLog().trim();
++    const saveScoreLog = this.scoreLogTyped();
+     const fiscalStartMonth = this.fiscalStartMonth().trim();
+     const saveFiscalStartMonth = this.fiscalStartMonthTyped();
+     const pot = this.pot().trim();
+@@ -1723,6 +1761,10 @@ export class Settings {
+       this.settingsError.set('Type a score high threshold as a whole number, or leave it blank for none.');
+       return;
+     }
++    if (saveScoreLog && scoreLog !== '' && scoreLog !== 'on') {
++      this.settingsError.set('Type on for the score log, or leave it blank for off.');
++      return;
++    }
+     if (saveFiscalStartMonth && !MONTH.test(fiscalStartMonth)) {
+       this.settingsError.set('Type a fiscal year start month of 1 to 12.');
+       return;
+@@ -1764,6 +1806,7 @@ export class Settings {
+     this.reviewSlaTyped.set(false);
+     this.scoreMidTyped.set(false);
+     this.scoreHighTyped.set(false);
++    this.scoreLogTyped.set(false);
+     this.fiscalStartMonthTyped.set(false);
+     this.potTyped.set(false);
+     this.alertThresholdTyped.set(false);
+@@ -1806,6 +1849,7 @@ export class Settings {
+         if (saveReviewSla) await this.store.setReviewSla(reviewSla === '' ? null : Number(reviewSla));
+         if (saveScoreMid) await this.store.setScoreThreshold('mid', scoreMid === '' ? null : Number(scoreMid));
+         if (saveScoreHigh) await this.store.setScoreThreshold('high', scoreHigh === '' ? null : Number(scoreHigh));
++        if (saveScoreLog) await this.store.setScoreLog(scoreLog === 'on');
+         if (saveFiscalStartMonth) await this.store.setFiscalStartMonth(Number(fiscalStartMonth));
+         if (savePot) await this.store.setPot(pot === '' ? null : pot);
+         if (saveAlertThreshold) await this.store.setAlertThreshold(alertThreshold === '' ? null : alertThreshold);
+@@ -1836,6 +1880,7 @@ export class Settings {
+         if (saveReviewSla) this.reviewSlaTyped.set(true);
+         if (saveScoreMid) this.scoreMidTyped.set(true);
+         if (saveScoreHigh) this.scoreHighTyped.set(true);
++        if (saveScoreLog) this.scoreLogTyped.set(true);
+         if (saveFiscalStartMonth) this.fiscalStartMonthTyped.set(true);
+         if (savePot) this.potTyped.set(true);
+         if (saveAlertThreshold) this.alertThresholdTyped.set(true);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 378c2be60..9ce2ca806 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -1,6 +1,7 @@
+ package net.officefloor.hq.app.rollup;
+ 
+ import java.math.BigDecimal;
++import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Collections;
+@@ -15,6 +16,7 @@ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.history.History;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonGradeService;
+@@ -38,7 +40,8 @@ public class RollupService {
+     private static final BigDecimal NONE = BigDecimal.ZERO.setScale(2);
+ 
+     /** A person's figures; due is null when it has no rate to work from. */
+-    private record Figures(String name, BigDecimal claimed, BigDecimal due, BigDecimal overdue) {
++    private record Figures(String name, BigDecimal claimed, BigDecimal due, BigDecimal overdue, BigDecimal settled,
++            int overdueCount) {
+         boolean sameAs(Figures other) {
+             return other != null && claimed.compareTo(other.claimed) == 0 && Objects.equals(due, other.due)
+                     && overdue.compareTo(other.overdue) == 0;
+@@ -205,16 +208,30 @@ public class RollupService {
+ 
+     /** Record in the audit each person's due-total as it stands now, in list order: the figures of
+      *  the day the sheet's today is about to leave; each is kept for the person with that day and the
+-     *  day the sheet's today is moving to. */
++     *  day the sheet's today is moving to. While the score log is on, each person's score then is
++     *  recorded first, in list order. */
+     public void snapshot(String sheetId, String user, LocalDate movingTo) {
+         LocalDate leaving = sheets.today(sheetId);
+-        rollup(sheetId).people().forEach((personId, figures) -> {
++        Rollup rollup = rollup(sheetId);
++        if (settings.scoreLog(sheetId)) {
++            rollup.people().values().forEach(figures -> audit.recordOnCommit("SCORE sheet=" + sheetId + " by=" + user
++                    + " name=" + figures.name() + " score=" + score(figures).toPlainString()));
++        }
++        rollup.people().forEach((personId, figures) -> {
+             personService.snapshot(sheetId, personId, leaving, text(figures.due()), movingTo);
+             audit.recordOnCommit("SNAPSHOT sheet=" + sheetId + " by=" + user + " name=" + figures.name()
+                     + " due-total=" + text(figures.due()));
+         });
+     }
+ 
++    /** A person's score: their settled figures divided by 100, minus 5 for each overdue claim of theirs
++     *  that counts, rounded half to even to a whole number. */
++    private static BigDecimal score(Figures figures) {
++        BigDecimal score = figures.settled().movePointLeft(2).subtract(BigDecimal.valueOf(5L * figures.overdueCount()))
++                .setScale(0, RoundingMode.HALF_EVEN);
++        return score.signum() == 0 ? BigDecimal.ZERO : score;
++    }
++
+     private Rollup rollup(String sheetId) {
+         return rollup(sheetId, null);
+     }
+@@ -265,15 +282,25 @@ public class RollupService {
+         BigDecimal claimed = NONE;
+         BigDecimal due = NONE;
+         BigDecimal overdue = NONE;
++        BigDecimal settled = NONE;
++        int overdueCount = 0;
+         boolean anyFigure = false;
+         for (Claim claim : counted) {
+             if (claim.getCorrects() == null) {
+                 claimed = claimed.add(claim.getAmount());
+             }
+             BigDecimal figure = claimService.dueOf(sheetId, person, claim, asOf);
++            boolean late = claim.getStatus().isOpen()
++                    && claimService.overdueFrom(sheetId, person, claim, asOf).isBefore(today);
++            if (late) {
++                overdueCount++;
++            }
++            if (figure != null && claim.getStatus() == ClaimStatus.SETTLED) {
++                settled = settled.add(figure);
++            }
+             if (figure != null) {
+                 due = due.add(figure);
+-                if (claim.getStatus().isOpen() && claimService.overdueFrom(sheetId, person, claim, asOf).isBefore(today)) {
++                if (late) {
+                     overdue = overdue.add(figure);
+                 }
+             }
+@@ -281,7 +308,7 @@ public class RollupService {
+         }
+         boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), today, asOf), today, asOf).isPresent();
+         return new Figures(person.getName(), claimed, hasRate || anyFigure ? settings.capped(sheetId, due, asOf) : null,
+-                overdue);
++                overdue, settled, overdueCount);
+     }
+ 
+     private static String text(BigDecimal due) {
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index b61e0cdf8..c674aaf9d 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -54,13 +54,13 @@ public class SettingController {
+      *  rounding); and
+      *  the permission matrix, the roles each action allows by action (blank for the standing rule); and the
+      *  proof kinds, comma separated (blank for none); and the default grade (blank for A); and the score
+-     *  thresholds, mid and high (null for blank). */
++     *  thresholds, mid and high (null for blank); and the score log, on or blank. */
+     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
+             String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
+             Map<String, List<DatedView>> dated, Map<String, String> permissions, List<DelegationView> delegations,
+             String entryDate, String pot, String parent, int fiscalStartMonth,
+             String alertThreshold, Integer escalateAfter, Integer reviewSla, String proofKinds, String defaultGrade,
+-            Integer scoreMid, Integer scoreHigh) {
++            Integer scoreMid, Integer scoreHigh, String scoreLog) {
+     }
+ 
+     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
+@@ -176,6 +176,10 @@ public class SettingController {
+     public record DefaultGradeRequest(@Size(max = 200) String value) {
+     }
+ 
++    /** The score log switch: on, or null or blank for off. */
++    public record ScoreLogRequest(@Pattern(regexp = "\\s*(on)?\\s*") String value) {
++    }
++
+     /** A review SLA of 0 or more whole days; null leaves it blank (none). */
+     public record ReviewSlaRequest(@Min(0) @Max(36500) Integer value) {
+     }
+@@ -222,7 +226,8 @@ public class SettingController {
+                 then.pot() != null ? then.pot().toPlainString() : null, then.parent() != null ? then.parent() : "",
+                 then.fiscalStartMonth(), then.alertThreshold() != null ? then.alertThreshold().toPlainString() : null,
+                 then.escalateAfter(), then.reviewSla(), String.join(",", then.proofKinds()),
+-                then.defaultGrade() != null ? then.defaultGrade() : "", then.scoreMid(), then.scoreHigh());
++                then.defaultGrade() != null ? then.defaultGrade() : "", then.scoreMid(), then.scoreHigh(),
++                then.scoreLog() ? "on" : "");
+     }
+ 
+     /** Assign a user name a role; a role other than clerk or steward is refused. */
+@@ -512,6 +517,17 @@ public class SettingController {
+         return view(sheet);
+     }
+ 
++    /** Turn the sheet's score log on or off; while on, changing the sheet's today records each
++     *  person's score on the day being left. */
++    @PutMapping("/score-log")
++    public SettingsView setScoreLog(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
++            @RequestBody @Validated ScoreLogRequest request) {
++        String sheet = sheetId.trim();
++        service.setScoreLog(sheet, SignedInUser.decode(user), request.value() != null && !request.value().isBlank());
++        return view(sheet);
++    }
++
+     /** Change the sheet's fiscal year start month; the fiscal year each period falls in follows it. */
+     @PutMapping("/fiscal-start-month")
+     public SettingsView setFiscalStartMonth(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+@@ -578,7 +594,8 @@ public class SettingController {
+                 parent != null ? parent : "", service.fiscalStartMonth(sheet),
+                 alert != null ? alert.toPlainString() : null, service.escalateAfter(sheet),
+                 service.reviewSla(sheet), String.join(",", service.proofKinds(sheet)),
+-                defaultGrade != null ? defaultGrade : "", service.scoreMid(sheet), service.scoreHigh(sheet));
++                defaultGrade != null ? defaultGrade : "", service.scoreMid(sheet), service.scoreHigh(sheet),
++                service.scoreLog(sheet) ? "on" : "");
+     }
+ 
+     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index ff5638ad1..133342f43 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -73,6 +73,7 @@ public class SettingService {
+     private static final String REVIEW_SLA = "review-sla";
+     private static final String SCORE_MID = "score-mid";
+     private static final String SCORE_HIGH = "score-high";
++    private static final String SCORE_LOG = "score-log";
+     private static final String ENTRY_DATE = "entry-date";
+     private static final String POT = "pot";
+     private static final String ALERT_THRESHOLD = "alert-threshold";
+@@ -88,7 +89,7 @@ public class SettingService {
+             int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
+             Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent,
+             int fiscalStartMonth, BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla,
+-            List<String> proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh) {
++            List<String> proofKinds, String defaultGrade, Integer scoreMid, Integer scoreHigh, boolean scoreLog) {
+     }
+ 
+     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
+@@ -124,6 +125,7 @@ public class SettingService {
+         String sla = kept.contains(REVIEW_SLA) ? then.get(REVIEW_SLA) : Objects.toString(reviewSla(sheetId), null);
+         String scoreMid = kept.contains(SCORE_MID) ? then.get(SCORE_MID) : Objects.toString(scoreMid(sheetId), null);
+         String scoreHigh = kept.contains(SCORE_HIGH) ? then.get(SCORE_HIGH) : Objects.toString(scoreHigh(sheetId), null);
++        boolean scoreLog = kept.contains(SCORE_LOG) ? then.get(SCORE_LOG) != null : scoreLog(sheetId);
+         BigDecimal potNow = pot(sheetId);
+         String pot = kept.contains(POT) ? then.get(POT) : potNow != null ? potNow.toPlainString() : null;
+         BigDecimal alertNow = alertThreshold(sheetId);
+@@ -152,7 +154,7 @@ public class SettingService {
+                 fiscal != null ? Integer.parseInt(fiscal) : 1, alert != null ? new BigDecimal(alert) : null,
+                 escalate != null ? Integer.valueOf(escalate) : null, sla != null ? Integer.valueOf(sla) : null,
+                 kindsOf(kinds), defaultGrade, scoreMid != null ? Integer.valueOf(scoreMid) : null,
+-                scoreHigh != null ? Integer.valueOf(scoreHigh) : null);
++                scoreHigh != null ? Integer.valueOf(scoreHigh) : null, scoreLog);
+     }
+ 
+     /** The roles assigned on the sheet, by user name. */
+@@ -509,6 +511,11 @@ public class SettingService {
+         return sheets.load(sheetId).getScoreMid();
+     }
+ 
++    /** Whether the sheet's score log is on. */
++    public boolean scoreLog(String sheetId) {
++        return sheets.load(sheetId).isScoreLog();
++    }
++
+     /** The sheet's high score threshold; null when it is blank. */
+     public Integer scoreHigh(String sheetId) {
+         return sheets.load(sheetId).getScoreHigh();
+@@ -821,6 +828,19 @@ public class SettingService {
+         return saved;
+     }
+ 
++    /** Turn the sheet's score log on or off (blank). */
++    @Transactional
++    public Sheet setScoreLog(String sheetId, String by, boolean on) {
++        sheets.load(sheetId);
++        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
++        sheet.setScoreLog(on);
++        Sheet saved = sheetRepository.saveAndFlush(sheet);
++        history.settingSet(sheetId, SCORE_LOG, on ? "on" : null);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=score-log value="
++                + (on ? "on" : ""));
++        return saved;
++    }
++
+     /** Change the sheet's fiscal year start month; one not 1 to 12 is refused. */
+     @Transactional
+     public Sheet setFiscalStartMonth(String sheetId, String by, int month) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 7b951265e..80ec37463 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -77,6 +77,11 @@ public class Sheet {
+     @Column(name = "score_mid")
+     private Integer scoreMid;
+ 
++    /** The score log switch: while on, changing the sheet's today records each person's score on
++     *  the day being left. */
++    @Column(name = "score_log", nullable = false)
++    private boolean scoreLog;
++
+     @Column(name = "score_high")
+     private Integer scoreHigh;
+ 
+@@ -200,6 +205,14 @@ public class Sheet {
+         this.scoreMid = scoreMid;
+     }
+ 
++    public boolean isScoreLog() {
++        return scoreLog;
++    }
++
++    public void setScoreLog(boolean scoreLog) {
++        this.scoreLog = scoreLog;
++    }
++
+     public Integer getScoreHigh() {
+         return scoreHigh;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index 470175826..8a832bf31 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -89,9 +89,9 @@ public class SheetCloneService {
+     private void copy(String from, String to) {
+         jdbc.update("INSERT INTO sheet (id, today, last_claim_number, last_batch_number, policy_date,"
+                 + " period_numbering_from, grace_days, entry_date, pot, parent_id, archived, fiscal_start_month,"
+-                + " alert_threshold, escalate_after, review_sla, proof_kinds, default_grade, score_mid, score_high, cloned_from)"
++                + " alert_threshold, escalate_after, review_sla, proof_kinds, default_grade, score_mid, score_high, score_log, cloned_from)"
+                 + " SELECT ?, today, 0, 0, policy_date, period_numbering_from, grace_days, entry_date, pot, parent_id,"
+-                + " FALSE, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds, default_grade, score_mid, score_high, ? FROM sheet WHERE id = ?", to, from, from);
++                + " FALSE, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds, default_grade, score_mid, score_high, score_log, ? FROM sheet WHERE id = ?", to, from, from);
+         LocalDate today = jdbc.queryForObject("SELECT today FROM sheet WHERE id = ?", LocalDate.class, to);
+ 
+         // The sheet's own lists: settings, roles, rates, holidays, void reasons, templates and periods.
+diff --git a/src/main/resources/db/migration/V115__score_log.sql b/src/main/resources/db/migration/V115__score_log.sql
+new file mode 100644
+index 000000000..9a68f33bc
+--- /dev/null
++++ b/src/main/resources/db/migration/V115__score_log.sql
+@@ -0,0 +1,3 @@
++-- The score log switch: while on, changing the sheet's today records each person's score on the day
++-- being left. Not dated.
++ALTER TABLE sheet ADD COLUMN score_log BOOLEAN NOT NULL DEFAULT FALSE;
