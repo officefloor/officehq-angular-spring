@@ -1,0 +1,249 @@
+import { HttpClient } from '@angular/common/http';
+import { Component, Injectable, computed, effect, inject, input, signal } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+import { Session } from '../../core/session';
+
+export interface PoolMember {
+  personId: number;
+  /** The member's share percent (two decimals). */
+  share: string;
+}
+
+export interface Pool {
+  id: number;
+  /** The pool's name, trimmed; unique on the sheet, it names the pool's row. */
+  name: string;
+  /** The pool's members, in the order they were added. */
+  members: PoolMember[];
+}
+
+/** A person as a pool shows them: their name, and whether a retirement date is set. */
+export interface PoolPerson {
+  id: number;
+  name: string;
+  retired: boolean;
+}
+
+/** A share (two decimals, more than 0.00 and at most 100.00). */
+const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
+
+// The active sheet's pools, in the order they were added, re-read whenever a sheet is loaded.
+@Injectable({ providedIn: 'root' })
+export class PoolStore {
+  private readonly http = inject(HttpClient);
+  private readonly session = inject(Session);
+
+  readonly pools = signal<Pool[]>([]);
+
+  constructor() {
+    effect(() => {
+      const sheet = this.session.sheetId();
+      const load = this.session.loads();
+      this.pools.set([]);
+      if (sheet) void this.read(sheet, load);
+    });
+  }
+
+  /** Add a pool to the active sheet; the server refuses a blank name or one already a pool's. */
+  async add(name: string): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(this.http.post<Pool>(`${this.base(sheet)}`, { name }));
+    this.keep(sheet, saved);
+  }
+
+  /** Add a person to a pool with a share; the server refuses a person already in it, or a bad share. */
+  async addMember(poolId: number, personId: number, share: string): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.post<Pool>(`${this.base(sheet)}/${poolId}/members`, { personId, share }),
+    );
+    this.keep(sheet, saved);
+  }
+
+  private base(sheet: string): string {
+    return `/api/sheets/${encodeURIComponent(sheet)}/pools`;
+  }
+
+  /** Show a pool as saved, in its place, or last when it is new. */
+  private keep(sheet: string, saved: Pool): void {
+    if (this.session.sheetId() !== sheet) return;
+    this.pools.update((list) =>
+      list.some((p) => p.id === saved.id) ? list.map((p) => (p.id === saved.id ? saved : p)) : [...list, saved],
+    );
+  }
+
+  private async read(sheet: string, load: number): Promise<void> {
+    const list = await firstValueFrom(this.http.get<Pool[]>(this.base(sheet)));
+    if (this.session.loads() !== load) return;
+    this.pools.set(list);
+  }
+}
+
+/** A pool as its row shows it: its members with their names, its total share and whether it balances. */
+interface PoolRow {
+  pool: Pool;
+  members: { personId: number; name: string; share: string }[];
+  /** The members' shares added up, a retired member's counting as 0.00 (two decimals). */
+  total: string;
+  /** Whether the total is exactly 100.00. */
+  balanced: boolean;
+}
+
+// The sheet's pools, the form that adds one, and on each pool's row the entry that adds a member.
+@Component({
+  selector: 'app-pools',
+  template: `
+    <section aria-labelledby="pools-heading">
+      <h2 id="pools-heading">Pools</h2>
+      <form (submit)="submit($event)">
+        <label for="pool-form-name">Pool name</label>
+        <input
+          id="pool-form-name"
+          data-testid="pool-form-name"
+          [value]="name()"
+          (input)="name.set(value($event)); error.set(null)"
+        />
+        <button type="submit" data-testid="pool-form-submit">Add pool</button>
+        @if (error(); as message) {
+          <p role="alert" data-testid="pool-form-error">{{ message }}</p>
+        }
+      </form>
+      <ul>
+        @for (row of rows(); track row.pool.id) {
+          <li [attr.data-testid]="'pool-row-' + row.pool.name">
+            <h3>{{ row.pool.name }}</h3>
+            <p>
+              Total share <strong data-testid="pool-total-share">{{ row.total }}</strong>,
+              balanced <strong data-testid="pool-balanced">{{ row.balanced ? 'yes' : 'no' }}</strong>
+            </p>
+            <ul>
+              @for (m of row.members; track m.personId) {
+                <li [attr.data-testid]="'pool-member-' + row.pool.name + '-' + m.personId">
+                  {{ m.name }} <span data-testid="pool-share">{{ m.share }}</span>%
+                </li>
+              }
+            </ul>
+            <label [for]="'pool-member-select-' + row.pool.id">Member</label>
+            <select
+              [id]="'pool-member-select-' + row.pool.id"
+              data-testid="pool-member-select"
+              (change)="setPerson(row.pool.id, value($event))"
+            >
+              <option value="" [selected]="!entries()[row.pool.id]?.personId">Choose a person</option>
+              @for (p of people(); track p.id) {
+                <option [value]="p.id" [selected]="entries()[row.pool.id]?.personId === '' + p.id">{{ p.name }}</option>
+              }
+            </select>
+            <label [for]="'pool-member-share-' + row.pool.id">Share %</label>
+            <input
+              [id]="'pool-member-share-' + row.pool.id"
+              data-testid="pool-member-share"
+              [value]="entries()[row.pool.id]?.share ?? ''"
+              (input)="setShare(row.pool.id, value($event))"
+            />
+            <button type="button" data-testid="pool-member-add" (click)="addMember(row.pool)">Add member</button>
+            @if (memberErrors()[row.pool.id]; as message) {
+              <p role="alert" data-testid="pool-error">{{ message }}</p>
+            }
+          </li>
+        }
+      </ul>
+    </section>
+  `,
+})
+export class Pools {
+  /** The sheet's people, a member's name and retirement read from here. */
+  readonly people = input.required<PoolPerson[]>();
+
+  protected readonly store = inject(PoolStore);
+  protected readonly name = signal('');
+  protected readonly error = signal<string | null>(null);
+  /** The person and share chosen on each pool's row, by pool id. */
+  protected readonly entries = signal<Record<number, { personId?: string; share?: string }>>({});
+  /** The error shown on each pool's row, by pool id. */
+  protected readonly memberErrors = signal<Record<number, string | null>>({});
+  /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
+  private readonly busy = signal(false);
+
+  protected readonly rows = computed<PoolRow[]>(() => {
+    const byId = new Map(this.people().map((p) => [p.id, p]));
+    return this.store.pools().map((pool) => {
+      const members = pool.members.map((m) => ({
+        personId: m.personId,
+        name: byId.get(m.personId)?.name ?? '',
+        share: m.share,
+      }));
+      const cents = pool.members
+        .filter((m) => !byId.get(m.personId)?.retired)
+        .reduce((sum, m) => sum + Math.round(Number(m.share) * 100), 0);
+      return { pool, members, total: (cents / 100).toFixed(2), balanced: cents === 10000 };
+    });
+  });
+
+  protected value(event: Event): string {
+    return (event.target as HTMLInputElement).value;
+  }
+
+  protected setPerson(poolId: number, personId: string): void {
+    this.entries.update((e) => ({ ...e, [poolId]: { ...e[poolId], personId } }));
+    this.memberErrors.update((e) => ({ ...e, [poolId]: null }));
+  }
+
+  protected setShare(poolId: number, share: string): void {
+    this.entries.update((e) => ({ ...e, [poolId]: { ...e[poolId], share } }));
+    this.memberErrors.update((e) => ({ ...e, [poolId]: null }));
+  }
+
+  /** Add the typed pool, its name trimmed; a blank name or one already a pool's is refused beside the form. */
+  protected async submit(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.busy()) return;
+    this.error.set(null);
+    const name = this.name().trim();
+    if (name === '') {
+      this.error.set('Type a name for the pool.');
+      return;
+    }
+    this.busy.set(true);
+    try {
+      await this.store.add(name);
+    } catch {
+      this.error.set(`The pool ${name} could not be added: the name may be a pool's already.`);
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** Add the chosen person with the typed share; a person already in the pool, or a share not more
+   *  than 0.00 and at most 100.00 with two decimals, is refused on the pool's row. */
+  protected async addMember(pool: Pool): Promise<void> {
+    if (this.busy()) return;
+    const refuse = (message: string) => this.memberErrors.update((e) => ({ ...e, [pool.id]: message }));
+    this.memberErrors.update((e) => ({ ...e, [pool.id]: null }));
+    const entry = this.entries()[pool.id] ?? {};
+    const personId = Number(entry.personId);
+    const share = (entry.share ?? '').trim();
+    if (!entry.personId || !Number.isInteger(personId)) {
+      refuse('Choose a person to add.');
+      return;
+    }
+    if (!SHARE.test(share) || Number(share) <= 0 || Number(share) > 100) {
+      refuse('A share is more than 0.00 and at most 100.00, with up to two decimals.');
+      return;
+    }
+    if (pool.members.some((m) => m.personId === personId)) {
+      refuse('That person is in the pool already.');
+      return;
+    }
+    this.busy.set(true);
+    try {
+      await this.store.addMember(pool.id, personId, share);
+    } catch {
+      refuse('The member could not be added: they may be in the pool already.');
+    } finally {
+      this.busy.set(false);
+    }
+  }
+}
