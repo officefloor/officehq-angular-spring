@@ -1,0 +1,581 @@
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 3e0c1f888..7c9274698 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -1,6 +1,7 @@
+ import { Component, inject, input, output, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Session } from '../../core/session';
++import { Period, periodOn } from '../periods/periods-api';
+ import { Rate, claimDueCents } from '../rates/rates-api';
+ import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, claimError, money, statusError } from './claims-api';
+ 
+@@ -36,6 +37,7 @@ import { AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, claimError, money, statu
+             <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
+             <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+             <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
++            <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
+             <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'open')"
+               [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
+             <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'settle')"
+@@ -66,6 +68,8 @@ export class PersonClaims {
+   readonly claims = input.required<Claim[]>();
+   /** Every rate the sheet has for this person's grade, each from its from-date. */
+   readonly rates = input.required<Rate[]>();
++  /** The sheet's periods. */
++  readonly periods = input.required<Period[]>();
+   /** A claim added or saved, for the sheet's list to take in. */
+   readonly saved = output<Claim>();
+ 
+@@ -94,6 +98,11 @@ export class PersonClaims {
+     return due === null ? 'n/a' : money(due);
+   }
+ 
++  /** The name of the period whose dates contain the claim's date; blank when none does. */
++  protected periodOf(c: Claim): string {
++    return periodOn(this.periods(), c.date)?.name ?? '';
++  }
++
+   protected edit(c: Claim): void {
+     this.error.set(null);
+     this.clearRowError(c.id);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 23cd73e04..1249f7582 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -3,19 +3,22 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
+ import { Session } from '../../core/session';
+ import { Claim, ClaimsApi, cents, counts, money } from '../claims/claims-api';
+ import { PersonClaims } from '../claims/person-claims';
++import { Periods } from '../periods/periods';
++import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
+ import { Rates } from '../rates/rates';
+ import { Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
+ import { GRADES, PeopleApi, Person, isStale, personError, statementError } from './people-api';
+ 
+-// The sheet's rates; the people on the active sheet, in the order they were added, each with their
++// The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
+ // claims, what they have claimed and their due-total; the sheet's claimed-total and due-total; and
+ // the one form that adds a person or, with a
+ // person's editor open, saves that person.
+ @Component({
+   selector: 'app-people',
+-  imports: [ReactiveFormsModule, PersonClaims, Rates],
++  imports: [ReactiveFormsModule, PersonClaims, Periods, Rates],
+   template: `
+     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
++    <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (added)="periodAdded($event)" />
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+       <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
+@@ -56,7 +59,7 @@ import { GRADES, PeopleApi, Person, isStale, personError, statementError } from
+                   [attr.aria-label]="'Take statement of ' + p.name">Statement</button>
+               </td>
+               <td>
+-                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)"
++                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="ratesOf(p.grade)" [periods]="periods()"
+                   (saved)="claimSaved($event)" />
+               </td>
+               <td>
+@@ -78,6 +81,7 @@ export class People {
+   private readonly api = inject(PeopleApi);
+   private readonly claimsApi = inject(ClaimsApi);
+   private readonly ratesApi = inject(RatesApi);
++  private readonly periodsApi = inject(PeriodsApi);
+ 
+   protected readonly grades = GRADES;
+   protected readonly people = signal<Person[]>([]);
+@@ -113,6 +117,22 @@ export class People {
+     }
+     return out;
+   });
++  /** The sheet's periods, by from-date. */
++  protected readonly periods = signal<Period[]>([]);
++  /** Each period's due-total in cents, by period id: the dues (n/a ones skipped) of the OPEN and
++   *  SETTLED claims whose date falls in it. */
++  protected readonly dueByPeriod = computed(() => {
++    const out = new Map<number, number>();
++    for (const p of this.people()) {
++      const rates = this.ratesOf(p.grade);
++      for (const c of this.claimsOf(p.id).filter(counts)) {
++        const period = periodOn(this.periods(), c.date);
++        if (period === null) continue;
++        out.set(period.id, (out.get(period.id) ?? 0) + (claimDueCents(rates, c) ?? 0));
++      }
++    }
++    return out;
++  });
+   /** Everyone's due-total added up, skipping n/a. */
+   protected readonly dueTotal = computed(() =>
+     money([...this.dueByPerson().values()].reduce<number>((sum, d) => sum + (d ?? 0), 0)));
+@@ -146,6 +166,7 @@ export class People {
+         this.people.set([]);
+         this.claims.set([]);
+         this.rates.set([]);
++        this.periods.set([]);
+         if (id) void this.read(id);
+       });
+     });
+@@ -201,6 +222,11 @@ export class People {
+     this.rates.update((rs) => [...rs.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
+   }
+ 
++  /** Take in a period just added, in its place by from-date. */
++  protected periodAdded(period: Period): void {
++    this.periods.update((ps) => [...ps.filter((p) => p.id !== period.id), period].sort((a, b) => a.from.localeCompare(b.from)));
++  }
++
+   /** Take in a claim just added (listed first, as the newest) or saved (in its place). */
+   protected claimSaved(claim: Claim): void {
+     this.claims.update((cs) => cs.some((c) => c.id === claim.id)
+@@ -273,10 +299,11 @@ export class People {
+   private async read(sheetId: string): Promise<void> {
+     const seq = ++this.readSeq;
+     try {
+-      const [people, claims, rates] = await Promise.all([
+-        this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId)]);
++      const [people, claims, rates, periods] = await Promise.all([
++        this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId), this.periodsApi.list(sheetId)]);
+       if (seq === this.readSeq) {
+         this.rates.set(rates);
++        this.periods.set(periods);
+         this.claims.set(claims);
+         this.people.set(people);
+       }
+diff --git a/src/main/frontend/src/app/features/periods/periods-api.ts b/src/main/frontend/src/app/features/periods/periods-api.ts
+new file mode 100644
+index 000000000..826779acc
+--- /dev/null
++++ b/src/main/frontend/src/app/features/periods/periods-api.ts
+@@ -0,0 +1,47 @@
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++export interface Period {
++  id: number;
++  name: string;
++  /** The first date (yyyy-mm-dd) of the period, inclusive. */
++  from: string;
++  /** The last date (yyyy-mm-dd) of the period, inclusive. */
++  to: string;
++}
++
++/** The period whose dates contain a date (yyyy-mm-dd), or null when none does. */
++export function periodOn(periods: readonly Period[], date: string): Period | null {
++  return periods.find((p) => p.from <= date && date <= p.to) ?? null;
++}
++
++// The sheet's periods, read and written through the server.
++@Injectable({ providedIn: 'root' })
++export class PeriodsApi {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  list(sheetId: string): Promise<Period[]> {
++    return firstValueFrom(this.http.get<Period[]>(this.url(sheetId), { headers: this.headers() }));
++  }
++
++  add(sheetId: string, name: string, from: string, to: string): Promise<Period> {
++    return firstValueFrom(this.http.post<Period>(this.url(sheetId), { name, from, to }, { headers: this.headers() }));
++  }
++
++  private url(sheetId: string): string {
++    return `/api/sheets/${encodeURIComponent(sheetId)}/periods`;
++  }
++
++  private headers(): Record<string, string> {
++    return { 'X-User': this.session.user() ?? '' };
++  }
++}
++
++export function periodError(e: unknown): string {
++  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name without spaces and a from-date on or before the to-date, as yyyy-mm-dd.';
++  if (e instanceof HttpErrorResponse && e.status === 409) return 'The name is in use on the sheet, or the dates overlap another period.';
++  return 'Something went wrong; try again.';
++}
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+new file mode 100644
+index 000000000..2b0aece47
+--- /dev/null
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -0,0 +1,115 @@
++import { Component, inject, input, output, signal } from '@angular/core';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { Session } from '../../core/session';
++import { money } from '../claims/claims-api';
++import { Period, PeriodsApi, periodError } from './periods-api';
++
++const DATE = /^\d{4}-\d{2}-\d{2}$/;
++
++// The sheet's periods, by from-date, each with its due-total, and the form that adds a period.
++@Component({
++  selector: 'app-periods',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="periods-heading">
++      <h2 id="periods-heading">Periods</h2>
++      <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Add period">
++        <label for="period-form-name">Name</label>
++        <input id="period-form-name" data-testid="period-form-name" formControlName="name" autocomplete="off" />
++        <label for="period-form-from">From</label>
++        <input id="period-form-from" type="date" data-testid="period-form-from" formControlName="from" />
++        <label for="period-form-to">To</label>
++        <input id="period-form-to" type="date" data-testid="period-form-to" formControlName="to" />
++        <button type="submit" data-testid="period-form-submit">Add period</button>
++        @if (error(); as err) {
++          <p role="alert" data-testid="period-form-error">{{ err }}</p>
++        }
++      </form>
++      <table data-testid="periods-list">
++        <thead>
++          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th></tr>
++        </thead>
++        <tbody>
++          @for (p of periods(); track p.id) {
++            <tr [attr.data-testid]="'period-row-' + p.name">
++              <th scope="row" data-testid="period-name">{{ p.name }}</th>
++              <td data-testid="period-from">{{ p.from }}</td>
++              <td data-testid="period-to">{{ p.to }}</td>
++              <td data-testid="period-due-total">{{ dueOf(p) }}</td>
++            </tr>
++          }
++        </tbody>
++      </table>
++    </section>
++  `,
++})
++export class Periods {
++  private readonly session = inject(Session);
++  private readonly api = inject(PeriodsApi);
++
++  /** The sheet's periods, by from-date. */
++  readonly periods = input.required<Period[]>();
++  /** Each period's due-total in cents, by period id. */
++  readonly dueTotals = input.required<Map<number, number>>();
++  /** A period just added, for the sheet to take in. */
++  readonly added = output<Period>();
++
++  protected readonly error = signal<string | null>(null);
++  /** Whether a submit is waiting for its answer; a second submit meanwhile is ignored. */
++  private submitting = false;
++
++  protected readonly form = new FormGroup({
++    name: new FormControl('', { nonNullable: true }),
++    from: new FormControl('', { nonNullable: true }),
++    to: new FormControl('', { nonNullable: true }),
++  });
++
++  constructor() {
++    this.form.valueChanges.subscribe(() => this.error.set(null));
++  }
++
++  protected dueOf(p: Period): string {
++    return money(this.dueTotals().get(p.id) ?? 0);
++  }
++
++  protected async submit(): Promise<void> {
++    if (this.submitting) return;
++    this.error.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    const name = this.form.controls.name.value.trim();
++    const from = this.form.controls.from.value.trim() || (this.session.today() ?? '');
++    const to = this.form.controls.to.value.trim();
++    if (!/^\S+$/.test(name)) {
++      this.error.set('Enter a name without spaces.');
++      return;
++    }
++    if (!DATE.test(from) || !DATE.test(to)) {
++      this.error.set('Enter a from-date and a to-date as yyyy-mm-dd.');
++      return;
++    }
++    if (from > to) {
++      this.error.set('The from-date must be on or before the to-date.');
++      return;
++    }
++    if (this.periods().some((p) => p.name.toLowerCase() === name.toLowerCase())) {
++      this.error.set('The name is in use on the sheet.');
++      return;
++    }
++    const overlapping = this.periods().find((p) => p.from <= to && from <= p.to);
++    if (overlapping) {
++      this.error.set(`The dates overlap period ${overlapping.name}.`);
++      return;
++    }
++    this.submitting = true;
++    try {
++      const period = await this.api.add(sheetId, name, from, to);
++      if (this.session.sheetId() === sheetId) this.added.emit(period);
++      this.form.reset({ name: '', from: '', to: '' }, { emitEvent: false });
++    } catch (e) {
++      this.error.set(periodError(e));
++    } finally {
++      this.submitting = false;
++    }
++  }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+new file mode 100644
+index 000000000..45b2932f1
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -0,0 +1,66 @@
++package net.officefloor.hq.app.period;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.time.LocalDate;
++
++/** One of the sheet's periods: a name unique on the sheet and its from and to dates, inclusive. */
++@Entity
++@Table(name = "period")
++public class Period {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "name", nullable = false)
++    private String name;
++
++    @Column(name = "from_date", nullable = false)
++    private LocalDate from;
++
++    @Column(name = "to_date", nullable = false)
++    private LocalDate to;
++
++    protected Period() {
++    }
++
++    public Period(String sheetId, String name, LocalDate from, LocalDate to) {
++        this.sheetId = sheetId;
++        this.name = name;
++        this.from = from;
++        this.to = to;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public String getName() {
++        return name;
++    }
++
++    public LocalDate getFrom() {
++        return from;
++    }
++
++    public LocalDate getTo() {
++        return to;
++    }
++
++    /** Whether the period shares a date with the one from {@code otherFrom} to {@code otherTo}. */
++    public boolean overlaps(LocalDate otherFrom, LocalDate otherTo) {
++        return !from.isAfter(otherTo) && !otherFrom.isAfter(to);
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+new file mode 100644
+index 000000000..730e65334
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -0,0 +1,62 @@
++package net.officefloor.hq.app.period;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.session.CurrentUser;
++import org.springframework.http.HttpStatus;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets/{sheetId}/periods")
++@Validated
++public class PeriodController {
++
++    public record PeriodView(long id, String name, LocalDate from, LocalDate to) {
++        static PeriodView of(Period p) {
++            return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo());
++        }
++    }
++
++    /** A period as the form submits it: a name without spaces, an optional from-date (the sheet's
++     *  today when absent) and a to-date. */
++    public record PeriodForm(
++            @NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String name,
++            LocalDate from,
++            @NotNull LocalDate to) {
++    }
++
++    private final PeriodService service;
++
++    public PeriodController(PeriodService service) {
++        this.service = service;
++    }
++
++    @GetMapping
++    public List<PeriodView> list(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
++        return service.list(sheetId).stream().map(PeriodView::of).toList();
++    }
++
++    @PostMapping
++    @ResponseStatus(HttpStatus.CREATED)
++    public PeriodView add(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody PeriodForm body) {
++        return PeriodView.of(service.add(sheetId, user.trim(), body.name(), body.from(), body.to()));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodRepository.java b/src/main/java/net/officefloor/hq/app/period/PeriodRepository.java
+new file mode 100644
+index 000000000..aed141fed
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.period;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PeriodRepository extends JpaRepository<Period, Long> {
++
++    /** The sheet's periods, by from-date. */
++    List<Period> findBySheetIdOrderByFromAsc(String sheetId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+new file mode 100644
+index 000000000..bcb3cfa36
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -0,0 +1,64 @@
++package net.officefloor.hq.app.period;
++
++import java.time.LocalDate;
++import java.util.List;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class PeriodService {
++
++    private final PeriodRepository periods;
++    private final SheetService sheets;
++    private final Audit audit;
++
++    public PeriodService(PeriodRepository periods, SheetService sheets, Audit audit) {
++        this.periods = periods;
++        this.sheets = sheets;
++        this.audit = audit;
++    }
++
++    @Transactional(readOnly = true)
++    public List<Period> list(String sheetId) {
++        return periods.findBySheetIdOrderByFromAsc(sheetId);
++    }
++
++    /** Add a period to the sheet (the sheet is created first if it was never loaded; a from-date left out is the sheet's today); refused when
++     *  its from-date is after its to-date, its name is in use on the sheet or it overlaps another. */
++    @Transactional
++    public Period add(String sheetId, String user, String name, LocalDate fromOrNull, LocalDate to) {
++        sheets.load(sheetId, user);
++        LocalDate from = fromOrNull != null ? fromOrNull : sheets.today(sheetId);
++        // held until the transaction ends, so two periods added at once are checked one after the other
++        sheets.lock(sheetId);
++        String trimmed = name.trim();
++        if (from.isAfter(to)) {
++            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The from-date is after the to-date");
++        }
++        List<Period> existing = periods.findBySheetIdOrderByFromAsc(sheetId);
++        if (existing.stream().anyMatch(p -> p.getName().equalsIgnoreCase(trimmed))) {
++            throw nameInUse();
++        }
++        if (existing.stream().anyMatch(p -> p.overlaps(from, to))) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The period overlaps another");
++        }
++        Period period;
++        try {
++            period = periods.saveAndFlush(new Period(sheetId, trimmed, from, to));
++        } catch (DataIntegrityViolationException e) {
++            throw nameInUse();
++        }
++        audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user
++                + " period=" + trimmed + " from=" + from + " to=" + to);
++        return period;
++    }
++
++    private static ResponseStatusException nameInUse() {
++        return new ResponseStatusException(HttpStatus.CONFLICT, "The period name is in use on the sheet");
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 744fd0c3f..2fa1aab07 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -46,6 +46,13 @@ public class SheetService {
+         return number;
+     }
+ 
++    /** Hold the sheet locked until the transaction ends, so changes checked against the rest of
++     *  the sheet (such as a period that must not overlap another) are made one at a time. */
++    @Transactional
++    public void lock(String id) {
++        sheets.findForUpdate(id).orElseThrow();
++    }
++
+     /** Change the sheet's today (the sheet is created first if it was never loaded); it has no
+      *  audit line of its own, only the figures it moves. */
+     @Transactional
+diff --git a/src/main/resources/db/migration/V14__period.sql b/src/main/resources/db/migration/V14__period.sql
+new file mode 100644
+index 000000000..400011c9e
+--- /dev/null
++++ b/src/main/resources/db/migration/V14__period.sql
+@@ -0,0 +1,13 @@
++-- The sheet's periods: a name unique on the sheet (ignoring case and surrounding spaces) and a
++-- from and to date, both inclusive. No two periods of a sheet overlap. A claim belongs to the
++-- period whose dates contain its date, or to none.
++CREATE TABLE period (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    name      VARCHAR(100) NOT NULL,
++    from_date DATE         NOT NULL,
++    to_date   DATE         NOT NULL,
++    name_key  VARCHAR(200) GENERATED ALWAYS AS (LOWER(name)),
++    CHECK (from_date <= to_date)
++);
++CREATE UNIQUE INDEX period_sheet_name ON period (sheet_id, name_key);
