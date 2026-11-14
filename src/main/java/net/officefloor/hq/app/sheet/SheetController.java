@@ -53,8 +53,9 @@ public class SheetController {
     }
 
     /** A descendant's person as that sheet shows them: their name and aliases, their due-total (null
-     *  when they have none) and their overdue-total. */
-    public record PersonFiguresView(String name, List<String> aliases, String dueTotal, String overdueTotal) {
+     *  when they have none), their overdue-total, settled-total, open-total and cut total. */
+    public record PersonFiguresView(String name, List<String> aliases, String dueTotal, String overdueTotal,
+            String settledTotal, String openTotal, String cutTotal) {
     }
 
     /** A sheet's figures per grade as its summary shows them: whether the sheet was ever used, and per
@@ -114,7 +115,8 @@ public class SheetController {
         for (String sheet : descendants) {
             rollups.personFigures(sheet, asOf).forEach(p -> personFigures.add(new PersonFiguresView(p.name(),
                     p.aliases(), p.dueTotal() == null ? null : p.dueTotal().toPlainString(),
-                    p.overdueTotal().toPlainString())));
+                    p.overdueTotal().toPlainString(), p.settledTotal().toPlainString(),
+                    p.openTotal().toPlainString(), p.cutTotal().toPlainString())));
             RollupService.Headline figures = rollups.headline(sheet, asOf);
             people += figures.people();
             due = due.add(figures.dueTotal());

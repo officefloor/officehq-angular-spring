@@ -44,7 +44,7 @@ public class RollupService {
 
     /** A person's figures; due is null when it has no rate to work from. */
     private record Figures(String name, BigDecimal claimed, BigDecimal due, BigDecimal overdue, BigDecimal settled,
-            int overdueCount) {
+            int overdueCount, BigDecimal settledTotal, BigDecimal openTotal, BigDecimal cutTotal) {
         boolean sameAs(Figures other) {
             return other != null && claimed.compareTo(other.claimed) == 0 && Objects.equals(due, other.due)
                     && overdue.compareTo(other.overdue) == 0;
@@ -161,8 +161,9 @@ public class RollupService {
     }
 
     /** A person's figures on a sheet as it shows them: their name and aliases, their due-total (null
-     *  when they have none) and their overdue-total. */
-    public record PersonFigures(String name, List<String> aliases, BigDecimal dueTotal, BigDecimal overdueTotal) {
+     *  when they have none), their overdue-total, settled-total, open-total and cut total. */
+    public record PersonFigures(String name, List<String> aliases, BigDecimal dueTotal, BigDecimal overdueTotal,
+            BigDecimal settledTotal, BigDecimal openTotal, BigDecimal cutTotal) {
     }
 
     /** Each person's figures on the sheet as it stood at the end of a day, that day standing in for
@@ -173,7 +174,8 @@ public class RollupService {
         Map<Long, List<String>> aliases = personService.aliases(sheetId, asOf);
         List<PersonFigures> list = new ArrayList<>();
         rollup.people().forEach((personId, f) -> list.add(new PersonFigures(f.name(),
-                aliases.getOrDefault(personId, List.of()), f.due(), f.overdue())));
+                aliases.getOrDefault(personId, List.of()), f.due(), f.overdue(), f.settledTotal(), f.openTotal(),
+                f.cutTotal())));
         return list;
     }
 
@@ -269,7 +271,7 @@ public class RollupService {
         Map<Long, LocalDate> retiredFrom = new HashMap<>();
         sheetPeople.forEach(person -> retiredFrom.put(person.getId(), person.getRetiredFrom()));
         Map<Long, List<Claim>> counted = counted(sheetId, asOf, today, retiredFrom);
-        Map<Long, BigDecimal> shared = sharedParts(sheetId, asOf, sheetPeople, counted);
+        Map<Long, Shared> shared = sharedParts(sheetId, asOf, sheetPeople, counted);
         Map<Long, BigDecimal> cutTotals = cuts.cutTotals(sheetId, asOf, sheetPeople);
         Map<Long, Figures> figures = new LinkedHashMap<>();
         BigDecimal claimedTotal = NONE;
@@ -304,16 +306,17 @@ public class RollupService {
         List<Person> sheetPeople = personService.list(sheetId, asOf);
         Map<Long, LocalDate> retiredFrom = new HashMap<>();
         sheetPeople.forEach(person -> retiredFrom.put(person.getId(), person.getRetiredFrom()));
-        return sharedParts(sheetId, asOf, sheetPeople, counted(sheetId, asOf, today, retiredFrom)).get(personId);
+        Shared shared = sharedParts(sheetId, asOf, sheetPeople, counted(sheetId, asOf, today, retiredFrom)).get(personId);
+        return shared == null ? null : shared.all();
     }
 
     /** What the shares of the claims that count move in each person's due-total, by person id: each
      *  holder gains their part of the claim (see ClaimService#partOf; a holder whose grade has no rate
      *  gains nothing), and the claim's own person loses it. A person whose figures no share moves is
      *  not listed; a claim with no figure moves nothing. */
-    private Map<Long, BigDecimal> sharedParts(String sheetId, LocalDate asOf, List<Person> sheetPeople,
+    private Map<Long, Shared> sharedParts(String sheetId, LocalDate asOf, List<Person> sheetPeople,
             Map<Long, List<Claim>> counted) {
-        Map<Long, BigDecimal> parts = new HashMap<>();
+        Map<Long, Shared> parts = new HashMap<>();
         Set<Long> onSheet = sheetPeople.stream().map(Person::getId).collect(Collectors.toSet());
         for (Person person : sheetPeople) {
             for (Claim claim : counted.getOrDefault(person.getId(), List.of())) {
@@ -330,15 +333,27 @@ public class RollupService {
                     }
                     BigDecimal part = claimService.partOf(sheetId, claim, share, asOf);
                     if (part == null) {
-                        parts.merge(person.getId(), NONE, BigDecimal::add);
+                        parts.merge(person.getId(), Shared.of(claim, NONE), Shared::add);
                         continue;
                     }
-                    parts.merge(share.personId(), part, BigDecimal::add);
-                    parts.merge(person.getId(), part.negate(), BigDecimal::add);
+                    parts.merge(share.personId(), Shared.of(claim, part), Shared::add);
+                    parts.merge(person.getId(), Shared.of(claim, part.negate()), Shared::add);
                 }
             }
         }
         return parts;
+    }
+
+    /** What shares move in a person's figures: in all, among SETTLED claims and among OPEN and PENDING ones. */
+    private record Shared(BigDecimal all, BigDecimal settled, BigDecimal open) {
+        static Shared of(Claim claim, BigDecimal part) {
+            return new Shared(part, claim.getStatus() == ClaimStatus.SETTLED ? part : NONE,
+                    claim.getStatus().isOpen() ? part : NONE);
+        }
+
+        Shared add(Shared other) {
+            return new Shared(all.add(other.all), settled.add(other.settled), open.add(other.open));
+        }
     }
 
     /** The figures added up, leaving out the single highest and the single lowest when there are
@@ -358,13 +373,17 @@ public class RollupService {
      *  sums the dues of those that are OPEN or PENDING with a due-by plus their grace before the sheet's today.
      *  The settled figures, for the score, sum those of SETTLED claims that correct nothing. The
      *  due-total takes in what the shares of claims move (null: none moves it): a holder's parts, less
-     *  the parts others hold of the person's own claims. */
+     *  the parts others hold of the person's own claims. The settled-total and open-total sum the
+     *  figures of their SETTLED, and their OPEN and PENDING, claims (corrections included), with what
+     *  shares of those claims move. */
     private Figures figuresOf(String sheetId, LocalDate today, LocalDate asOf, Person person, List<Claim> counted,
-            BigDecimal sharedPart, BigDecimal cutTotal) {
+            Shared shared, BigDecimal cutTotal) {
         BigDecimal claimed = NONE;
         BigDecimal due = NONE;
         BigDecimal overdue = NONE;
         BigDecimal settled = NONE;
+        BigDecimal settledTotal = NONE;
+        BigDecimal openTotal = NONE;
         int overdueCount = 0;
         boolean anyFigure = false;
         for (Claim claim : counted) {
@@ -380,6 +399,12 @@ public class RollupService {
             if (figure != null && claim.getStatus() == ClaimStatus.SETTLED && claim.getCorrects() == null) {
                 settled = settled.add(figure);
             }
+            if (figure != null && claim.getStatus() == ClaimStatus.SETTLED) {
+                settledTotal = settledTotal.add(figure);
+            }
+            if (figure != null && claim.getStatus().isOpen()) {
+                openTotal = openTotal.add(figure);
+            }
             if (figure != null) {
                 due = due.add(figure);
                 if (late) {
@@ -388,13 +413,15 @@ public class RollupService {
             }
             anyFigure |= figure != null;
         }
-        if (sharedPart != null) {
-            due = due.add(sharedPart);
+        if (shared != null) {
+            due = due.add(shared.all());
+            settledTotal = settledTotal.add(shared.settled());
+            openTotal = openTotal.add(shared.open());
             anyFigure = true;
         }
         boolean hasRate = rates.rateOn(sheetId, grades.gradeOn(person.getId(), today, asOf), today, asOf).isPresent();
         return new Figures(person.getName(), claimed, hasRate || anyFigure ? settings.capped(sheetId, due, cutTotal, asOf) : null,
-                overdue, settled, overdueCount);
+                overdue, settled, overdueCount, settledTotal, openTotal, cutTotal);
     }
 
     private static String text(BigDecimal due) {

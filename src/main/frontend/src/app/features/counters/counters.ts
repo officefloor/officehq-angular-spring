@@ -37,6 +37,12 @@ import { StatusSummary } from '../summary/summary';
         <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() }}</dd>
         <dt>Overdue in total with sub-sheets</dt>
         <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
+        <dt>Settled in total with sub-sheets</dt>
+        <dd data-testid="consolidated-settled-total">{{ consolidatedSettledTotal() }}</dd>
+        <dt>Open in total with sub-sheets</dt>
+        <dd data-testid="consolidated-open-total">{{ consolidatedOpenTotal() }}</dd>
+        <dt>Cuts in total with sub-sheets</dt>
+        <dd data-testid="consolidated-cut-total">{{ consolidatedCutTotal() }}</dd>
         @for (g of consolidatedGrades(); track g.grade) {
           <dt>Grade {{ g.grade }} due with sub-sheets</dt>
           <dd [attr.data-testid]="'consolidated-grade-' + g.grade + '-due-total'">{{ g.dueTotal }}</dd>
@@ -66,6 +72,9 @@ export class Counters {
   readonly consolidatedPeopleCount = input.required<number>();
   readonly consolidatedDueTotal = input.required<string>();
   readonly consolidatedOverdueTotal = input.required<string>();
+  readonly consolidatedSettledTotal = input.required<string>();
+  readonly consolidatedOpenTotal = input.required<string>();
+  readonly consolidatedCutTotal = input.required<string>();
   /** Per grade, the due-totals of the people on it not retired over the tree; per status, its claims. */
   readonly consolidatedGrades = input.required<{ grade: string; dueTotal: string }[]>();
   readonly consolidatedStatuses = input.required<StatusSummary[]>();

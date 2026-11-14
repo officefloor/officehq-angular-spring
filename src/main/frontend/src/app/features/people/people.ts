@@ -97,12 +97,15 @@ interface DescendantFigures {
 }
 
 /** A person on a descendant sheet: their name and aliases, their due-total (null when they have
- *  none) and their overdue-total. */
+ *  none), their overdue-total, settled-total, open-total and cut total. */
 interface DescendantPerson {
   name: string;
   aliases: string[];
   dueTotal: string | null;
   overdueTotal: string;
+  settledTotal: string;
+  openTotal: string;
+  cutTotal: string;
 }
 
 /** What the people list can be sorted by on the screen. */
@@ -170,6 +173,9 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
       [consolidatedPeopleCount]="consolidatedPeople()"
       [consolidatedDueTotal]="consolidatedDue()"
       [consolidatedOverdueTotal]="consolidatedOverdue()"
+      [consolidatedSettledTotal]="consolidatedSettled()"
+      [consolidatedOpenTotal]="consolidatedOpen()"
+      [consolidatedCutTotal]="consolidatedCut()"
       [consolidatedGrades]="consolidatedGrades()"
       [consolidatedStatuses]="consolidatedStatuses()"
     />
@@ -1057,8 +1063,8 @@ export class People {
   protected cutTotalOf(person: Person): string {
     return figure(this.cutTotals().get(person.id) ?? 0n);
   }
-  /** Everyone's cut total added up. */
-  protected readonly cutTotal = computed(() => figure([...this.cutTotals().values()].reduce((sum, c) => sum + c, 0n)));
+  /** Everyone's cut total added up, trimmed. */
+  protected readonly cutTotal = computed(() => money(trimmedSum(this.people().map((p) => this.cutCentsOf(p)))));
   /** Whether the signed-in user is a viewer on the sheet. */
   protected readonly viewer = computed(() => {
     const user = this.session.user();
@@ -1337,8 +1343,8 @@ export class People {
   /** The consolidated figures: the sheet's own as it shows them plus its descendants', each as of the
    *  screen's as-of date while one is set. */
   /** The people count counts each person once across the tree: those whose names or aliases match, as
-   *  names are compared, are one person. The due-total and overdue-total are every person's figure
-   *  over the tree added up, trimmed once over the whole tree. */
+   *  names are compared, are one person. The due-total, overdue-total, settled-total, open-total and
+   *  cut total are every person's figure over the tree added up, trimmed once over the whole tree. */
   protected readonly consolidatedPeople = computed(() =>
     distinctPeople([
       ...this.people().map((p) => [p.name, ...p.aliases]),
@@ -1362,6 +1368,30 @@ export class People {
       trimmedSum([
         ...this.people().map((p) => this.overdueCentsOf(p)),
         ...(this.descendantFigures().personFigures ?? []).map((p) => cents(p.overdueTotal)),
+      ]),
+    ),
+  );
+  protected readonly consolidatedSettled = computed(() =>
+    money(
+      trimmedSum([
+        ...this.people().map((p) => this.settledCentsOf(p)),
+        ...(this.descendantFigures().personFigures ?? []).map((p) => cents(p.settledTotal)),
+      ]),
+    ),
+  );
+  protected readonly consolidatedOpen = computed(() =>
+    money(
+      trimmedSum([
+        ...this.people().map((p) => this.openCentsOf(p)),
+        ...(this.descendantFigures().personFigures ?? []).map((p) => cents(p.openTotal)),
+      ]),
+    ),
+  );
+  protected readonly consolidatedCut = computed(() =>
+    money(
+      trimmedSum([
+        ...this.people().map((p) => this.cutCentsOf(p)),
+        ...(this.descendantFigures().personFigures ?? []).map((p) => cents(p.cutTotal)),
       ]),
     ),
   );
@@ -1419,13 +1449,13 @@ export class People {
     }
     return [...totals.keys()].sort().map((month) => ({ month, dueTotal: money(totals.get(month)!) }));
   });
-  /** Everyone's settled-total added up (not trimmed). */
+  /** Everyone's settled-total added up, trimmed. */
   protected readonly settledTotal = computed(() =>
-    money(this.people().reduce((sum, p) => sum + this.settledCentsOf(p), 0)),
+    money(trimmedSum(this.people().map((p) => this.settledCentsOf(p)))),
   );
-  /** Everyone's open-total added up (not trimmed). */
+  /** Everyone's open-total added up, trimmed. */
   protected readonly openTotal = computed(() =>
-    money(this.people().reduce((sum, p) => sum + this.openCentsOf(p), 0)),
+    money(trimmedSum(this.people().map((p) => this.openCentsOf(p)))),
   );
   /** Each person's claims that count and are overdue, by person id. */
   private readonly overdueByPerson = computed(() => {
