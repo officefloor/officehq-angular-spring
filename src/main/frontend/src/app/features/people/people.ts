@@ -1165,14 +1165,16 @@ export class People {
    *  period is open, the dues shown now on their claims that count and whose due-by falls in a period
    *  ending before this one starts, that were still OPEN or PENDING at the end of this period's last
    *  day, as their status logs record it, and the live rules leave in (a claim with no figure adds
-   *  nothing); once it is closed or soft-closed, the figures fixed then (a person added later has none
-   *  and counts 0.00). */
+   *  nothing), plus their opening balance for it; once it is closed or soft-closed, the figures fixed
+   *  then (a person added later has none and counts 0.00). */
   protected readonly personCarriedCents = computed(() => {
     const periods = this.periods.periods();
     const grades = new Map(this.people().map((p) => [p.id, p.grades]));
     const totals = new Map<number, Map<number, number>>();
     for (const period of periods) {
-      const fixed = Object.entries(period.closed || period.softClosed ? (period.closedPersonCarried ?? {}) : {});
+      const fixed = Object.entries(
+        period.closed || period.softClosed ? (period.closedPersonCarried ?? {}) : (period.openings ?? {}),
+      );
       totals.set(period.id, new Map(fixed.map(([id, carried]) => [Number(id), cents(carried)])));
     }
     const keep = this.liveRulesKeep();

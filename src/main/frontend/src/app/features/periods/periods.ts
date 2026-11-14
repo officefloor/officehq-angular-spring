@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, Injectable, effect, inject, input, signal } from '@angular/core';
+import { Component, Injectable, effect, inject, input, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { SettingStore } from '../settings/settings';
@@ -26,6 +26,9 @@ export interface Period {
   /** Each person's carried figure for the period fixed when it was closed or soft-closed (two
    *  decimals), by person id; empty while it is open. */
   closedPersonCarried: Record<string, string>;
+  /** Each person's opening balance for the period (two decimals), by person id: added to their
+   *  carried figure for it while it is open. */
+  openings: Record<string, string>;
 }
 
 /** The period whose dates contain a date; null when none does. Periods never overlap, so at most
@@ -159,6 +162,20 @@ export class PeriodStore {
     this.periods.update((list) => list.map((p) => (p.id === saved.id ? saved : p)));
   }
 
+  /** Add each pasted line of name,period,amount on the active sheet to that person's opening balance
+   *  for that period; none when any line is refused. How many lines went through; the sheet's periods
+   *  are then re-read. */
+  async importOpenings(text: string): Promise<number> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const load = this.session.loads();
+    const result = await firstValueFrom(
+      this.http.post<{ added: number }>(`/api/sheets/${encodeURIComponent(sheet)}/periods/openings`, { text }),
+    );
+    if (this.session.sheetId() === sheet) await this.read(sheet, load);
+    return result.added;
+  }
+
   private async read(sheet: string, load: number): Promise<void> {
     const list = await firstValueFrom(
       this.http.get<Period[]>(`/api/sheets/${encodeURIComponent(sheet)}/periods`),
@@ -248,6 +265,23 @@ export class PeriodStore {
       @if (generateError(); as message) {
         <p role="alert" data-testid="period-generate-error">{{ message }}</p>
       }
+      <form (submit)="importOpenings($event)" aria-label="Import opening balances">
+        <label for="opening-import">Opening balances, one per line as name,period,amount</label>
+        <textarea
+          id="opening-import"
+          data-testid="opening-import"
+          rows="4"
+          [value]="openingText()"
+          (input)="openingText.set(value($event)); openingError.set(null)"
+        ></textarea>
+        <button type="submit" data-testid="opening-import-submit">Import opening balances</button>
+        @if (openingsAdded() !== null) {
+          Added <strong data-testid="opening-import-done">{{ openingsAdded() }}</strong>
+        }
+      </form>
+      @if (openingError(); as message) {
+        <p role="alert" data-testid="opening-error">{{ message }}</p>
+      }
       <table>
         <thead>
           <tr>
@@ -311,6 +345,7 @@ export class PeriodStore {
 })
 export class Periods {
   protected readonly store = inject(PeriodStore);
+  private readonly session = inject(Session);
   protected readonly settings = inject(SettingStore);
   protected readonly fiscalYearOf = fiscalYearOf;
   /** Each period's due-total (two decimals), by period id: the sum of the people's figures for it. */
@@ -332,9 +367,53 @@ export class Periods {
   protected readonly rowError = signal<{ id: number; message: string } | null>(null);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is dropped. */
   private readonly busy = signal(false);
+  protected readonly openingText = signal('');
+  /** How many lines the last opening import added; null before one, or while one runs. */
+  protected readonly openingsAdded = signal<number | null>(null);
+  protected readonly openingError = signal<string | null>(null);
+  private readonly openingBusy = signal(false);
+
+  constructor() {
+    // A loaded sheet starts the opening box afresh: its last count and error were for the sheet before.
+    effect(() => {
+      this.session.sheetId();
+      this.session.loads();
+      untracked(() => {
+        this.openingText.set('');
+        this.openingsAdded.set(null);
+        this.openingError.set(null);
+      });
+    });
+  }
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  /** Add each pasted line of name,period,amount to that person's opening balance for that period;
+   *  when any line is refused nothing is added. How many lines went through then shows. */
+  protected async importOpenings(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.openingBusy()) return;
+    this.openingError.set(null);
+    this.openingsAdded.set(null);
+    const text = this.openingText();
+    if (!text.trim()) {
+      this.openingError.set('Paste at least one line of name,period,amount.');
+      return;
+    }
+    this.openingBusy.set(true);
+    try {
+      this.openingsAdded.set(await this.store.importOpenings(text));
+      this.openingText.set('');
+    } catch {
+      this.openingError.set(
+        'The opening balances could not be imported: every line needs a person on the sheet by name or alias, ' +
+          'a period on the sheet and an amount of 0.00 or more with up to two decimals.',
+      );
+    } finally {
+      this.openingBusy.set(false);
+    }
   }
 
   /** Close a period; one already closed is refused on its row. */

@@ -64,6 +64,14 @@ public class Period {
     @Column(name = "carried", nullable = false)
     private Map<Long, BigDecimal> personCarried = new HashMap<>();
 
+    /** Each person's opening balance for the period, by person id: added to their carried figure for
+     *  it. A person not in it has none. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_opening", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "amount", nullable = false)
+    private Map<Long, BigDecimal> personOpenings = new HashMap<>();
+
     /** The most OPEN and PENDING claims a person may have in the period; null for no cap. */
     @Column(name = "claim_cap")
     private Integer cap;
@@ -125,6 +133,15 @@ public class Period {
 
     public Map<Long, BigDecimal> getPersonCarried() {
         return Map.copyOf(personCarried);
+    }
+
+    public Map<Long, BigDecimal> getPersonOpenings() {
+        return Map.copyOf(personOpenings);
+    }
+
+    /** Add an amount to the person's opening balance for the period. */
+    public void addOpening(Long personId, BigDecimal amount) {
+        personOpenings.merge(personId, amount.setScale(2), BigDecimal::add);
     }
 
     /** Close the period, fixing its due-total and each person's due-total and carried figure for it. */

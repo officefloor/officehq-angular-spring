@@ -245,7 +245,8 @@ public class PeriodService {
     /** Each person's carried figure for the period now, by person id, everyone on the sheet: the dues
      *  shown now on their claims whose due-by falls in a period ending before this one starts, that
      *  were still OPEN or PENDING at the end of this period's last day (by the status each had then, as
-     *  its status log records it) and the live rules leave in (a claim with no figure adds nothing). */
+     *  its status log records it) and the live rules leave in (a claim with no figure adds nothing), and
+     *  their opening balance for it. */
     private Map<Long, BigDecimal> personCarried(String sheetId, Period period) {
         Map<Long, Person> byId = people.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .collect(Collectors.toMap(Person::getId, Function.identity()));
@@ -254,6 +255,7 @@ public class PeriodService {
         LocalDate today = sheets.today(sheetId);
         Map<Long, BigDecimal> carried = new LinkedHashMap<>();
         byId.keySet().forEach(id -> carried.put(id, BigDecimal.ZERO.setScale(2)));
+        period.getPersonOpenings().forEach((id, amount) -> carried.computeIfPresent(id, (key, sum) -> sum.add(amount)));
         Map<Long, ClaimStatus> atEnd = claimService.statusesAsOf(sheetId, period.getTo());
         for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
             Person person = byId.get(claim.getPersonId());
@@ -271,6 +273,56 @@ public class PeriodService {
             }
         }
         return carried;
+    }
+
+    /** A pasted opening balance, read: the person and period it names and its amount. */
+    private record Opening(Person person, Period period, BigDecimal amount) {
+    }
+
+    /** Add each pasted line of name,period,amount to that person's opening balance for that period, in
+     *  the order of the lines: a person on the sheet by name or alias, a period on the sheet by name, and
+     *  an amount of 0.00 or more with up to two decimals; blank lines are skipped. Every line is checked
+     *  first: one refused line, or none at all, changes nothing. How many lines went through. */
+    @Transactional
+    public int importOpenings(String sheetId, String user, String text) {
+        sheets.lock(sheetId);
+        List<Opening> lines = new ArrayList<>();
+        int at = 0;
+        for (String raw : text.split("\\r?\\n")) {
+            at++;
+            if (!raw.isBlank()) {
+                lines.add(readOpening(sheetId, at, raw));
+            }
+        }
+        if (lines.isEmpty()) {
+            throw new OpeningRefusedException("Nothing to import");
+        }
+        for (Opening line : lines) {
+            line.period().addOpening(line.person().getId(), line.amount());
+            audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user + " name=" + line.person().getName()
+                    + " period=" + line.period().getName() + " amount=" + line.amount().toPlainString());
+        }
+        lines.stream().map(Opening::period).distinct().forEach(periods::saveAndFlush);
+        return lines.size();
+    }
+
+    private Opening readOpening(String sheetId, int at, String raw) {
+        String[] fields = raw.split(",", -1);
+        if (fields.length != 3) {
+            throw new OpeningRefusedException("Line " + at + " needs name,period,amount");
+        }
+        String name = fields[0].trim();
+        Person person = name.isEmpty() ? null : people.findByName(sheetId, name).orElse(null);
+        if (person == null) {
+            throw new OpeningRefusedException("Line " + at + ": no person " + name + " on the sheet");
+        }
+        Period period = periods.findBySheetIdAndName(sheetId, fields[1].trim())
+                .orElseThrow(() -> new OpeningRefusedException("Line " + at + ": no period " + fields[1].trim()));
+        String amount = fields[2].trim();
+        if (!amount.matches("\\d{1,10}(\\.\\d{1,2})?")) {
+            throw new OpeningRefusedException("Line " + at + ": the amount must be 0.00 or more, with up to two decimals");
+        }
+        return new Opening(person, period, new BigDecimal(amount).setScale(2));
     }
 
     /** Reopen a closed or soft-closed period, making its due-total live again. Only a role the sheet's

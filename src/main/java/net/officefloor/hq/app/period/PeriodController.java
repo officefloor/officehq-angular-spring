@@ -36,21 +36,23 @@ public class PeriodController {
 
     /** A period as the screen shows it; closedPersonTotals is each person's due-total for it fixed
      *  when it was closed, and closedPersonCarried each person's carried figure for it fixed then, by
-     *  person id (both empty while it is open). */
+     *  person id (both empty while it is open); openings is each person's opening balance for it, by
+     *  person id, added to their carried figure while it is open. */
     public record PeriodView(Long id, String name, LocalDate from, LocalDate to, boolean closed,
             boolean softClosed, String closedTotal, Map<Long, String> closedPersonTotals, Integer cap,
-            Map<Long, String> closedPersonCarried) {
+            Map<Long, String> closedPersonCarried, Map<Long, String> openings) {
         static PeriodView of(Period period) {
             return new PeriodView(period.getId(), period.getName(), period.getFrom(), period.getTo(),
                     period.isClosed(), period.isSoftClosed(),
                     period.getClosedTotal() != null ? period.getClosedTotal().toPlainString() : null,
-                    texts(period.getPersonTotals()), period.getCap(), texts(period.getPersonCarried()));
+                    texts(period.getPersonTotals()), period.getCap(), texts(period.getPersonCarried()),
+                    texts(period.getPersonOpenings()));
         }
 
-        static PeriodView of(History.PeriodThen period, Integer cap) {
+        static PeriodView of(History.PeriodThen period, Integer cap, Map<Long, BigDecimal> openings) {
             return new PeriodView(period.id(), period.name(), period.from(), period.to(), period.closed(),
                     period.softClosed(), period.closedTotal() != null ? period.closedTotal().toPlainString() : null,
-                    texts(period.personTotals()), cap, texts(period.personCarried()));
+                    texts(period.personTotals()), cap, texts(period.personCarried()), texts(openings));
         }
 
         private static Map<Long, String> texts(Map<Long, BigDecimal> figures) {
@@ -79,11 +81,16 @@ public class PeriodController {
             @RequestHeader(value = AsOf.HEADER, required = false) String asOfHeader) {
         LocalDate asOf = AsOf.parse(asOfHeader);
         if (asOf != null) {
-            // A period's cap is fixed when it is added, so the period as it stood then has the cap it has now.
-            Map<Long, Integer> caps = new HashMap<>();
-            service.list(sheetId.trim()).forEach(period -> caps.put(period.getId(), period.getCap()));
+            // A period's cap is fixed when it is added, so the period as it stood then has the cap it has now;
+            // its opening balances are those it holds now.
+            Map<Long, Period> now = new HashMap<>();
+            service.list(sheetId.trim()).forEach(period -> now.put(period.getId(), period));
             return service.listAsOf(sheetId.trim(), asOf).stream()
-                    .map(period -> PeriodView.of(period, caps.get(period.id()))).toList();
+                    .map(period -> {
+                        Period current = now.get(period.id());
+                        return PeriodView.of(period, current != null ? current.getCap() : null,
+                                current != null ? current.getPersonOpenings() : Map.of());
+                    }).toList();
         }
         return service.list(sheetId.trim()).stream().map(PeriodView::of).toList();
     }
@@ -112,6 +119,24 @@ public class PeriodController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody GenerateRequest request) {
         return new GenerateView(service.generate(sheetId.trim(), SignedInUser.decode(user), request.from(),
                 request.to()));
+    }
+
+    /** The pasted lines of name,period,amount. */
+    public record OpeningImportRequest(@NotNull @Size(max = 1_000_000) String text) {
+    }
+
+    /** How many opening lines an import added. */
+    public record OpeningImportView(int added) {
+    }
+
+    /** Add each pasted opening balance to its person's carried figure for its period, or none when any
+     *  line is refused. */
+    @PostMapping("/openings")
+    public OpeningImportView importOpenings(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated OpeningImportRequest request) {
+        return new OpeningImportView(service.importOpenings(sheetId.trim(), SignedInUser.decode(user),
+                request.text()));
     }
 
     /** A fiscal year to generate the monthly periods of: FY<year>. */
@@ -159,9 +184,11 @@ public class PeriodController {
     public void notFound() {
     }
 
-    /** A name taken, dates running backwards, a period overlapping another, or a reopen by other
-     *  than a steward or of a period not closed is refused. */
-    @ExceptionHandler({PeriodRefusedException.class, DataIntegrityViolationException.class})
+    /** A name taken, dates running backwards, a period overlapping another, a reopen by other than a
+     *  steward or of a period not closed, or a pasted opening line naming no person or period on the
+     *  sheet or an amount below 0.00 or with more than two decimals is refused. */
+    @ExceptionHandler({PeriodRefusedException.class, OpeningRefusedException.class,
+            DataIntegrityViolationException.class})
     @ResponseStatus(HttpStatus.CONFLICT)
     public void refused() {
     }
