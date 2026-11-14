@@ -1002,6 +1002,14 @@ export class People {
     const delegated = today !== null && this.settings.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
     return !delegated && this.settings.roles().some((r) => r.user === user && r.role === 'viewer');
   });
+  /** Whether the signed-in user is restricted on the sheet: by their own role, unless a delegation of the
+   *  steward role is in force on the sheet's today. */
+  private readonly restricted = computed(() => {
+    const user = this.session.user();
+    const today = this.session.today();
+    const delegated = today !== null && this.settings.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
+    return !delegated && this.settings.roles().some((r) => r.user === user && r.role === 'restricted');
+  });
   /** Whether the signed-in user is a steward on the sheet: by their own role, or by a delegation of the
    *  steward role in force on the sheet's today. */
   private readonly steward = computed(() => {
@@ -1051,10 +1059,28 @@ export class People {
   protected readonly people = signal<Person[]>([]);
   /** Whether retired people are listed; off when the screen opens and kept across sheet loads. */
   protected readonly showRetired = signal(false);
-  /** The people listed: everyone, or only those not retired unless retired people are shown. */
-  protected readonly shownPeople = computed(() =>
-    this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
-  );
+  /** The people listed: everyone the signed-in user may see, or only those not retired unless retired
+   *  people are shown. */
+  protected readonly shownPeople = computed(() => {
+    const visible = this.visiblePeople();
+    return this.showRetired() ? visible : visible.filter((p) => !p.retired);
+  });
+  /** The people the signed-in user may see on the list: everyone, except for a restricted user, who sees
+   *  only the people of the crews their person leads or belongs to and their person themselves. Every
+   *  other figure stays over everyone on the sheet. */
+  private readonly visiblePeople = computed(() => {
+    if (!this.restricted()) return this.people();
+    const me = this.me();
+    if (!me) return [];
+    const ids = new Set<number>([me.id]);
+    for (const crew of this.crewStore.crews()) {
+      if (crew.leadId === me.id || crew.memberIds.includes(me.id)) {
+        ids.add(crew.leadId);
+        crew.memberIds.forEach((id) => ids.add(id));
+      }
+    }
+    return this.people().filter((p) => ids.has(p.id));
+  });
   /** The columns of the list a user can switch off on their screen. */
   protected readonly columns = COLUMNS;
   /** The columns switched off on this screen by the signed-in user; kept in this browser per user. */

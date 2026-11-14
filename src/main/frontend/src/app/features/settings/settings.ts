@@ -115,15 +115,15 @@ const MONTH = /^(?:0?[1-9]|1[0-2])$/;
 /** A date, yyyy-mm-dd. */
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-const ROLES = ['clerk', 'steward', 'viewer'];
+const ROLES = ['clerk', 'steward', 'viewer', 'restricted'];
 
 /** The actions the permission matrix governs, each with the roles its standing rule allows. */
 const PERMISSIONS: { action: string; label: string; standing: string }[] = [
-  { action: 'open', label: 'Open', standing: 'clerk and steward' },
-  { action: 'settle', label: 'Settle', standing: 'clerk and steward' },
-  { action: 'void', label: 'Void', standing: 'clerk and steward' },
+  { action: 'open', label: 'Open', standing: 'clerk, restricted and steward' },
+  { action: 'settle', label: 'Settle', standing: 'clerk, restricted and steward' },
+  { action: 'void', label: 'Void', standing: 'clerk, restricted and steward' },
   { action: 'reassign', label: 'Reassign', standing: 'steward' },
-  { action: 'close', label: 'Close a period', standing: 'clerk and steward' },
+  { action: 'close', label: 'Close a period', standing: 'clerk, restricted and steward' },
   { action: 'reopen', label: 'Reopen a period', standing: 'steward' },
 ];
 
@@ -631,8 +631,9 @@ export class SettingStore {
   }
 }
 
-// The sheet's settings: the role given each user name (clerk, the default, steward, or viewer, who
-// sees everything and can change nothing), the delegations of the steward role (a steward's, to a user
+// The sheet's settings: the role given each user name (clerk, the default, steward, viewer, who
+// sees everything and can change nothing, or restricted, who acts as a clerk but is listed only the
+// people of their crews and themselves), the delegations of the steward role (a steward's, to a user
 // who acts as a steward while the sheet's today is from its from-date to its to-date) and the
 // clerk limit, the highest due a clerk settles outright (above it the claim goes PENDING), the floor, the least a claim's live due can be,
 // the cap, the most a person's due-total can be, the proof threshold, above which a claim's due (by the threshold
@@ -1421,7 +1422,7 @@ export class Settings {
       return;
     }
     if (!ROLES.includes(role)) {
-      this.roleError.set('Type a role: clerk or steward.');
+      this.roleError.set('Type a role: clerk, steward, viewer or restricted.');
       return;
     }
     this.busy.set(true);

@@ -7,11 +7,11 @@ import java.util.Set;
 
 /** An action the sheet's permission matrix governs, with the roles its standing rule lets take it. */
 public enum Permission {
-    OPEN(EnumSet.of(Role.CLERK, Role.STEWARD)),
-    SETTLE(EnumSet.of(Role.CLERK, Role.STEWARD)),
-    VOID(EnumSet.of(Role.CLERK, Role.STEWARD)),
+    OPEN(EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD)),
+    SETTLE(EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD)),
+    VOID(EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD)),
     REASSIGN(EnumSet.of(Role.STEWARD)),
-    CLOSE(EnumSet.of(Role.CLERK, Role.STEWARD)),
+    CLOSE(EnumSet.of(Role.CLERK, Role.RESTRICTED, Role.STEWARD)),
     REOPEN(EnumSet.of(Role.STEWARD));
 
     private final Set<Role> standing;

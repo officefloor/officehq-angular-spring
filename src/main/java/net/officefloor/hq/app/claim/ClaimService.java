@@ -1187,7 +1187,8 @@ public class ClaimService {
         if (limit == null || due == null || due.compareTo(limit) <= 0) {
             return false;
         }
-        return settings.roleOf(sheetId, user) == Role.CLERK;
+        Role role = settings.roleOf(sheetId, user);
+        return role == Role.CLERK || role == Role.RESTRICTED;
     }
 
     /** A claim whose due is above the proof threshold in force on its date (its person's grade's in
