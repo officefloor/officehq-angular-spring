@@ -62,6 +62,10 @@ public class ClaimController {
             @Size(max = 120) @Pattern(regexp = "\\s*\\S+\\s*") String corrects) {
     }
 
+    /** The reason a steward gives for rejecting a PENDING claim. */
+    public record RejectForm(@NotBlank @Size(max = 500) String reason) {
+    }
+
     /** The claims selected for a bulk action, by id. */
     public record BulkForm(@NotNull @Size(max = 10000) List<@NotNull Long> ids) {
     }
@@ -142,6 +146,23 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         return ClaimView.of(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED));
+    }
+
+    @PostMapping("/claims/{id}/approve")
+    public ClaimView approve(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return ClaimView.of(service.approve(sheetId, user.trim(), id));
+    }
+
+    @PostMapping("/claims/{id}/reject")
+    public ClaimView reject(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody RejectForm body) {
+        return ClaimView.of(service.reject(sheetId, user.trim(), id, body.reason().trim()));
     }
 
     @PostMapping("/claims/{id}/void")

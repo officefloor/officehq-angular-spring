@@ -1,7 +1,7 @@
 import { DOCUMENT, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
-import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, counts, money, overdue, quickAddError, roundsHalfUp } from '../claims/claims-api';
+import { AMOUNT_PATTERN, Claim, ClaimsApi, cents, counts, isOpen, money, overdue, quickAddError, roundsHalfUp } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
@@ -159,12 +159,12 @@ export class People {
     this.session.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null));
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
-  /** The ids of the people on hold: their OPEN claims count in no live total. */
+  /** The ids of the people on hold: their open (OPEN or PENDING) claims count in no live total. */
   private readonly heldIds = computed(() => new Set(this.people().filter((p) => p.held).map((p) => p.id)));
-  /** Whether a claim counts in the live totals: OPEN and SETTLED ones, but of a held person only SETTLED ones. */
+  /** Whether a claim counts in the live totals: open (OPEN or PENDING) and SETTLED ones, but of a held person only SETTLED ones. */
   private readonly countsLive = computed(() => {
     const held = this.heldIds();
-    return (c: Claim) => counts(c) && !(c.status === 'OPEN' && held.has(c.personId));
+    return (c: Claim) => counts(c) && !(isOpen(c) && held.has(c.personId));
   });
   /** Each person's claims (newest first) and claimed in cents (counting claims only), by person id. */
   private readonly byPerson = computed(() => {

@@ -169,6 +169,12 @@ public class Claim {
         return statedDue;
     }
 
+    /** Whether the claim's due is bound to {@link #statedDue}: it is stated and not PENDING (a
+     *  PENDING claim shows its live figure, and is bound again if rejected back to OPEN). */
+    public boolean isBound() {
+        return stated && status != ClaimStatus.PENDING;
+    }
+
     /** Bind the claim to a due (null: n/a) until the person's next statement. */
     public void bind(BigDecimal due) {
         this.stated = true;

@@ -8,7 +8,7 @@ import java.util.Optional;
 import net.officefloor.hq.app.sheet.Sheet;
 
 /**
- * The sheet's late charge: an OPEN claim overdue (its due-by, its date plus the terms, before the
+ * The sheet's late charge: an OPEN (or PENDING) claim overdue (its due-by, its date plus the terms, before the
  * sheet's today) gains the late percent of its figure for every full 30 days it is overdue,
  * rounded as the claim's rounding policy has it, on top; a correction (a negative amount) gains none. It is never bound by a statement; settling freezes it in.
  */
@@ -26,7 +26,7 @@ public record LateCharge(LocalDate today, int terms, BigDecimal pct) {
 
     /** The claim's figure (null: n/a, which stays n/a) with its late charge, rounded by {@code mode}, added. */
     public BigDecimal addTo(Claim claim, BigDecimal figure, RoundingMode mode) {
-        if (figure == null || claim.getStatus() != ClaimStatus.OPEN || claim.isCorrection()) {
+        if (figure == null || !claim.getStatus().isOpen() || claim.isCorrection()) {
             return figure;
         }
         long overdue = ChronoUnit.DAYS.between(claim.getDate().plusDays(terms), today);

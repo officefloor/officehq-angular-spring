@@ -52,6 +52,13 @@ import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimsApi, cents, claimError,
               [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
             <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'settle')"
               [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
+            <button type="button" data-testid="claim-approve" (click)="changeStatus(c, 'approve')"
+              [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
+            <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
+            <input [id]="'claim-reject-reason-' + c.id" data-testid="claim-reject-reason" autocomplete="off"
+              [value]="rejectReasons()[c.id] ?? ''" (input)="reasonChanged(c.id, $any($event.target).value)" />
+            <button type="button" data-testid="claim-reject" (click)="reject(c)"
+              [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
             <button type="button" data-testid="claim-void" (click)="changeStatus(c, 'void')"
               [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
             <button type="button" data-testid="claim-edit" (click)="edit(c)"
@@ -95,6 +102,8 @@ export class PersonClaims {
   /** Whether a submit is waiting for its answer; a second submit meanwhile is ignored. */
   private submitting = false;
   protected readonly rowErrors = signal<Record<number, string>>({});
+  /** The reason typed for rejecting each PENDING claim, by claim id. */
+  protected readonly rejectReasons = signal<Record<number, string>>({});
   protected readonly fieldId = (name: string) => `claim-form-${name}-${this.personId()}`;
 
   protected readonly form = new FormGroup({
@@ -110,8 +119,8 @@ export class PersonClaims {
 
   /** The claim's amount times the rate in force on the claim's date for the person's grade then, divided by 100, rounded
    *  by the claim's rounding policy (half up before the sheet's policy date, else half to even), at least the sheet's floor; n/a with no rate in force then. A claim settled with a
-   *  due shows the due fixed then, and one bound by a statement the due bound; an overdue OPEN
-   *  claim gains its late charge on top. */
+   *  due shows the due fixed then, and one bound by a statement the due bound; an overdue open
+   *  (OPEN or PENDING) claim gains its late charge on top. */
   protected dueOf(c: Claim): string {
     const grade = gradeOn(this.grades(), c.date);
     const due = claimDueCents(this.rates().filter((r) => r.grade === grade), c, cents(this.session.floor()), {
@@ -125,7 +134,7 @@ export class PersonClaims {
     return dueBy(c, this.session.terms());
   }
 
-  /** Whether the claim is OPEN with its due-by before the sheet's today. */
+  /** Whether the claim is open (OPEN or PENDING) with its due-by before the sheet's today. */
   protected overdueOf(c: Claim): boolean {
     return overdue(c, this.session.terms(), this.session.today());
   }
@@ -192,7 +201,31 @@ export class PersonClaims {
     }
   }
 
-  /** Open, settle or void a claim; a move its status does not allow shows an error on the claim. */
+  protected reasonChanged(id: number, reason: string): void {
+    this.clearRowError(id);
+    this.rejectReasons.update((rs) => ({ ...rs, [id]: reason }));
+  }
+
+  /** Reject a PENDING claim with the reason typed for it; it goes back to OPEN. */
+  protected async reject(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const reason = (this.rejectReasons()[c.id] ?? '').trim();
+    if (reason === '') {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Enter a reason for rejecting the claim.' }));
+      return;
+    }
+    try {
+      const claim = await this.api.reject(sheetId, c.id, reason);
+      this.rejectReasons.update(({ [c.id]: _, ...rest }) => rest);
+      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: statusError(e, c.openedBy === this.session.user()) }));
+    }
+  }
+
+  /** Open, settle, approve or void a claim; a move its status does not allow shows an error on the claim. */
   protected async changeStatus(c: Claim, action: ClaimAction): Promise<void> {
     this.clearRowError(c.id);
     const sheetId = this.session.sheetId();

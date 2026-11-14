@@ -137,11 +137,11 @@ public class RollupService {
         }
     }
 
-    /** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do, and
-     *  of a held person (by id in {@code held}) only SETTLED ones. */
+    /** Whether a claim counts toward claimed and due totals: only OPEN (or PENDING) and SETTLED ones
+     *  do, and of a held person (by id in {@code held}) only SETTLED ones. */
     private static boolean counts(Claim c, Set<Long> held) {
         return c.getStatus() == ClaimStatus.SETTLED
-                || (c.getStatus() == ClaimStatus.OPEN && !held.contains(c.getPersonId()));
+                || (c.getStatus().isOpen() && !held.contains(c.getPersonId()));
     }
 
     private static Set<Long> heldIds(List<Person> sheetPeople) {
@@ -180,7 +180,7 @@ public class RollupService {
      *  its live due. */
     private static BigDecimal figureOf(Claim c, Person person, List<Rate> sheetRates, BigDecimal floor,
             RoundingMode mode) {
-        if (c.isStated()) {
+        if (c.isBound()) {
             return c.getStatedDue();
         }
         return inForce(person, sheetRates, c.getDate())

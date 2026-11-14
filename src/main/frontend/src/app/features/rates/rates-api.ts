@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, cents, dueBy, isCorrection, overdue } from '../claims/claims-api';
+import { Claim, cents, dueBy, isBound, isCorrection, overdue } from '../claims/claims-api';
 
 /** A percent of 0.00 or more with up to two decimals. */
 export const PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
@@ -78,7 +78,7 @@ export interface Lateness {
 }
 
 /** A claim's due in cents: the due fixed when it was settled, else its figure (the due a statement
- *  bound it to, else its amount times its grade's rate in force on its date, rounded half up when
+ *  bound it to (unless PENDING), else its amount times its grade's rate in force on its date, rounded half up when
  *  `halfUp` (the claim's rounding policy) else half to even, and raised to the sheet's floor) with
  *  its late charge, rounded the same way, on top (a correction is neither raised to the floor nor
  *  charged late); null (n/a) with no figure. */
@@ -89,7 +89,7 @@ export function claimDueCents(rates: readonly Rate[], c: Claim, floorCents: numb
 }
 
 function figureCents(rates: readonly Rate[], c: Claim, floorCents: number, halfUp: boolean): number | null {
-  if (c.stated) return c.statedDue === null ? null : cents(c.statedDue);
+  if (isBound(c)) return c.statedDue === null ? null : cents(c.statedDue);
   const pct = pctOn(rates, c.date);
   if (pct === null) return null;
   const due = dueCents(cents(c.amount), cents(pct), halfUp);

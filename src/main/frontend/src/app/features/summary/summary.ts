@@ -3,8 +3,7 @@ import { Claim, money } from '../claims/claims-api';
 import { GRADES } from '../people/people-api';
 import { Period, periodDueCents } from '../periods/periods-api';
 
-/** The statuses the summary counts, in the order it lists them. PENDING is listed though no claim
- *  takes it in this app, so its count is always 0. */
+/** The statuses the summary counts, in the order it lists them. */
 const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
 
 /** A person as the summary counts them: their grade in force on the sheet's today, whether they

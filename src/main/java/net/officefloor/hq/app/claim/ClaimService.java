@@ -21,6 +21,7 @@ import net.officefloor.hq.app.person.StatementSummary;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
@@ -138,15 +139,16 @@ public class ClaimService {
     }
 
     /** Move a claim to a new status; a move its status does not allow is refused (409), as is
-     *  settling by the user who opened the claim (403), settling by a clerk a claim
-     *  whose due is above the sheet's clerk limit (403), and any move of a claim dated in a closed
-     *  period (423). */
+     *  settling by the user who opened the claim (403), settling a PENDING claim (409: it is
+     *  approved or rejected instead), and any move of a claim dated in a closed period (423). A
+     *  clerk settling a claim whose due is above the sheet's clerk limit sends it to PENDING. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus to) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         refuseIfClosed(sheetId, claim.getDate());
-        if (!claim.getStatus().canMoveTo(to)) {
+        if (to == ClaimStatus.PENDING || (to == ClaimStatus.SETTLED && claim.getStatus() == ClaimStatus.PENDING)
+                || !claim.getStatus().canMoveTo(to)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + to);
         }
@@ -159,8 +161,8 @@ public class ClaimService {
         // a claim bound by a statement settles at its bound figure, its late charge frozen in
         BigDecimal settling = to == ClaimStatus.SETTLED ? shownDueOf(claim, person) : null;
         if (to == ClaimStatus.SETTLED && !settings.maySettle(sheetId, user, settling)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "A clerk cannot settle a claim whose due is above the clerk limit");
+            // above the clerk limit: a steward approves or rejects it
+            to = ClaimStatus.PENDING;
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         // a voided claim keeps its number (never reused), and the VOIDED record carries it
@@ -176,13 +178,13 @@ public class ClaimService {
         claims.flush();
         String event = switch (to) {
             case OPEN -> "CLAIM_OPENED";
+            case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
             case DRAFT -> throw new IllegalArgumentException("A claim cannot return to DRAFT");
         };
         if (to == ClaimStatus.SETTLED) {
-            BigDecimal due = claim.getSettledDue();
-            record(event, user, person, claim, number, " due=" + (due == null ? "n/a" : due.toPlainString()));
+            record(event, user, person, claim, number, " due=" + dueText(claim.getSettledDue()));
         } else {
             record(event, user, person, claim, number);
         }
@@ -190,8 +192,67 @@ public class ClaimService {
         return claim;
     }
 
+    /** A steward approves a PENDING claim: it becomes SETTLED, its due (its live figure, with its
+     *  late charge) frozen now. Refused (409) unless PENDING, (403) for a clerk or the user who
+     *  opened it, and (423) when it is dated in a closed period. */
+    @Transactional
+    public Claim approve(String sheetId, String user, long id) {
+        Claim claim = pendingForSteward(sheetId, user, id);
+        if (user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who opened a claim cannot approve it");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal due = shownDueOf(claim, person);
+        claim.setStatus(ClaimStatus.SETTLED);
+        claim.setSettledDue(due);
+        claims.flush();
+        record("CLAIM_APPROVED", user, person, claim, claim.getNumber(), " due=" + dueText(due));
+        rollup.recordChanges(sheetId, user, before);
+        return claim;
+    }
+
+    /** A steward rejects a PENDING claim with a reason: it goes back to OPEN, bound again by the
+     *  person's last statement if that statement bound it. Refused (409) unless PENDING, (403) for
+     *  a clerk, and (423) when it is dated in a closed period. */
+    @Transactional
+    public Claim reject(String sheetId, String user, long id, String reason) {
+        Claim claim = pendingForSteward(sheetId, user, id);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setStatus(ClaimStatus.OPEN);
+        claims.flush();
+        record("CLAIM_REJECTED", user, person, claim, claim.getNumber(), " reason=" + reason);
+        rollup.recordChanges(sheetId, user, before);
+        return claim;
+    }
+
+    /** The PENDING claim a steward decides on: refused (404) when missing, (423) when dated in a
+     *  closed period, (409) unless PENDING, and (403) when the user is not a steward. */
+    private Claim pendingForSteward(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only a PENDING claim is approved or rejected, not a " + claim.getStatus() + " one");
+        }
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a steward approves or rejects a PENDING claim");
+        }
+        return claim;
+    }
+
+    private static String dueText(BigDecimal due) {
+        return due == null ? "n/a" : due.toPlainString();
+    }
+
     /** Take a statement of a person: record their due-total now, and bind each of their claims
-     *  that counts (OPEN or SETTLED, of a held person only SETTLED) to its figure now; the others
+     *  that counts (OPEN, PENDING or SETTLED, of a held person only SETTLED) to its figure now; the others
      *  are left unbound. */
     @Transactional
     public Statement statement(String sheetId, String user, long personId) {
@@ -266,11 +327,11 @@ public class ClaimService {
         }
     }
 
-    /** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do, and
-     *  of a held person only SETTLED ones. */
+    /** Whether a claim counts toward claimed and due totals: only OPEN (or PENDING) and SETTLED ones
+     *  do, and of a held person only SETTLED ones. */
     private static boolean counts(Claim c, Person person) {
         return c.getStatus() == ClaimStatus.SETTLED
-                || (c.getStatus() == ClaimStatus.OPEN && !person.isHeld());
+                || (c.getStatus().isOpen() && !person.isHeld());
     }
 
     /** The due a claim shows: the due fixed when it was settled, else its figure with its late
@@ -283,9 +344,9 @@ public class ClaimService {
     }
 
     /** A claim's figure before any late charge: the one a statement bound it to (null: n/a), else
-     *  its live due. */
+     *  (unbound, or PENDING) its live due. */
     private BigDecimal figureOf(Claim claim, Person person) {
-        return claim.isStated() ? claim.getStatedDue() : dueOf(claim, person);
+        return claim.isBound() ? claim.getStatedDue() : dueOf(claim, person);
     }
 
     /** A person's due-total: the sum of the dues their counting claims show (n/a ones skipped);

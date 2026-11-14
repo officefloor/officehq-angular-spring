@@ -10,11 +10,13 @@ export const AMOUNT_PATTERN = /^\d{1,13}(\.\d{1,2})?$/;
 /** A claim form's amount: up to two decimals, negative for a correction. */
 export const CLAIM_AMOUNT_PATTERN = /^-?\d{1,13}(\.\d{1,2})?$/;
 
-/** DRAFT when added, then OPEN, then SETTLED; a DRAFT or OPEN claim may be VOID. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'SETTLED' | 'VOID';
+/** DRAFT when added, then OPEN, then SETTLED; a clerk settling one above the clerk limit sends it to
+ *  PENDING, which a steward approves (SETTLED) or rejects (back to OPEN). A DRAFT, OPEN or PENDING
+ *  claim may be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A move of a claim's status, as the server names it. */
-export type ClaimAction = 'open' | 'settle' | 'void';
+export type ClaimAction = 'open' | 'settle' | 'void' | 'approve';
 
 export interface Claim {
   id: number;
@@ -32,7 +34,8 @@ export interface Claim {
   settledDue: string | null;
   /** The user who opened the claim, who cannot settle it; null while DRAFT. */
   openedBy: string | null;
-  /** Whether the person's last statement bound the claim: it then shows and totals statedDue. */
+  /** Whether the person's last statement bound the claim: it then shows and totals statedDue,
+   *  except while PENDING, when it shows and totals its live figure. */
   stated: boolean;
   /** The due the claim was bound to, with two decimals; null when unbound or n/a then. */
   statedDue: string | null;
@@ -45,9 +48,19 @@ export function isCorrection(c: Claim): boolean {
   return c.amount.startsWith('-');
 }
 
-/** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do. */
+/** Whether a claim is open: OPEN, or PENDING (handled like an OPEN one). */
+export function isOpen(c: Claim): boolean {
+  return c.status === 'OPEN' || c.status === 'PENDING';
+}
+
+/** Whether a claim's due is bound to statedDue: stated and not PENDING. */
+export function isBound(c: Claim): boolean {
+  return c.stated && c.status !== 'PENDING';
+}
+
+/** Whether a claim counts toward claimed and due totals: only open (OPEN or PENDING) and SETTLED ones do. */
 export function counts(c: Claim): boolean {
-  return c.status === 'OPEN' || c.status === 'SETTLED';
+  return isOpen(c) || c.status === 'SETTLED';
 }
 
 /** A claim's due-by (yyyy-mm-dd): its date plus the sheet's terms in days. */
@@ -56,9 +69,9 @@ export function dueBy(c: Claim, terms: number): string {
   return new Date(Date.UTC(y, m - 1, d + terms)).toISOString().slice(0, 10);
 }
 
-/** Whether a claim is overdue: OPEN with its due-by before the sheet's today. */
+/** Whether a claim is overdue: open (OPEN or PENDING) with its due-by before the sheet's today. */
 export function overdue(c: Claim, terms: number, today: string | null): boolean {
-  return c.status === 'OPEN' && today !== null && dueBy(c, terms) < today;
+  return isOpen(c) && today !== null && dueBy(c, terms) < today;
 }
 
 /** Whether a claim's live figures round half up: its date (a correction's, the date of the claim
@@ -124,6 +137,13 @@ export class ClaimsApi {
     );
   }
 
+  /** Reject a PENDING claim with a reason: it goes back to OPEN. */
+  reject(sheetId: string, id: number, reason: string): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/reject`, { reason }, { headers: this.headers() }),
+    );
+  }
+
   /** Open each of the claims, in list order; those that cannot be opened are left as they are. */
   bulkOpen(sheetId: string, ids: number[]): Promise<{ opened: number; refused: number }> {
     return firstValueFrom(this.http.post<{ opened: number; refused: number }>(`${this.url(sheetId)}/claims/bulk-open`, { ids },
@@ -163,9 +183,10 @@ export function quickAddError(e: unknown): string {
 
 /** Why a status change was refused; `opener` says whether the user is the one who opened the claim. */
 export function statusError(e: unknown, opener: boolean): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a reason for rejecting the claim.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status.';
   if (e instanceof HttpErrorResponse && e.status === 403) {
-    return opener ? 'The user who opened this claim cannot settle it.' : "This claim's due is above the clerk limit; a steward must settle it.";
+    return opener ? 'The user who opened this claim cannot settle or approve it.' : 'Only a steward can approve or reject a pending claim.';
   }
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
