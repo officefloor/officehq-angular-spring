@@ -13,6 +13,7 @@ import { Summary } from '../summary/summary';
 import { PersonPlans, PlanGenerate } from '../plans/plans';
 import { Counters } from '../counters/counters';
 import { PoolStore, Pools, figure, personCutTotals } from '../pools/pools';
+import { Crews } from '../crews/crews';
 
 /** A hold put on a person: from its from-date to its to-date, both included (null: it does not end). */
 interface Hold {
@@ -130,7 +131,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
 // saves their changes.
 @Component({
   selector: 'app-people',
-  imports: [ClaimTemplates, Counters, Holidays, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, Summary, VoidReasons],
+  imports: [ClaimTemplates, Counters, Crews, Holidays, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, Summary, VoidReasons],
   template: `
     <app-counters
       [peopleCount]="people().length"
@@ -150,6 +151,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
     <app-void-reasons />
     <app-claim-templates />
     <app-pools [people]="people()" />
+    <app-crews [people]="crewPeople()" />
     <app-summary
       [grades]="gradeSummary()"
       [periods]="periodSummary()"
@@ -1017,6 +1019,10 @@ export class People {
           .filter((due) => due !== null),
       ),
     ),
+  );
+  /** The people as the crews show them: each with their due-total in cents, null when it is n/a. */
+  protected readonly crewPeople = computed(() =>
+    this.people().map((p) => ({ id: p.id, name: p.name, due: this.dueCentsBy(p) })),
   );
   /** The signed-in user's own figures: those of the person whose name or an alias is the user's
    *  name, as names are compared; null when there is no such person. */

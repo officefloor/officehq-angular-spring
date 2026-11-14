@@ -7,6 +7,7 @@ import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.setting.Role;
@@ -18,7 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Merges a person into another on the same sheet: the merged person leaves the sheet and the other
- *  takes on their claims, names, patrons and pool memberships. */
+ *  takes on their claims, names, patrons, pool memberships and crews. */
 @Service
 public class PersonMergeService {
 
@@ -30,13 +31,14 @@ public class PersonMergeService {
     private final ClaimRepository claims;
     private final StatementRepository statements;
     private final PoolMemberRepository poolMembers;
+    private final CrewService crews;
     private final SettingService settings;
     private final SheetService sheets;
     private final Audit audit;
 
     public PersonMergeService(PersonRepository people, PersonAliasRepository aliases, PersonPatronRepository patrons,
             PersonHoldRepository holds, PersonWatchRepository watches, ClaimRepository claims,
-            StatementRepository statements, PoolMemberRepository poolMembers, SettingService settings,
+            StatementRepository statements, PoolMemberRepository poolMembers, CrewService crews, SettingService settings,
             SheetService sheets, Audit audit) {
         this.people = people;
         this.aliases = aliases;
@@ -46,6 +48,7 @@ public class PersonMergeService {
         this.claims = claims;
         this.statements = statements;
         this.poolMembers = poolMembers;
+        this.crews = crews;
         this.settings = settings;
         this.sheets = sheets;
         this.audit = audit;
@@ -130,6 +133,7 @@ public class PersonMergeService {
                 poolMembers.saveAndFlush(member);
             }
         }
+        crews.merge(from.getId(), into.getId());
 
         // Their statements become the other's, before the other's own (when they have any), so the
         // other's last statement stays theirs.

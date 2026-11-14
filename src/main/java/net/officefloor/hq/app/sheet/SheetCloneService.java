@@ -55,7 +55,7 @@ public class SheetCloneService {
 
     /** A steward clones the sheet to another id, which must never have been used. The clone takes the
      *  sheet's today, settings, roles, rates, holidays, void reasons and templates; its people with
-     *  their grades, terms, contacts, aliases, holds, retirements and patrons; its pools; its periods,
+     *  their grades, terms, contacts, aliases, holds, retirements and patrons; its pools; its crews; its periods,
      *  all open; and its claims with their status, frozen figures, dates, notes, tags, comments and
      *  logs. Each claim that had a number takes the clone's next number, in the order the claims were
      *  opened (by the sheet's today when each was, then the order they were added). Statements, and
@@ -143,6 +143,26 @@ public class SheetCloneService {
                     + " VALUES (?, ?, ?, ?, ?, ?)", pools.get(idOf(member.get("POOL_ID"))),
                     people.get(idOf(member.get("PERSON_ID"))), pools.get(idOf(member.get("MEMBER_POOL_ID"))),
                     member.get("SHARE"), member.get("FROM_DATE"), member.get("TO_DATE"));
+        }
+
+        // Crews, then their members: people of the clone.
+        Map<Long, Long> crews = new HashMap<>();
+        for (Map<String, Object> crew : jdbc.queryForList("SELECT id, lead_id FROM crew WHERE sheet_id = ? ORDER BY id",
+                from)) {
+            // A crew whose lead has left the sheet is not carried.
+            if (!people.containsKey(idOf(crew.get("LEAD_ID")))) {
+                continue;
+            }
+            crews.put(idOf(crew.get("ID")), insert("INSERT INTO crew (sheet_id, name, lead_id) SELECT ?, name, ? FROM crew"
+                    + " WHERE id = ?", to, people.get(idOf(crew.get("LEAD_ID"))), idOf(crew.get("ID"))));
+        }
+        for (Map<String, Object> member : jdbc.queryForList("SELECT m.* FROM crew_member m JOIN crew c"
+                + " ON c.id = m.crew_id WHERE c.sheet_id = ? ORDER BY m.id", from)) {
+            if (!crews.containsKey(idOf(member.get("CREW_ID")))) {
+                continue;
+            }
+            jdbc.update("INSERT INTO crew_member (crew_id, person_id) VALUES (?, ?)",
+                    crews.get(idOf(member.get("CREW_ID"))), people.get(idOf(member.get("PERSON_ID"))));
         }
 
         // Claims, person by person in the order they were listed, unnumbered, unbound and unlocked;

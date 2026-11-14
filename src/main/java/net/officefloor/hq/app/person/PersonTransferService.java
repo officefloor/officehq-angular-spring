@@ -148,10 +148,11 @@ public class PersonTransferService {
         Long personId = person.getId();
         entities.flush();
 
-        // Left behind on this sheet: patron links both ways, pool memberships, holds, watches,
+        // Left behind on this sheet: patron links both ways, pool and crew memberships, holds, watches,
         // and the claims' comments.
         jdbc.update("DELETE FROM person_patron WHERE person_id = ? OR patron_id = ?", personId, personId);
         jdbc.update("DELETE FROM pool_member WHERE person_id = ?", personId);
+        jdbc.update("DELETE FROM crew_member WHERE person_id = ?", personId);
         jdbc.update("DELETE FROM person_hold WHERE person_id = ?", personId);
         jdbc.update("DELETE FROM person_watch WHERE person_id = ?", personId);
         jdbc.update("DELETE FROM claim_comment WHERE claim_id IN (SELECT id FROM claim WHERE person_id = ?)",
