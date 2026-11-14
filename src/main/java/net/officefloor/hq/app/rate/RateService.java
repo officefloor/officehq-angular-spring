@@ -105,8 +105,8 @@ public class RateService {
         return rateOn(sheetId, grade, date, null);
     }
 
-    /** The grade's rate in force on a date as the rates (the sheet's and its parent sheets') stood
-     *  at the end of a day (null: as they stand now). */
+    /** The grade's rate in force on a date as the sheet's rates stood at the end of a day (null: as
+     *  they stand now), falling back to its parent sheets' rates as they stand now. */
     public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date, LocalDate asOf) {
         return rateFor(sheetId, grade, date, null, asOf);
     }
@@ -120,8 +120,10 @@ public class RateService {
         if (own.isPresent()) {
             return own;
         }
+        // A parent sheet keeps its own today, not this one's: the sheet falls back to its parents'
+        // rates as they stand now, as it does to its parents themselves.
         for (String ancestor : ancestors(sheetId)) {
-            Optional<Rate> theirs = ownRateFor(ancestor, grade, date, claimId, asOf);
+            Optional<Rate> theirs = ownRateFor(ancestor, grade, date, claimId, null);
             if (theirs.isPresent()) {
                 return theirs;
             }

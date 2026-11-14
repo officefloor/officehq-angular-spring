@@ -92,13 +92,12 @@ public class RateController {
     }
 
     /** The rates of the sheets the sheet's rates fall back to, nearest first (its parent, the
-     *  parent's parent, up to three levels up), each listed as {@link #list} lists them. */
+     *  parent's parent, up to three levels up), each listed as {@link #list} lists them now: a parent
+     *  keeps its own today, so a sheet read as of a past day falls back to its parents as they stand now. */
     @GetMapping("/inherited")
-    public List<List<RateView>> inherited(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @RequestHeader(value = AsOf.HEADER, required = false) String asOf) {
-        LocalDate day = AsOf.parse(asOf);
+    public List<List<RateView>> inherited(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
         return service.ancestors(sheetId.trim()).stream()
-                .map(ancestor -> service.list(ancestor, day).stream().map(this::view).toList())
+                .map(ancestor -> service.list(ancestor).stream().map(this::view).toList())
                 .toList();
     }
 

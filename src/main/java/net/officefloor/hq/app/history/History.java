@@ -73,6 +73,10 @@ public class History {
                         was.setRef(is.getRef());
                         was.setTags(is.getTags());
                         was.setBatch(is.getBatch());
+                        // Only the last reminder is kept: it shows when it was written by then.
+                        if (is.getRemindedOn() != null && !is.getRemindedOn().isAfter(day)) {
+                            was.setRemindedOn(is.getRemindedOn());
+                        }
                         if (was.getStatus() == ClaimStatus.VOID) {
                             was.setVoidReason(is.getVoidReason());
                         }

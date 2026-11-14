@@ -53,6 +53,9 @@ interface Person {
   /** The snapshots written for the person, oldest first: the day being left and their due-total
    *  then ('n/a' when none). */
   snapshots: { day: string; dueTotal: string }[];
+  /** The person's statements still standing, oldest first by date: the date and the due-total each
+   *  recorded. */
+  statements: { date: string; dueTotal: string }[];
   /** The holds put on the person, in the order they were: their OPEN claims dated within one, unless
    *  bound by a statement, count in no live total. */
   holds: Hold[];
@@ -85,7 +88,12 @@ const NO_DESCENDANTS: DescendantFigures = { people: 0, dueTotal: '0.00', overdue
 /** A statement taken: the person's statements as their row shows them, and their claims as it
  *  bound them. */
 interface StatementTaken {
-  statements: { count: number; lastDueTotal: string | null; lastDate: string | null };
+  statements: {
+    count: number;
+    lastDueTotal: string | null;
+    lastDate: string | null;
+    lines: { date: string; dueTotal: string }[];
+  };
   claims: Claim[];
 }
 
@@ -480,6 +488,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
             <th scope="col">Retired from</th>
             <th scope="col">Past retirements</th>
             <th scope="col">Snapshots</th>
+            <th scope="col">Statement lines</th>
             <th scope="col">Active</th>
             @if (columnShown('hold')) {
               <th scope="col">On hold</th>
@@ -573,6 +582,13 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
                 <ul [attr.aria-label]="'Snapshots of ' + p.name">
                   @for (s of p.snapshots; track $index) {
                     <li data-testid="person-snapshot-line">{{ s.day }} {{ s.dueTotal }}</li>
+                  }
+                </ul>
+              </td>
+              <td>
+                <ul [attr.aria-label]="'Statements of ' + p.name">
+                  @for (st of p.statements; track $index) {
+                    <li data-testid="person-statement-line-line">{{ st.date }} {{ st.dueTotal }}</li>
                   }
                 </ul>
               </td>
@@ -2120,11 +2136,11 @@ export class People {
         ...taken.claims.filter((c) => !list.some((had) => had.id === c.id)),
         ...list.map((c) => bound.get(c.id) ?? c),
       ].sort((a, b) => b.id - a.id));
-      const { count, lastDueTotal, lastDate } = taken.statements;
+      const { count, lastDueTotal, lastDate, lines } = taken.statements;
       this.people.update((list) =>
         list.map((p) =>
           p.id === person.id
-            ? { ...p, statementCount: count, statedTotal: lastDueTotal, statementDate: lastDate }
+            ? { ...p, statementCount: count, statedTotal: lastDueTotal, statementDate: lastDate, statements: lines }
             : p,
         ),
       );
@@ -2146,11 +2162,11 @@ export class People {
       if (this.session.sheetId() !== sheet) return;
       const live = new Map(cancelled.claims.map((c) => [c.id, c]));
       this.claims.update((list) => list.map((c) => live.get(c.id) ?? c));
-      const { count, lastDueTotal, lastDate } = cancelled.statements;
+      const { count, lastDueTotal, lastDate, lines } = cancelled.statements;
       this.people.update((list) =>
         list.map((p) =>
           p.id === person.id
-            ? { ...p, statementCount: count, statedTotal: lastDueTotal, statementDate: lastDate }
+            ? { ...p, statementCount: count, statedTotal: lastDueTotal, statementDate: lastDate, statements: lines }
             : p,
         ),
       );

@@ -71,12 +71,12 @@ public class PersonController {
      *  grade they were given from the earliest, how many statements were taken for them and the
      *  last one's due-total and date (null when none was), and whether they are retired and from
      *  when (null when not), and the holds put on them in the order they were, and the ids of their patrons in the order
-     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none), and their aliases sorted as names are compared, and the sheet they were transferred from (null for none), and their past retirements in the order they ended, and their tags sorted (empty for none), and the snapshots written for them oldest first. */
+     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none), and their aliases sorted as names are compared, and the sheet they were transferred from (null for none), and their past retirements in the order they ended, and their tags sorted (empty for none), and the snapshots written for them oldest first, and their statements' lines oldest first. */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
             List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
-            List<String> tags, List<SnapshotView> snapshots) {
+            List<String> tags, List<SnapshotView> snapshots, List<StatementSummary.Line> statements) {
         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
                 StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched,
                 List<String> aliases, boolean clashing, List<PersonRetirement> retirements,
@@ -87,7 +87,7 @@ public class PersonController {
                     holds.stream().map(HoldView::of).toList(), patronIds, watched, person.getTerms(),
                     person.getContact(), aliases, clashing, person.getOriginSheetId(),
                     retirements.stream().map(RetirementView::of).toList(), person.getTags(),
-                    snapshots.stream().map(SnapshotView::of).toList());
+                    snapshots.stream().map(SnapshotView::of).toList(), statements.lines());
         }
     }
 
