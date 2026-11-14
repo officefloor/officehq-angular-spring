@@ -1,0 +1,68 @@
+{
+  "checkpoint": 188,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp188_clone-source-rates",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    126
+  ],
+  "replaced_tests": [
+    "cp126_clone-sheet.spec.ts::clone sheet"
+  ],
+  "request": {
+    "spec": "When a grade has no rate in force on a date on a sheet nor on its parents, a sheet that was\ncloned uses the rate of the sheet it was cloned from (and so on up that sheet's parents and\nsource).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhen a grade has no rate in force on a date on a sheet nor on its parents, a sheet that was\ncloned uses the rate of the sheet it was cloned from (and so on up that sheet's parents and\nsource).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5933afeb0e01b7297bc793107ec6a9baa9ac7e8d",
+  "reset_sha": "",
+  "preagent_sha": "eb2fa65936924b2a383a3affaef71130c6c8b51c",
+  "prev_sha": "eb2fa65936924b2a383a3affaef71130c6c8b51c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5990634,
+    "input_tokens": 28,
+    "output_tokens": 6676,
+    "cache_read_tokens": 512517,
+    "cache_creation_tokens": 45366,
+    "num_turns": 14,
+    "duration_ms": 293802,
+    "duration_api_ms": 68084,
+    "model": "claude-opus-5-5",
+    "session_id": "c20a665b-2719-4f79-a1e5-4b83b5073c03",
+    "stop_reason": "success",
+    "result_text": "A cloned sheet now falls back to the rates of the sheet it was cloned from. If a grade has no rate in force on a date on the sheet or on its parents, the app looks at the source sheet, then that sheet's parents, then the sheet *it* was cloned from, and so on. `bin/e2e` passes all 4 tests in the spec.\n\n**What changed:**\n- **Stored data:** a new migration, `V106__sheet_cloned_from.sql`, adds a `cloned_from` column to the sheet table, and `Sheet.java` has a matching field. Sheets that weren't cloned have it empty.\n- **Cloning:** `SheetCloneService` now records which sheet the clone came from.\n- **Rate lookup:** a new `RateService.fallbacks()` gives the full list of sheets to fall back to, nearest first: the sheet's parents (still up to 3 levels, as before), then the source sheet and its own fall-backs. Each sheet appears only once, so a loop of parents or sources can't cycle forever. All rate lookups use this list, so claim dues, rollups and statements all pick up the source's rates.\n- **Front end:** the screen's current rates and rate calendar already come from the `/rates/inherited` endpoint. That endpoint now returns this longer list, so the only front-end edit was a comment in `rates.ts`.\n\n**Behaviour to be aware of:**\n- When the screen is set to a past as-of date, the sheet's own parents are taken as they were on that day, but the source sheet's parents are taken as they are now. This matches how parent sheets' rates are already handled.\n- Each parent's own clone source is not checked; only the cloned sheet's own source chain is. That's how I read \"nor on its parents\", and the tests don't cover that case.\n- Sheets cloned before this change have no recorded source, so they don't get the new fallback.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5990634,
+        "num_turns": 14,
+        "duration_ms": 293802,
+        "duration_api_ms": 68084,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp188.agent.jsonl",
+  "agent_diff_file": "cp188.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

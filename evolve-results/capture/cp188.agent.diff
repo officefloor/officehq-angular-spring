@@ -1,0 +1,177 @@
+diff --git a/src/main/frontend/src/app/features/rates/rates.ts b/src/main/frontend/src/app/features/rates/rates.ts
+index dfa26648b..c36ee60ae 100644
+--- a/src/main/frontend/src/app/features/rates/rates.ts
++++ b/src/main/frontend/src/app/features/rates/rates.ts
+@@ -124,7 +124,8 @@ export interface RatePreview {
+ const PERCENT = /^\d{1,5}(\.\d{1,2})?$/;
+ 
+ // The active sheet's rates for each grade, each from its from-date, and those of the sheets they fall
+-// back to (its parent, the parent's parent, up to three levels up), re-read whenever a sheet is loaded.
++// back to (its parent, the parent's parent, up to three levels up, then the sheet it was cloned from
++// and its own), re-read whenever a sheet is loaded.
+ @Injectable({ providedIn: 'root' })
+ export class RateStore {
+   private readonly http = inject(HttpClient);
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 3927d9293..6f7537df0 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -92,13 +92,14 @@ public class RateController {
+     }
+ 
+     /** The rates of the sheets the sheet's rates fall back to, nearest first (its parent, the
+-     *  parent's parent, up to three levels up), each listed as {@link #list} lists them as they stand
+-     *  now; under the screen's as-of date, the parents the sheet had at the end of that day. */
++     *  parent's parent, up to three levels up, then the sheet it was cloned from and its own), each
++     *  listed as {@link #list} lists them as they stand now; under the screen's as-of date, the
++     *  parents the sheet had at the end of that day. */
+     @GetMapping("/inherited")
+     public List<List<RateView>> inherited(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+             @RequestHeader(value = AsOf.HEADER, required = false) String asOf) {
+         LocalDate day = AsOf.parse(asOf);
+-        return service.ancestors(sheetId.trim(), day).stream()
++        return service.fallbacks(sheetId.trim(), day).stream()
+                 .map(ancestor -> service.list(ancestor).stream().map(this::view).toList())
+                 .toList();
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 1e3bdcd10..6fa202111 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -5,8 +5,10 @@ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.Comparator;
++import java.util.HashSet;
+ import java.util.List;
+ import java.util.Optional;
++import java.util.Set;
+ import java.util.stream.Stream;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.history.History;
+@@ -20,7 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
+ 
+ /** The rates set on a sheet for each grade, each in force from its from-date. A grade with no rate
+  *  in force on a date on a sheet takes its parent sheet's, then the parent's parent's, up to
+- *  {@link #PARENT_LEVELS} levels up. */
++ *  {@link #PARENT_LEVELS} levels up; with none there either, a sheet that was cloned takes the rate
++ *  of the sheet it was cloned from, and so on up that sheet's parents and source. */
+ @Service
+ public class RateService {
+ 
+@@ -73,6 +76,31 @@ public class RateService {
+         return found;
+     }
+ 
++    /** Every sheet the sheet's rates fall back to, nearest first: its {@link #ancestors} as they stood
++     *  at the end of a day (null: now); then, for a sheet that was cloned, the sheet it was cloned from
++     *  and that sheet's own fall-backs as they stand now. A sheet is listed once, the sheet itself never. */
++    public List<String> fallbacks(String sheetId, LocalDate asOf) {
++        List<String> found = new ArrayList<>();
++        Set<String> seen = new HashSet<>(Set.of(sheetId));
++        String sheet = sheetId;
++        LocalDate day = asOf;
++        while (sheet != null) {
++            for (String ancestor : ancestors(sheet, day)) {
++                if (seen.add(ancestor)) {
++                    found.add(ancestor);
++                }
++            }
++            String source = sheetRepository.findById(sheet).map(Sheet::getClonedFrom).orElse(null);
++            if (source == null || !seen.add(source)) {
++                break;
++            }
++            found.add(source);
++            sheet = source;
++            day = null;
++        }
++        return found;
++    }
++
+     /** The sheet's rates by grade, each grade's from the earliest. */
+     public List<Rate> list(String sheetId) {
+         return rates.findBySheetIdOrderByGradeAscFromAscIdAsc(sheetId);
+@@ -109,8 +137,9 @@ public class RateService {
+     /** The grade's rate in force on a date: the one whose from-date is the latest on or before it
+      *  (a rate with no from-date applies from the beginning of time); none applies when there is no
+      *  such rate, or when that one's to-date is before the date. When none applies on the sheet, the
+-     *  parent sheet's is taken, then the parent's parent's, up to {@link #PARENT_LEVELS} levels up;
+-     *  empty when none applies on any of them. */
++     *  parent sheet's is taken, then the parent's parent's, up to {@link #PARENT_LEVELS} levels up,
++     *  then those of the sheet it was cloned from (see {@link #fallbacks}); empty when none applies on
++     *  any of them. */
+     public Optional<Rate> rateOn(String sheetId, String grade, LocalDate date) {
+         return rateOn(sheetId, grade, date, null);
+     }
+@@ -132,7 +161,7 @@ public class RateService {
+         }
+         // Read as of a day, the sheet falls back to the parents it had at the end of it, their rates as
+         // they stand now: a parent keeps its own today, so its history does not follow the sheet's.
+-        for (String ancestor : ancestors(sheetId, asOf)) {
++        for (String ancestor : fallbacks(sheetId, asOf)) {
+             Optional<Rate> theirs = ownRateFor(ancestor, grade, date, claimId, null);
+             if (theirs.isPresent()) {
+                 return theirs;
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 9eaa013b6..1a81099d0 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -94,6 +94,11 @@ public class Sheet {
+     @Column(name = "parent_id")
+     private String parentId;
+ 
++    /** The id of the sheet this one was cloned from: a grade with no rate in force on a date on this
++     *  sheet nor on its parents takes that sheet's; null when it was not cloned. */
++    @Column(name = "cloned_from")
++    private String clonedFrom;
++
+     /** Whether a steward has archived the sheet: every change to it is then refused. */
+     @Column(name = "archived", nullable = false)
+     private boolean archived;
+@@ -206,6 +211,10 @@ public class Sheet {
+         this.parentId = parentId;
+     }
+ 
++    public String getClonedFrom() {
++        return clonedFrom;
++    }
++
+     public boolean isArchived() {
+         return archived;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index 39727dc42..b5f102ec2 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -57,7 +57,8 @@ public class SheetCloneService {
+      *  sheet's today, settings, roles, rates, holidays, void reasons and templates; its people with
+      *  their grades, terms, contacts, aliases, holds, retirements and patrons; its pools; its crews; its periods,
+      *  all open; and its claims with their status, frozen figures, dates, notes, tags, comments and
+-     *  logs. Each claim that had a number takes the clone's next number, in the order the claims were
++     *  logs. The clone keeps the sheet it was cloned from, whose rates its own fall back to (see
++     *  RateService#fallbacks). Each claim that had a number takes the clone's next number, in the order the claims were
+      *  opened (by the sheet's today when each was, then the order they were added). Statements, and
+      *  the figures they bound, are not copied. The sheet writes its line; the clone writes its own,
+      *  then every person's rollup line and its totals. */
+@@ -88,9 +89,9 @@ public class SheetCloneService {
+     private void copy(String from, String to) {
+         jdbc.update("INSERT INTO sheet (id, today, last_claim_number, last_batch_number, policy_date,"
+                 + " period_numbering_from, grace_days, entry_date, pot, parent_id, archived, fiscal_start_month,"
+-                + " alert_threshold, escalate_after, review_sla, proof_kinds)"
++                + " alert_threshold, escalate_after, review_sla, proof_kinds, cloned_from)"
+                 + " SELECT ?, today, 0, 0, policy_date, period_numbering_from, grace_days, entry_date, pot, parent_id,"
+-                + " FALSE, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds FROM sheet WHERE id = ?", to, from);
++                + " FALSE, fiscal_start_month, alert_threshold, escalate_after, review_sla, proof_kinds, ? FROM sheet WHERE id = ?", to, from, from);
+         LocalDate today = jdbc.queryForObject("SELECT today FROM sheet WHERE id = ?", LocalDate.class, to);
+ 
+         // The sheet's own lists: settings, roles, rates, holidays, void reasons, templates and periods.
+diff --git a/src/main/resources/db/migration/V106__sheet_cloned_from.sql b/src/main/resources/db/migration/V106__sheet_cloned_from.sql
+new file mode 100644
+index 000000000..55264bbbb
+--- /dev/null
++++ b/src/main/resources/db/migration/V106__sheet_cloned_from.sql
+@@ -0,0 +1,4 @@
++-- The sheet a sheet was cloned from: a grade with no rate in force on a date on the sheet nor on its
++-- parents takes that sheet's (then its parents', then the sheet it was cloned from, and so on). Null
++-- is a sheet that was not cloned.
++ALTER TABLE sheet ADD COLUMN cloned_from VARCHAR(200);
