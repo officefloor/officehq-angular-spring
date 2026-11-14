@@ -1,0 +1,440 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims.ts b/src/main/frontend/src/app/features/claims/claims.ts
+index 70c1fbe4b..08b406c6d 100644
+--- a/src/main/frontend/src/app/features/claims/claims.ts
++++ b/src/main/frontend/src/app/features/claims/claims.ts
+@@ -191,6 +191,19 @@ export function overdue(claim: Claim, today: string | null, grace = 0): boolean
+   return isOpen(claim) && today !== null && plusDays(claim.dueBy, grace) < today && !deferred(claim, today);
+ }
+ 
++/** Whether a claim is late for review: it is REVIEW, a review SLA is set, and its review day (the
++ *  sheet's today when it last went to REVIEW, as its status log records it) plus the SLA days is
++ *  before the sheet's today. */
++export function reviewLate(claim: Claim, today: string | null, sla: string): boolean {
++  if (claim.status !== 'REVIEW' || sla === '' || today === null) return false;
++  let reviewDay: string | null = null;
++  for (const line of claim.log) {
++    const match = /^REVIEW by .* on (\d{4}-\d{2}-\d{2}) due=\S+$/.exec(line);
++    if (match) reviewDay = match[1];
++  }
++  return reviewDay !== null && plusDays(reviewDay, Number(sla)) < today;
++}
++
+ /** Cents shown with two decimals. */
+ export function money(total: number): string {
+   return (total / 100).toFixed(2);
+@@ -315,6 +328,7 @@ const NUMBER = /^\S+$/;
+           <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span>
+           <span data-testid="claim-period">{{ periodNameOf(c) }}</span>
+           <span data-testid="claim-deferred">{{ isDeferred(c) ? 'yes' : 'no' }}</span>
++          <span data-testid="claim-review-late">{{ isReviewLate(c) ? 'yes' : 'no' }}</span>
+           <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span>
+           <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span>
+           <span data-testid="claim-reminded">{{ c.remindedOn ?? '' }}</span>
+@@ -546,6 +560,8 @@ export class PersonClaims {
+   readonly roundingOn = input.required<(date: string) => string | null>();
+   /** The grace days in force on a date for a grade (0 for none). */
+   readonly graceOn = input.required<(grade: string | null, date: string) => number>();
++  /** The sheet's review SLA in whole days; blank for none. */
++  readonly reviewSla = input('');
+   /** The ids of the claims selected to act on together. */
+   readonly selectedIds = input.required<ReadonlySet<number>>();
+   /** The people on the sheet, in the order they were added: a claim can move to any other. */
+@@ -661,6 +677,10 @@ export class PersonClaims {
+     return this.graceOn()(gradeOn(this.grades(), claim.date), claim.date);
+   }
+ 
++  protected isReviewLate(claim: Claim): boolean {
++    return reviewLate(claim, this.session.today(), this.reviewSla());
++  }
++
+   /** Whether the row shows the claim deferred: the date it was deferred until is still after the
+    *  sheet's today, whatever its status now. */
+   protected isDeferred(claim: Claim): boolean {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d1b464ddb..fd39ed231 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Component, computed, effect, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+-import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, plusDays, statusAsOf } from '../claims/claims';
++import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, plusDays, reviewLate, statusAsOf } from '../claims/claims';
+ import { Holidays } from '../holidays/holidays';
+ import { VoidReasonStore, VoidReasons } from '../void-reasons/void-reasons';
+ import { ClaimTemplates } from '../claim-templates/claim-templates';
+@@ -158,6 +158,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+       [periods]="periodSummary()"
+       [statuses]="statusSummary()"
+       [voids]="voidReasonSummary()"
++      [reviewLateCount]="reviewLateCount()"
+       [classicPeriods]="classicPeriodSummary()"
+       [classicDueTotal]="classicDueTotal()"
+     />
+@@ -643,6 +644,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+                   [policyDate]="settings.policyDate()"
+                   [roundingOn]="settings.roundingOn()"
+                   [graceOn]="settings.graceOn()"
++                  [reviewSla]="settings.reviewSla()"
+                   [selectedIds]="selectedClaims()"
+                   [people]="people()"
+                   [viewer]="viewer()"
+@@ -1266,6 +1268,12 @@ export class People {
+       count: claims.filter((c) => c.status === status).length,
+     }));
+   });
++  /** How many of the sheet's claims are late for review. */
++  protected readonly reviewLateCount = computed(() => {
++    const today = this.session.today();
++    const sla = this.settings.reviewSla();
++    return this.claims().filter((c) => reviewLate(c, today, sla)).length;
++  });
+   /** Per reason on the sheet's list: how many of its VOID claims were voided with it. */
+   protected readonly voidReasonSummary = computed(() => {
+     const voided = this.claims().filter((c) => c.status === 'VOID');
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 9d1950796..7b702cbb7 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -54,6 +54,9 @@ interface SettingsView {
+   /** The escalation gap: reminding a claim whose previous reminder was at least this many days before
+    *  the sheet's today escalates it; null for off. */
+   escalateAfter: number | null;
++  /** The review SLA: a REVIEW claim whose review day plus this many days is before the sheet's
++   *  today is late for review; null for none. */
++  reviewSla: number | null;
+   /** The fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it. */
+   fiscalStartMonth: number;
+   /** The pot (two decimals): each member of a balanced pool shows a cut of it; null for none. */
+@@ -196,6 +199,8 @@ export class SettingStore {
+   readonly graceDays = signal('');
+   /** The escalation gap as text: whole days, blank for off. */
+   readonly escalateAfter = signal('');
++  /** The review SLA as text: whole days, blank for none. */
++  readonly reviewSla = signal('');
+   /** The fiscal year start month, 1 to 12; 1 unless set. */
+   readonly fiscalStartMonth = signal(1);
+   /** The pot as text: two decimals, blank for none. */
+@@ -223,6 +228,7 @@ export class SettingStore {
+       this.entryDate.set('');
+       this.graceDays.set('');
+       this.escalateAfter.set('');
++      this.reviewSla.set('');
+       this.fiscalStartMonth.set(1);
+       this.pot.set('');
+       this.alertThreshold.set('');
+@@ -471,6 +477,16 @@ export class SettingStore {
+     if (this.session.sheetId() !== sheet) return;
+     this.show(saved);
+   }
++  /** Change the active sheet's review SLA; null leaves it blank (none). */
++  async setReviewSla(value: number | null): Promise<void> {
++    const sheet = this.session.sheetId();
++    if (!sheet) throw new Error('No sheet loaded.');
++    const saved = await firstValueFrom(
++      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/review-sla`, { value }),
++    );
++    if (this.session.sheetId() !== sheet) return;
++    this.show(saved);
++  }
+ 
+   /** Change the active sheet's fiscal year start month (1 to 12); the server refuses any other. */
+   async setFiscalStartMonth(value: number): Promise<void> {
+@@ -549,6 +565,7 @@ export class SettingStore {
+     this.entryDate.set(settings.entryDate);
+     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
+     this.escalateAfter.set(settings.escalateAfter === null ? '' : String(settings.escalateAfter));
++    this.reviewSla.set(settings.reviewSla === null ? '' : String(settings.reviewSla));
+     this.fiscalStartMonth.set(settings.fiscalStartMonth);
+     this.pot.set(settings.pot ?? '');
+     this.alertThreshold.set(settings.alertThreshold ?? '');
+@@ -916,6 +933,15 @@ export class SettingStore {
+           (focus)="escalateAfterTyped.set(true)"
+           (input)="escalateAfter.set(value($event)); escalateAfterTyped.set(true); settingsError.set(null)"
+         />
++        <label for="setting-review-sla">Review SLA (days)</label>
++        <input
++          id="setting-review-sla"
++          data-testid="setting-review-sla"
++          inputmode="numeric"
++          [value]="reviewSla()"
++          (focus)="reviewSlaTyped.set(true)"
++          (input)="reviewSla.set(value($event)); reviewSlaTyped.set(true); settingsError.set(null)"
++        />
+         <label for="setting-fiscal-start-month">Fiscal year start month (1 to 12)</label>
+         <input
+           id="setting-fiscal-start-month"
+@@ -1086,6 +1112,13 @@ export class SettingStore {
+           <span>off</span>
+         }
+       </p>
++      <p>
++        Review SLA:
++        <strong data-testid="setting-review-sla-current">{{ store.reviewSla() }}</strong>
++        @if (store.reviewSla() === '') {
++          <span>none</span>
++        }
++      </p>
+       <p>
+         Fiscal year start month:
+         <strong data-testid="setting-fiscal-start-month-current">{{ store.fiscalStartMonth() }}</strong>
+@@ -1185,6 +1218,8 @@ export class Settings {
+   protected readonly graceDaysTyped = signal(false);
+   protected readonly escalateAfter = signal('');
+   protected readonly escalateAfterTyped = signal(false);
++  protected readonly reviewSla = signal('');
++  protected readonly reviewSlaTyped = signal(false);
+   protected readonly fiscalStartMonth = signal('');
+   protected readonly fiscalStartMonthTyped = signal(false);
+   protected readonly pot = signal('');
+@@ -1330,6 +1365,8 @@ export class Settings {
+     const saveGraceDays = this.graceDaysTyped();
+     const escalateAfter = this.escalateAfter().trim();
+     const saveEscalateAfter = this.escalateAfterTyped();
++    const reviewSla = this.reviewSla().trim();
++    const saveReviewSla = this.reviewSlaTyped();
+     const fiscalStartMonth = this.fiscalStartMonth().trim();
+     const saveFiscalStartMonth = this.fiscalStartMonthTyped();
+     const pot = this.pot().trim();
+@@ -1449,6 +1486,10 @@ export class Settings {
+       this.settingsError.set('Type an escalation gap of 0 or more whole days, or leave it blank for off.');
+       return;
+     }
++    if (saveReviewSla && reviewSla !== '' && !DAYS.test(reviewSla)) {
++      this.settingsError.set('Type a review SLA of 0 or more whole days, or leave it blank for none.');
++      return;
++    }
+     if (saveFiscalStartMonth && !MONTH.test(fiscalStartMonth)) {
+       this.settingsError.set('Type a fiscal year start month of 1 to 12.');
+       return;
+@@ -1484,6 +1525,7 @@ export class Settings {
+     this.entryDateTyped.set(false);
+     this.graceDaysTyped.set(false);
+     this.escalateAfterTyped.set(false);
++    this.reviewSlaTyped.set(false);
+     this.fiscalStartMonthTyped.set(false);
+     this.potTyped.set(false);
+     this.alertThresholdTyped.set(false);
+@@ -1518,6 +1560,7 @@ export class Settings {
+         if (saveEntryDate) await this.store.setEntryDate(entryDate === '' ? null : entryDate);
+         if (saveGraceDays) await this.store.setGraceDays(graceDays === '' ? null : Number(graceDays));
+         if (saveEscalateAfter) await this.store.setEscalateAfter(escalateAfter === '' ? null : Number(escalateAfter));
++        if (saveReviewSla) await this.store.setReviewSla(reviewSla === '' ? null : Number(reviewSla));
+         if (saveFiscalStartMonth) await this.store.setFiscalStartMonth(Number(fiscalStartMonth));
+         if (savePot) await this.store.setPot(pot === '' ? null : pot);
+         if (saveAlertThreshold) await this.store.setAlertThreshold(alertThreshold === '' ? null : alertThreshold);
+@@ -1542,6 +1585,7 @@ export class Settings {
+         if (saveEntryDate) this.entryDateTyped.set(true);
+         if (saveGraceDays) this.graceDaysTyped.set(true);
+         if (saveEscalateAfter) this.escalateAfterTyped.set(true);
++        if (saveReviewSla) this.reviewSlaTyped.set(true);
+         if (saveFiscalStartMonth) this.fiscalStartMonthTyped.set(true);
+         if (savePot) this.potTyped.set(true);
+         if (saveAlertThreshold) this.alertThresholdTyped.set(true);
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index f660e39a2..09745688e 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -102,6 +102,7 @@ export interface VoidReasonSummary {
+           }
+         </tbody>
+       </table>
++      <p>Late for review: <span data-testid="summary-review-late-count">{{ reviewLateCount() }}</span></p>
+       <table>
+         <caption>By void reason</caption>
+         <thead>
+@@ -148,6 +149,8 @@ export class Summary {
+   readonly periods = input.required<PeriodSummary[]>();
+   readonly statuses = input.required<StatusSummary[]>();
+   readonly voids = input.required<VoidReasonSummary[]>();
++  /** How many of the sheet's REVIEW claims are late for review. */
++  readonly reviewLateCount = input.required<number>();
+   readonly classicPeriods = input.required<ClassicPeriodSummary[]>();
+   readonly classicDueTotal = input.required<string>();
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingController.java b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+index ec85d2d4d..785963a09 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingController.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingController.java
+@@ -57,7 +57,7 @@ public class SettingController {
+             String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
+             Map<String, List<DatedView>> dated, Map<String, String> permissions, List<DelegationView> delegations,
+             String entryDate, String pot, String parent, int fiscalStartMonth,
+-            String alertThreshold, Integer escalateAfter) {
++            String alertThreshold, Integer escalateAfter, Integer reviewSla) {
+     }
+ 
+     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
+@@ -165,6 +165,10 @@ public class SettingController {
+     public record EscalateAfterRequest(@Min(0) @Max(36500) Integer value) {
+     }
+ 
++    /** A review SLA of 0 or more whole days; null leaves it blank (none). */
++    public record ReviewSlaRequest(@Min(0) @Max(36500) Integer value) {
++    }
++
+     /** Grace days of 0 or more whole days; null leaves them blank (off). */
+     public record GraceDaysRequest(@Min(0) @Max(36500) Integer value) {
+     }
+@@ -202,7 +206,7 @@ public class SettingController {
+                 then.entryDate() != null ? then.entryDate().toString() : "",
+                 then.pot() != null ? then.pot().toPlainString() : null, then.parent() != null ? then.parent() : "",
+                 then.fiscalStartMonth(), then.alertThreshold() != null ? then.alertThreshold().toPlainString() : null,
+-                then.escalateAfter());
++                then.escalateAfter(), then.reviewSla());
+     }
+ 
+     /** Assign a user name a role; a role other than clerk or steward is refused. */
+@@ -426,6 +430,16 @@ public class SettingController {
+         return view(sheet);
+     }
+ 
++    /** Change the sheet's review SLA; a REVIEW claim is late for review only when it is set. */
++    @PutMapping("/review-sla")
++    public SettingsView setReviewSla(@PathVariable @NotBlank @Size(max = 200) String sheetId,
++            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
++            @RequestBody @Validated ReviewSlaRequest request) {
++        String sheet = sheetId.trim();
++        service.setReviewSla(sheet, SignedInUser.decode(user), request.value());
++        return view(sheet);
++    }
++
+     /** Change the sheet's fiscal year start month; the fiscal year each period falls in follows it. */
+     @PutMapping("/fiscal-start-month")
+     public SettingsView setFiscalStartMonth(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+@@ -489,7 +503,8 @@ public class SettingController {
+                 service.permissions(sheet), service.delegations(sheet).stream().map(DelegationView::of).toList(),
+                 entryDate != null ? entryDate.toString() : "", pot != null ? pot.toPlainString() : null,
+                 parent != null ? parent : "", service.fiscalStartMonth(sheet),
+-                alert != null ? alert.toPlainString() : null, service.escalateAfter(sheet));
++                alert != null ? alert.toPlainString() : null, service.escalateAfter(sheet),
++                service.reviewSla(sheet));
+     }
+ 
+     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */
+diff --git a/src/main/java/net/officefloor/hq/app/setting/SettingService.java b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+index 7c31aaf0d..10fdcd434 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/SettingService.java
++++ b/src/main/java/net/officefloor/hq/app/setting/SettingService.java
+@@ -64,6 +64,7 @@ public class SettingService {
+     private static final String NUMBERING_FROM = "period-numbering-from";
+     private static final String GRACE_DAYS = "grace-days";
+     private static final String ESCALATE_AFTER = "escalate-after";
++    private static final String REVIEW_SLA = "review-sla";
+     private static final String ENTRY_DATE = "entry-date";
+     private static final String POT = "pot";
+     private static final String ALERT_THRESHOLD = "alert-threshold";
+@@ -75,7 +76,7 @@ public class SettingService {
+             Integer graceDays, List<Delegation> delegations, BigDecimal clerkLimit, BigDecimal floor, BigDecimal cap,
+             int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
+             Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot, String parent,
+-            int fiscalStartMonth, BigDecimal alertThreshold, Integer escalateAfter) {
++            int fiscalStartMonth, BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla) {
+     }
+ 
+     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
+@@ -105,6 +106,7 @@ public class SettingService {
+         String grace = kept.contains(GRACE_DAYS) ? then.get(GRACE_DAYS) : Objects.toString(graceDays(sheetId), null);
+         String escalate = kept.contains(ESCALATE_AFTER) ? then.get(ESCALATE_AFTER)
+                 : Objects.toString(escalateAfter(sheetId), null);
++        String sla = kept.contains(REVIEW_SLA) ? then.get(REVIEW_SLA) : Objects.toString(reviewSla(sheetId), null);
+         BigDecimal potNow = pot(sheetId);
+         String pot = kept.contains(POT) ? then.get(POT) : potNow != null ? potNow.toPlainString() : null;
+         BigDecimal alertNow = alertThreshold(sheetId);
+@@ -131,7 +133,7 @@ public class SettingService {
+                 latePct(sheetId, day, day), history.policyDate(sheetId, day), gradeTerms, dated,
+                 entry != null ? LocalDate.parse(entry) : null, pot != null ? new BigDecimal(pot) : null, parent,
+                 fiscal != null ? Integer.parseInt(fiscal) : 1, alert != null ? new BigDecimal(alert) : null,
+-                escalate != null ? Integer.valueOf(escalate) : null);
++                escalate != null ? Integer.valueOf(escalate) : null, sla != null ? Integer.valueOf(sla) : null);
+     }
+ 
+     /** The roles assigned on the sheet, by user name. */
+@@ -443,6 +445,11 @@ public class SettingService {
+         return sheets.load(sheetId).getEscalateAfter();
+     }
+ 
++    /** The sheet's review SLA in days; null when it is blank (none). */
++    public Integer reviewSla(String sheetId) {
++        return sheets.load(sheetId).getReviewSla();
++    }
++
+     /** The rounding modes a sheet may set, by the word that names them. */
+     private static final Map<String, RoundingMode> ROUNDING_MODES = Map.of(
+             "half-up", RoundingMode.HALF_UP, "half-even", RoundingMode.HALF_EVEN);
+@@ -668,6 +675,19 @@ public class SettingService {
+         return saved;
+     }
+ 
++    /** Change the sheet's review SLA; null leaves it blank (none). */
++    @Transactional
++    public Sheet setReviewSla(String sheetId, String by, Integer days) {
++        sheets.load(sheetId);
++        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
++        sheet.setReviewSla(days);
++        Sheet saved = sheetRepository.saveAndFlush(sheet);
++        history.settingSet(sheetId, REVIEW_SLA, days != null ? days.toString() : null);
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=review-sla value="
++                + (days != null ? days.toString() : ""));
++        return saved;
++    }
++
+     /** Change the sheet's fiscal year start month; one not 1 to 12 is refused. */
+     @Transactional
+     public Sheet setFiscalStartMonth(String sheetId, String by, int month) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 80d9b2f3b..c11f35276 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -62,6 +62,11 @@ public class Sheet {
+     @Column(name = "escalate_after")
+     private Integer escalateAfter;
+ 
++    /** The review SLA: a REVIEW claim whose review day plus this many days is before the sheet's
++     *  today is late for review; null for none. */
++    @Column(name = "review_sla")
++    private Integer reviewSla;
++
+     /** The fiscal year start month, 1 to 12: a fiscal year runs twelve months from the first of it. */
+     @Column(name = "fiscal_start_month", nullable = false)
+     private int fiscalStartMonth = 1;
+@@ -140,6 +145,14 @@ public class Sheet {
+         this.escalateAfter = escalateAfter;
+     }
+ 
++    public Integer getReviewSla() {
++        return reviewSla;
++    }
++
++    public void setReviewSla(Integer reviewSla) {
++        this.reviewSla = reviewSla;
++    }
++
+     public int getFiscalStartMonth() {
+         return fiscalStartMonth;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index bba32b5f3..98d75f4d9 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -88,9 +88,9 @@ public class SheetCloneService {
+     private void copy(String from, String to) {
+         jdbc.update("INSERT INTO sheet (id, today, last_claim_number, last_batch_number, policy_date,"
+                 + " period_numbering_from, grace_days, entry_date, pot, parent_id, archived, fiscal_start_month,"
+-                + " alert_threshold, escalate_after)"
++                + " alert_threshold, escalate_after, review_sla)"
+                 + " SELECT ?, today, 0, 0, policy_date, period_numbering_from, grace_days, entry_date, pot, parent_id,"
+-                + " FALSE, fiscal_start_month, alert_threshold, escalate_after FROM sheet WHERE id = ?", to, from);
++                + " FALSE, fiscal_start_month, alert_threshold, escalate_after, review_sla FROM sheet WHERE id = ?", to, from);
+         LocalDate today = jdbc.queryForObject("SELECT today FROM sheet WHERE id = ?", LocalDate.class, to);
+ 
+         // The sheet's own lists: settings, roles, rates, holidays, void reasons, templates and periods.
+diff --git a/src/main/resources/db/migration/V97__review_sla.sql b/src/main/resources/db/migration/V97__review_sla.sql
+new file mode 100644
+index 000000000..3ade1463f
+--- /dev/null
++++ b/src/main/resources/db/migration/V97__review_sla.sql
+@@ -0,0 +1,3 @@
++-- The review SLA: a REVIEW claim whose review day (the sheet's today when it went to REVIEW) plus
++-- this many days is before the sheet's today is late for review. Null (blank) is none.
++ALTER TABLE sheet ADD COLUMN review_sla INTEGER;
