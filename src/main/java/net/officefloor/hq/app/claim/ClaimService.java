@@ -120,10 +120,8 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        // a claim bound by a statement settles at its bound figure
-        BigDecimal settling = to == ClaimStatus.SETTLED
-                ? (claim.isStated() ? claim.getStatedDue() : dueOf(claim, person))
-                : null;
+        // a claim bound by a statement settles at its bound figure, its late charge frozen in
+        BigDecimal settling = to == ClaimStatus.SETTLED ? shownDueOf(claim, person) : null;
         if (to == ClaimStatus.SETTLED && !settings.maySettle(sheetId, user, settling)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "A clerk cannot settle a claim whose due is above the clerk limit");
@@ -157,7 +155,8 @@ public class ClaimService {
     }
 
     /** Take a statement of a person: record their due-total now, and bind each of their claims
-     *  that counts (OPEN or SETTLED) to the due it shows now; the others are left unbound. */
+     *  that counts (OPEN or SETTLED, of a held person only SETTLED) to its figure now; the others
+     *  are left unbound. */
     @Transactional
     public Statement statement(String sheetId, String user, long personId) {
         Person person = people.findForUpdate(personId, sheetId)
@@ -165,11 +164,12 @@ public class ClaimService {
         LocalDate today = sheets.today(sheetId);
         List<Claim> theirs = claims.findByPersonForUpdate(personId, sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        List<Claim> counted = theirs.stream().filter(ClaimService::counts).toList();
+        List<Claim> counted = theirs.stream().filter(c -> counts(c, person)).toList();
         BigDecimal dueTotal = dueTotalOf(counted, person, today);
         for (Claim c : theirs) {
-            if (counts(c)) {
-                c.bind(shownDueOf(c, person));
+            if (counts(c, person)) {
+                // the statement binds the figure; the late charge keeps following the sheet's today
+                c.bind(c.getSettledDue() != null ? c.getSettledDue() : figureOf(c, person));
             } else {
                 c.unbind();
             }
@@ -197,17 +197,25 @@ public class ClaimService {
         }
     }
 
-    /** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do. */
-    private static boolean counts(Claim c) {
-        return c.getStatus() == ClaimStatus.OPEN || c.getStatus() == ClaimStatus.SETTLED;
+    /** Whether a claim counts toward claimed and due totals: only OPEN and SETTLED ones do, and
+     *  of a held person only SETTLED ones. */
+    private static boolean counts(Claim c, Person person) {
+        return c.getStatus() == ClaimStatus.SETTLED
+                || (c.getStatus() == ClaimStatus.OPEN && !person.isHeld());
     }
 
-    /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it
-     *  to (null: n/a), else its live due. */
+    /** The due a claim shows: the due fixed when it was settled, else its figure with its late
+     *  charge on top. */
     private BigDecimal shownDueOf(Claim claim, Person person) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
+        return LateCharge.of(sheets.find(claim.getSheetId())).addTo(claim, figureOf(claim, person));
+    }
+
+    /** A claim's figure before any late charge: the one a statement bound it to (null: n/a), else
+     *  its live due. */
+    private BigDecimal figureOf(Claim claim, Person person) {
         return claim.isStated() ? claim.getStatedDue() : dueOf(claim, person);
     }
 

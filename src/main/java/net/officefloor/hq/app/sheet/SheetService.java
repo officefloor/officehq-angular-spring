@@ -62,6 +62,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getTerms).orElse(Sheet.DEFAULT_TERMS);
     }
 
+    /** The sheet's late percent: an overdue claim's due gains it for every full 30 days overdue. */
+    @Transactional(readOnly = true)
+    public BigDecimal latePct(String id) {
+        return sheets.findById(id).map(Sheet::getLatePct).orElse(Sheet.DEFAULT_LATE_PCT);
+    }
+
     /** Take the sheet's next claim number (1 for the first), holding the sheet locked until the
      *  transaction ends so numbers are never shared and, if it rolls back, never skipped. */
     @Transactional

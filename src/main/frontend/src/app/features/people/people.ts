@@ -6,7 +6,7 @@ import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
-import { Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
+import { Lateness, Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
 import { GRADES, PeopleApi, Person, holdError, isStale, personError, retireError, statementError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
@@ -147,6 +147,10 @@ export class People {
   });
   /** The sheet's rates (a percent with two decimals), each for a grade from a from-date. */
   protected readonly rates = signal<Rate[]>([]);
+  /** What every late charge follows: the sheet's today, terms and late percent. */
+  private readonly lateness = computed<Lateness>(() => ({
+    today: this.session.today(), terms: this.session.terms(), latePct: this.session.latePct(),
+  }));
   /** Each person's due-total in cents, by person id: the sum of the dues their OPEN and SETTLED
    *  claims show (each already rounded; a held person's OPEN ones left out). Null (n/a) when their grade has no rate in force on the
    *  sheet's today, unless a settled claim keeps a fixed due or a stated claim a bound one: then
@@ -154,6 +158,7 @@ export class People {
   private readonly dueByPerson = computed(() => {
     const out = new Map<number, number | null>();
     const floor = cents(this.session.floor());
+    const late = this.lateness();
     for (const p of this.people()) {
       const rates = this.ratesOf(p.grade);
       const counted = this.claimsOf(p.id).filter(this.countsLive());
@@ -161,7 +166,7 @@ export class People {
         out.set(p.id, null);
         continue;
       }
-      out.set(p.id, counted.reduce((sum, c) => sum + (claimDueCents(rates, c, floor) ?? 0), 0));
+      out.set(p.id, counted.reduce((sum, c) => sum + (claimDueCents(rates, c, floor, late) ?? 0), 0));
     }
     return out;
   });
@@ -170,12 +175,14 @@ export class People {
   private readonly overdueByPerson = computed(() => {
     const out = new Map<number, { count: number; cents: number }>();
     const floor = cents(this.session.floor());
-    const terms = this.session.terms();
-    const today = this.session.today();
+    const late = this.lateness();
     for (const p of this.people()) {
       const rates = this.ratesOf(p.grade);
-      const late = this.claimsOf(p.id).filter(this.countsLive()).filter((c) => overdue(c, terms, today));
-      out.set(p.id, { count: late.length, cents: late.reduce((sum, c) => sum + (claimDueCents(rates, c, floor) ?? 0), 0) });
+      const overdueClaims = this.claimsOf(p.id).filter(this.countsLive()).filter((c) => overdue(c, late.terms, late.today));
+      out.set(p.id, {
+        count: overdueClaims.length,
+        cents: overdueClaims.reduce((sum, c) => sum + (claimDueCents(rates, c, floor, late) ?? 0), 0),
+      });
     }
     return out;
   });
@@ -191,12 +198,13 @@ export class People {
   protected readonly dueByPeriod = computed(() => {
     const out = new Map<number, number>();
     const floor = cents(this.session.floor());
+    const late = this.lateness();
     for (const p of this.people()) {
       const rates = this.ratesOf(p.grade);
       for (const c of this.claimsOf(p.id).filter(this.countsLive())) {
         const period = periodOn(this.periods(), c.date);
         if (period === null) continue;
-        out.set(period.id, (out.get(period.id) ?? 0) + (claimDueCents(rates, c, floor) ?? 0));
+        out.set(period.id, (out.get(period.id) ?? 0) + (claimDueCents(rates, c, floor, late) ?? 0));
       }
     }
     return out;

@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The sheet's settings (its clerk limit, floor and terms) and the role each user name holds on it. */
+/** The sheet's settings (its clerk limit, floor, terms and late percent) and the role each user name holds on it. */
 @Service
 public class SettingsService {
 
@@ -22,6 +22,8 @@ public class SettingsService {
     public static final String FLOOR = "floor";
     /** The key the terms are audited under. */
     public static final String TERMS = "terms";
+    /** The key the late percent is audited under. */
+    public static final String LATE_PCT = "late-pct";
 
     private final SheetRoleRepository roles;
     private final SheetService sheets;
@@ -82,15 +84,40 @@ public class SettingsService {
     }
 
     /** Set the sheet's terms in days, the sheet created first if it was never loaded; every claim's
-     *  due-by (and so whether it is overdue) moves with them. */
+     *  due-by (and so whether it is overdue, and its late charge) moves with them. */
     @Transactional
     public int setTerms(String sheetId, String user, int terms) {
         Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         sheet.setTerms(terms);
         sheets.flush();
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + TERMS + " value=" + terms);
+        rollup.recordChanges(sheetId, user, before);
         return terms;
+    }
+
+    /** The sheet's late percent: an overdue claim's due gains it for every full 30 days overdue. */
+    @Transactional(readOnly = true)
+    public BigDecimal latePct(String sheetId) {
+        return sheets.latePct(sheetId);
+    }
+
+    /** Set the sheet's late percent, the sheet created first if it was never loaded; every overdue
+     *  OPEN claim's late charge (and so every total) moves with it, while settled figures stay. */
+    @Transactional
+    public BigDecimal setLatePct(String sheetId, String user, BigDecimal latePct) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        BigDecimal scaled = latePct.setScale(2);
+        sheet.setLatePct(scaled);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + LATE_PCT + " value=" + scaled.toPlainString());
+        rollup.recordChanges(sheetId, user, before);
+        return scaled;
     }
 
     @Transactional(readOnly = true)

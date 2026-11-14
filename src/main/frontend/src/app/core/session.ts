@@ -15,6 +15,9 @@ export class Session {
   readonly floor = signal('1.00');
   /** The active sheet's terms in days: a claim is due by its date plus them. */
   readonly terms = signal(14);
+  /** The active sheet's late percent (two decimals): an overdue claim's due gains it for every
+   *  full 30 days overdue. */
+  readonly latePct = signal('0.00');
   /** Whether the people list shows retired people too: off at first, and kept as it is when a
    *  sheet is loaded. */
   readonly showRetired = signal(false);
@@ -46,6 +49,7 @@ export class Session {
       this.today.set(res.today);
       this.floor.set(res.floor);
       this.terms.set(res.terms);
+      this.latePct.set(res.latePct);
       this.loads.update((n) => n + 1);
       return null;
     } catch (e) {
@@ -77,6 +81,7 @@ interface SheetView {
   today: string;
   floor: string;
   terms: number;
+  latePct: string;
 }
 
 function message(e: unknown, invalid: string): string {

@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { Claim, cents } from '../claims/claims-api';
+import { Claim, cents, dueBy, overdue } from '../claims/claims-api';
 
 /** A percent of 0.00 or more with up to two decimals. */
 export const PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
@@ -66,12 +66,33 @@ export function dueCents(cents: number, pctHundredths: number): number {
   return Number(rest > 5000n || (rest === 5000n && whole % 2n === 1n) ? whole + 1n : whole);
 }
 
-/** A claim's due in cents: the due fixed when it was settled, else the due a statement bound it
- *  to, else its amount times its grade's rate in force on its date, rounded half to even and
- *  raised to the sheet's floor (in cents); null (n/a) with no rate in force then. */
-export function claimDueCents(rates: readonly Rate[], c: Claim, floorCents: number): number | null {
+/** What a claim's late charge follows: the sheet's today, terms and late percent. */
+export interface Lateness {
+  today: string | null;
+  terms: number;
+  /** The late percent with two decimals. */
+  latePct: string;
+}
+
+/** A claim's due in cents: the due fixed when it was settled, else its figure (the due a statement
+ *  bound it to, else its amount times its grade's rate in force on its date, rounded half to even
+ *  and raised to the sheet's floor) with its late charge on top; null (n/a) with no figure. */
+export function claimDueCents(rates: readonly Rate[], c: Claim, floorCents: number, late: Lateness): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
+  const figure = figureCents(rates, c, floorCents);
+  return figure === null ? null : figure + lateChargeCents(c, figure, late);
+}
+
+function figureCents(rates: readonly Rate[], c: Claim, floorCents: number): number | null {
   if (c.stated) return c.statedDue === null ? null : cents(c.statedDue);
   const pct = pctOn(rates, c.date);
   return pct === null ? null : Math.max(dueCents(cents(c.amount), cents(pct)), floorCents);
+}
+
+/** An overdue claim's late charge in cents: the late percent of its figure for every full 30 days
+ *  past its due-by, rounded half to even; 0 when it is not overdue. */
+function lateChargeCents(c: Claim, figure: number, late: Lateness): number {
+  if (late.today === null || !overdue(c, late.terms, late.today)) return 0;
+  const days = Math.round((Date.parse(late.today) - Date.parse(dueBy(c, late.terms))) / 86_400_000);
+  return dueCents(figure, cents(late.latePct) * Math.floor(days / 30));
 }

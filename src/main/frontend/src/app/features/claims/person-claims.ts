@@ -95,9 +95,12 @@ export class PersonClaims {
 
   /** The claim's amount times the rate in force on the claim's date, divided by 100, rounded half
    *  to even, at least the sheet's floor; n/a with no rate in force then. A claim settled with a
-   *  due shows the due fixed then, and one bound by a statement the due bound. */
+   *  due shows the due fixed then, and one bound by a statement the due bound; an overdue OPEN
+   *  claim gains its late charge on top. */
   protected dueOf(c: Claim): string {
-    const due = claimDueCents(this.rates(), c, cents(this.session.floor()));
+    const due = claimDueCents(this.rates(), c, cents(this.session.floor()), {
+      today: this.session.today(), terms: this.session.terms(), latePct: this.session.latePct(),
+    });
     return due === null ? 'n/a' : money(due);
   }
 

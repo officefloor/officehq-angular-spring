@@ -24,10 +24,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class SettingsController {
 
     /** The sheet's settings as the screen shows them: the clerk limit with two decimals, null for
-     *  none, the floor with two decimals, and the terms in days. */
-    public record SettingsView(String clerkLimit, String floor, int terms) {
-        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms) {
-            return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms);
+     *  none, the floor with two decimals, the terms in days, and the late percent with two decimals. */
+    public record SettingsView(String clerkLimit, String floor, int terms, String latePct) {
+        static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct) {
+            return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms,
+                    latePct.setScale(2).toPlainString());
         }
     }
 
@@ -41,6 +42,10 @@ public class SettingsController {
 
     /** The terms as the form submits them: a whole number of days, blank for the default. */
     public record TermsForm(@NotNull @Pattern(regexp = "(\\d{1,4})?") String value) {
+    }
+
+    /** The late percent as the form submits it: 0.00 or more with up to two decimals, blank for the default. */
+    public record LatePctForm(@NotNull @Pattern(regexp = "(\\d{1,3}(\\.\\d{1,2})?)?") String value) {
     }
 
     /** A user name's role on the sheet. */
@@ -99,8 +104,19 @@ public class SettingsController {
         return view(sheetId);
     }
 
+    @PutMapping("/settings/late-pct")
+    public SettingsView setLatePct(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody LatePctForm body) {
+        BigDecimal latePct = body.value().isEmpty() ? Sheet.DEFAULT_LATE_PCT : new BigDecimal(body.value());
+        service.setLatePct(sheetId, user.trim(), latePct);
+        return view(sheetId);
+    }
+
     private SettingsView view(String sheetId) {
-        return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId));
+        return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId),
+                service.latePct(sheetId));
     }
 
     @GetMapping("/roles")
