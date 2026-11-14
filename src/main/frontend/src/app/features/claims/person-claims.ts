@@ -83,8 +83,10 @@ export class PersonClaims {
     this.form.valueChanges.subscribe(() => this.error.set(null));
   }
 
-  /** The claim's amount times the rate, divided by 100, rounded half up; n/a with no rate. */
+  /** The claim's amount times the rate, divided by 100, rounded half up; n/a with no rate.
+   *  A claim settled with a due shows the due fixed then. */
   protected dueOf(c: Claim): string {
+    if (c.settledDue !== null) return c.settledDue;
     const pct = this.pct();
     return pct === null ? 'n/a' : money(dueCents(cents(c.amount), cents(pct)));
   }
