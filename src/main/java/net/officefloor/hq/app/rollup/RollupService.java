@@ -100,6 +100,18 @@ public class RollupService {
         return result;
     }
 
+    /** A sheet's headline figures as it shows them now: how many people are on it, and its due-total
+     *  and overdue-total. */
+    public record Headline(int people, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    }
+
+    /** The sheet's headline figures as it shows them now. */
+    @Transactional(readOnly = true)
+    public Headline headline(String sheetId) {
+        Rollup rollup = rollup(sheetId);
+        return new Headline(rollup.people().size(), rollup.dueTotal(), rollup.overdueTotal());
+    }
+
     /** Record in the audit each person's due-total as it stands now, in list order: the figures of
      *  the day the sheet's today is about to leave. */
     public void snapshot(String sheetId, String user) {

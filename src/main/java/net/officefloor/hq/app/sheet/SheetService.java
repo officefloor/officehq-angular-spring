@@ -2,6 +2,10 @@ package net.officefloor.hq.app.sheet;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -73,6 +77,27 @@ public class SheetService {
         Sheet sheet = load(id);
         sheet.setToday(today);
         return sheets.save(sheet);
+    }
+
+    /** The ids of the sheet's descendants: its children (the sheets naming it as their parent), their
+     *  children, and so on; the sheet itself is not among them. */
+    public List<String> descendants(String id) {
+        List<String> found = new ArrayList<>();
+        Set<String> seen = new HashSet<>(Set.of(id));
+        List<String> next = List.of(id);
+        while (!next.isEmpty()) {
+            List<String> children = new ArrayList<>();
+            for (String parent : next) {
+                for (Sheet child : sheets.findByParentIdOrderByIdAsc(parent)) {
+                    if (seen.add(child.getId())) {
+                        children.add(child.getId());
+                    }
+                }
+            }
+            found.addAll(children);
+            next = children;
+        }
+        return found;
     }
 
     /** Whether the sheet is archived: every change to it is then refused. */

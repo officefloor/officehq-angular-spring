@@ -53,6 +53,15 @@ interface Person {
   aliases: string[];
 }
 
+/** The figures of a sheet's descendants added up, each as that sheet shows it. */
+interface DescendantFigures {
+  people: number;
+  dueTotal: string;
+  overdueTotal: string;
+}
+
+const NO_DESCENDANTS: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00' };
+
 /** A statement taken: the person's statements as their row shows them, and their claims as it
  *  bound them. */
 interface StatementTaken {
@@ -72,6 +81,9 @@ interface StatementTaken {
       [statuses]="statusSummary()"
       [dueTotal]="dueTotal()"
       [overdueTotal]="overdueTotal()"
+      [consolidatedPeopleCount]="people().length + descendantFigures().people"
+      [consolidatedDueTotal]="money(cents(dueTotal()) + cents(descendantFigures().dueTotal))"
+      [consolidatedOverdueTotal]="money(cents(overdueTotal()) + cents(descendantFigures().overdueTotal))"
     />
     <app-settings />
     <app-rates />
@@ -540,6 +552,7 @@ export class People {
   protected readonly periods = inject(PeriodStore);
   private readonly voidReasons = inject(VoidReasonStore);
   protected readonly money = money;
+  protected readonly cents = cents;
   protected readonly settings = inject(SettingStore);
   /** Whether the signed-in user is a viewer on the sheet. */
   protected readonly viewer = computed(() => {
@@ -645,6 +658,8 @@ export class People {
       ),
     ),
   );
+  /** The sheet's descendants' figures added up, as the store last told them. */
+  protected readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
   /** Every tag ever used on the sheet, as the store last told it. */
   private readonly usedTags = signal<string[]>([]);
   /** Per tag ever used on the sheet, sorted: the dues shown on the claims that count which carry it
@@ -858,6 +873,7 @@ export class People {
       this.people.set([]);
       this.claims.set([]);
       this.usedTags.set([]);
+      this.descendantFigures.set(NO_DESCENDANTS);
       this.rowError.set(null);
       this.retireDates.set({});
       this.holdDates.set({});
@@ -1628,15 +1644,17 @@ export class People {
   /** Read the sheet's people and claims; a response for an earlier load is dropped. */
   private async read(sheet: string, load: number): Promise<void> {
     const base = `/api/sheets/${encodeURIComponent(sheet)}`;
-    const [list, claims, tags] = await Promise.all([
+    const [list, claims, tags, descendants] = await Promise.all([
       firstValueFrom(this.http.get<Person[]>(`${base}/people`)),
       firstValueFrom(this.http.get<Claim[]>(`${base}/claims`)),
       firstValueFrom(this.http.get<string[]>(`${base}/claim-tags`)),
+      firstValueFrom(this.http.get<DescendantFigures>(`${base}/descendant-figures`)),
     ]);
     if (this.session.loads() !== load) return;
     this.people.set(list);
     this.claims.set(claims);
     this.usedTags.set(tags);
+    this.descendantFigures.set(descendants);
   }
 }
 

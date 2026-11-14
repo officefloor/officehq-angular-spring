@@ -2,7 +2,9 @@ import { Component, input } from '@angular/core';
 import { StatusSummary } from '../summary/summary';
 
 // The sheet's counters, shown at the top at all times; each repeats a figure shown elsewhere: the
-// people on the sheet (retired included), the summary's claims per status and the sheet's totals.
+// people on the sheet (retired included), the summary's claims per status and the sheet's totals;
+// then the consolidated figures over the sheet and all its descendants (the sheets naming it as
+// their parent, theirs, and so on), each sheet's figures as that sheet shows them, added up.
 @Component({
   selector: 'app-counters',
   template: `
@@ -18,6 +20,12 @@ import { StatusSummary } from '../summary/summary';
         <dd data-testid="header-due-total">{{ dueTotal() }}</dd>
         <dt>Overdue in total</dt>
         <dd data-testid="header-overdue-total">{{ overdueTotal() }}</dd>
+        <dt>People with sub-sheets</dt>
+        <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
+        <dt>Due in total with sub-sheets</dt>
+        <dd data-testid="consolidated-due-total">{{ consolidatedDueTotal() }}</dd>
+        <dt>Overdue in total with sub-sheets</dt>
+        <dd data-testid="consolidated-overdue-total">{{ consolidatedOverdueTotal() }}</dd>
       </dl>
     </header>
   `,
@@ -27,4 +35,7 @@ export class Counters {
   readonly statuses = input.required<StatusSummary[]>();
   readonly dueTotal = input.required<string>();
   readonly overdueTotal = input.required<string>();
+  readonly consolidatedPeopleCount = input.required<number>();
+  readonly consolidatedDueTotal = input.required<string>();
+  readonly consolidatedOverdueTotal = input.required<string>();
 }

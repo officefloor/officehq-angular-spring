@@ -3,6 +3,7 @@ package net.officefloor.hq.app.sheet;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import net.officefloor.hq.app.SignedInUser;
 import net.officefloor.hq.app.claim.ClaimService;
@@ -14,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -32,6 +34,10 @@ public class SheetController {
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), sheet.getLastBatchNumber());
         }
+    }
+
+    /** The figures of a sheet's descendants added up, each as that sheet shows it now. */
+    public record DescendantFigures(int sheets, int people, String dueTotal, String overdueTotal) {
     }
 
     public record TodayRequest(@NotNull LocalDate today) {
@@ -56,6 +62,23 @@ public class SheetController {
     @PostMapping("/{id}/load")
     public SheetView load(@PathVariable @NotBlank @Size(max = 200) String id) {
         return SheetView.of(service.load(id.trim()));
+    }
+
+    /** The sheet's descendants' figures added up: how many people are on them, and each one's
+     *  due-total and overdue-total as that sheet shows it. The sheet's own figures are not included. */
+    @GetMapping("/{id}/descendant-figures")
+    public DescendantFigures descendantFigures(@PathVariable @NotBlank @Size(max = 200) String id) {
+        int people = 0;
+        BigDecimal due = BigDecimal.ZERO.setScale(2);
+        BigDecimal overdue = BigDecimal.ZERO.setScale(2);
+        var descendants = service.descendants(id.trim());
+        for (String sheet : descendants) {
+            RollupService.Headline figures = rollups.headline(sheet);
+            people += figures.people();
+            due = due.add(figures.dueTotal());
+            overdue = overdue.add(figures.overdueTotal());
+        }
+        return new DescendantFigures(descendants.size(), people, due.toPlainString(), overdue.toPlainString());
     }
 
     /** Change the sheet's today, closing the periods past their grace days and releasing every claim
