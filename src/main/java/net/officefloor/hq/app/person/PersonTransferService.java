@@ -136,7 +136,8 @@ public class PersonTransferService {
                 personId);
 
         // Carried to the other sheet: the person, their grades, aliases and claims with their logs.
-        jdbc.update("UPDATE person SET sheet_id = ?, added_on = ? WHERE id = ?", to, today, personId);
+        jdbc.update("UPDATE person SET sheet_id = ?, added_on = ?, origin_sheet_id = ? WHERE id = ?", to, today,
+                sheetId, personId);
         jdbc.update("UPDATE person_grade SET sheet_id = ? WHERE person_id = ?", to, personId);
         jdbc.update("UPDATE person_alias SET sheet_id = ? WHERE person_id = ?", to, personId);
         jdbc.update("UPDATE claim SET sheet_id = ?, claim_number = NULL, ref = NULL, ref_key = NULL, stated = FALSE,"

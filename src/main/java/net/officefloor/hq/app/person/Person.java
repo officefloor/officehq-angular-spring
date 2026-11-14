@@ -54,6 +54,10 @@ public class Person {
     @Column(name = "merged_into")
     private Long mergedInto;
 
+    /** The sheet the person was transferred from; null for one not transferred in. */
+    @Column(name = "origin_sheet_id")
+    private String originSheetId;
+
     /** The person's place in the list, ascending; set by the store when they are added, so they go to the end. */
     @Generated
     @Column(name = "list_position", insertable = false, nullable = false)
@@ -78,6 +82,7 @@ public class Person {
         was.terms = terms;
         was.retiredFrom = retiredFrom;
         was.contact = contact;
+        was.originSheetId = originSheetId;
         return was;
     }
 
@@ -144,6 +149,10 @@ public class Person {
 
     public void setContact(String contact) {
         this.contact = contact;
+    }
+
+    public String getOriginSheetId() {
+        return originSheetId;
     }
 
     public Long getMergedInto() {

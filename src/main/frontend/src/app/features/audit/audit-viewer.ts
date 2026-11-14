@@ -4,7 +4,8 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 
 // The audit viewer: the active sheet's audit lines exactly as the file holds them, newest first;
-// with a name in the filter, only the lines about that person.
+// with a name in the filter, only the lines about that person, followed for a transferred person by
+// the lines about them on the sheet they came from.
 @Component({
   selector: 'app-audit-viewer',
   template: `

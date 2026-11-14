@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.person.PersonRepository;
 import org.springframework.stereotype.Service;
 
 /**
@@ -20,17 +21,31 @@ public class AuditViewService {
     private static final Pattern FIELD = Pattern.compile(" ([a-z][a-z0-9-]*)=");
 
     private final Audit audit;
+    private final PersonRepository people;
 
-    public AuditViewService(Audit audit) {
+    public AuditViewService(Audit audit, PersonRepository people) {
         this.audit = audit;
+        this.people = people;
     }
 
     /**
      * The sheet's lines, newest first. With a non-blank name, only the lines whose name= or person=
-     * field is that name, compared as names are (case and surrounding spaces ignored).
+     * field is that name, compared as names are (case and surrounding spaces ignored); when that
+     * name is a person transferred to the sheet, followed by the lines about them on the sheet they
+     * came from, newest first.
      */
     public List<String> lines(String sheetId, String name) {
         String wanted = name == null ? "" : normal(name);
+        List<String> found = sheetLines(sheetId, wanted);
+        if (!wanted.isEmpty()) {
+            people.findByName(sheetId, name.trim()).filter(person -> person.getOriginSheetId() != null)
+                    .ifPresent(person -> found.addAll(sheetLines(person.getOriginSheetId(), normal(person.getName()))));
+        }
+        return found;
+    }
+
+    /** The sheet's lines, newest first; with a non-blank wanted name, only those about that person. */
+    private List<String> sheetLines(String sheetId, String wanted) {
         List<String> found = new ArrayList<>();
         for (String line : audit.lines()) {
             if (!field(line, "sheet").filter(sheetId::equals).isPresent()) {

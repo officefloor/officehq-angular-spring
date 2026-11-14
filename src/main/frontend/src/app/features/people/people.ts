@@ -32,6 +32,8 @@ interface Person {
   terms: number | null;
   /** The person's contact, trimmed and lower-cased; null for none. */
   contact: string | null;
+  /** The sheet the person was transferred from; null for one not transferred in. */
+  origin: string | null;
   /** How many statements were taken for the person. */
   statementCount: number;
   /** The last statement's due-total (two decimals, or n/a); null when none was taken. */
@@ -328,6 +330,7 @@ interface StatementTaken {
             <th scope="col">Grade</th>
             <th scope="col">Terms</th>
             <th scope="col">Contact</th>
+            <th scope="col">Came from</th>
             <th scope="col">Claimed</th>
             <th scope="col">Due</th>
             <th scope="col">Settled due</th>
@@ -375,6 +378,7 @@ interface StatementTaken {
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td data-testid="person-due-total">{{ dueBy(p) }}</td>
               <td data-testid="person-settled-total">{{ money(settledCentsOf(p)) }}</td>
