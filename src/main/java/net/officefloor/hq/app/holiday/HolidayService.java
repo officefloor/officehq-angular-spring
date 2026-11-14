@@ -37,7 +37,8 @@ public class HolidayService {
 
     /** Add a holiday to the sheet. Refused when the date is already on its list. The sheet is held
      *  locked so the same date added at the same moment is checked against itself. Every claim on the
-     *  sheet that is not SETTLED or VOID and is due by the holiday or later has its due-by re-fixed:
+     *  sheet that is not SETTLED or VOID, is due by the holiday or later and whose due-by a steward did not
+     *  set directly has its due-by re-fixed:
      *  worked out again from its date, with the terms it was fixed with, over the holidays now on the
      *  sheet. */
     @Transactional
@@ -50,7 +51,7 @@ public class HolidayService {
         Set<LocalDate> days = list(sheetId).stream().map(Holiday::getDate).collect(Collectors.toSet());
         for (Claim claim : claims.findBySheetIdOrderByListedDesc(sheetId)) {
             if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
-                    || claim.getDueBy().isBefore(date)) {
+                    || claim.isDueBySet() || claim.getDueBy().isBefore(date)) {
                 continue;
             }
             LocalDate dueBy = businessDaysAfter(days, claim.getDate(), claim.getTerms());

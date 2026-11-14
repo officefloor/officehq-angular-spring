@@ -122,6 +122,10 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
+    /** Whether a steward set the claim's due-by directly: it stays as set, a holiday does not move it. */
+    @Column(name = "due_by_set", nullable = false)
+    private boolean dueBySet;
+
     /** Whether the claim itself is held: it still counts in every total; a hold only bears on the
      *  pools' cuts. */
     @Column(name = "held", nullable = false)
@@ -308,6 +312,17 @@ public class Claim {
     /** Fix the due-by again, as the sheet's holidays now move it. */
     public void refix(LocalDate dueBy) {
         this.dueBy = dueBy;
+    }
+
+    /** Whether a steward set the due-by directly. */
+    public boolean isDueBySet() {
+        return dueBySet;
+    }
+
+    /** Set the due-by directly: it stays as set from then on. */
+    public void setDueBy(LocalDate dueBy) {
+        this.dueBy = dueBy;
+        this.dueBySet = true;
     }
 
     public String getNote() {

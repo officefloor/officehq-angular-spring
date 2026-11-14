@@ -955,6 +955,30 @@ public class ClaimService {
         return saved;
     }
 
+    /** A steward sets a DRAFT, OPEN or PENDING claim's due-by directly. It stays as set: a holiday added
+     *  later does not move it; its overdue, late charge, grace and period follow it. Anyone but a
+     *  steward, a claim in any other status, or an old or new due-by in a closed period, is refused. */
+    @Transactional
+    public Claim setDueBy(String sheetId, String user, Long personId, Long id, LocalDate dueBy) {
+        Person person = person(sheetId, personId);
+        sheets.lock(sheetId);
+        Claim claim = claim(sheetId, personId, id);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new DueBySetForbiddenException(user);
+        }
+        if (!claim.getStatus().canReassign()) {
+            throw new DueBySetRefusedException("A " + claim.getStatus() + " claim cannot have its due-by set");
+        }
+        refuseClosed(sheetId, claim.getDueBy());
+        refuseClosed(sheetId, dueBy);
+        LocalDate old = claim.getDueBy();
+        claim.setDueBy(dueBy);
+        Claim saved = claims.saveAndFlush(claim);
+        audit.recordOnCommit(line("CLAIM_DUE_BY_SET", sheetId, user, person, saved, saved.getNumber())
+                + " old=" + old + " new=" + dueBy);
+        return saved;
+    }
+
     /** A claim's status log, oldest first: one line per status it has had. */
     public List<String> logOf(Long claimId) {
         return logs.findByClaimIdOrderByIdAsc(claimId).stream().map(ClaimLogEntry::text).toList();

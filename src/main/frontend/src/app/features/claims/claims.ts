@@ -501,6 +501,17 @@ const NUMBER = /^\S+$/;
           <button type="button" data-testid="claim-redate" [attr.aria-label]="'Re-date claim ' + c.id" (click)="redate(c)">
             Re-date
           </button>
+          <label [for]="'claim-due-by-new-' + c.id">Set due-by to</label>
+          <input
+            [id]="'claim-due-by-new-' + c.id"
+            type="date"
+            data-testid="claim-due-by-new"
+            [value]="newDueBys()[c.id] ?? ''"
+            (input)="setNewDueBy(c.id, value($event))"
+          />
+          <button type="button" data-testid="claim-set-due-by" [attr.aria-label]="'Set due-by of claim ' + c.id" (click)="setDueBy(c)">
+            Set due-by
+          </button>
           <label [for]="'claim-split-amount-' + c.id">Split off</label>
           <input
             [id]="'claim-split-amount-' + c.id"
@@ -735,6 +746,9 @@ export class PersonClaims {
 
   /** The new date typed on each claim's row to re-date it to, by claim id. */
   protected readonly newDates = signal<Record<number, string>>({});
+
+  /** The due-by typed on each claim's row to set it to, by claim id. */
+  protected readonly newDueBys = signal<Record<number, string>>({});
   protected readonly reviewUsers = signal<Record<number, string>>({});
 
   /** The amount typed on each claim's row to split off it, by claim id. */
@@ -1145,6 +1159,38 @@ export class PersonClaims {
         message: forbidden
           ? 'The claim could not be re-dated: only a steward can re-date a claim.'
           : 'The claim could not be re-dated: only an open or pending claim outside a closed period can be, to a date not after its person retired.',
+      });
+    }
+  }
+
+  protected setNewDueBy(id: number, date: string): void {
+    this.newDueBys.update((dates) => ({ ...dates, [id]: date }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  /** Set a DRAFT, OPEN or PENDING claim's due-by to the date typed on its row; anyone but a
+   *  steward, a claim in any other status, or a due-by in a closed period, is refused on the row. */
+  protected async setDueBy(claim: Claim): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const dueBy = (this.newDueBys()[claim.id] ?? '').trim();
+    if (dueBy === '') {
+      this.rowError.set({ id: claim.id, message: 'Type the date to set the claim\'s due-by to.' });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/due-by`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Claim>(url, { dueBy }));
+      if (this.session.sheetId() !== sheet) return;
+      this.saved.emit(saved);
+    } catch (e) {
+      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+      this.rowError.set({
+        id: claim.id,
+        message: forbidden
+          ? 'The due-by could not be set: only a steward can set a claim\'s due-by.'
+          : 'The due-by could not be set: only a draft, open or pending claim outside a closed period can have it set.',
       });
     }
   }

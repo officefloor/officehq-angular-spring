@@ -155,6 +155,10 @@ public class ClaimController {
     public record RedateRequest(@NotNull LocalDate date) {
     }
 
+    /** The due-by a steward sets on a DRAFT, OPEN or PENDING claim. */
+    public record DueBySetRequest(@NotNull LocalDate dueBy) {
+    }
+
     /** The amount split off an OPEN claim. */
     public record SplitRequest(@NotNull @Digits(integer = 10, fraction = 2) BigDecimal amount) {
     }
@@ -481,6 +485,16 @@ public class ClaimController {
         return view(sheet, rollups.track(sheet, by, () -> service.redate(sheet, by, personId, id, request.date())));
     }
 
+    /** Set a DRAFT, OPEN or PENDING claim's due-by directly: a steward only. */
+    @PostMapping("/people/{personId}/claims/{id}/due-by")
+    public ClaimView setDueBy(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated DueBySetRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, rollups.track(sheet, by, () -> service.setDueBy(sheet, by, personId, id, request.dueBy())));
+    }
+
     /** Re-date the selected claims, in list order, each by the rules of re-dating one; the rest are
      *  refused and left as they are. */
     @PostMapping("/claims/redate")
@@ -626,7 +640,7 @@ public class ClaimController {
     @ExceptionHandler({VoidRefusedException.class, StatusChangeRefusedException.class, ClaimNotEditableException.class, CorrectionRefusedException.class,
             PeriodClosedException.class, PersonRetiredException.class, MoveRefusedException.class,
             DeferRefusedException.class, ProofRefusedException.class, ProofRequiredException.class, NoteRequiredException.class,
-            SplitRefusedException.class, RedateRefusedException.class, PeriodCapException.class, MaxOpenException.class, ClaimLockedException.class,
+            SplitRefusedException.class, RedateRefusedException.class, DueBySetRefusedException.class, PeriodCapException.class, MaxOpenException.class, ClaimLockedException.class,
             RemindRefusedException.class, CommentRefusedException.class, DeleteRefusedException.class, RefInUseException.class, LinedAmountException.class,
             WaiveRefusedException.class, HoldRefusedException.class, ShareRefusedException.class,
             ReviewAssignRefusedException.class, DataIntegrityViolationException.class})
@@ -638,7 +652,7 @@ public class ClaimController {
      *  PENDING claim, re-settles a SETTLED one, re-dates a claim, waives its late charge or assigns its review, and only a role the sheet's permission matrix allows
      *  opens, settles, voids or moves a claim to another person. */
     @ExceptionHandler({OwnClaimSettleRefusedException.class, ApprovalRefusedException.class, ReassignRefusedException.class,
-            ResettleRefusedException.class, PermissionRefusedException.class, RedateForbiddenException.class,
+            ResettleRefusedException.class, PermissionRefusedException.class, RedateForbiddenException.class, DueBySetForbiddenException.class,
             WaiveForbiddenException.class, ReviewAssignForbiddenException.class})
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public void ownClaim() {
