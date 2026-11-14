@@ -54,7 +54,7 @@ public class SettingController {
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
             String policyDate, String periodNumberingFrom, Integer graceDays, Map<String, Integer> gradeTerms,
             Map<String, List<DatedView>> dated, Map<String, String> permissions, List<DelegationView> delegations,
-            String entryDate) {
+            String entryDate, String pot) {
     }
 
     /** A value recorded for a dated setting, in force from its from-date: two decimals, whole days for
@@ -133,6 +133,10 @@ public class SettingController {
     public record EntryDateRequest(LocalDate value) {
     }
 
+    /** A pot of 0.00 or more with up to two decimals; null leaves it blank (none). */
+    public record PotRequest(@DecimalMin("0.00") @Digits(integer = 17, fraction = 2) BigDecimal value) {
+    }
+
     /** Grace days of 0 or more whole days; null leaves them blank (off). */
     public record GraceDaysRequest(@Min(0) @Max(36500) Integer value) {
     }
@@ -167,7 +171,8 @@ public class SettingController {
                 then.periodNumberingFrom() != null ? then.periodNumberingFrom().toString() : "", then.graceDays(),
                 then.gradeTerms(), dated, then.permissions(),
                 then.delegations().stream().map(DelegationView::of).toList(),
-                then.entryDate() != null ? then.entryDate().toString() : "");
+                then.entryDate() != null ? then.entryDate().toString() : "",
+                then.pot() != null ? then.pot().toPlainString() : null);
     }
 
     /** Assign a user name a role; a role other than clerk or steward is refused. */
@@ -357,6 +362,16 @@ public class SettingController {
         return view(sheet);
     }
 
+    /** Change the sheet's pot; each member of a balanced pool shows a cut of it. */
+    @PutMapping("/pot")
+    public SettingsView setPot(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated PotRequest request) {
+        String sheet = sheetId.trim();
+        service.setPot(sheet, SignedInUser.decode(user), request.value());
+        return view(sheet);
+    }
+
     private SettingsView view(String sheet) {
         LocalDate today = sheets.today(sheet);
         BigDecimal limit = service.clerkLimit(sheet);
@@ -364,6 +379,7 @@ public class SettingController {
         LocalDate policyDate = service.policyDateSet(sheet);
         LocalDate numberingFrom = service.periodNumberingFrom(sheet);
         LocalDate entryDate = service.entryDate(sheet);
+        BigDecimal pot = service.pot(sheet);
         Map<String, List<DatedView>> dated = new LinkedHashMap<>();
         service.dated(sheet).forEach((key, recorded) -> dated.put(key, recorded.stream().map(DatedView::of).toList()));
         return new SettingsView(service.roles(sheet).stream().map(RoleView::of).toList(),
@@ -372,7 +388,7 @@ public class SettingController {
                 service.latePct(sheet, today).toPlainString(), policyDate != null ? policyDate.toString() : "",
                 numberingFrom != null ? numberingFrom.toString() : "", service.graceDays(sheet), service.gradeTerms(sheet, today), dated,
                 service.permissions(sheet), service.delegations(sheet).stream().map(DelegationView::of).toList(),
-                entryDate != null ? entryDate.toString() : "");
+                entryDate != null ? entryDate.toString() : "", pot != null ? pot.toPlainString() : null);
     }
 
     /** A role that is not clerk or steward, or a limit that is not a number, is refused. */

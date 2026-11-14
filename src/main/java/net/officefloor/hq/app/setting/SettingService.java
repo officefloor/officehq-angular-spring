@@ -64,13 +64,14 @@ public class SettingService {
     private static final String NUMBERING_FROM = "period-numbering-from";
     private static final String GRACE_DAYS = "grace-days";
     private static final String ENTRY_DATE = "entry-date";
+    private static final String POT = "pot";
 
     /** The sheet's settings as they stood at the end of a past day: each value as it stood set then,
      *  the day standing in for the sheet's today in those in force on a date. */
     public record AsOfView(Map<String, String> roles, Map<String, String> permissions, LocalDate periodNumberingFrom,
             Integer graceDays, List<Delegation> delegations, BigDecimal clerkLimit, BigDecimal floor, BigDecimal cap,
             int terms, BigDecimal latePct, LocalDate policyDate, Map<String, Integer> gradeTerms,
-            Map<String, List<SettingValue>> dated, LocalDate entryDate) {
+            Map<String, List<SettingValue>> dated, LocalDate entryDate, BigDecimal pot) {
     }
 
     /** The sheet's settings as they stood at the end of a day. A setting that is not dated whose
@@ -98,6 +99,8 @@ public class SettingService {
                 : Objects.toString(periodNumberingFrom(sheetId), null);
         String entry = kept.contains(ENTRY_DATE) ? then.get(ENTRY_DATE) : Objects.toString(entryDate(sheetId), null);
         String grace = kept.contains(GRACE_DAYS) ? then.get(GRACE_DAYS) : Objects.toString(graceDays(sheetId), null);
+        BigDecimal potNow = pot(sheetId);
+        String pot = kept.contains(POT) ? then.get(POT) : potNow != null ? potNow.toPlainString() : null;
         Map<String, List<SettingValue>> dated = history.dated(sheetId, day);
         Map<String, Integer> gradeTerms = new LinkedHashMap<>();
         dated.forEach((key, recorded) -> {
@@ -114,7 +117,7 @@ public class SettingService {
                 inForce(sheetId, "cap", day, day).map(SettingValue::getValue).orElse(null),
                 inForce(sheetId, "terms", day, day).map(v -> v.getValue().intValue()).orElse(START_TERMS),
                 latePct(sheetId, day, day), history.policyDate(sheetId, day), gradeTerms, dated,
-                entry != null ? LocalDate.parse(entry) : null);
+                entry != null ? LocalDate.parse(entry) : null, pot != null ? new BigDecimal(pot) : null);
     }
 
     /** The roles assigned on the sheet, by user name. */
@@ -389,6 +392,11 @@ public class SettingService {
         return entry != null ? entry : sheets.today(sheetId);
     }
 
+    /** The sheet's pot (two decimals); null when it is blank (none). */
+    public BigDecimal pot(String sheetId) {
+        return sheets.load(sheetId).getPot();
+    }
+
     /** The sheet's grace days; null when they are blank (off). */
     public Integer graceDays(String sheetId) {
         return sheets.load(sheetId).getGraceDays();
@@ -565,6 +573,20 @@ public class SettingService {
         history.settingSet(sheetId, GRACE_DAYS, days != null ? days.toString() : null);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=grace-days value="
                 + (days != null ? days.toString() : ""));
+        return saved;
+    }
+
+    /** Change the sheet's pot, kept to two decimals; null leaves it blank (none). */
+    @Transactional
+    public Sheet setPot(String sheetId, String by, BigDecimal pot) {
+        sheets.load(sheetId);
+        BigDecimal scaled = pot != null ? pot.setScale(2, RoundingMode.UNNECESSARY) : null;
+        Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();
+        sheet.setPot(scaled);
+        Sheet saved = sheetRepository.saveAndFlush(sheet);
+        history.settingSet(sheetId, POT, scaled != null ? scaled.toPlainString() : null);
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + by + " key=pot value="
+                + (scaled != null ? scaled.toPlainString() : ""));
         return saved;
     }
 }

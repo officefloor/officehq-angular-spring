@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /** A sheet, identified by the id a user types. Everything else in the app is kept per sheet. */
@@ -46,6 +47,10 @@ public class Sheet {
      *  today; null for off. */
     @Column(name = "entry_date")
     private LocalDate entryDate;
+
+    /** The pot: each member of a balanced pool shows a cut of it; null for none. */
+    @Column(name = "pot", precision = 19, scale = 2)
+    private BigDecimal pot;
 
     /** Whether a steward has archived the sheet: every change to it is then refused. */
     @Column(name = "archived", nullable = false)
@@ -101,6 +106,14 @@ public class Sheet {
 
     public void setEntryDate(LocalDate entryDate) {
         this.entryDate = entryDate;
+    }
+
+    public BigDecimal getPot() {
+        return pot;
+    }
+
+    public void setPot(BigDecimal pot) {
+        this.pot = pot;
     }
 
     public boolean isArchived() {

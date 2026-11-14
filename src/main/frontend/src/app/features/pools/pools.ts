@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, Injectable, computed, effect, inject, input, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { SettingStore } from '../settings/settings';
 
 export interface PoolMember {
   personId: number;
@@ -22,6 +23,39 @@ export interface PoolPerson {
   id: number;
   name: string;
   retired: boolean;
+}
+
+/** Hundredths in a two-decimal figure ("33.33" is 3333). */
+function hundredths(figure: string): bigint {
+  const [whole, part = ''] = figure.split('.');
+  return BigInt(whole) * 100n + BigInt(part.padEnd(2, '0').slice(0, 2));
+}
+
+/** Hundredths as a two-decimal figure. */
+function figure(hundredths: bigint): string {
+  const sign = hundredths < 0n ? '-' : '';
+  const abs = hundredths < 0n ? -hundredths : hundredths;
+  return `${sign}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`;
+}
+
+/** Each member's cut of the pot in hundredths, in the members' order: the pot times their share
+ *  divided by 100, rounded half to even; a retired member's 0. The remainder, the pot minus the cuts
+ *  added up, goes to the member with the largest share, the earliest added on a tie. */
+function cuts(pot: bigint, members: { share: bigint; retired: boolean }[]): bigint[] {
+  const list = members.map((m) => {
+    if (m.retired) return 0n;
+    const exact = pot * m.share; // in ten-thousandths of a hundredth
+    let cut = exact / 10000n;
+    const rest = exact % 10000n;
+    if (rest > 5000n || (rest === 5000n && cut % 2n === 1n)) cut += 1n;
+    return cut;
+  });
+  let largest = -1;
+  members.forEach((m, i) => {
+    if (!m.retired && (largest < 0 || m.share > members[largest].share)) largest = i;
+  });
+  if (largest >= 0) list[largest] += pot - list.reduce((sum, c) => sum + c, 0n);
+  return list;
 }
 
 /** A share (two decimals, more than 0.00 and at most 100.00). */
@@ -84,7 +118,9 @@ export class PoolStore {
 /** A pool as its row shows it: its members with their names, its total share and whether it balances. */
 interface PoolRow {
   pool: Pool;
-  members: { personId: number; name: string; share: string }[];
+  /** Each member with their cut of the pot (two decimals); blank when the pool is unbalanced or
+   *  there is no pot. */
+  members: { personId: number; name: string; share: string; cut: string }[];
   /** The members' shares added up, a retired member's counting as 0.00 (two decimals). */
   total: string;
   /** Whether the total is exactly 100.00. */
@@ -121,7 +157,8 @@ interface PoolRow {
             <ul>
               @for (m of row.members; track m.personId) {
                 <li [attr.data-testid]="'pool-member-' + row.pool.name + '-' + m.personId">
-                  {{ m.name }} <span data-testid="pool-share">{{ m.share }}</span>%
+                  {{ m.name }} <span data-testid="pool-share">{{ m.share }}</span>%, cut
+                  <span data-testid="pool-cut">{{ m.cut }}</span>
                 </li>
               }
             </ul>
@@ -158,6 +195,7 @@ export class Pools {
   readonly people = input.required<PoolPerson[]>();
 
   protected readonly store = inject(PoolStore);
+  private readonly settings = inject(SettingStore);
   protected readonly name = signal('');
   protected readonly error = signal<string | null>(null);
   /** The person and share chosen on each pool's row, by pool id. */
@@ -169,16 +207,22 @@ export class Pools {
 
   protected readonly rows = computed<PoolRow[]>(() => {
     const byId = new Map(this.people().map((p) => [p.id, p]));
+    const pot = this.settings.pot();
     return this.store.pools().map((pool) => {
-      const members = pool.members.map((m) => ({
+      const shares = pool.members.map((m) => ({
+        share: hundredths(m.share),
+        retired: byId.get(m.personId)?.retired ?? false,
+      }));
+      const total = shares.filter((m) => !m.retired).reduce((sum, m) => sum + m.share, 0n);
+      const balanced = total === 10000n;
+      const cut = balanced && pot !== '' ? cuts(hundredths(pot), shares).map(figure) : null;
+      const members = pool.members.map((m, i) => ({
         personId: m.personId,
         name: byId.get(m.personId)?.name ?? '',
         share: m.share,
+        cut: cut ? cut[i] : '',
       }));
-      const cents = pool.members
-        .filter((m) => !byId.get(m.personId)?.retired)
-        .reduce((sum, m) => sum + Math.round(Number(m.share) * 100), 0);
-      return { pool, members, total: (cents / 100).toFixed(2), balanced: cents === 10000 };
+      return { pool, members, total: figure(total), balanced };
     });
   });
 

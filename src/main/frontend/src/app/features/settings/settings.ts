@@ -51,6 +51,8 @@ interface SettingsView {
   /** The grace days: when the sheet's today is changed, every open period whose to-date plus them is
    *  before the new today is closed; null for off. */
   graceDays: number | null;
+  /** The pot (two decimals): each member of a balanced pool shows a cut of it; null for none. */
+  pot: string | null;
   /** The entry date (yyyy-mm-dd): while it is set, a new claim given no date is dated it rather than
    *  the sheet's today; blank for off. */
   entryDate: string;
@@ -164,6 +166,8 @@ export class SettingStore {
   readonly entryDate = signal('');
   /** The grace days as text: whole days, blank for off. */
   readonly graceDays = signal('');
+  /** The pot as text: two decimals, blank for none. */
+  readonly pot = signal('');
   /** The permission matrix as set, by action; blank keeps the standing rule. */
   readonly permissions = signal<Record<string, string>>({});
 
@@ -182,6 +186,7 @@ export class SettingStore {
       this.periodNumberingFrom.set('');
       this.entryDate.set('');
       this.graceDays.set('');
+      this.pot.set('');
       this.permissions.set({});
       if (sheet) void this.read(sheet, load);
     });
@@ -393,6 +398,17 @@ export class SettingStore {
     this.show(saved);
   }
 
+  /** Change the active sheet's pot; null leaves it blank (none). */
+  async setPot(value: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/pot`, { value }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
   /** Set the roles that may take an action on the active sheet; blank keeps the standing rule. */
   async setPermission(action: string, value: string): Promise<void> {
     const sheet = this.session.sheetId();
@@ -423,6 +439,7 @@ export class SettingStore {
     this.periodNumberingFrom.set(settings.periodNumberingFrom);
     this.entryDate.set(settings.entryDate);
     this.graceDays.set(settings.graceDays === null ? '' : String(settings.graceDays));
+    this.pot.set(settings.pot ?? '');
     this.permissions.set(settings.permissions);
   }
 }
@@ -740,6 +757,15 @@ export class SettingStore {
           (focus)="graceDaysTyped.set(true)"
           (input)="graceDays.set(value($event)); graceDaysTyped.set(true); settingsError.set(null)"
         />
+        <label for="setting-pot">Pot</label>
+        <input
+          id="setting-pot"
+          data-testid="setting-pot"
+          inputmode="decimal"
+          [value]="pot()"
+          (focus)="potTyped.set(true)"
+          (input)="pot.set(value($event)); potTyped.set(true); settingsError.set(null)"
+        />
         <fieldset>
           <legend>Permissions (roles, comma separated; blank for the standing rule)</legend>
           @for (p of permissionActions; track p.action) {
@@ -855,6 +881,13 @@ export class SettingStore {
           <span>off</span>
         }
       </p>
+      <p>
+        Pot:
+        <strong data-testid="setting-pot-current">{{ store.pot() }}</strong>
+        @if (store.pot() === '') {
+          <span>none</span>
+        }
+      </p>
       @for (p of permissionActions; track p.action) {
         <p>
           {{ p.label }} allowed for:
@@ -921,6 +954,8 @@ export class Settings {
   protected readonly entryDateTyped = signal(false);
   protected readonly graceDays = signal('');
   protected readonly graceDaysTyped = signal(false);
+  protected readonly pot = signal('');
+  protected readonly potTyped = signal(false);
   /** The permission entries typed since the last save, by action; a focused one counts as typed, as
    *  a blank one (the standing rule) is a value of its own. */
   protected readonly permissions = signal<Record<string, string>>({});
@@ -1052,6 +1087,8 @@ export class Settings {
     const saveEntryDate = this.entryDateTyped();
     const graceDays = this.graceDays().trim();
     const saveGraceDays = this.graceDaysTyped();
+    const pot = this.pot().trim();
+    const savePot = this.potTyped();
     const permissions = Object.entries(this.permissions()).map(
       ([action, roles]) => [action, roles.split(',').map((r) => r.trim()).filter((r) => r !== '').join(',')] as const,
     );
@@ -1147,6 +1184,10 @@ export class Settings {
       this.settingsError.set('Type grace days of 0 or more whole days, or leave them blank for off.');
       return;
     }
+    if (savePot && pot !== '' && !AMOUNT.test(pot)) {
+      this.settingsError.set('Type a pot of 0.00 or more, with up to two decimals, or leave it blank for none.');
+      return;
+    }
     const badPermission = Object.entries(this.permissions()).find(([, roles]) => !rolesList(roles.trim()));
     if (badPermission) {
       this.settingsError.set(`Type the roles that may ${badPermission[0]} as clerk, steward or clerk,steward, or leave it blank for the standing rule.`);
@@ -1167,6 +1208,7 @@ export class Settings {
     this.periodNumberingFromTyped.set(false);
     this.entryDateTyped.set(false);
     this.graceDaysTyped.set(false);
+    this.potTyped.set(false);
     this.permissions.set({});
     const save = async () => {
       try {
@@ -1192,6 +1234,7 @@ export class Settings {
         if (saveNumberingFrom) await this.store.setPeriodNumberingFrom(numberingFrom === '' ? null : numberingFrom);
         if (saveEntryDate) await this.store.setEntryDate(entryDate === '' ? null : entryDate);
         if (saveGraceDays) await this.store.setGraceDays(graceDays === '' ? null : Number(graceDays));
+        if (savePot) await this.store.setPot(pot === '' ? null : pot);
         for (const [action, roles] of permissions) await this.store.setPermission(action, roles);
       } catch {
         // What was typed stays to be saved again.
@@ -1209,6 +1252,7 @@ export class Settings {
         if (saveNumberingFrom) this.periodNumberingFromTyped.set(true);
         if (saveEntryDate) this.entryDateTyped.set(true);
         if (saveGraceDays) this.graceDaysTyped.set(true);
+        if (savePot) this.potTyped.set(true);
         this.permissions.update((typed) => ({ ...Object.fromEntries(permissions), ...typed }));
         this.settingsError.set('The settings could not be saved.');
       }
