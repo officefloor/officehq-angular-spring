@@ -204,6 +204,25 @@ public class RollupService {
         return new Breakdown(gradeDues, statusCounts);
     }
 
+    /** A person on a sheet as its list shows them now: the name, the grade in force on the sheet's today
+     *  and the due-total ("n/a" for none). */
+    public record PersonLine(String name, String grade, String dueTotal) {
+    }
+
+    /** Each person on the sheet, retired people included, in list order as its list shows them now. */
+    @Transactional(readOnly = true)
+    public List<PersonLine> personLines(String sheetId) {
+        LocalDate today = sheets.today(sheetId);
+        Map<Long, String> dues = dueTotals(sheetId);
+        List<PersonLine> lines = new ArrayList<>();
+        for (Person person : personService.list(sheetId)) {
+            String grade = grades.gradeOn(person.getId(), today);
+            lines.add(new PersonLine(person.getName(), grade == null ? "" : grade,
+                    dues.getOrDefault(person.getId(), NO_RATE)));
+        }
+        return lines;
+    }
+
     /** Each person's due-total on the sheet as it shows it now ("n/a" for none), by person id in list order. */
     @Transactional(readOnly = true)
     public Map<Long, String> dueTotals(String sheetId) {

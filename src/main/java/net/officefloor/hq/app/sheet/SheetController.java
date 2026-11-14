@@ -130,6 +130,22 @@ public class SheetController {
                 statusCounts, personFigures, overdueCount);
     }
 
+    /** A person on another sheet of the tree as that sheet's list shows them now. */
+    public record TreePersonView(String sheet, String name, String grade, String dueTotal) {
+    }
+
+    /** The people of the other sheets of the sheet's whole tree, sheets by id, each sheet's people in
+     *  list order as that sheet shows them now. */
+    @GetMapping("/{id}/tree-people")
+    public List<TreePersonView> treePeople(@PathVariable @NotBlank @Size(max = 200) String id) {
+        List<TreePersonView> found = new ArrayList<>();
+        for (String sheet : service.wholeTree(id.trim())) {
+            rollups.personLines(sheet).forEach(p -> found.add(new TreePersonView(sheet, p.name(), p.grade(),
+                    p.dueTotal())));
+        }
+        return found;
+    }
+
     /** The sheet's due-total per grade, as its summary shows it now or as it stood at the end of the
      *  screen's as-of date; a sheet never used has none and is not started. */
     @GetMapping("/{id}/grade-due-totals")

@@ -357,6 +357,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures as CSV</button>
+      <button type="button" data-testid="export-tree" (click)="exportTree()">Export the tree's people as CSV</button>
       <p>
         <button type="button" data-testid="bulk-open" (click)="openSelected()">Open selected claims</button>
         @if (bulkOpenResult(); as r) {
@@ -2115,6 +2116,24 @@ export class People {
     this.downloadCsv('people', [
       ['name', 'grade', 'retired-from', 'due-total'],
       ...this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueBy(p)]),
+    ]);
+  }
+
+  /** Download the people of the sheet's whole tree as CSV: this sheet's first, in list order with the
+   *  grade and due-total as shown, then those of the tree's other sheets, by sheet id, as each shows them. */
+  protected async exportTree(): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (sheet === null) return;
+    const others = await firstValueFrom(
+      this.http.get<{ sheet: string; name: string; grade: string; dueTotal: string }[]>(
+        `/api/sheets/${encodeURIComponent(sheet)}/tree-people`,
+      ),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.downloadCsv('tree', [
+      ['sheet', 'name', 'grade', 'due-total'],
+      ...this.people().map((p) => [sheet, p.name, this.gradeOf(p), this.dueBy(p)]),
+      ...others.map((p) => [p.sheet, p.name, p.grade, p.dueTotal]),
     ]);
   }
 

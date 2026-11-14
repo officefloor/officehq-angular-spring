@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.Preview;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -154,6 +155,23 @@ public class SheetService {
             }
         }
         return found;
+    }
+
+    /** The ids of the other sheets of the whole tree the sheet is in: its root (the topmost ancestor
+     *  that exists) and all the root's descendants, by sheet id; the sheet itself is not among them. */
+    public List<String> wholeTree(String id) {
+        String root = id;
+        Set<String> seen = new HashSet<>(Set.of(id));
+        for (String up = sheets.findById(id).map(Sheet::getParentId).orElse(null); up != null && seen.add(up);
+                up = sheets.findById(up).map(Sheet::getParentId).orElse(null)) {
+            if (sheets.existsById(up)) {
+                root = up;
+            }
+        }
+        Set<String> found = new TreeSet<>(descendants(root));
+        found.add(root);
+        found.remove(id);
+        return new ArrayList<>(found);
     }
 
     /** Whether a sheet with this id was ever used (loaded or changed). */
