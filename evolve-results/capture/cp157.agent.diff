@@ -1,0 +1,414 @@
+diff --git a/src/main/frontend/src/app/core/figures.ts b/src/main/frontend/src/app/core/figures.ts
+new file mode 100644
+index 000000000..03da00cea
+--- /dev/null
++++ b/src/main/frontend/src/app/core/figures.ts
+@@ -0,0 +1,60 @@
++import { DestroyRef, Directive, ElementRef, effect, inject } from '@angular/core';
++import { Locale, Session } from './session';
++
++/** A text whose whole content is a figure: a number with two decimals. */
++const FIGURE = /^(\s*)(-?)(\d+)\.(\d{2})(\s*)$/;
++
++/** A figure (as the store and the API write it, `1234.56`) as the locale shows it. */
++export function showFigure(text: string, locale: Locale): string {
++  const m = FIGURE.exec(text);
++  if (!m || locale === 'en') return text;
++  const [, lead, sign, whole, cents, trail] = m;
++  return `${lead}${sign}${whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.')},${cents}${trail}`;
++}
++
++// Shows every figure under the host in the signed-in user's locale. The templates bind figures as
++// the API gives them; this rewrites each text node whose whole text is a figure, remembering the
++// figure it was given so that it can show it again when the locale changes.
++@Directive({ selector: '[appFigures]' })
++export class Figures {
++  private readonly session = inject(Session);
++  private readonly host: HTMLElement = inject(ElementRef).nativeElement;
++  /** Each rewritten text node: the figure it was bound to, and the text shown for it. */
++  private readonly shown = new WeakMap<Text, { raw: string; text: string }>();
++
++  constructor() {
++    const observer = new MutationObserver((records) => {
++      for (const r of records) {
++        if (r.type === 'characterData') this.show(r.target as Text);
++        else r.addedNodes.forEach((n) => this.walk(n));
++      }
++    });
++    observer.observe(this.host, { subtree: true, childList: true, characterData: true });
++    inject(DestroyRef).onDestroy(() => observer.disconnect());
++    effect(() => {
++      this.session.locale();
++      this.walk(this.host);
++    });
++  }
++
++  private walk(root: Node): void {
++    if (root.nodeType === Node.TEXT_NODE) {
++      this.show(root as Text);
++      return;
++    }
++    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
++    for (let n = walker.nextNode(); n; n = walker.nextNode()) this.show(n as Text);
++  }
++
++  private show(node: Text): void {
++    const before = this.shown.get(node);
++    const raw = before && node.data === before.text ? before.raw : node.data;
++    if (!FIGURE.test(raw)) {
++      this.shown.delete(node);
++      return;
++    }
++    const text = showFigure(raw, this.session.locale());
++    this.shown.set(node, { raw, text });
++    if (node.data !== text) node.data = text;
++  }
++}
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index bc9c6fd48..37f435874 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -2,6 +2,10 @@ import { HttpClient } from '@angular/common/http';
+ import { Injectable, computed, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ 
++/** The locales a user can choose for how figures are shown. */
++export const LOCALES = ['en', 'de'] as const;
++export type Locale = (typeof LOCALES)[number];
++
+ interface SheetView {
+   id: string;
+   today: string;
+@@ -30,6 +34,8 @@ export class Session {
+   readonly archived = signal(false);
+   /** The number of the active sheet's last settle batch; null when there has been none. */
+   readonly lastBatch = signal<number | null>(null);
++  /** The signed-in user's locale, which decides how the screen shows figures; en until read. */
++  readonly locale = signal<Locale>('en');
+   /** Counts sheet loads, so features re-read their data even when the same id is loaded again. */
+   readonly loads = signal(0);
+ 
+@@ -37,14 +43,31 @@ export class Session {
+     const trimmed = name.trim();
+     if (!trimmed) return false;
+     this.user.set(trimmed);
++    this.locale.set('en');
++    void this.loadLocale().catch(() => undefined);
+     return true;
+   }
+ 
++  /** Re-read the signed-in user's locale from the store. */
++  async loadLocale(): Promise<void> {
++    const user = this.user();
++    const view = await firstValueFrom(this.http.get<{ locale: Locale }>('/api/me/locale'));
++    if (this.user() === user) this.locale.set(view.locale);
++  }
++
++  /** Save the signed-in user's locale. */
++  async saveLocale(locale: Locale): Promise<void> {
++    const view = await firstValueFrom(this.http.put<{ locale: Locale }>('/api/me/locale', { locale }));
++    this.locale.set(view.locale);
++  }
++
+   /** Load a sheet by id; a sheet never loaded before starts empty. */
+   async loadSheet(id: string): Promise<void> {
++    const locale = this.loadLocale().catch(() => undefined);
+     const sheet = await firstValueFrom(
+       this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null),
+     );
++    await locale;
+     this.show(sheet);
+     this.loads.update((n) => n + 1);
+   }
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 4d997a32a..b1db2eefd 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,5 +1,6 @@
+ import { Component, inject, signal } from '@angular/core';
+-import { Session } from '../../core/session';
++import { Figures } from '../../core/figures';
++import { LOCALES, Locale, Session } from '../../core/session';
+ import { AuditViewer } from '../audit/audit-viewer';
+ import { People } from '../people/people';
+ import { TreeSearch } from '../search/tree-search';
+@@ -8,11 +9,31 @@ import { SettingStore } from '../settings/settings';
+ // The one screen: sign in by name, then load a sheet by id.
+ @Component({
+   selector: 'app-home',
+-  imports: [AuditViewer, People, TreeSearch],
++  imports: [AuditViewer, Figures, People, TreeSearch],
+   template: `
++    <div appFigures>
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+ 
++      <form (submit)="saveLocale($event)">
++        <label for="user-locale">Locale</label>
++        <select
++          id="user-locale"
++          data-testid="user-locale"
++          [value]="localeInput() ?? session.locale()"
++          (change)="localeInput.set(locale($event)); localeError.set(null)"
++        >
++          @for (l of locales; track l) {
++            <option [value]="l">{{ l }}</option>
++          }
++        </select>
++        <button type="submit" data-testid="user-locale-save">Save locale</button>
++        Locale <strong data-testid="user-locale-current">{{ session.locale() }}</strong>
++      </form>
++      @if (localeError(); as error) {
++        <p role="alert" data-testid="user-locale-error">{{ error }}</p>
++      }
++
+       <form (submit)="load($event)">
+         <label for="sheet-id">Sheet id</label>
+         <input
+@@ -97,6 +118,7 @@ import { SettingStore } from '../settings/settings';
+         <p role="alert" data-testid="signin-error">{{ error }}</p>
+       }
+     }
++    </div>
+   `,
+ })
+ export class Home {
+@@ -114,6 +136,26 @@ export class Home {
+   protected readonly clonedTo = signal('');
+   protected readonly asOfError = signal<string | null>(null);
+ 
++  protected readonly locales = LOCALES;
++  /** The locale chosen in the select and not yet saved; null shows the saved one. */
++  protected readonly localeInput = signal<Locale | null>(null);
++  protected readonly localeError = signal<string | null>(null);
++
++  protected locale(event: Event): Locale {
++    return (event.target as HTMLSelectElement).value as Locale;
++  }
++
++  protected async saveLocale(event: Event): Promise<void> {
++    event.preventDefault();
++    this.localeError.set(null);
++    try {
++      await this.session.saveLocale(this.localeInput() ?? this.session.locale());
++      this.localeInput.set(null);
++    } catch {
++      this.localeError.set('The locale could not be saved.');
++    }
++  }
++
+   protected value(event: Event): string {
+     return (event.target as HTMLInputElement).value;
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/locale/UserLocale.java b/src/main/java/net/officefloor/hq/app/locale/UserLocale.java
+new file mode 100644
+index 000000000..c2458de5d
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/locale/UserLocale.java
+@@ -0,0 +1,39 @@
++package net.officefloor.hq.app.locale;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** The locale a user chose for how the screen shows figures; a user who never chose one has en. */
++@Entity
++@Table(name = "user_locale")
++public class UserLocale {
++
++    @Id
++    @Column(name = "user_name", nullable = false)
++    private String userName;
++
++    @Column(name = "locale", nullable = false)
++    private String locale;
++
++    protected UserLocale() {
++    }
++
++    public UserLocale(String userName, String locale) {
++        this.userName = userName;
++        this.locale = locale;
++    }
++
++    public String getUserName() {
++        return userName;
++    }
++
++    public String getLocale() {
++        return locale;
++    }
++
++    public void setLocale(String locale) {
++        this.locale = locale;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/locale/UserLocaleController.java b/src/main/java/net/officefloor/hq/app/locale/UserLocaleController.java
+new file mode 100644
+index 000000000..284a25158
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/locale/UserLocaleController.java
+@@ -0,0 +1,61 @@
++package net.officefloor.hq.app.locale;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import net.officefloor.hq.app.SignedInUser;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.converter.HttpMessageNotReadableException;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The signed-in user's locale: kept per user, not per sheet, and not audited. */
++@RestController
++@Validated
++@RequestMapping("/api/me/locale")
++public class UserLocaleController {
++
++    /** The locale every user has until they choose another. */
++    static final String DEFAULT = "en";
++
++    public record LocaleView(String locale) {
++    }
++
++    public record LocaleRequest(@NotBlank @Pattern(regexp = "en|de") String locale) {
++    }
++
++    private final UserLocaleRepository repository;
++
++    public UserLocaleController(UserLocaleRepository repository) {
++        this.repository = repository;
++    }
++
++    @GetMapping
++    @Transactional(readOnly = true)
++    public LocaleView get(@RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
++        return new LocaleView(repository.findById(SignedInUser.decode(user))
++                .map(UserLocale::getLocale).orElse(DEFAULT));
++    }
++
++    @PutMapping
++    @Transactional
++    public LocaleView set(@RequestHeader(SignedInUser.HEADER) @NotBlank String user,
++            @RequestBody @Validated LocaleRequest request) {
++        String name = SignedInUser.decode(user);
++        UserLocale chosen = repository.findById(name).orElseGet(() -> new UserLocale(name, request.locale()));
++        chosen.setLocale(request.locale());
++        return new LocaleView(repository.save(chosen).getLocale());
++    }
++
++    @ExceptionHandler(HttpMessageNotReadableException.class)
++    @ResponseStatus(HttpStatus.BAD_REQUEST)
++    public void unreadable() {
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/locale/UserLocaleRepository.java b/src/main/java/net/officefloor/hq/app/locale/UserLocaleRepository.java
+new file mode 100644
+index 000000000..100764afa
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/locale/UserLocaleRepository.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.locale;
++
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface UserLocaleRepository extends JpaRepository<UserLocale, String> {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index a4d17cff3..56bc0b8a8 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -14,6 +14,7 @@ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.setting.SettingService;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -27,15 +28,17 @@ public class PlanService {
+     private final PersonRepository people;
+     private final ClaimService claims;
+     private final SheetService sheets;
++    private final SettingService settings;
+     private final Audit audit;
+ 
+     public PlanService(PlanRepository plans, PlanClaimRepository made, PersonRepository people, ClaimService claims,
+-            SheetService sheets, Audit audit) {
++            SheetService sheets, SettingService settings, Audit audit) {
+         this.plans = plans;
+         this.made = made;
+         this.people = people;
+         this.claims = claims;
+         this.sheets = sheets;
++        this.settings = settings;
+         this.audit = audit;
+     }
+ 
+@@ -88,9 +91,12 @@ public class PlanService {
+     /** For every plan on the sheet, in the order they were added, add a DRAFT claim of its amount with
+      *  an empty note for each plan date up to its end and the sheet's today it has made none for yet,
+      *  as the claim form would; a date the form refuses is passed over, to be tried again next time.
+-     *  The claims made, in the order they were. */
++     *  The claims made, in the order they were; a viewer makes none. */
+     @Transactional
+     public List<Claim> generate(String sheetId, String user) {
++        if (settings.isViewer(sheetId, user)) {
++            return List.of();
++        }
+         sheets.lock(sheetId);
+         LocalDate today = sheets.today(sheetId);
+         List<Plan> them = plans.findBySheetIdOrderByIdAsc(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java
+index b6f544fc0..ec901f5f3 100644
+--- a/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/setting/ViewerGuard.java
+@@ -17,7 +17,8 @@ import org.springframework.web.servlet.HandlerInterceptor;
+  * A viewer sees every screen and figure and can change nothing: every request that would change a
+  * sheet is refused (403) before it reaches its controller, so it writes nothing to the store or the
+  * audit. Loading a sheet changes nothing and is let through; so are the bulk actions, which a
+- * viewer takes with nothing done (every selected item refused, see the bulk services).
++ * viewer takes with nothing done (every selected item refused, see the bulk services), and the
++ * plans' generate, which makes nothing for a viewer (see the plan service).
+  */
+ @Component
+ public class ViewerGuard implements HandlerInterceptor {
+@@ -25,14 +26,16 @@ public class ViewerGuard implements HandlerInterceptor {
+     /** The sheet-scoped requests the guard watches. */
+     public static final String PATTERN = "/api/sheets/{sheetId}/**";
+ 
+-    /** The requests a viewer may make: loading a sheet, and the bulk actions that refuse every item. */
++    /** The requests a viewer may make: loading a sheet, the bulk actions that refuse every item, and
++     *  generating plans' claims, which makes none for a viewer. */
+     private static final Set<String> LET_THROUGH = Set.of(
+             "/api/sheets/{sheetId}/load",
+             "/api/sheets/{sheetId}/claims/open",
+             "/api/sheets/{sheetId}/claims/settle",
+             "/api/sheets/{sheetId}/claims/reassign",
+             "/api/sheets/{sheetId}/people/grade",
+-            "/api/sheets/{sheetId}/people/retire");
++            "/api/sheets/{sheetId}/people/retire",
++            "/api/sheets/{sheetId}/plans/generate");
+ 
+     private final AntPathMatcher paths = new AntPathMatcher();
+     private final SettingService settings;
+diff --git a/src/main/resources/db/migration/V92__user_locale.sql b/src/main/resources/db/migration/V92__user_locale.sql
+new file mode 100644
+index 000000000..af8f7b507
+--- /dev/null
++++ b/src/main/resources/db/migration/V92__user_locale.sql
+@@ -0,0 +1,4 @@
++CREATE TABLE user_locale (
++    user_name VARCHAR(255) NOT NULL PRIMARY KEY,
++    locale VARCHAR(8) NOT NULL
++);

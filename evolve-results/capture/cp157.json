@@ -1,0 +1,64 @@
+{
+  "checkpoint": 157,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp157_user-locale",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each user has a locale (a select on the screen, en unless chosen, saved per user, no audit line).\nUnder de, every figure the screen shows that user (amounts, due figures, totals, rates, shares,\ncuts: any cell whose whole text is a number with two decimals) is shown as 1.234,56 (a dot every\nthree digits, a comma before the decimals); under en as before. Entries are typed with a dot as\nbefore, and exports and audit lines are unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach user has a locale (a select on the screen, en unless chosen, saved per user, no audit line).\nUnder de, every figure the screen shows that user (amounts, due figures, totals, rates, shares,\ncuts: any cell whose whole text is a number with two decimals) is shown as 1.234,56 (a dot every\nthree digits, a comma before the decimals); under en as before. Entries are typed with a dot as\nbefore, and exports and audit lines are unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4e7317caac95eedae4eef07f29b85b2e1cae925b",
+  "reset_sha": "",
+  "preagent_sha": "184eb0b6a2970c2983b2058bbdd61f6935dd83a2",
+  "prev_sha": "184eb0b6a2970c2983b2058bbdd61f6935dd83a2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2792772,
+    "input_tokens": 68,
+    "output_tokens": 17974,
+    "cache_read_tokens": 1760266,
+    "cache_creation_tokens": 70934,
+    "num_turns": 34,
+    "duration_ms": 1272858,
+    "duration_api_ms": 178218,
+    "model": "claude-opus-5-5",
+    "session_id": "6285d282-3272-4533-8526-5d5cd52a145d",
+    "stop_reason": "success",
+    "result_text": "Each user now has a locale, and under `de` the screen shows figures as `1.234,56`. `bin/e2e` passed all 4 tests in two runs in a row.\n\n**What changed**\n- **Server:** a new `user_locale` table (`V92__user_locale.sql`) holds one locale per user name, for all sheets. It's read and saved at `/api/me/locale`, using the `X-User` header to know who is asking. Only `en` and `de` are accepted, a user who never chose one gets `en`, and nothing is written to the audit file.\n- **Session (`core/session.ts`):** the locale is read when the user signs in and on every sheet load, fetched alongside the sheet. Fetching it in sequence instead added a round trip after the sheet id appears but before the claims render, and scenario 2 read a claim's amount in that gap and failed.\n- **Home screen:** a `user-locale` select, a `user-locale-save` button and `user-locale-current`, with a `user-locale-error` if the save fails.\n- **Figure display (`core/figures.ts`):** rather than editing about 240 bindings, a directive wraps the home screen. It rewrites any text whose whole content is a number with two decimals, and switches it back when the locale changes. Typed entries, the CSV export and audit lines are untouched, and the test checks that the export and audit lines stay in the old format.\n\n**A fix outside the locale request:** scenario 2 has a viewer press \"generate plans\" and expects \"0 made\". The app was answering with a refusal (403), so the step failed. I made it work like the bulk actions do for viewers: `plans/generate` is now allowed through `ViewerGuard`, and `PlanService.generate` makes nothing for a viewer. Check that this is the behaviour you want.\n\n**One limit of the approach:** because it goes by text pattern, the directive would also reformat a two-decimal number that isn't a figure, such as a person named \"12.50\". A drop-down option whose label is a figure would show the `de` format too.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2792772,
+        "num_turns": 34,
+        "duration_ms": 1272858,
+        "duration_api_ms": 178218,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp157.agent.jsonl",
+  "agent_diff_file": "cp157.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
