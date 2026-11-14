@@ -1,0 +1,64 @@
+{
+  "checkpoint": 190,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp190_bulk-void",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected claims can be voided together: a reason select (when the sheet has void reasons) and a\nbutton beside the bulk buttons; each selected claim is voided in list order exactly as the row's\nvoid does (with its CLAIM_VOIDED and rollup lines); show how many were voided and how many\nrefused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected claims can be voided together: a reason select (when the sheet has void reasons) and a\nbutton beside the bulk buttons; each selected claim is voided in list order exactly as the row's\nvoid does (with its CLAIM_VOIDED and rollup lines); show how many were voided and how many\nrefused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e3051aa0401da4a8a0e969e049631d59994f1e9d",
+  "reset_sha": "",
+  "preagent_sha": "73cf78d84017ba99fa1e14682d260f9fa8117a8d",
+  "prev_sha": "73cf78d84017ba99fa1e14682d260f9fa8117a8d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8465904,
+    "input_tokens": 40,
+    "output_tokens": 9230,
+    "cache_read_tokens": 946592,
+    "cache_creation_tokens": 59064,
+    "num_turns": 21,
+    "duration_ms": 308254,
+    "duration_api_ms": 96178,
+    "model": "claude-opus-5-5",
+    "session_id": "adce44a5-de79-40c4-86bf-549c999deb21",
+    "stop_reason": "success",
+    "result_text": "Bulk void is in place, and all 4 tests in `bin/e2e` pass.\n\n**What it does:** next to the other bulk buttons there is now a **Void selected claims** button. A reason select appears beside it only when the sheet has void reasons. When pressed, the selected claims are voided one at a time in list order: people in the order they were added, and each person's claims newest first. Each claim is voided exactly as its row's own Void button would void it, so the rules, the `CLAIM_VOIDED` line (with `reversed=` / `reason=` where they apply) and the `ROLLUP`/`TOTALS` lines are the same.\n\nA claim that can't be voided is skipped and counted as refused, and it writes nothing; the others still go through. The screen then shows how many were voided and how many refused. Three cases behave this way:\n- a settled claim voided by anyone other than a steward;\n- any claim voided without a reason while the sheet has void reasons;\n- every selected claim when the user is a viewer or the sheet is archived.\n\n**Changes:**\n- **Server:** a new `BulkVoidService.java`, built the same way as the existing bulk open. `ClaimController.java` gains a `POST /api/sheets/{sheet}/claims/void` endpoint that takes the claim ids and an optional reason.\n- **Screen (`people/people.ts`):** the reason select (`bulk-void-reason`), the button (`bulk-void`), the counts (`bulk-voided` and `bulk-void-refused`) and an error message (`bulk-void-error`) for when the request fails entirely. The counts clear when the button is pressed again, and the selection clears after each run.\n\nNo database change was needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8465904,
+        "num_turns": 21,
+        "duration_ms": 308254,
+        "duration_api_ms": 96178,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp190.agent.jsonl",
+  "agent_diff_file": "cp190.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
