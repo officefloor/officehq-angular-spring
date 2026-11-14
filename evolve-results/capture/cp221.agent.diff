@@ -1,0 +1,51 @@
+diff --git a/src/main/frontend/src/app/features/counters/counters.ts b/src/main/frontend/src/app/features/counters/counters.ts
+index 193458f88..8b95203b0 100644
+--- a/src/main/frontend/src/app/features/counters/counters.ts
++++ b/src/main/frontend/src/app/features/counters/counters.ts
+@@ -29,6 +29,8 @@ import { StatusSummary } from '../summary/summary';
+         <dd data-testid="my-crew-due-total">{{ myCrewDueTotal() }}</dd>
+         <dt>My reviews</dt>
+         <dd data-testid="my-reviews-count">{{ myReviewsCount() }}</dd>
++        <dt>Watched due</dt>
++        <dd data-testid="watched-due-total">{{ watchedDueTotal() }}</dd>
+         <dt>People with sub-sheets</dt>
+         <dd data-testid="consolidated-people-count">{{ consolidatedPeopleCount() }}</dd>
+         <dt>Due in total with sub-sheets</dt>
+@@ -59,6 +61,8 @@ export class Counters {
+   readonly myCrewDueTotal = input.required<string>();
+   /** How many REVIEW claims are assigned to the signed-in user. */
+   readonly myReviewsCount = input.required<number>();
++  /** The due-totals of the people the signed-in user watches, added up; 0.00 when they watch no one. */
++  readonly watchedDueTotal = input.required<string>();
+   readonly consolidatedPeopleCount = input.required<number>();
+   readonly consolidatedDueTotal = input.required<string>();
+   readonly consolidatedOverdueTotal = input.required<string>();
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4d20a7318..fba574410 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -163,6 +163,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
+       [myOverdueTotal]="mine()?.overdueTotal ?? ''"
+       [myCrewDueTotal]="myCrewDue()"
+       [myReviewsCount]="myReviews()"
++      [watchedDueTotal]="watchedDue()"
+       [consolidatedPeopleCount]="consolidatedPeople()"
+       [consolidatedDueTotal]="consolidatedDue()"
+       [consolidatedOverdueTotal]="consolidatedOverdue()"
+@@ -1258,6 +1259,16 @@ export class People {
+     const byId = new Map(this.crewPeople().map((p) => [p.id, p]));
+     return money(led.reduce((sum, c) => sum + crewDueCents(c, byId), 0));
+   });
++  /** The due-totals of the people the signed-in user watches, added up, skipping those whose grade
++   *  has no rate; 0.00 when they watch no one. */
++  protected readonly watchedDue = computed(() =>
++    money(
++      this.people()
++        .filter((p) => p.watched)
++        .map((p) => this.dueCentsBy(p))
++        .reduce<number>((sum, due) => sum + (due ?? 0), 0),
++    ),
++  );
+   /** The sheet's descendants' figures added up, as the store last told them. */
+   protected readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
+   /** The consolidated figures: the sheet's own as it shows them plus its descendants', each as of the
