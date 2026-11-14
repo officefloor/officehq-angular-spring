@@ -37,6 +37,9 @@ public class Rate {
     @Column(name = "to_date")
     private LocalDate to;
 
+    @Column(name = "version", nullable = false)
+    private int version = 1;
+
     protected Rate() {
     }
 
@@ -46,6 +49,12 @@ public class Rate {
         this.from = from;
         this.to = to;
         this.rate = rate;
+    }
+
+    /** A rate as it stood with a given version count, read back from the sheet's history. */
+    public Rate(String sheetId, String grade, LocalDate from, LocalDate to, BigDecimal rate, int version) {
+        this(sheetId, grade, from, to, rate);
+        this.version = version;
     }
 
     public Long getId() {
@@ -69,10 +78,6 @@ public class Rate {
         return to;
     }
 
-    public void setTo(LocalDate to) {
-        this.to = to;
-    }
-
     /** Whether the rate has ended by a date: it has a to-date before the date. */
     public boolean endedBy(LocalDate date) {
         return to != null && to.isBefore(date);
@@ -87,7 +92,15 @@ public class Rate {
         return rate;
     }
 
-    public void setRate(BigDecimal rate) {
+    /** How many versions the rate has: 1 for one never replaced; the value in force is the newest. */
+    public int getVersion() {
+        return version;
+    }
+
+    /** Make a new value and to-date the newest version, the one in force. */
+    public void newVersion(BigDecimal rate, LocalDate to) {
         this.rate = rate;
+        this.to = to;
+        this.version++;
     }
 }

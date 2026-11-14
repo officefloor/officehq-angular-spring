@@ -35,10 +35,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class RateController {
 
     /** A grade's rate as the screen shows it; the rate is a percent string with two decimals, the
-     *  from-date null when the rate applies from the beginning of time. */
-    public record RateView(String grade, String rate, LocalDate from, LocalDate to) {
+     *  from-date null when the rate applies from the beginning of time, the version its version count. */
+    public record RateView(String grade, String rate, LocalDate from, LocalDate to, int version) {
         static RateView of(Rate rate) {
-            return new RateView(rate.getGrade(), rate.getRate().toPlainString(), rate.getFrom(), rate.getTo());
+            return new RateView(rate.getGrade(), rate.getRate().toPlainString(), rate.getFrom(), rate.getTo(),
+                    rate.getVersion());
         }
     }
 

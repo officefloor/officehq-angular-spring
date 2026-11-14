@@ -145,8 +145,8 @@ public class History {
                 .forEach(this::claimKept);
         jdbc.query("SELECT id FROM person WHERE sheet_id = ? ORDER BY id", (rs, n) -> rs.getLong("id"), sheetId)
                 .forEach(this::personKept);
-        jdbc.update("INSERT INTO rate_history (sheet_id, grade, from_date, to_date, rate, made_on)"
-                + " SELECT r.sheet_id, r.grade, r.from_date, r.to_date, r.rate, s.today"
+        jdbc.update("INSERT INTO rate_history (sheet_id, grade, from_date, to_date, rate, version, made_on)"
+                + " SELECT r.sheet_id, r.grade, r.from_date, r.to_date, r.rate, r.version, s.today"
                 + " FROM rate r JOIN sheet s ON s.id = r.sheet_id WHERE r.sheet_id = ? ORDER BY r.id", sheetId);
         jdbc.update("INSERT INTO person_grade_history (sheet_id, person_id, grade, from_date, made_on)"
                 + " SELECT g.sheet_id, g.person_id, g.grade, g.from_date, s.today"
@@ -233,7 +233,7 @@ public class History {
         Map<LocalDate, Rate> byFrom = new LinkedHashMap<>();
         jdbc.query("SELECT * FROM rate_history WHERE sheet_id = ? AND grade = ? AND made_on <= ? ORDER BY id",
                 (rs, n) -> new Rate(sheetId, grade, rs.getObject("from_date", LocalDate.class),
-                        rs.getObject("to_date", LocalDate.class), rs.getBigDecimal("rate")),
+                        rs.getObject("to_date", LocalDate.class), rs.getBigDecimal("rate"), rs.getInt("version")),
                 sheetId, grade, day).forEach(rate -> byFrom.put(rate.getFrom(), rate));
         return new ArrayList<>(byFrom.values());
     }

@@ -11,6 +11,8 @@ export interface Rate {
   from: string | null;
   /** The last date the rate applies on (yyyy-mm-dd); null when it has no end. */
   to: string | null;
+  /** How many versions the rate has; the one shown, in force, is the newest. */
+  version: number;
 }
 
 export const GRADES = ['A', 'B', 'C'];
@@ -328,6 +330,7 @@ export class RateStore {
             <th scope="col">From</th>
             <th scope="col">To</th>
             <th scope="col">Rate (%)</th>
+            <th scope="col">Versions</th>
           </tr>
         </thead>
         <tbody>
@@ -337,6 +340,7 @@ export class RateStore {
               <td data-testid="rate-from">{{ r.from ?? 'always' }}</td>
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.rate }}</td>
+              <td data-testid="rate-version">{{ r.version }}</td>
             </tr>
           }
         </tbody>

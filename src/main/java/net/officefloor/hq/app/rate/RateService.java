@@ -26,14 +26,16 @@ public class RateService {
     public static final int PARENT_LEVELS = 3;
 
     private final RateRepository rates;
+    private final RateVersionRepository versions;
     private final SheetService sheets;
     private final SheetRepository sheetRepository;
     private final History history;
     private final Audit audit;
 
-    public RateService(RateRepository rates, SheetService sheets, SheetRepository sheetRepository, History history,
+    public RateService(RateRepository rates, RateVersionRepository versions, SheetService sheets, SheetRepository sheetRepository, History history,
             Audit audit) {
         this.rates = rates;
+        this.versions = versions;
         this.sheets = sheets;
         this.sheetRepository = sheetRepository;
         this.history = history;
@@ -113,7 +115,8 @@ public class RateService {
     }
 
     /** Set the rate for a grade from a date (null: from the beginning of time) through a date (null:
-     *  with no end), replacing the one the grade had from that date. A to-date before the from-date
+     *  with no end). When the grade has a rate from that date, the value it held is kept as an older
+     *  version and the new one becomes its newest version, the one in force. A to-date before the from-date
      *  is refused. */
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal rate) {
@@ -127,8 +130,8 @@ public class RateService {
                 : rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from);
         Rate saved = had
                 .map(existing -> {
-                    existing.setRate(scaled);
-                    existing.setTo(to);
+                    versions.save(new RateVersion(existing, sheets.today(sheetId), user));
+                    existing.newVersion(scaled, to);
                     return existing;
                 })
                 .orElseGet(() -> new Rate(sheetId, grade, from, to, scaled));
