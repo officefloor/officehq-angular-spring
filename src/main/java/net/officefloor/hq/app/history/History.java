@@ -138,6 +138,30 @@ public class History {
         jdbc.update(HistoryListener.PERSON, personId);
     }
 
+    /** Keep the state every claim, person, rate, grade, dated setting and period of the sheet is in
+     *  now, and its policy date, with the sheet's today: the sheet was made whole at once (a clone). */
+    public void sheetKept(String sheetId) {
+        jdbc.query("SELECT id FROM claim WHERE sheet_id = ? ORDER BY id", (rs, n) -> rs.getLong("id"), sheetId)
+                .forEach(this::claimKept);
+        jdbc.query("SELECT id FROM person WHERE sheet_id = ? ORDER BY id", (rs, n) -> rs.getLong("id"), sheetId)
+                .forEach(this::personKept);
+        jdbc.update("INSERT INTO rate_history (sheet_id, grade, from_date, to_date, rate, made_on)"
+                + " SELECT r.sheet_id, r.grade, r.from_date, r.to_date, r.rate, s.today"
+                + " FROM rate r JOIN sheet s ON s.id = r.sheet_id WHERE r.sheet_id = ? ORDER BY r.id", sheetId);
+        jdbc.update("INSERT INTO person_grade_history (sheet_id, person_id, grade, from_date, made_on)"
+                + " SELECT g.sheet_id, g.person_id, g.grade, g.from_date, s.today"
+                + " FROM person_grade g JOIN sheet s ON s.id = g.sheet_id WHERE g.sheet_id = ? ORDER BY g.id", sheetId);
+        jdbc.update("INSERT INTO sheet_setting_value_history (sheet_id, setting_key, from_date, setting_value, made_on)"
+                + " SELECT v.sheet_id, v.setting_key, v.from_date, v.setting_value, s.today"
+                + " FROM sheet_setting_value v JOIN sheet s ON s.id = v.sheet_id WHERE v.sheet_id = ? ORDER BY v.id",
+                sheetId);
+        jdbc.update("INSERT INTO period_history (period_id, sheet_id, name, from_date, to_date, closed, soft_closed,"
+                + " closed_total, person_totals, made_on) SELECT p.id, p.sheet_id, p.name, p.from_date, p.to_date,"
+                + " p.closed, p.soft_closed, p.closed_total, '', s.today FROM period p JOIN sheet s ON s.id = p.sheet_id"
+                + " WHERE p.sheet_id = ? ORDER BY p.id", sheetId);
+        policyDateSet(sheetId);
+    }
+
     /** Keep a user starting or stopping watching a person, with the sheet's today. */
     public void watchSet(String sheetId, Long personId, String user, boolean watched) {
         jdbc.update("INSERT INTO person_watch_history (sheet_id, person_id, user_name, watched, made_on)"

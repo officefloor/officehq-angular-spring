@@ -84,20 +84,37 @@ public class RollupService {
         Rollup after = rollup(sheetId);
         after.people().forEach((id, figures) -> {
             if (!figures.sameAs(before.people().get(id))) {
-                audit.recordOnCommit("ROLLUP sheet=" + sheetId + " by=" + user + " person=" + figures.name()
-                        + " claimed=" + figures.claimed().toPlainString() + " due-total=" + text(figures.due())
-                        + " overdue-total=" + figures.overdue().toPlainString());
+                audit.recordOnCommit(rollupLine(sheetId, user, figures));
             }
         });
         if (after.claimedTotal().compareTo(before.claimedTotal()) != 0
                 || after.dueTotal().compareTo(before.dueTotal()) != 0
                 || after.overdueTotal().compareTo(before.overdueTotal()) != 0) {
-            audit.recordOnCommit("TOTALS sheet=" + sheetId + " by=" + user
-                    + " claimed-total=" + after.claimedTotal().toPlainString()
-                    + " due-total=" + after.dueTotal().toPlainString()
-                    + " overdue-total=" + after.overdueTotal().toPlainString());
+            audit.recordOnCommit(totalsLine(sheetId, user, after));
         }
         return result;
+    }
+
+    /** Record in the audit every person's figures as they stand now, in list order, then the sheet's
+     *  totals: the figures a sheet starts from when it is made whole (a clone). */
+    @Transactional
+    public void recordAll(String sheetId, String user) {
+        Rollup now = rollup(sheetId);
+        now.people().values().forEach(figures -> audit.recordOnCommit(rollupLine(sheetId, user, figures)));
+        audit.recordOnCommit(totalsLine(sheetId, user, now));
+    }
+
+    private static String rollupLine(String sheetId, String user, Figures figures) {
+        return "ROLLUP sheet=" + sheetId + " by=" + user + " person=" + figures.name()
+                + " claimed=" + figures.claimed().toPlainString() + " due-total=" + text(figures.due())
+                + " overdue-total=" + figures.overdue().toPlainString();
+    }
+
+    private static String totalsLine(String sheetId, String user, Rollup rollup) {
+        return "TOTALS sheet=" + sheetId + " by=" + user
+                + " claimed-total=" + rollup.claimedTotal().toPlainString()
+                + " due-total=" + rollup.dueTotal().toPlainString()
+                + " overdue-total=" + rollup.overdueTotal().toPlainString();
     }
 
     /** A sheet's headline figures as it shows them now: how many people are on it, and its due-total

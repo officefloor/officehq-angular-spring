@@ -45,6 +45,17 @@ import { SettingStore } from '../settings/settings';
           <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
         </p>
         <p>Parent sheet <strong data-testid="sheet-parent">{{ settings.parent() }}</strong></p>
+        <form (submit)="cloneSheet($event)">
+          <label for="sheet-clone-to">Clone to sheet id</label>
+          <input
+            id="sheet-clone-to"
+            data-testid="sheet-clone-to"
+            [value]="cloneInput()"
+            (input)="cloneInput.set(value($event)); todayError.set(null)"
+          />
+          <button type="submit" data-testid="sheet-clone">Clone sheet</button>
+          Last clone made <strong data-testid="sheet-cloned-to">{{ clonedTo() }}</strong>
+        </form>
         @if (todayError(); as error) {
           <p role="alert" data-testid="sheet-error">{{ error }}</p>
         }
@@ -96,6 +107,9 @@ export class Home {
   protected readonly todayInput = signal('');
   protected readonly todayError = signal<string | null>(null);
   protected readonly asOfInput = signal('');
+  protected readonly cloneInput = signal('');
+  /** The id of the last clone this screen made of the active sheet. */
+  protected readonly clonedTo = signal('');
   protected readonly asOfError = signal<string | null>(null);
 
   protected value(event: Event): string {
@@ -118,6 +132,7 @@ export class Home {
     }
     try {
       await this.session.loadSheet(id);
+      this.clonedTo.set('');
     } catch {
       this.sheetError.set('The sheet could not be loaded.');
     }
@@ -129,6 +144,22 @@ export class Home {
       await this.session.archive();
     } catch {
       this.todayError.set('The sheet could not be archived.');
+    }
+  }
+
+  protected async cloneSheet(event: Event): Promise<void> {
+    event.preventDefault();
+    this.todayError.set(null);
+    this.clonedTo.set('');
+    const to = this.cloneInput().trim();
+    if (!to) {
+      this.todayError.set('Type a sheet id to clone to.');
+      return;
+    }
+    try {
+      this.clonedTo.set(await this.session.cloneTo(to));
+    } catch {
+      this.todayError.set('The sheet could not be cloned.');
     }
   }
 

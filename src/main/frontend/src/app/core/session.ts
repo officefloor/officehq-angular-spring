@@ -81,6 +81,16 @@ export class Session {
     if (this.sheetId() === sheet.id) this.show(sheet);
   }
 
+  /** Clone the active sheet to another id never used (a steward only); gives back that id. */
+  async cloneTo(to: string): Promise<string> {
+    const id = this.sheetId();
+    if (!id) throw new Error('No sheet loaded.');
+    const made = await firstValueFrom(
+      this.http.post<{ to: string }>(`/api/sheets/${encodeURIComponent(id)}/clone`, { to }),
+    );
+    return made.to;
+  }
+
   private show(sheet: SheetView): void {
     this.sheetId.set(sheet.id);
     this.sheetToday.set(sheet.today);

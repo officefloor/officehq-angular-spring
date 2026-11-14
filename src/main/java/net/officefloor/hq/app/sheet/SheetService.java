@@ -119,6 +119,11 @@ public class SheetService {
         return found;
     }
 
+    /** Whether a sheet with this id was ever used (loaded or changed). */
+    public boolean exists(String id) {
+        return sheets.existsById(id);
+    }
+
     /** Whether the sheet is archived: every change to it is then refused. */
     public boolean isArchived(String id) {
         return sheets.findById(id).map(Sheet::isArchived).orElse(false);

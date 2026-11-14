@@ -45,15 +45,24 @@ public class SheetController {
     public record TodayRequest(@NotNull LocalDate today) {
     }
 
+    public record CloneRequest(String to) {
+    }
+
+    /** The sheet a clone was made to. */
+    public record CloneView(String to) {
+    }
+
     private final SheetService service;
     private final RollupService rollups;
     private final PeriodService periods;
     private final SettingService settings;
     private final ClaimService claims;
+    private final SheetCloneService clones;
 
     public SheetController(SheetService service, RollupService rollups, PeriodService periods, SettingService settings,
-            ClaimService claims) {
+            ClaimService claims, SheetCloneService clones) {
         this.service = service;
+        this.clones = clones;
         this.claims = claims;
         this.rollups = rollups;
         this.periods = periods;
@@ -118,6 +127,15 @@ public class SheetController {
             throw new ArchiveRefusedException("only a steward may archive the sheet");
         }
         return SheetView.of(service.archive(sheet, by));
+    }
+
+    /** Clone the sheet to another id never used: only a steward may. */
+    @PostMapping("/{id}/clone")
+    public CloneView cloneTo(@PathVariable @NotBlank @Size(max = 200) String id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody CloneRequest request) {
+        String to = request.to() == null ? "" : request.to().trim();
+        clones.cloneTo(id.trim(), SignedInUser.decode(user), to);
+        return new CloneView(to);
     }
 
     /** A date that is not a real yyyy-mm-dd date is refused. */
