@@ -1,0 +1,74 @@
+{
+  "checkpoint": 216,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp216_cuts-frozen-at-close",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    187,
+    191,
+    201,
+    213
+  ],
+  "replaced_tests": [
+    "cp187_cut-history.spec.ts::cut history",
+    "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 2",
+    "cp201_consolidated-grades.spec.ts::consolidated grades scenario 3",
+    "cp213_parent-plans.spec.ts::parent plans scenario 3"
+  ],
+  "request": {
+    "spec": "Closing or soft-closing a period now fixes every pool member's cut for that period as it stood at\nthat moment (the per-period cut cell shows the fixed figure from then on, even when the period\nclosed after its to-date), and reopening makes it live again.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nClosing or soft-closing a period now fixes every pool member's cut for that period as it stood at\nthat moment (the per-period cut cell shows the fixed figure from then on, even when the period\nclosed after its to-date), and reopening makes it live again.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5f4a1b63a596a0c6c682cbde898afdbe61cbb3db",
+  "reset_sha": "",
+  "preagent_sha": "af1e9875765424a773e38af97c65dcc615d086ed",
+  "prev_sha": "af1e9875765424a773e38af97c65dcc615d086ed",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0391014,
+    "input_tokens": 44,
+    "output_tokens": 14053,
+    "cache_read_tokens": 1094847,
+    "cache_creation_tokens": 67362,
+    "num_turns": 23,
+    "duration_ms": 356982,
+    "duration_api_ms": 143339,
+    "model": "claude-opus-5-5",
+    "session_id": "760da20d-2165-4a70-a2eb-42f25ca7283e",
+    "stop_reason": "success",
+    "result_text": "Closing or soft-closing a period now fixes every pool member's cut for that period as it stood at that moment, and reopening makes it live again. `bin/e2e` passes all 4 tests in the spec.\n\n**How it works**\n- **What gets stored:** when a period closes or soft-closes (by hand or automatically after the grace days), the app saves the pot, the pools with their members, and the people's retirements and holds as they stand at that moment. They go into a new `frozen_pools` column on `period`, added by migration `V118__period_frozen_pools.sql`.\n- **Why the inputs and not the figures:** the cut maths only exists in the front end. Saving its inputs means the front end works out the same figure every time without a second copy of that maths in Java.\n- **Which moment counts:** the saved state is \"now\", not the period's to-date. So a cut fixed after the to-date reflects everything up to the close. In the first test the per-period cut goes from 5.00 to 10.00 at close, then stays at 10.00 after the pot changes and Ben is put on hold.\n- **Avoiding a dependency loop:** `PeriodService` publishes a `PeriodFixing` event while closing, and a new `PoolFreezer` in the pool package saves the snapshot.\n- **Reopening:** `Period.reopen()` clears the snapshot, so the cut is live again.\n- **Serving it:** the by-period endpoint returns the saved snapshot for a closed period and the live figures otherwise.\n- **Front end:** the pools screen now re-reads the per-period cuts when periods change, so a close or reopen shows up without reloading the sheet.\n\n**Limits**\n- **As-of dates:** while the screen is set to an as-of date, the per-period cut is still worked out from the period's to-date, not from the frozen snapshot. Doing it properly would need the snapshot's history.\n- **Stale person ids:** if a person is merged away or transferred to another sheet after the close, the saved snapshot still uses their old id. Their per-period cut for that period may then show blank.\n- **Cloned sheets:** cloning copies a period's name and dates but not whether it is closed, so clones start open with live cuts. That is how cloning already behaved.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0391014,
+        "num_turns": 23,
+        "duration_ms": 356982,
+        "duration_api_ms": 143339,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp216.agent.jsonl",
+  "agent_diff_file": "cp216.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

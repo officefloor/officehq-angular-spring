@@ -1,0 +1,305 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 6da33d257..b42cc0b0c 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
+ import { Component, Injectable, computed, effect, inject, input, signal, untracked } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
++import { PeriodStore } from '../periods/periods';
+ import { SettingStore } from '../settings/settings';
+ 
+ export interface PoolMember {
+@@ -393,6 +394,7 @@ export class Pools {
+ 
+   protected readonly store = inject(PoolStore);
+   private readonly settings = inject(SettingStore);
++  private readonly periods = inject(PeriodStore);
+   private readonly session = inject(Session);
+   protected readonly name = signal('');
+   protected readonly error = signal<string | null>(null);
+@@ -404,9 +406,11 @@ export class Pools {
+   private readonly busy = signal(false);
+ 
+   constructor() {
+-    // The cuts each period ended with are re-read whenever what they are worked out from may have changed.
++    // The cuts each period ended with are re-read whenever what they are worked out from may have
++    // changed, or a period is closed (fixing them as they stand) or reopened (making them live again).
+     effect(() => {
+       this.people();
++      this.periods.periods();
+       this.store.pools();
+       this.settings.pot();
+       this.session.today();
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index 8d054ce06..d116875ee 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.JoinColumn;
++import jakarta.persistence.Lob;
+ import jakarta.persistence.MapKeyColumn;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+@@ -80,6 +81,12 @@ public class Period {
+     @Column(name = "locked", nullable = false)
+     private boolean locked;
+ 
++    /** The pools, pot and people as they stood when the period was closed or soft-closed (JSON), each
++     *  pool member's cut for it worked out from these; null while it is open. */
++    @Lob
++    @Column(name = "frozen_pools")
++    private String frozenPools;
++
+     protected Period() {
+     }
+ 
+@@ -186,6 +193,16 @@ public class Period {
+         this.closedTotal = null;
+         this.personTotals.clear();
+         this.personCarried.clear();
++        this.frozenPools = null;
++    }
++
++    public String getFrozenPools() {
++        return frozenPools;
++    }
++
++    /** Fix the pools, pot and people as they stand (JSON), the period's cuts worked out from them. */
++    public void freezePools(String frozenPools) {
++        this.frozenPools = frozenPools;
+     }
+ 
+     /** Whether the date falls in the period (inclusive). */
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodFixing.java b/src/main/java/net/officefloor/hq/app/period/PeriodFixing.java
+new file mode 100644
+index 000000000..eeb3d9808
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodFixing.java
+@@ -0,0 +1,6 @@
++package net.officefloor.hq.app.period;
++
++/** Published while a period is being closed or soft-closed, before it is saved, so what else is fixed
++ *  with it can be fixed on it as it stands at that moment. */
++public record PeriodFixing(Period period) {
++}
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 1cbf32af0..993ab949c 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -24,6 +24,7 @@ import net.officefloor.hq.app.setting.Permission;
+ import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingService;
+ import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+@@ -40,10 +41,12 @@ public class PeriodService {
+     private final SettingService settings;
+     private final History history;
+     private final Audit audit;
++    private final ApplicationEventPublisher events;
+ 
+     public PeriodService(PeriodRepository periods, SheetService sheets, ClaimRepository claims,
+             ClaimService claimService, PersonRepository people, PersonService personService, SettingService settings,
+-            History history, Audit audit) {
++            History history, Audit audit, ApplicationEventPublisher events) {
++        this.events = events;
+         this.history = history;
+         this.periods = periods;
+         this.sheets = sheets;
+@@ -284,6 +287,7 @@ public class PeriodService {
+         Map<Long, BigDecimal> personTotals = personTotals(sheetId, period);
+         BigDecimal total = sum(personTotals);
+         period.softClose(total, personTotals, personCarried(sheetId, period));
++        events.publishEvent(new PeriodFixing(period));
+         Period saved = save(period);
+         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user + " period=" + name
+                 + " total=" + total.toPlainString());
+@@ -295,6 +299,7 @@ public class PeriodService {
+         Map<Long, BigDecimal> personTotals = personTotals(sheetId, period);
+         BigDecimal total = sum(personTotals);
+         period.close(total, personTotals, personCarried(sheetId, period));
++        events.publishEvent(new PeriodFixing(period));
+         Period saved = save(period);
+         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user + " period=" + name
+                 + " total=" + total.toPlainString() + suffix);
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index 7005635d8..635863d44 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.ResponseStatus;
+ import org.springframework.web.bind.annotation.RestController;
++import tools.jackson.databind.json.JsonMapper;
+ 
+ @RestController
+ @Validated
+@@ -70,6 +71,10 @@ public class PoolController {
+      *  none), the pools and crews as pools, and the people, as they stood. */
+     public record PeriodPoolsView(String period, LocalDate day, String pot, List<PoolView> pools,
+             List<PersonThenView> people) {
++        static PeriodPoolsView of(PoolHistoryService.PeriodPools then, JsonMapper json) {
++            return then.frozen() != null ? json.readValue(then.frozen(), PeriodPoolsView.class) : of(then);
++        }
++
+         static PeriodPoolsView of(PoolHistoryService.PeriodPools then) {
+             List<PoolView> pools = new ArrayList<>(then.pools().stream().map(PoolView::of).toList());
+             then.crews().stream().map(PoolView::of).forEach(pools::add);
+@@ -91,10 +96,12 @@ public class PoolController {
+ 
+     private final PoolService service;
+     private final PoolHistoryService pastPools;
++    private final JsonMapper json;
+ 
+-    public PoolController(PoolService service, PoolHistoryService pastPools) {
++    public PoolController(PoolService service, PoolHistoryService pastPools, JsonMapper json) {
+         this.service = service;
+         this.pastPools = pastPools;
++        this.json = json;
+     }
+ 
+     /** The sheet's pools, in the order they were added, then its crews as pools, in the order they were added. */
+@@ -106,12 +113,13 @@ public class PoolController {
+     }
+ 
+     /** Each period whose to-date is on or before the sheet's today, the earliest first, with the pools
+-     *  as they stood at the end of it; while the screen is set to an as-of date, that date stands in for
++     *  as they stood at the end of it (a closed or soft-closed one's as they stood when it was closed); while the screen is set to an as-of date, that date stands in for
+      *  the sheet's today. */
+     @GetMapping("/by-period")
+     public List<PeriodPoolsView> byPeriod(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+             @RequestHeader(value = AsOf.HEADER, required = false) String asOfHeader) {
+-        return pastPools.byPeriod(sheetId.trim(), AsOf.parse(asOfHeader)).stream().map(PeriodPoolsView::of).toList();
++        return pastPools.byPeriod(sheetId.trim(), AsOf.parse(asOfHeader)).stream()
++                .map(then -> PeriodPoolsView.of(then, json)).toList();
+     }
+ 
+     /** Add a pool to the sheet. */
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolFreezer.java b/src/main/java/net/officefloor/hq/app/pool/PoolFreezer.java
+new file mode 100644
+index 000000000..2049200be
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolFreezer.java
+@@ -0,0 +1,26 @@
++package net.officefloor.hq.app.pool;
++
++import net.officefloor.hq.app.period.PeriodFixing;
++import org.springframework.context.event.EventListener;
++import org.springframework.stereotype.Component;
++import tools.jackson.databind.json.JsonMapper;
++
++/** Fixes on a period, as it is closed or soft-closed, the pools, pot and people as they stand at that
++ *  moment, so each pool member's cut for it shows as it stood then until it is reopened. */
++@Component
++public class PoolFreezer {
++
++    private final PoolHistoryService pastPools;
++    private final JsonMapper json;
++
++    public PoolFreezer(PoolHistoryService pastPools, JsonMapper json) {
++        this.pastPools = pastPools;
++        this.json = json;
++    }
++
++    @EventListener
++    public void fixing(PeriodFixing event) {
++        PoolHistoryService.PeriodPools now = pastPools.now(event.period().getSheetId(), event.period().getName());
++        event.period().freezePools(json.writeValueAsString(PoolController.PeriodPoolsView.of(now)));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolHistoryService.java b/src/main/java/net/officefloor/hq/app/pool/PoolHistoryService.java
+index 0c2478ec2..a831371d7 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolHistoryService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolHistoryService.java
+@@ -27,9 +27,10 @@ public class PoolHistoryService {
+     }
+ 
+     /** A period that has ended and, at the end of its to-date, the pot (null for none), the pools with
+-     *  their members, the crews as pools and the people as they stood. */
++     *  their members, the crews as pools and the people as they stood; or, for one closed or
++     *  soft-closed, those fixed when it was (frozen, JSON, the rest unused). */
+     public record PeriodPools(String period, LocalDate day, BigDecimal pot, List<PoolService.PoolWithMembers> pools,
+-            List<PoolService.CrewPool> crews, List<PersonThen> people) {
++            List<PoolService.CrewPool> crews, List<PersonThen> people, String frozen) {
+     }
+ 
+     private final PoolService pools;
+@@ -52,34 +53,45 @@ public class PoolHistoryService {
+     }
+ 
+     /** Each period whose to-date is on or before the sheet's today (the as-of date standing in for it
+-     *  while one is set), the earliest first, with the sheet's pools as they stood at the end of it. */
++     *  while one is set), the earliest first, with the sheet's pools as they stood at the end of it; a
++     *  closed or soft-closed one (while no as-of date is set) with those fixed when it was closed. */
+     public List<PeriodPools> byPeriod(String sheetId, LocalDate asOf) {
+         LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
+-        List<Map.Entry<String, LocalDate>> ended = new ArrayList<>();
++        List<PeriodPools> list = new ArrayList<>();
++        List<Person> everyone = people.findBySheetIdOrderByIdAsc(sheetId);
+         if (asOf == null) {
+             for (Period period : periods.list(sheetId)) {
+-                ended.add(Map.entry(period.getName(), period.getTo()));
++                if (period.getTo().isAfter(today)) {
++                    continue;
++                }
++                list.add(period.getFrozenPools() != null
++                        ? new PeriodPools(period.getName(), period.getTo(), null, List.of(), List.of(), List.of(),
++                                period.getFrozenPools())
++                        : at(sheetId, period.getName(), period.getTo(), everyone));
+             }
+         } else {
+             for (History.PeriodThen period : periods.listAsOf(sheetId, asOf)) {
+-                ended.add(Map.entry(period.name(), period.to()));
+-            }
+-        }
+-        List<Person> everyone = people.findBySheetIdOrderByIdAsc(sheetId);
+-        List<PeriodPools> list = new ArrayList<>();
+-        for (Map.Entry<String, LocalDate> period : ended) {
+-            LocalDate day = period.getValue();
+-            if (day.isAfter(today)) {
+-                continue;
++                if (!period.to().isAfter(today)) {
++                    list.add(at(sheetId, period.name(), period.to(), everyone));
++                }
+             }
+-            Map<Long, History.PersonThen> then = history.people(sheetId, day);
+-            Map<Long, List<PersonHold>> holds = personService.holds(sheetId, day);
+-            List<PersonThen> them = everyone.stream().map(p -> new PersonThen(p,
+-                    then.containsKey(p.getId()) ? then.get(p.getId()).retiredFrom() != null : p.isRetired(),
+-                    holds.getOrDefault(p.getId(), List.of()))).toList();
+-            list.add(new PeriodPools(period.getKey(), day, settings.pot(sheetId, day), pools.list(sheetId, day),
+-                    pools.crewPools(sheetId, day), them));
+         }
+         return list;
+     }
++
++    /** The period's pools, pot and people as they stand now, at the sheet's today, to be fixed on it. */
++    public PeriodPools now(String sheetId, String period) {
++        return at(sheetId, period, sheets.today(sheetId), people.findBySheetIdOrderByIdAsc(sheetId));
++    }
++
++    /** The sheet's pools, pot and people as they stood at the end of a day. */
++    private PeriodPools at(String sheetId, String period, LocalDate day, List<Person> everyone) {
++        Map<Long, History.PersonThen> then = history.people(sheetId, day);
++        Map<Long, List<PersonHold>> holds = personService.holds(sheetId, day);
++        List<PersonThen> them = everyone.stream().map(p -> new PersonThen(p,
++                then.containsKey(p.getId()) ? then.get(p.getId()).retiredFrom() != null : p.isRetired(),
++                holds.getOrDefault(p.getId(), List.of()))).toList();
++        return new PeriodPools(period, day, settings.pot(sheetId, day), pools.list(sheetId, day),
++                pools.crewPools(sheetId, day), them, null);
++    }
+ }
+diff --git a/src/main/resources/db/migration/V118__period_frozen_pools.sql b/src/main/resources/db/migration/V118__period_frozen_pools.sql
+new file mode 100644
+index 000000000..63d1e2437
+--- /dev/null
++++ b/src/main/resources/db/migration/V118__period_frozen_pools.sql
+@@ -0,0 +1,3 @@
++-- The pools, pot and people as they stood when the period was closed or soft-closed (JSON), so each
++-- pool member's cut for the period stays as it was then. Null while the period is open.
++ALTER TABLE period ADD COLUMN frozen_pools CLOB;
