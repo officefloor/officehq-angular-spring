@@ -43,10 +43,11 @@ public class SheetController {
 
     /** The figures of a sheet's descendants added up, each as that sheet shows it, and the sheet's own
      *  figures: as they are now, or as they stood at the end of the screen's as-of date. Per grade, the
-     *  descendants' due-totals of the people on it not retired; per status, their claims with it. */
+     *  descendants' due-totals of the people on it not retired; per status, their claims with it; and
+     *  how many of their claims that count are overdue. */
     public record DescendantFigures(int sheets, int people, String dueTotal, String overdueTotal, int ownPeople,
             String ownDueTotal, String ownOverdueTotal, Map<String, String> gradeDueTotals,
-            Map<String, Integer> statusCounts, List<PersonFiguresView> personFigures) {
+            Map<String, Integer> statusCounts, List<PersonFiguresView> personFigures, int overdueCount) {
     }
 
     /** A descendant's person as that sheet shows them: their name and aliases, their due-total (null
@@ -103,6 +104,7 @@ public class SheetController {
         int people = 0;
         BigDecimal due = BigDecimal.ZERO.setScale(2);
         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
+        int overdueCount = 0;
         Map<String, BigDecimal> gradeDues = new TreeMap<>();
         Map<String, Integer> statusCounts = new TreeMap<>();
         List<PersonFiguresView> personFigures = new ArrayList<>();
@@ -115,6 +117,7 @@ public class SheetController {
             people += figures.people();
             due = due.add(figures.dueTotal());
             overdue = overdue.add(figures.overdueTotal());
+            overdueCount += figures.overdueCount();
             RollupService.Breakdown breakdown = rollups.breakdown(sheet, asOf);
             breakdown.gradeDueTotals().forEach((grade, total) -> gradeDues.merge(grade, total, BigDecimal::add));
             breakdown.statusCounts().forEach((status, count) -> statusCounts.merge(status, count, Integer::sum));
@@ -124,7 +127,7 @@ public class SheetController {
         RollupService.Headline own = rollups.headline(id.trim(), asOf);
         return new DescendantFigures(descendants.size(), people, due.toPlainString(), overdue.toPlainString(),
                 own.people(), own.dueTotal().toPlainString(), own.overdueTotal().toPlainString(), gradeDueTotals,
-                statusCounts, personFigures);
+                statusCounts, personFigures, overdueCount);
     }
 
     /** The sheet's due-total per grade, as its summary shows it now or as it stood at the end of the

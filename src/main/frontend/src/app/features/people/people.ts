@@ -91,6 +91,8 @@ interface DescendantFigures {
   statusCounts?: Record<string, number>;
   /** Each person on the descendants as their sheet shows them (absent until read). */
   personFigures?: DescendantPerson[];
+  /** How many of the descendants' claims that count are overdue (absent until read). */
+  overdueCount?: number;
 }
 
 /** A person on a descendant sheet: their name and aliases, their due-total (null when they have
@@ -1026,15 +1028,16 @@ export class People {
     const delegated = today !== null && this.settings.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
     return delegated || this.settings.roles().some((r) => r.user === user && r.role === 'steward');
   });
-  /** The steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that count;
-   *  null for a user who is not a steward. */
+  /** The steward's dashboard over the sheet and all its descendants: their PENDING and REVIEW claims
+   *  and their overdue claims that count; null for a user who is not a steward. */
   protected readonly dashboard = computed<DashboardCounts | null>(() => {
     if (!this.steward()) return null;
     const claims = this.claims();
+    const theirs = this.descendantFigures();
     return {
-      pending: claims.filter((c) => c.status === 'PENDING').length,
-      review: claims.filter((c) => c.status === 'REVIEW').length,
-      overdue: this.overdueCount(),
+      pending: claims.filter((c) => c.status === 'PENDING').length + (theirs.statusCounts?.['PENDING'] ?? 0),
+      review: claims.filter((c) => c.status === 'REVIEW').length + (theirs.statusCounts?.['REVIEW'] ?? 0),
+      overdue: this.overdueCount() + (theirs.overdueCount ?? 0),
     };
   });
   /** The sheet's floor in cents in force on a date. */

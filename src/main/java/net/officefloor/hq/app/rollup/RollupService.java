@@ -137,9 +137,9 @@ public class RollupService {
                 + " overdue-total=" + rollup.overdueTotal().toPlainString();
     }
 
-    /** A sheet's headline figures as it shows them now: how many people are on it, and its due-total
-     *  and overdue-total. */
-    public record Headline(int people, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    /** A sheet's headline figures as it shows them now: how many people are on it, its due-total
+     *  and overdue-total, and how many of its claims that count are overdue. */
+    public record Headline(int people, BigDecimal dueTotal, BigDecimal overdueTotal, int overdueCount) {
     }
 
     /** The sheet's headline figures as it shows them now. */
@@ -153,7 +153,8 @@ public class RollupService {
     @Transactional(readOnly = true)
     public Headline headline(String sheetId, LocalDate asOf) {
         Rollup rollup = rollup(sheetId, asOf);
-        return new Headline(rollup.people().size(), rollup.dueTotal(), rollup.overdueTotal());
+        return new Headline(rollup.people().size(), rollup.dueTotal(), rollup.overdueTotal(),
+                rollup.people().values().stream().mapToInt(Figures::overdueCount).sum());
     }
 
     /** A person's figures on a sheet as it shows them: their name and aliases, their due-total (null

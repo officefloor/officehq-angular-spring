@@ -7,7 +7,7 @@ export interface DashboardCounts {
   overdue: number;
 }
 
-// A steward's dashboard over the sheet: how many of its claims are PENDING, how many are in REVIEW,
+// A steward's dashboard over the sheet and all its descendants: how many of their claims are PENDING, how many are in REVIEW,
 // and how many of those that count are overdue. A user who is not a steward (by their own role or a
 // delegation in force on the sheet's today) sees the cells empty; under an as-of date it shows the
 // counts as they stood then, for the role the user had then.
