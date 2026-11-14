@@ -76,7 +76,8 @@ public class PersonController {
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
             List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
             List<String> aliases, boolean clashing, String origin, List<RetirementView> retirements,
-            List<String> tags, List<SnapshotView> snapshots, List<StatementSummary.Line> statements) {
+            List<String> tags, List<SnapshotView> snapshots, List<StatementSummary.Line> statements,
+            String flag) {
         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
                 StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched,
                 List<String> aliases, boolean clashing, List<PersonRetirement> retirements,
@@ -87,7 +88,8 @@ public class PersonController {
                     holds.stream().map(HoldView::of).toList(), patronIds, watched, terms,
                     person.getContact(), aliases, clashing, person.getOriginSheetId(),
                     retirements.stream().map(RetirementView::of).toList(), person.getTags(),
-                    snapshots.stream().map(SnapshotView::of).toList(), statements.lines());
+                    snapshots.stream().map(SnapshotView::of).toList(), statements.lines(),
+                    person.flagReasonOn(today));
         }
     }
 
@@ -136,6 +138,10 @@ public class PersonController {
 
     /** A hold: the date it runs from (blank takes the sheet's today) and an optional to-date. */
     public record HoldRequest(LocalDate from, LocalDate to) {
+    }
+
+    /** A flag: its reason and the last day it is in force (blank takes the sheet's today). */
+    public record FlagRequest(@Size(max = 200) String reason, LocalDate until) {
     }
 
     /** An alias to give a person. */
@@ -312,6 +318,15 @@ public class PersonController {
                 () -> service.hold(sheet, by, id, request.from(), request.to())), by);
     }
 
+    /** A steward flags a person with a reason until a date. */
+    @PostMapping("/{id}/flag")
+    public PersonView flag(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated FlagRequest request) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return withStatements(service.flag(sheet, by, id, request.reason(), request.until()), by);
+    }
+
     /** Name another person on the sheet as a person's patron. */
     @PostMapping("/{id}/patrons")
     public PersonView addPatron(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
@@ -376,7 +391,7 @@ public class PersonController {
 
     /** A date that is not a real yyyy-mm-dd date, or a hold that ends before it starts, is refused. */
     @ExceptionHandler({HttpMessageNotReadableException.class, HoldRefusedException.class,
-            AliasRefusedException.class, ImportRefusedException.class})
+            AliasRefusedException.class, ImportRefusedException.class, FlagRefusedException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public void unreadable() {
     }

@@ -65,6 +65,8 @@ interface Person {
   patronIds: number[];
   /** Whether the signed-in user watches the person. */
   watched: boolean;
+  /** The reason of the person's flag while it is in force on the sheet's today; null when it is not. */
+  flag: string | null;
   /** The person's aliases, sorted as names are compared. */
   aliases: string[];
   /** Whether the person's name or an alias of theirs is a name or alias on another sheet of the tree. */
@@ -509,6 +511,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
             }
             <th scope="col">Holds</th>
             <th scope="col">Watched</th>
+            <th scope="col">Flag</th>
             @if (columnShown('patrons')) {
               <th scope="col">Patrons</th>
             }
@@ -618,6 +621,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
                 </ul>
               </td>
               <td data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</td>
+              <td data-testid="person-flag-shown">{{ p.flag ?? '' }}</td>
               @if (columnShown('patrons')) {
                 <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
               }
@@ -763,6 +767,30 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
                   (click)="hold(p)"
                 >
                   Hold
+                </button>
+                <label [for]="'person-flag-reason-' + p.id">Flag reason</label>
+                <input
+                  type="text"
+                  [id]="'person-flag-reason-' + p.id"
+                  data-testid="person-flag-reason"
+                  [value]="flagInputs()[p.id]?.reason ?? ''"
+                  (input)="setFlagInput(p.id, 'reason', value($event))"
+                />
+                <label [for]="'person-flag-until-' + p.id">Flag until</label>
+                <input
+                  type="date"
+                  [id]="'person-flag-until-' + p.id"
+                  data-testid="person-flag-until"
+                  [value]="flagInputs()[p.id]?.until ?? ''"
+                  (input)="setFlagInput(p.id, 'until', value($event))"
+                />
+                <button
+                  type="button"
+                  data-testid="person-flag"
+                  [attr.aria-label]="'Flag ' + p.name"
+                  (click)="flag(p)"
+                >
+                  Flag
                 </button>
                 <label [for]="'person-inline-grade-' + p.id">Grade</label>
                 <select
@@ -1002,6 +1030,8 @@ export class People {
   protected readonly retireDates = signal<Record<number, string>>({});
   /** The hold from- and to-dates typed on each person's row, by person id. */
   protected readonly holdDates = signal<Record<number, { from?: string; to?: string }>>({});
+  /** The flag reason and until-date typed on each person's row, by person id. */
+  protected readonly flagInputs = signal<Record<number, { reason?: string; until?: string }>>({});
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   /** The sheet's claims that count in live totals: OPEN, PENDING and SETTLED ones, except one deferred
@@ -1433,6 +1463,7 @@ export class People {
       this.rowError.set(null);
       this.retireDates.set({});
       this.holdDates.set({});
+      this.flagInputs.set({});
       this.patronChoices.set({});
       this.aliasInputs.set({});
       this.mergeChoices.set({});
@@ -1762,6 +1793,31 @@ export class People {
       this.holdDates.update((dates) => ({ ...dates, [person.id]: {} }));
     } catch {
       this.rowError.set({ id: person.id, message: `${person.name} could not be put on hold.` });
+    }
+  }
+
+  protected setFlagInput(personId: number, field: 'reason' | 'until', text: string): void {
+    this.flagInputs.update((inputs) => ({ ...inputs, [personId]: { ...inputs[personId], [field]: text } }));
+    if (this.rowError()?.id === personId) this.rowError.set(null);
+  }
+
+  /** A steward flags a person with the typed reason until the typed date (blank takes the sheet's
+   *  today); their row then shows the reason while the flag is in force. */
+  protected async flag(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const typed = this.flagInputs()[person.id] ?? {};
+    const reason = typed.reason ?? '';
+    const until = (typed.until ?? '').trim() || null;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/flag`;
+    try {
+      const saved = await firstValueFrom(this.http.post<Person>(url, { reason, until }));
+      if (this.session.sheetId() !== sheet) return;
+      this.people.update((list) => list.map((p) => (p.id === saved.id ? { ...p, ...saved } : p)));
+      this.flagInputs.update((inputs) => ({ ...inputs, [person.id]: {} }));
+    } catch {
+      this.rowError.set({ id: person.id, message: `${person.name} could not be flagged.` });
     }
   }
 

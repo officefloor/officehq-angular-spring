@@ -14,6 +14,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.history.History;
+import net.officefloor.hq.app.setting.Role;
+import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,11 +38,14 @@ public class PersonService {
     private final History history;
     private final Audit audit;
     private final ClaimRepository claims;
+    private final SettingService settings;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonGradeService grades,
             PersonTermsService terms, PersonHoldRepository holds, PersonWatchRepository watches, PersonAliasRepository aliases,
             PersonRetirementRepository retirements, PersonSnapshotRepository snapshots, SheetService sheets,
-            EntityManager entityManager, History history, Audit audit, ClaimRepository claims) {
+            EntityManager entityManager, History history, Audit audit, ClaimRepository claims,
+            SettingService settings) {
+        this.settings = settings;
         this.claims = claims;
         this.snapshots = snapshots;
         this.retirements = retirements;
@@ -304,6 +309,26 @@ public class PersonService {
         holds.saveAndFlush(new PersonHold(sheetId, id, on, to, sheets.today(sheetId)));
         audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " from=" + on);
+        return person;
+    }
+
+    /** A steward flags a person with a reason until a date (a missing date takes the sheet's today),
+     *  replacing any flag they had; anyone else, or a blank reason, is refused. */
+    @Transactional
+    public Person flag(String sheetId, String user, Long id, String reason, LocalDate until) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new FlagRefusedException("Only a steward may flag a person");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new FlagRefusedException("A flag needs a reason");
+        }
+        LocalDate to = until != null ? until : sheets.today(sheetId);
+        person.flag(reason.trim(), to);
+        people.saveAndFlush(person);
+        audit.recordOnCommit("PERSON_FLAGGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " reason=" + reason.trim() + " until=" + to);
         return person;
     }
 

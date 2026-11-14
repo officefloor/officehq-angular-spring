@@ -31,6 +31,7 @@ import net.officefloor.hq.app.person.PersonWatchRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateService;
 import net.officefloor.hq.app.setting.Permission;
+import net.officefloor.hq.app.setting.PermissionRefusedException;
 import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -335,6 +336,11 @@ public class ClaimService {
             case VOID -> Permission.VOID;
             case DRAFT, PENDING, DELETED, REVIEW -> throw new StatusChangeRefusedException(claim.getStatus(), to);
         });
+        // While the person's flag is in force only a steward opens their claims.
+        if (to == ClaimStatus.OPEN && person.flaggedOn(sheets.today(sheetId))
+                && settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new PermissionRefusedException(user, Permission.OPEN);
+        }
         refuseClosed(sheetId, claim.getDueBy());
         // A SETTLED claim is voided only by a steward, within the void window of its settlement.
         boolean reversing = to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;

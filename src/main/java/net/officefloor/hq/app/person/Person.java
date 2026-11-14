@@ -65,6 +65,14 @@ public class Person {
     @Column(name = "origin_sheet_id")
     private String originSheetId;
 
+    /** The reason a steward flagged the person; null while they were never flagged. */
+    @Column(name = "flag_reason")
+    private String flagReason;
+
+    /** The last day the person's flag is in force; null while they were never flagged. */
+    @Column(name = "flag_until")
+    private LocalDate flagUntil;
+
     /** The person's place in the list, ascending; set by the store when they are added, so they go to the end. */
     @Generated
     @Column(name = "list_position", insertable = false, nullable = false)
@@ -91,6 +99,8 @@ public class Person {
         was.contact = contact;
         was.tags = tags;
         was.originSheetId = originSheetId;
+        was.flagReason = flagReason;
+        was.flagUntil = flagUntil;
         return was;
     }
 
@@ -180,6 +190,22 @@ public class Person {
     /** Merge the person into another: they leave the sheet. */
     public void mergeInto(Long personId) {
         this.mergedInto = personId;
+    }
+
+    /** Flag the person with a reason until a date, replacing any flag they had. */
+    public void flag(String reason, LocalDate until) {
+        this.flagReason = reason;
+        this.flagUntil = until;
+    }
+
+    /** Whether the person's flag is in force on a day: on or before its until-date. */
+    public boolean flaggedOn(LocalDate day) {
+        return flagReason != null && flagUntil != null && !day.isAfter(flagUntil);
+    }
+
+    /** The reason of the person's flag while it is in force on a day; null when it is not. */
+    public String flagReasonOn(LocalDate day) {
+        return flaggedOn(day) ? flagReason : null;
     }
 
     /** Whether the person is retired: any retirement date set counts, even one after the sheet's today. */
