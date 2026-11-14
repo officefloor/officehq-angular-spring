@@ -156,4 +156,13 @@ public class Rate {
         this.forwardAfter = forwardAfter;
         this.version++;
     }
+
+    /** Make an older version's value, to-date and forward-only mark the one in force again, the newer
+     *  versions withdrawn. */
+    public void restore(BigDecimal rate, LocalDate to, int version, Long forwardAfter) {
+        this.rate = rate;
+        this.to = to;
+        this.forwardAfter = forwardAfter;
+        this.version = version;
+    }
 }

@@ -233,6 +233,21 @@ export class RateStore {
     );
   }
 
+  /** Withdraw the newest version of a grade's rate from a date (null: from the beginning of time) on
+   *  the active sheet: the version before it applies again, or with none the rate is gone. The
+   *  sheet's rates are then re-read. */
+  async withdraw(grade: string, from: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const load = this.session.loads();
+    await firstValueFrom(
+      this.http.post<void>(`/api/sheets/${encodeURIComponent(sheet)}/rates/${grade}/withdraw`, null, {
+        params: from === null ? {} : { from },
+      }),
+    );
+    if (this.session.sheetId() === sheet) await this.read(sheet, load);
+  }
+
   /** Set a rate per pasted line of grade,rate,from,to on the active sheet, each as `set` would; none
    *  when any line is refused. How many were set; the sheet's rates are then re-read. */
   async import(text: string): Promise<number> {
@@ -411,6 +426,7 @@ export class RateStore {
             <th scope="col">To</th>
             <th scope="col">Rate (%)</th>
             <th scope="col">Versions</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -421,6 +437,16 @@ export class RateStore {
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.rate }}</td>
               <td data-testid="rate-version">{{ r.version }}</td>
+              <td>
+                <button
+                  type="button"
+                  data-testid="rate-withdraw"
+                  [attr.aria-label]="'Withdraw rate ' + r.grade + ' from ' + (r.from ?? 'always')"
+                  (click)="withdraw(r)"
+                >
+                  Withdraw
+                </button>
+              </td>
             </tr>
           }
         </tbody>
@@ -515,6 +541,20 @@ export class Rates {
       );
     } finally {
       this.importBusy.set(false);
+    }
+  }
+
+  /** Withdraw a rate's newest version; a refusal shows on the rate form's error. */
+  protected async withdraw(rate: Rate): Promise<void> {
+    if (this.busy()) return;
+    this.error.set(null);
+    this.busy.set(true);
+    try {
+      await this.store.withdraw(rate.grade, rate.from);
+    } catch {
+      this.error.set('The rate could not be withdrawn: only a steward withdraws a rate.');
+    } finally {
+      this.busy.set(false);
     }
   }
 

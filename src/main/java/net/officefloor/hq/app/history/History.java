@@ -256,17 +256,36 @@ public class History {
                 String.class, sheetId);
     }
 
+    /** Keep that a rate was withdrawn with no older version to fall back to: from then on it is gone. */
+    public void rateWithdrawn(Rate rate) {
+        jdbc.update("INSERT INTO rate_history (sheet_id, grade, from_date, to_date, rate, version, forward_after,"
+                + " made_on, withdrawn) SELECT r.sheet_id, r.grade, r.from_date, r.to_date, r.rate, 1, r.forward_after,"
+                + " s.today, TRUE FROM rate r JOIN sheet s ON s.id = r.sheet_id WHERE r.id = ?", rate.getId());
+    }
+
     /** A grade's rates on the sheet as they stood at the end of a day: for each from-date, the rate
      *  last set from it by then, with the ones set from it before, newest first, as its earlier
-     *  versions. */
+     *  versions. A state kept with a version no newer than the last one's is an older version made in
+     *  force again by a withdrawal, the newer ones dropped; a withdrawal with none to fall back to
+     *  leaves no rate from the date. */
     public List<Rate> rates(String sheetId, String grade, LocalDate day) {
         Map<LocalDate, List<Rate>> byFrom = new LinkedHashMap<>();
         jdbc.query("SELECT * FROM rate_history WHERE sheet_id = ? AND grade = ? AND made_on <= ? ORDER BY id",
-                (rs, n) -> new Rate(sheetId, grade, rs.getObject("from_date", LocalDate.class),
-                        rs.getObject("to_date", LocalDate.class), rs.getBigDecimal("rate"), rs.getInt("version"),
-                        rs.getObject("forward_after", Long.class)),
-                sheetId, grade, day).forEach(rate -> byFrom.computeIfAbsent(rate.getFrom(), from -> new ArrayList<>())
-                        .add(0, rate));
+                (rs, n) -> {
+                    Rate rate = new Rate(sheetId, grade, rs.getObject("from_date", LocalDate.class),
+                            rs.getObject("to_date", LocalDate.class), rs.getBigDecimal("rate"), rs.getInt("version"),
+                            rs.getObject("forward_after", Long.class));
+                    List<Rate> set = byFrom.computeIfAbsent(rate.getFrom(), from -> new ArrayList<>());
+                    while (!set.isEmpty() && set.get(0).getVersion() >= rate.getVersion()) {
+                        set.remove(0);
+                    }
+                    if (!rs.getBoolean("withdrawn")) {
+                        set.add(0, rate);
+                    }
+                    return rate;
+                },
+                sheetId, grade, day);
+        byFrom.values().removeIf(List::isEmpty);
         return byFrom.values().stream().map(set -> {
             Rate last = set.get(0);
             last.setEarlier(set.subList(1, set.size()));

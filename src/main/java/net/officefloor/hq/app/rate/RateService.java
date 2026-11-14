@@ -13,6 +13,7 @@ import java.util.stream.Stream;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.history.History;
+import net.officefloor.hq.app.setting.Role;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
@@ -39,9 +40,11 @@ public class RateService {
     private final Audit audit;
     private final JdbcTemplate jdbc;
     private final GradeService grades;
+    private final SettingService settings;
 
     public RateService(RateRepository rates, RateVersionRepository versions, SheetService sheets, SheetRepository sheetRepository, History history,
-            Audit audit, JdbcTemplate jdbc, GradeService grades) {
+            Audit audit, JdbcTemplate jdbc, GradeService grades, SettingService settings) {
+        this.settings = settings;
         this.jdbc = jdbc;
         this.grades = grades;
         this.rates = rates;
@@ -232,5 +235,33 @@ public class RateService {
                 + " rate=" + saved.getRate().toPlainString() + (from != null ? " from=" + from : "")
                 + (to != null ? " to=" + to : ""));
         return saved;
+    }
+
+    /** A steward withdraws the newest version of a grade's rate from a date (null: from the beginning
+     *  of time): the version before it, when there is one, is in force again; with none the rate is
+     *  gone. Anyone else, or a grade with no rate from that date, is refused. */
+    @Transactional
+    public void withdraw(String sheetId, String user, String grade, LocalDate from) {
+        sheets.load(sheetId);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new RateRefusedException(user + " is not a steward: only a steward withdraws a rate");
+        }
+        Rate rate = (from == null
+                ? rates.findBySheetIdAndGradeAndFromIsNull(sheetId, grade)
+                : rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from))
+                .orElseThrow(() -> new RateRefusedException("Grade " + grade + " has no rate from that date"));
+        List<RateVersion> older = versions.findByRateIdOrderByVersionAsc(rate.getId());
+        if (older.isEmpty()) {
+            history.rateWithdrawn(rate);
+            rates.delete(rate);
+            rates.flush();
+        } else {
+            RateVersion previous = older.get(older.size() - 1);
+            versions.delete(previous);
+            rate.restore(previous.getRate(), previous.getTo(), previous.getVersion(), previous.getForwardAfter());
+            rates.saveAndFlush(rate);
+        }
+        audit.recordOnCommit("RATE_WITHDRAWN sheet=" + sheetId + " by=" + user + " grade=" + grade
+                + (from != null ? " from=" + from : ""));
     }
 }

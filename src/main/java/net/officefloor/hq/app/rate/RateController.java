@@ -115,6 +115,21 @@ public class RateController {
                 request.to(), request.rate())));
     }
 
+    /** A steward withdraws the newest version of a grade's rate from a date (blank: from the beginning
+     *  of time): the version before it applies again, or with none the rate is gone. */
+    @PostMapping("/{grade}/withdraw")
+    public void withdraw(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestParam(required = false) LocalDate from) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        rollups.track(sheet, by, () -> {
+            service.withdraw(sheet, by, grade, from);
+            return null;
+        });
+    }
+
     /** Set a rate per pasted line, in order, each as the form would; none when any line is refused.
      *  The rates set, in the order of their lines. */
     @PostMapping("/import")
