@@ -1,0 +1,161 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1362122ac..b10438a18 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -88,6 +88,17 @@ interface DescendantFigures {
+   /** Per grade, the due-totals of the people on it not retired; per status, the claims with it. */
+   gradeDueTotals?: Record<string, string>;
+   statusCounts?: Record<string, number>;
++  /** Each person on the descendants as their sheet shows them (absent until read). */
++  personFigures?: DescendantPerson[];
++}
++
++/** A person on a descendant sheet: their name and aliases, their due-total (null when they have
++ *  none) and their overdue-total. */
++interface DescendantPerson {
++  name: string;
++  aliases: string[];
++  dueTotal: string | null;
++  overdueTotal: string;
+ }
+ 
+ /** What the people list can be sorted by on the screen. */
+@@ -1179,12 +1190,34 @@ export class People {
+   protected readonly descendantFigures = signal<DescendantFigures>(NO_DESCENDANTS);
+   /** The consolidated figures: the sheet's own as it shows them plus its descendants', each as of the
+    *  screen's as-of date while one is set. */
+-  protected readonly consolidatedPeople = computed(() => this.people().length + this.descendantFigures().people);
++  /** The people count counts each person once across the tree: those whose names or aliases match, as
++   *  names are compared, are one person. The due-total and overdue-total are every person's figure
++   *  over the tree added up, trimmed once over the whole tree. */
++  protected readonly consolidatedPeople = computed(() =>
++    distinctPeople([
++      ...this.people().map((p) => [p.name, ...p.aliases]),
++      ...(this.descendantFigures().personFigures ?? []).map((p) => [p.name, ...p.aliases]),
++    ]),
++  );
+   protected readonly consolidatedDue = computed(() =>
+-    money(cents(this.dueTotal()) + cents(this.descendantFigures().dueTotal)),
++    money(
++      trimmedSum([
++        ...this.people()
++          .map((p) => this.dueCentsBy(p))
++          .filter((due) => due !== null),
++        ...(this.descendantFigures().personFigures ?? [])
++          .filter((p) => p.dueTotal !== null)
++          .map((p) => cents(p.dueTotal!)),
++      ]),
++    ),
+   );
+   protected readonly consolidatedOverdue = computed(() =>
+-    money(cents(this.overdueTotal()) + cents(this.descendantFigures().overdueTotal)),
++    money(
++      trimmedSum([
++        ...this.people().map((p) => this.overdueCentsOf(p)),
++        ...(this.descendantFigures().personFigures ?? []).map((p) => cents(p.overdueTotal)),
++      ]),
++    ),
+   );
+   /** Per grade: the sheet's own due-total of the people on it not retired, as its summary shows it,
+    *  plus its descendants'. */
+@@ -2758,6 +2791,23 @@ function halfEven(numerator: number, divisor: number): number {
+   return 2 * rest > divisor || (2 * rest === divisor && whole % 2 !== 0) ? whole + 1 : whole;
+ }
+ 
++/** How many distinct people there are among these, each given by their name and aliases: those
++ *  sharing a name or alias, as names are compared, are one person. */
++function distinctPeople(people: string[][]): number {
++  const parent = people.map((_, i) => i);
++  const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
++  const byKey = new Map<string, number>();
++  people.forEach((keys, i) => {
++    for (const key of keys) {
++      const k = key.toLowerCase();
++      const seen = byKey.get(k);
++      if (seen === undefined) byKey.set(k, i);
++      else parent[root(i)] = root(seen);
++    }
++  });
++  return people.filter((_, i) => root(i) === i).length;
++}
++
+ function trimmedSum(figures: number[]): number {
+   const sum = figures.reduce((total, figure) => total + figure, 0);
+   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index ffb1f4684..378c2be60 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -151,6 +151,23 @@ public class RollupService {
+         return new Headline(rollup.people().size(), rollup.dueTotal(), rollup.overdueTotal());
+     }
+ 
++    /** A person's figures on a sheet as it shows them: their name and aliases, their due-total (null
++     *  when they have none) and their overdue-total. */
++    public record PersonFigures(String name, List<String> aliases, BigDecimal dueTotal, BigDecimal overdueTotal) {
++    }
++
++    /** Each person's figures on the sheet as it stood at the end of a day, that day standing in for
++     *  the sheet's today (null: as it shows them now), in list order. */
++    @Transactional(readOnly = true)
++    public List<PersonFigures> personFigures(String sheetId, LocalDate asOf) {
++        Rollup rollup = rollup(sheetId, asOf);
++        Map<Long, List<String>> aliases = personService.aliases(sheetId, asOf);
++        List<PersonFigures> list = new ArrayList<>();
++        rollup.people().forEach((personId, f) -> list.add(new PersonFigures(f.name(),
++                aliases.getOrDefault(personId, List.of()), f.due(), f.overdue())));
++        return list;
++    }
++
+     /** A sheet's figures broken down: per grade, the due-totals of the people on it who are not
+      *  retired added up (skipping those with no figure); per status, how many of its claims have it. */
+     public record Breakdown(Map<String, BigDecimal> gradeDueTotals, Map<String, Integer> statusCounts) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 182db8b4b..1de96a371 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Size;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
+ import java.util.Map;
+ import java.util.TreeMap;
+ import net.officefloor.hq.app.AsOf;
+@@ -44,7 +46,12 @@ public class SheetController {
+      *  descendants' due-totals of the people on it not retired; per status, their claims with it. */
+     public record DescendantFigures(int sheets, int people, String dueTotal, String overdueTotal, int ownPeople,
+             String ownDueTotal, String ownOverdueTotal, Map<String, String> gradeDueTotals,
+-            Map<String, Integer> statusCounts) {
++            Map<String, Integer> statusCounts, List<PersonFiguresView> personFigures) {
++    }
++
++    /** A descendant's person as that sheet shows them: their name and aliases, their due-total (null
++     *  when they have none) and their overdue-total. */
++    public record PersonFiguresView(String name, List<String> aliases, String dueTotal, String overdueTotal) {
+     }
+ 
+     public record TodayRequest(@NotNull LocalDate today) {
+@@ -93,8 +100,12 @@ public class SheetController {
+         BigDecimal overdue = BigDecimal.ZERO.setScale(2);
+         Map<String, BigDecimal> gradeDues = new TreeMap<>();
+         Map<String, Integer> statusCounts = new TreeMap<>();
++        List<PersonFiguresView> personFigures = new ArrayList<>();
+         var descendants = service.descendants(id.trim());
+         for (String sheet : descendants) {
++            rollups.personFigures(sheet, asOf).forEach(p -> personFigures.add(new PersonFiguresView(p.name(),
++                    p.aliases(), p.dueTotal() == null ? null : p.dueTotal().toPlainString(),
++                    p.overdueTotal().toPlainString())));
+             RollupService.Headline figures = rollups.headline(sheet, asOf);
+             people += figures.people();
+             due = due.add(figures.dueTotal());
+@@ -108,7 +119,7 @@ public class SheetController {
+         RollupService.Headline own = rollups.headline(id.trim(), asOf);
+         return new DescendantFigures(descendants.size(), people, due.toPlainString(), overdue.toPlainString(),
+                 own.people(), own.dueTotal().toPlainString(), own.overdueTotal().toPlainString(), gradeDueTotals,
+-                statusCounts);
++                statusCounts, personFigures);
+     }
+ 
+     /** Change the sheet's today, closing the periods past their grace days and releasing every claim
