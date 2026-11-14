@@ -356,6 +356,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
+      <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures as CSV</button>
       <p>
         <button type="button" data-testid="bulk-open" (click)="openSelected()">Open selected claims</button>
         @if (bulkOpenResult(); as r) {
@@ -2114,6 +2115,25 @@ export class People {
     this.downloadCsv('people', [
       ['name', 'grade', 'retired-from', 'due-total'],
       ...this.people().map((p) => [p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueBy(p)]),
+    ]);
+  }
+
+  /** Download the period figures as CSV: one line per person and period, people in list order and
+   *  periods in the order added, with the due-total and carried figure as the rows show them. */
+  protected exportPeriods(): void {
+    const periods = this.periods.periods();
+    const due = this.personPeriodCents();
+    const carried = this.personCarriedCents();
+    this.downloadCsv('periods', [
+      ['person', 'period', 'figure', 'carried'],
+      ...this.people().flatMap((p) =>
+        periods.map((pd) => [
+          p.name,
+          pd.name,
+          money(due.get(pd.id)?.get(p.id) ?? 0),
+          money(carried.get(pd.id)?.get(p.id) ?? 0),
+        ]),
+      ),
     ]);
   }
 
