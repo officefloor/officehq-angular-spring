@@ -1,0 +1,64 @@
+{
+  "checkpoint": 217,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp217_shared-claims",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim can be shared with other people on the sheet: a person select, a share percent (two\ndecimals, more than 0.00) and a button on the claim (CLAIM_SHARED naming the claim, ending\nwith=<person> share=<share>; the claim's own person, a person already holding a share, or shares\ntotalling more than 100.00 are refused; a SETTLED, VOID or DELETED claim cannot be shared). Each\nholder's due-total includes their part: the claim's due times their share divided by 100, rounded\nhalf to even; the claim's own person's due-total counts the claim's due less the holders' parts,\nand each person's settled-total and open-total count the same part. Show the holders on the claim as\n<name> <share>, comma and space separated.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim can be shared with other people on the sheet: a person select, a share percent (two\ndecimals, more than 0.00) and a button on the claim (CLAIM_SHARED naming the claim, ending\nwith=<person> share=<share>; the claim's own person, a person already holding a share, or shares\ntotalling more than 100.00 are refused; a SETTLED, VOID or DELETED claim cannot be shared). Each\nholder's due-total includes their part: the claim's due times their share divided by 100, rounded\nhalf to even; the claim's own person's due-total counts the claim's due less the holders' parts,\nand each person's settled-total and open-total count the same part. Show the holders on the claim as\n<name> <share>, comma and space separated.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "98bfb4ad48994dd9ee257f38f267c8c1f23b3503",
+  "reset_sha": "",
+  "preagent_sha": "ec3ce06085d30c40cbd102140b856b4874071779",
+  "prev_sha": "ec3ce06085d30c40cbd102140b856b4874071779",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.2395637999999995,
+    "input_tokens": 66,
+    "output_tokens": 22059,
+    "cache_read_tokens": 3177959,
+    "cache_creation_tokens": 145316,
+    "num_turns": 34,
+    "duration_ms": 479463,
+    "duration_api_ms": 233059,
+    "model": "claude-opus-5-5",
+    "session_id": "2f6b19d1-9cae-4b2f-8858-9406e8f846fa",
+    "stop_reason": "success",
+    "result_text": "Claim sharing is in, and `bin/e2e` passes all 4 tests in the spec.\n\n**What it does**\n- Each claim row has a person select, a share-percent box and a Share button. The holders show on the claim as `Ben 33.33, Cam 33.33`, in the order the claim was shared.\n- A successful share writes `CLAIM_SHARED \u2026 with=<person> share=<share>` to the audit, followed by the usual ROLLUP/TOTALS lines for the figures it moved. The claim's number goes in the line if it has one, and `for=<steward>` is added automatically when someone acts by delegation.\n- These are refused, with the error shown on the row and nothing stored or audited:\n  - sharing with the claim's own person, or with someone who already holds a share\n  - a share of 0.00 or less, or with more than two decimals\n  - shares that would total more than 100.00\n  - a SETTLED, VOID or DELETED claim\n  - a claim dated in a closed period (my addition \u2014 see below)\n- Each holder's part is the claim's due \u00d7 share \u00f7 100, rounded half to even. The holder gains it and the claim's own person loses it. This applies to the due-total on both the server (audit lines and headline figures) and the screen, and on screen to the settled-total and open-total as well.\n\n**How it's built**\n- **Storage:** a new `shares` column on `claim` (migration `V119__claim_shares.sql`). Each entry holds the holder, their percent, and the sheet's today when it was shared.\n- **Server:** a new endpoint `POST \u2026/people/{personId}/claims/{id}/shares`. `ClaimService.share` applies the rules, and `RollupService` adds the parts into each person's figures.\n- **Front end:** `claims.ts` has the controls and the holders display. `people.ts` adds the parts to the person totals.\n\n**Choices the request didn't settle**\n- **A part counts as a figure.** A holder whose grade has no rate shows their part instead of `n/a`; the test expects this (Cam shows 0.33).\n- **The as-of view only shows shares made by that day.**\n- **Closed periods block sharing,** as they do other claim changes. This rule is my addition, not part of the request.\n- **Only the due, settled and open totals include the parts.** Overdue-total, score, aged buckets, tag, month and period totals, statements and pool cuts stay with the claim's own person.\n- **Splitting a shared claim doesn't copy its shares** to the new claim.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.2395637999999995,
+        "num_turns": 34,
+        "duration_ms": 479463,
+        "duration_api_ms": 233059,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp217.agent.jsonl",
+  "agent_diff_file": "cp217.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
