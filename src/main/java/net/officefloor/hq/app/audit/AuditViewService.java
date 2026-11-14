@@ -4,10 +4,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.stereotype.Service;
@@ -24,11 +28,45 @@ public class AuditViewService {
     private final Audit audit;
     private final PersonRepository people;
     private final SheetService sheets;
+    private final ClaimRepository claims;
 
-    public AuditViewService(Audit audit, PersonRepository people, SheetService sheets) {
+    public AuditViewService(Audit audit, PersonRepository people, SheetService sheets, ClaimRepository claims) {
         this.audit = audit;
         this.people = people;
         this.sheets = sheets;
+        this.claims = claims;
+    }
+
+    /**
+     * A claim's timeline: the sheet's lines about it, newest first, as the file holds them. For a
+     * numbered claim, the lines whose number= is its number; for a claim with no number, the lines
+     * with no number whose person=, amount= and date= are its person's name, its amount and its date.
+     */
+    public List<String> claimLines(String sheetId, Long claimId) {
+        Claim claim = claims.findById(claimId).filter(c -> c.getSheetId().equals(sheetId))
+                .orElseThrow(NoSuchElementException::new);
+        String number = claim.getNumber();
+        String person = people.findByIdAndSheetId(claim.getPersonId(), sheetId).map(Person::getName).orElse(null);
+        String amount = claim.getAmount().toPlainString();
+        String date = claim.getDate().toString();
+        List<String> found = new ArrayList<>();
+        for (String line : audit.lines()) {
+            if (!field(line, "sheet").filter(sheetId::equals).isPresent()) {
+                continue;
+            }
+            Optional<String> lineNumber = field(line, "number");
+            boolean about = number != null
+                    ? lineNumber.filter(number::equals).isPresent()
+                    : lineNumber.isEmpty() && person != null
+                            && field(line, "person").filter(person::equals).isPresent()
+                            && field(line, "amount").filter(amount::equals).isPresent()
+                            && field(line, "date").filter(date::equals).isPresent();
+            if (about) {
+                found.add(line);
+            }
+        }
+        Collections.reverse(found);
+        return found;
     }
 
     /**

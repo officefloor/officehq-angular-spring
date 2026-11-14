@@ -325,6 +325,19 @@ const NUMBER = /^\S+$/;
               <li data-testid="claim-log-line">{{ line }}</li>
             }
           </ol>
+          <button
+            type="button"
+            data-testid="claim-timeline"
+            [attr.aria-label]="'Show the timeline of claim ' + c.id"
+            (click)="showTimeline(c)"
+          >
+            Timeline
+          </button>
+          <ol data-testid="claim-timeline-lines" [attr.aria-label]="'Timeline of claim ' + c.id">
+            @for (line of timelines()[c.id] ?? []; track $index) {
+              <li data-testid="claim-timeline-line">{{ line }}</li>
+            }
+          </ol>
           <button type="button" data-testid="claim-open" [attr.aria-label]="'Open claim ' + c.id" (click)="act(c, 'open')">
             Open
           </button>
@@ -585,6 +598,10 @@ export class PersonClaims {
 
   /** The person chosen on each claim's row to move it to, by claim id (a person id, or blank). */
   protected readonly reassignTo = signal<Record<number, string>>({});
+  /** Each claim's timeline as last shown: the audit lines about it, newest first. */
+  protected readonly timelines = signal<Record<number, string[]>>({});
+  /** Counts timeline presses, so only the latest press's answer is shown. */
+  private timelineShows = 0;
   /** The people a claim of this person can move to: everyone else on the sheet. */
   protected readonly others = computed(() => this.people().filter((p) => p.id !== this.personId()));
   /** Whether the editor left open on a claim the user still locks has been looked for since the sheet loaded. */
@@ -993,6 +1010,23 @@ export class PersonClaims {
   protected setCommentText(id: number, text: string): void {
     this.commentTexts.update((texts) => ({ ...texts, [id]: text }));
     if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  /** Show a claim's timeline: the audit lines about it, newest first, as the file holds them. */
+  protected async showTimeline(claim: Claim): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const press = ++this.timelineShows;
+    this.timelines.update((t) => ({ ...t, [claim.id]: [] }));
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/claims/${claim.id}/timeline`;
+    try {
+      const lines = await firstValueFrom(this.http.get<string[]>(url));
+      if (press !== this.timelineShows || this.session.sheetId() !== sheet) return;
+      this.timelines.update((t) => ({ ...t, [claim.id]: lines }));
+    } catch {
+      if (press === this.timelineShows) this.rowError.set({ id: claim.id, message: 'The timeline could not be read.' });
+    }
   }
 
   /** Comment on a claim with the text typed on its row; an empty comment, or any comment by a viewer,
