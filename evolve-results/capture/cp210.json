@@ -1,0 +1,64 @@
+{
+  "checkpoint": 210,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp210_score-bands",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has score thresholds (settings, whole numbers, not dated; SETTING_CHANGED key=score-mid\nand key=score-high). While both are set, each person shows a band: HIGH when the score is at or\nabove the high threshold, MID when at or above the mid one, else LOW; nothing while either is\nblank.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has score thresholds (settings, whole numbers, not dated; SETTING_CHANGED key=score-mid\nand key=score-high). While both are set, each person shows a band: HIGH when the score is at or\nabove the high threshold, MID when at or above the mid one, else LOW; nothing while either is\nblank.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "74c0a543c635f7ff1898f831ae24bc4f04880de0",
+  "reset_sha": "",
+  "preagent_sha": "7d66b2e26416e0b65f8cf4bdbf9067aa3763de45",
+  "prev_sha": "7d66b2e26416e0b65f8cf4bdbf9067aa3763de45",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7980830000000001,
+    "input_tokens": 32,
+    "output_tokens": 10769,
+    "cache_read_tokens": 668595,
+    "cache_creation_tokens": 56107,
+    "num_turns": 17,
+    "duration_ms": 402103,
+    "duration_api_ms": 98353,
+    "model": "claude-opus-5-5",
+    "session_id": "6ca8635b-5a51-45b2-8aab-e1b463870695",
+    "stop_reason": "success",
+    "result_text": "The score bands are in, and `bin/e2e` passes all 4 tests in `e2e/specs/acceptance.spec.ts` on the first full run.\n\n**How it works:**\n- **Two new settings, `score-mid` and `score-high`.** They're whole numbers with no from-date, and below-zero values are allowed because scores can be negative (the test has a score of -5). Leaving one blank clears it. Each change writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=score-mid|score-high value=\u2026` to the audit file.\n- **The band** shows in a new `person-band` column right after Score. It is HIGH when the score is at or above the high threshold, MID when at or above the mid one, otherwise LOW. It stays blank while either threshold is blank. It's worked out in the front end from the score already shown there, in `people.ts` (`bandOf`).\n\n**Changes by layer:**\n- **Stored data:** a new migration, `V114__score_thresholds.sql`, adds two nullable `score_mid` and `score_high` columns to the `sheet` table. Cloning a sheet copies them too.\n- **Server:** two new endpoints, `PUT \u2026/settings/score-mid` and `\u2026/score-high`. Both values are added to the settings view, including the view of a past date, which reads them from the settings history like the other undated settings. The changes are in `Sheet.java`, `SheetCloneService.java`, `SettingService.java` and `SettingController.java`.\n- **Front end:** the settings panel has two new inputs (`setting-score-mid`, `setting-score-high`) and shows their current values (`setting-score-mid-current`, `setting-score-high-current`). A value that isn't a whole number is refused with the usual settings error.\n\nNothing stops the mid threshold from being set above the high one. In that case HIGH takes priority, and the request didn't say what should happen.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7980830000000001,
+        "num_turns": 17,
+        "duration_ms": 402103,
+        "duration_api_ms": 98353,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp210.agent.jsonl",
+  "agent_diff_file": "cp210.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
