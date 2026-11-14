@@ -1,0 +1,92 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+new file mode 100644
+index 000000000..248713535
+--- /dev/null
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -0,0 +1,30 @@
++import { Component, computed, input } from '@angular/core';
++import { Claim } from '../claims/claims-api';
++import { statusCounts } from '../summary/summary';
++
++// The sheet's counters, shown at all times: how many people are on it (retired ones too), how many
++// claims are in each status (as the summary counts them), and its due-total and overdue-total (as
++// the sheet's totals show them).
++@Component({
++  selector: 'app-header',
++  template: `
++    <header aria-label="Sheet counters" data-testid="header">
++      <p>People <strong data-testid="header-people-count">{{ peopleCount() }}</strong></p>
++      <p>Claims
++        @for (s of byStatus(); track s.status) {
++          {{ s.status }} <strong [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</strong>
++        }
++      </p>
++      <p>Due total <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
++      <p>Overdue total <strong data-testid="header-overdue-total">{{ overdueTotal() }}</strong></p>
++    </header>
++  `,
++})
++export class Header {
++  readonly peopleCount = input.required<number>();
++  readonly claims = input.required<Claim[]>();
++  readonly dueTotal = input.required<string>();
++  readonly overdueTotal = input.required<string>();
++
++  protected readonly byStatus = computed(() => statusCounts(this.claims()));
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d08f26bde..116388a97 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -7,18 +7,20 @@ import { Periods } from '../periods/periods';
+ import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
+ import { Rates } from '../rates/rates';
+ import { Summary, SummaryPerson } from '../summary/summary';
++import { Header } from '../header/header';
+ import { Lateness, Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
+ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, retireError, statementError } from './people-api';
+ 
+ // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
+ // claims, what they have claimed, their due-total, their overdue claims, and their patrons and backing; the sheet's claimed-total,
+-// due-total and overdue claims; a summary of them by grade, period and status; and
++// due-total and overdue claims; a header of counters repeating them; a summary of them by grade, period and status; and
+ // the one form that adds a person or, with a
+ // person's editor open, saves that person.
+ @Component({
+   selector: 'app-people',
+-  imports: [ReactiveFormsModule, PersonClaims, Periods, Rates, Summary],
++  imports: [ReactiveFormsModule, Header, PersonClaims, Periods, Rates, Summary],
+   template: `
++    <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
+     <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
+     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index 99df7387e..ba99ce248 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -4,7 +4,12 @@ import { GRADES } from '../people/people-api';
+ import { Period, periodDueCents } from '../periods/periods-api';
+ 
+ /** The statuses the summary counts, in the order it lists them. */
+-const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
++export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
++
++/** How many of the claims have each status, in the order the summary lists them. */
++export function statusCounts(claims: Claim[]): { status: string; count: number }[] {
++  return STATUSES.map((status) => ({ status, count: claims.filter((c) => c.status === (status as string)).length }));
++}
+ 
+ /** A person as the summary counts them: their grade in force on the sheet's today, whether they
+  *  are retired, and their due-total in cents (null: n/a). */
+@@ -82,9 +87,7 @@ export class Summary {
+     return { grade, count: on.length, cents: on.reduce((sum, p) => sum + (p.due ?? 0), 0) };
+   }));
+ 
+-  protected readonly byStatus = computed(() => STATUSES.map((status) => ({
+-    status, count: this.claims().filter((c) => c.status === (status as string)).length,
+-  })));
++  protected readonly byStatus = computed(() => statusCounts(this.claims()));
+ 
+   protected periodDue(p: Period): number {
+     return periodDueCents(p, this.dueTotals());
