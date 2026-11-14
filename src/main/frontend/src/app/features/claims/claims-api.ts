@@ -21,7 +21,7 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The sheet's number for the claim, given when it is opened; null while DRAFT or once VOID. */
+  /** The sheet's number for the claim, given when it is opened and kept if it is voided; null while DRAFT. */
   number: number | null;
   /** The due fixed when the claim was settled, with two decimals; null, so the due is live, for
    *  a claim not SETTLED or settled when its grade had no rate. */
@@ -102,6 +102,7 @@ export class ClaimsApi {
 export function claimError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount of 0.00 or more with up to two decimals.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft claim can be edited; void it and add a new one.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'The date is in a closed period.';
   return 'Something went wrong; try again.';
 }

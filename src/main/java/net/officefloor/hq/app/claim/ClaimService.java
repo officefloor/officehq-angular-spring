@@ -68,14 +68,19 @@ public class ClaimService {
         return claim;
     }
 
-    /** Change a claim's amount, date and note; a missing date takes the sheet's today. Refused
-     *  (423) when its old or new date is in a closed period. */
+    /** Change a DRAFT claim's amount, date and note; a missing date takes the sheet's today.
+     *  Refused (409) once the claim is no longer a DRAFT (an open claim is voided and a new one
+     *  added instead), and (423) when its old or new date is in a closed period. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note) {
-        Claim claim = claims.findByIdAndSheetId(id, sheetId)
+        Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         LocalDate on = date != null ? date : sheets.today(sheetId);
         refuseIfClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be edited");
+        }
         refuseIfClosed(sheetId, on);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
@@ -108,15 +113,13 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        // the VOIDED record carries the number the claim had
+        // a voided claim keeps its number (never reused), and the VOIDED record carries it
         Integer number = claim.getNumber();
         claim.setStatus(to);
         if (to == ClaimStatus.OPEN) {
             number = sheets.nextClaimNumber(sheetId);
             claim.setNumber(number);
             claim.setOpenedBy(user);
-        } else if (to == ClaimStatus.VOID) {
-            claim.setNumber(null);
         } else if (to == ClaimStatus.SETTLED) {
             // a claim bound by a statement settles at its bound figure
             claim.setSettledDue(claim.isStated() ? claim.getStatedDue() : dueOf(claim, person));

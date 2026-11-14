@@ -14,7 +14,7 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
 
-    /** The claim, locked for a status change so two users cannot move it at once. */
+    /** The claim, locked for a status change or edit so two users cannot change it at once. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Claim c where c.id = :id and c.sheetId = :sheetId")
     Optional<Claim> findForUpdate(Long id, String sheetId);

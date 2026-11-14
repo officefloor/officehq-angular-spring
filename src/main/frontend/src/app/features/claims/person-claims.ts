@@ -106,6 +106,10 @@ export class PersonClaims {
   protected edit(c: Claim): void {
     this.error.set(null);
     this.clearRowError(c.id);
+    if (c.status !== 'DRAFT') {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Only a draft claim can be edited; void it and add a new one.' }));
+      return;
+    }
     if (periodOn(this.periods(), c.date)?.closed) {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'This claim is dated in a closed period.' }));
       return;
