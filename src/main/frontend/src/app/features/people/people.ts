@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, plusDays, reviewLate, statusAsOf } from '../claims/claims';
 import { Holidays } from '../holidays/holidays';
+import { Notes } from '../notes/notes';
 import { VoidReasonStore, VoidReasons } from '../void-reasons/void-reasons';
 import { ClaimTemplates } from '../claim-templates/claim-templates';
 import { PeriodStore, Periods, periodOf } from '../periods/periods';
@@ -134,7 +135,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
 // saves their changes.
 @Component({
   selector: 'app-people',
-  imports: [ClaimTemplates, Counters, Crews, Dashboard, Holidays, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, Summary, VoidReasons],
+  imports: [ClaimTemplates, Counters, Crews, Dashboard, Holidays, Notes, PersonClaims, PersonPlans, Periods, PlanGenerate, Pools, Rates, Settings, Summary, VoidReasons],
   template: `
     <app-counters
       [peopleCount]="people().length"
@@ -153,6 +154,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
     <app-rates />
     <app-periods [dueTotals]="periodDueTotals()" />
     <app-holidays />
+    <app-notes />
     <app-void-reasons />
     <app-claim-templates />
     <app-pools [people]="people()" />
@@ -1035,18 +1037,18 @@ export class People {
   /** The sheet's claims, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   /** The sheet's claims that count in live totals: OPEN, PENDING and SETTLED ones, except one deferred
-   *  on the sheet's today, and, unless bound by a statement, an OPEN one dated within one of its person's
-   *  holds or an OPEN or PENDING one whose person is retired by the sheet's today. */
+   *  on the sheet's today, and, unless bound by a statement, an OPEN or PENDING one dated within one of its
+   *  person's holds or an OPEN or PENDING one whose person is retired by the sheet's today. */
   private readonly live = computed(() => this.claims().filter((c) => counts(c) && this.liveRulesKeep()(c)));
   /** Whether the live rules leave a claim in: it is not deferred on the sheet's today, and, unless bound
-   *  by a statement, not an OPEN one dated within one of its person's holds, nor an OPEN or PENDING one
+   *  by a statement, not an OPEN or PENDING one dated within one of its person's holds, nor an OPEN or PENDING one
    *  whose person's retirement date is on or before the sheet's today. */
   private readonly liveRulesKeep = computed(() => {
     const holds = new Map(this.people().map((p) => [p.id, p.holds]));
     const retiredFrom = new Map(this.people().map((p) => [p.id, p.retiredFrom]));
     const today = this.session.today();
     const held = (c: Claim) =>
-      c.status === 'OPEN' &&
+      isOpen(c) &&
       (holds.get(c.personId) ?? []).some((h) => h.from <= c.date && (h.to === null || c.date <= h.to));
     const retired = (c: Claim) => {
       const from = retiredFrom.get(c.personId) ?? null;

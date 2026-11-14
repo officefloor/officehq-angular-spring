@@ -496,9 +496,9 @@ public class Claim {
         return status.counts();
     }
 
-    /** Whether the claim is held: it is OPEN and dated within one of its person's holds. */
+    /** Whether the claim is held: it is OPEN or PENDING and dated within one of its person's holds. */
     public boolean heldBy(List<PersonHold> holds) {
-        return status == ClaimStatus.OPEN && holds.stream().anyMatch(hold -> hold.contains(date));
+        return status.isOpen() && holds.stream().anyMatch(hold -> hold.contains(date));
     }
 
     /** Whether the claim is left out for its person's retirement: it is OPEN or PENDING and the
