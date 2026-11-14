@@ -267,6 +267,7 @@ interface PoolRow {
           <p role="alert" data-testid="pool-form-error">{{ message }}</p>
         }
       </form>
+      <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools as CSV</button>
       <ul>
         @for (row of rows(); track row.pool.id) {
           <li [attr.data-testid]="'pool-row-' + row.pool.name">
@@ -370,6 +371,24 @@ export class Pools {
 
   protected value(event: Event): string {
     return (event.target as HTMLInputElement).value;
+  }
+
+  /** Download every pool's members as CSV: pools in the order added, each pool's members in the
+   *  order added, a pool member as pool:<name>, with the share and the cut as their rows show them. */
+  protected exportCsv(): void {
+    const rows = [
+      ['pool', 'member', 'share', 'cut'],
+      ...this.rows().flatMap((row) => row.members.map((m) => [row.pool.name, m.name, m.share, m.cut])),
+    ];
+    // A field holding a quote, comma or line break is quoted (quotes doubled); every line ends with a line feed.
+    const field = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const text = rows.map((r) => r.map(field).join(',') + '\n').join('');
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `pools-${this.session.sheetId() ?? 'sheet'}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
   }
 
   protected setMember(poolId: number, member: string): void {
