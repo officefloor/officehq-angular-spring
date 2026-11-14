@@ -1,0 +1,64 @@
+{
+  "checkpoint": 149,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp149_period-claim-cap",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A period may cap the number of open claims per person (a whole number on the period form, blank\nfor none; PERIOD_ADDED gains cap=<n> at the end when given). Opening a claim that belongs to the\nperiod, alone or by the bulk button, is refused with an error on the claim when the person already\nhas that many OPEN or PENDING claims in it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA period may cap the number of open claims per person (a whole number on the period form, blank\nfor none; PERIOD_ADDED gains cap=<n> at the end when given). Opening a claim that belongs to the\nperiod, alone or by the bulk button, is refused with an error on the claim when the person already\nhas that many OPEN or PENDING claims in it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c72ad92fceb581e550e942cf5a5e9076f60cede1",
+  "reset_sha": "",
+  "preagent_sha": "238c8fd5587258f31f2ff765fad5ee445fe10a11",
+  "prev_sha": "238c8fd5587258f31f2ff765fad5ee445fe10a11",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.282467,
+    "input_tokens": 72,
+    "output_tokens": 14709,
+    "cache_read_tokens": 2042475,
+    "cache_creation_tokens": 72438,
+    "num_turns": 37,
+    "duration_ms": 497999,
+    "duration_api_ms": 152518,
+    "model": "claude-opus-5-5",
+    "session_id": "401ce220-22eb-48f8-ba56-28ba67083345",
+    "stop_reason": "success",
+    "result_text": "The period claim cap is in, and all 4 Playwright tests pass with `bin/e2e`.\n\nThe spec only tests the form, the cap column and the audit line. It never pushes a person over a cap, so I checked that against the running app myself. With a cap of 1, the second open was refused (409) and nothing was written to the audit file.\n\n**Which claims count toward a cap:** a claim belongs to a period when its due-by date falls inside it, not its claim date. That's how the app already shows a claim's period and numbers it, so the cap counts the same way. A person's OPEN and PENDING claims due in the period count; drafts, settled and voided claims don't.\n\n**Stored data and server**\n- New migration `V86__period_cap.sql` adds a nullable `claim_cap` column to `period`, and `Period` gets a matching `cap` field.\n- The period form takes `cap`: blank means no cap, and anything below 1 is refused (the `cap=0` case in the test). `PERIOD_ADDED` ends with ` cap=<n>` only when a cap is set.\n- Opening a claim is refused with a new `PeriodCapException` when the person already has as many OPEN or PENDING claims due in a capped period as the cap. A single open shows the error on the claim's row, and the bulk-open button counts it as refused and moves on to the next claim.\n- Periods made by the monthly and fiscal-year generate buttons have no cap.\n- When the screen shows an earlier date, a period shows the cap it has now. The cap can't change after a period is added, so this is always right.\n\n**Front end**\n- The period form has a \"cap\" field (`period-form-cap`) that is checked before sending, and the periods table has a Cap column (`period-cap`, blank when none).\n- The error shown when a claim can't be opened now mentions the cap.\n\nOnly opening is checked against the cap. A claim made OPEN some other way isn't: splitting an OPEN claim, or a steward rejecting a PENDING one. Rejecting doesn't change the count anyway, since PENDING claims already count.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.282467,
+        "num_turns": 37,
+        "duration_ms": 497999,
+        "duration_api_ms": 152518,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp149.agent.jsonl",
+  "agent_diff_file": "cp149.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
