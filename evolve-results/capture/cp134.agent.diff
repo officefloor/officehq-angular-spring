@@ -1,0 +1,91 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 9b8f457ca..1d91c20b7 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -74,6 +74,9 @@ interface DescendantFigures {
+   ownOverdueTotal?: string;
+ }
+ 
++/** What the people list can be sorted by on the screen. */
++type SortKey = 'added' | 'name' | 'grade' | 'due-total';
++
+ const NO_DESCENDANTS: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00' };
+ 
+ /** A statement taken: the person's statements as their row shows them, and their claims as it
+@@ -243,6 +246,14 @@ interface StatementTaken {
+         />
+         Show retired
+       </label>
++      <label>
++        Sort by
++        <select data-testid="sort-by" [value]="sortKey()" (change)="sortKey.set(sortKeyOf($event))">
++          @for (k of sortKeys; track k) {
++            <option [value]="k">{{ k }}</option>
++          }
++        </select>
++      </label>
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people as CSV</button>
+       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims as CSV</button>
+       <p>
+@@ -398,7 +409,7 @@ interface StatementTaken {
+           </tr>
+         </thead>
+         <tbody>
+-          @for (p of shownPeople(); track p.id) {
++          @for (p of sortedPeople(); track p.id) {
+             <tr [attr.data-testid]="'person-row-' + p.id">
+               <td>
+                 <input
+@@ -728,6 +739,28 @@ export class People {
+   protected readonly shownPeople = computed(() =>
+     this.showRetired() ? this.people() : this.people().filter((p) => !p.retired),
+   );
++  protected readonly sortKeys: readonly SortKey[] = ['added', 'name', 'grade', 'due-total'];
++  /** What the list is sorted by on this screen; added when the screen opens and kept across sheet loads. */
++  protected readonly sortKey = signal<SortKey>('added');
++  /** The people listed, in the order the screen sorts them: only what is shown changes, people with
++   *  equal keys keep list order. */
++  protected readonly sortedPeople = computed(() => {
++    const shown = this.shownPeople();
++    switch (this.sortKey()) {
++      case 'added':
++        return shown;
++      case 'name':
++        return sortedBy(shown, (p) => p.name.toLowerCase(), (a, b) => (a < b ? -1 : a > b ? 1 : 0));
++      case 'grade':
++        return sortedBy(shown, (p) => this.gradeOf(p), (a, b) => (a < b ? -1 : a > b ? 1 : 0));
++      case 'due-total':
++        return sortedBy(
++          shown,
++          (p) => this.dueCentsBy(p),
++          (a, b) => (a === null ? (b === null ? 0 : 1) : b === null ? -1 : a - b),
++        );
++    }
++  });
+   /** The retirement date typed on each person's row, by person id. */
+   protected readonly retireDates = signal<Record<number, string>>({});
+   /** The hold from- and to-dates typed on each person's row, by person id. */
+@@ -1115,6 +1148,10 @@ export class People {
+     return (event.target as HTMLInputElement).checked;
+   }
+ 
++  protected sortKeyOf(event: Event): SortKey {
++    return (event.target as HTMLSelectElement).value as SortKey;
++  }
++
+   protected setRetireDate(personId: number, date: string): void {
+     this.retireDates.update((dates) => ({ ...dates, [personId]: date }));
+     if (this.rowError()?.id === personId) this.rowError.set(null);
+@@ -2045,6 +2082,12 @@ export class People {
+  *  or more. */
+ /** The patrons' shares in hundredths, in the order they were named: 100.00 split equally, each rounded
+  *  half to even, the remainder (100.00 minus the shares added up) to the first-named patron. */
++/** The items in order of their keys, those with equal keys kept in the order they were. */
++function sortedBy<T, K>(items: T[], key: (item: T) => K, compare: (a: K, b: K) => number): T[] {
++  const keyed = items.map((item) => ({ item, key: key(item) }));
++  return keyed.sort((a, b) => compare(a.key, b.key)).map((k) => k.item);
++}
++
+ function patronShares(count: number): number[] {
+   if (count === 0) return [];
+   const shares = Array.from({ length: count }, () => halfEven(10_000, count));
