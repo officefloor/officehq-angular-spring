@@ -1,0 +1,64 @@
+{
+  "checkpoint": 126,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp126_clone-sheet",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can clone the sheet to another id (an entry and a button; SHEET_CLONE_MADE to=<id> on this\nsheet). The other sheet must be empty (never used); otherwise, or for anyone but a steward, the\nclone is refused with an error on the sheet. The clone gets this sheet's today, settings, roles,\nrates, holidays, void reasons, templates, people (grades, terms, contacts, aliases, tags, holds,\nretirements, patrons), pools, periods (all open) and claims (status, frozen figures, dates, notes,\nlogs; numbers given afresh in the order the originals were opened (by the sheet's today when each\nwas opened, then by the order they were added), by the clone's own numbering); statements are not\ncopied. The clone's first audit line is SHEET_CLONED from=<this sheet's id>, followed by its rollup\nlines for every person and its totals.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can clone the sheet to another id (an entry and a button; SHEET_CLONE_MADE to=<id> on this\nsheet). The other sheet must be empty (never used); otherwise, or for anyone but a steward, the\nclone is refused with an error on the sheet. The clone gets this sheet's today, settings, roles,\nrates, holidays, void reasons, templates, people (grades, terms, contacts, aliases, tags, holds,\nretirements, patrons), pools, periods (all open) and claims (status, frozen figures, dates, notes,\nlogs; numbers given afresh in the order the originals were opened (by the sheet's today when each\nwas opened, then by the order they were added), by the clone's own numbering); statements are not\ncopied. The clone's first audit line is SHEET_CLONED from=<this sheet's id>, followed by its rollup\nlines for every person and its totals.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "131a61318dec297e1f27b7659881657311cdf427",
+  "reset_sha": "",
+  "preagent_sha": "27d4451da642aa2f41309b5216c875bc323ba3f9",
+  "prev_sha": "27d4451da642aa2f41309b5216c875bc323ba3f9",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.1879124,
+    "input_tokens": 64,
+    "output_tokens": 29577,
+    "cache_read_tokens": 2884062,
+    "cache_creation_tokens": 127413,
+    "num_turns": 33,
+    "duration_ms": 493044,
+    "duration_api_ms": 290412,
+    "model": "claude-opus-5-5",
+    "session_id": "de01fc6e-f510-4de4-b20a-317fbcc0430a",
+    "stop_reason": "success",
+    "result_text": "Sheet cloning is in, and `bin/e2e` passes all 4 tests: the clone test and the three other scenarios.\n\n**How it works**\n- **Screen:** the sheet section now has a \"Clone to sheet id\" entry (`sheet-clone-to`), a Clone button (`sheet-clone`), and a \"Last clone made\" value (`sheet-cloned-to`). That value is cleared when the button is pressed again and when another sheet is loaded. A refusal shows the existing `sheet-error`.\n- **Server:** there's a new endpoint, `POST /api/sheets/{id}/clone`, backed by a new `SheetCloneService`. It refuses (409) when the user isn't a steward on this sheet, when the target id is blank, or when the target sheet has ever been used. The copy is done in SQL in one transaction, the same way `PersonTransferService` already moves people between sheets. No schema change was needed.\n- **What's copied:** everything the request lists. Periods come across all open. Claims lose their statement bindings, edit locks and settle batches. Claim numbers are given afresh in the clone, and the claims that point at other claims by number (corrections and split-offs) are updated to the new numbers.\n- **Audit:** this sheet gets `SHEET_CLONE_MADE \u2026 to=<id>`. The clone gets `SHEET_CLONED \u2026 from=<id>`, then a `ROLLUP` line for every person and a `TOTALS` line. To support that I added `RollupService.recordAll` and moved the ROLLUP and TOTALS line formats into shared helpers; the existing lines are unchanged.\n\n**Decision for you: claim numbering order.** The request says to number the claims \"by the sheet's today when each was opened, then by the order they were added\". The test doesn't match that literally. All four claims were opened on the same day, and the oldest one (Cam's) was added first, yet the test expects it to get number 4. The order that fits the test is: the day each claim was opened, then the person's place in the list, then the order the claims were added. That's what I built. It differs from person transfer, which breaks ties by when each claim was added across the whole sheet. If you want true add order, the test's expectations would need to change.\n\n**Choices I made where the request was silent:**\n- I copied claim comments, the sheet's parent link, and the list of tags used on the sheet.\n- I didn't copy delegations, watches, retired claim numbers or period closing totals.\n- The clone keeps a starting history record of its data, so the \"show as of\" view works on it from its first day.\n\nBecause the clone keeps the parent link, a clone of a child sheet also becomes a child of that parent and counts in the parent's consolidated figures. If that's not wanted, it's a one-line change.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.1879124,
+        "num_turns": 33,
+        "duration_ms": 493044,
+        "duration_api_ms": 290412,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp126.agent.jsonl",
+  "agent_diff_file": "cp126.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
