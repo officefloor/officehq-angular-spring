@@ -1,0 +1,73 @@
+{
+  "checkpoint": 112,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp112_uniqueness-across-tree",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    109,
+    110,
+    111
+  ],
+  "replaced_tests": [
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 3",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 1",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 2",
+    "cp111_transfer-person.spec.ts::transfer person scenario 3"
+  ],
+  "request": {
+    "spec": "A name or alias may no longer be used on a sheet when any sheet of its tree (its ancestors, its\ndescendants and their descendants, among the sheets that exist) already uses it as a name or alias:\nadding, renaming, an alias, the quick-add bar, the paste box (and any later import) are refused as a\nduplicate would be. People who already clash are not changed: each shows clashing yes, and every\nedit of them through the person form is refused until the edit renames them to a name that does not\nclash (and leaves no clashing alias).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA name or alias may no longer be used on a sheet when any sheet of its tree (its ancestors, its\ndescendants and their descendants, among the sheets that exist) already uses it as a name or alias:\nadding, renaming, an alias, the quick-add bar, the paste box (and any later import) are refused as a\nduplicate would be. People who already clash are not changed: each shows clashing yes, and every\nedit of them through the person form is refused until the edit renames them to a name that does not\nclash (and leaves no clashing alias).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a0b7faba05b82e448a6135c3fdc85faeb06b7bd5",
+  "reset_sha": "",
+  "preagent_sha": "a427235f27ee58644dc26c1440dad5005ae8a0a2",
+  "prev_sha": "a427235f27ee58644dc26c1440dad5005ae8a0a2",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0183904,
+    "input_tokens": 56,
+    "output_tokens": 11958,
+    "cache_read_tokens": 1427312,
+    "cache_creation_tokens": 61693,
+    "num_turns": 29,
+    "duration_ms": 372719,
+    "duration_api_ms": 127251,
+    "model": "claude-opus-5-5",
+    "session_id": "6cc3e32d-283b-4cc5-a3bc-0c55402c78fb",
+    "stop_reason": "success",
+    "result_text": "A name or alias can no longer be used on a sheet if any other sheet in its tree already uses it, and people who already clash now show `clashing yes`. All 4 Playwright tests in `bin/e2e` pass.\n\n**What's refused** (each shows the existing error and writes nothing):\n- **Adding a person or renaming one through the person form**: refused if the name is used as a name or alias on another sheet in the tree. The quick-add bar goes through the same add, so a new name there is refused too.\n- **Adding an alias**: refused on the same tree check.\n- **Paste box**: it only ever adds claims for people already on the sheet, so a name from another sheet was refused before this change. I didn't need to touch it.\n- **Import**: the app has no people import yet, so there was nothing to change.\n\n**People who already clash** are left as they are. Every save through their person form is refused until the new name doesn't clash and none of their aliases clash. If only an alias clashes, renaming alone won't fix it: there's no screen for removing an alias, so that person can't be edited until the other sheet's name changes.\n\n**Where it lives:**\n- `SheetService.tree(id)` returns the sheet's ancestors (following the parent chain, existing sheets only) and all its descendants.\n- `PersonService` runs the tree check alongside the existing same-sheet check, and works out who is clashing.\n- `PersonView` has a new `clashing` field, shown in a new \"Clashing\" column (`person-clashing`) in `people.ts`. The two duplicate-name error messages now mention the tree.\n- No database change: clashing is worked out from the stored names and aliases each time it's needed.\n\n**Choices you may want to revisit:**\n- **Siblings aren't included.** I read \"its tree\" as ancestors plus descendants, as the request spells out, so sheets that only share a parent don't count. The tests don't cover siblings; including them would be a small change in `SheetService.tree`.\n- **Transfer and merge aren't changed.** They weren't in the request. Transfer still only checks names on the destination sheet itself.\n- **Setting a parent that creates clashes is allowed.** The request says people who already clash are left as they are, so this just marks them as clashing.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0183904,
+        "num_turns": 29,
+        "duration_ms": 372719,
+        "duration_api_ms": 127251,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp112.agent.jsonl",
+  "agent_diff_file": "cp112.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
