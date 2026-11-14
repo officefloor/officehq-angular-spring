@@ -30,7 +30,7 @@ interface Person {
   grades: PersonGrade[];
   /** Raised on every save; an editor saves only the version it loaded. */
   version: number;
-  /** The person's own terms in business days, which fix the due-by of their claims; null for none. */
+  /** The person's own terms in business days in force on the sheet's today, which fix the due-by of their claims; null for none. */
   terms: number | null;
   /** The person's contact, trimmed and lower-cased; null for none. */
   contact: string | null;
@@ -197,6 +197,14 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
           inputmode="numeric"
           [value]="terms()"
           (input)="terms.set(value($event)); error.set(null)"
+        />
+        <label for="person-form-terms-from">Terms from</label>
+        <input
+          type="date"
+          id="person-form-terms-from"
+          data-testid="person-form-terms-from"
+          [value]="termsFrom()"
+          (input)="termsFrom.set(value($event)); error.set(null)"
         />
         <label for="person-form-contact">Contact</label>
         <input
@@ -1272,6 +1280,8 @@ export class People {
   protected readonly gradeFrom = signal('');
   /** The person's own terms in whole days; blank for none. */
   protected readonly terms = signal('');
+  /** The date the terms saved apply from; blank records them from the beginning of time. */
+  protected readonly termsFrom = signal('');
   /** The person's contact; blank for none. */
   protected readonly contact = signal('');
   /** The person's tags as typed, comma separated; blank for none. */
@@ -2203,6 +2213,7 @@ export class People {
     this.grade.set(this.gradeOf(person));
     this.gradeFrom.set('');
     this.terms.set(person.terms === null ? '' : String(person.terms));
+    this.termsFrom.set('');
     this.contact.set(person.contact ?? '');
     this.tags.set(person.tags.join(', '));
     this.error.set(null);
@@ -2214,6 +2225,7 @@ export class People {
     this.grade.set('A');
     this.gradeFrom.set('');
     this.terms.set('');
+    this.termsFrom.set('');
     this.contact.set('');
     this.tags.set('');
     this.error.set(null);
@@ -2231,6 +2243,7 @@ export class People {
       name: this.name().trim(),
       grade: this.grade(),
       terms: terms === '' ? null : Number(terms),
+      termsFrom: this.termsFrom().trim() || null,
       contact: contact === '' ? null : contact,
       tags: this.tags(),
     };

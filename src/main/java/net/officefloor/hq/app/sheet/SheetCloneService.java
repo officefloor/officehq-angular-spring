@@ -122,6 +122,7 @@ public class SheetCloneService {
                 jdbc.update("UPDATE person SET merged_into = ? WHERE id = ?", people.get(mergedInto), is);
             }
             copyOf(was, is, to, "person_grade", "grade, from_date");
+            copyOf(was, is, to, "person_terms", "terms, from_date");
             copyOf(was, is, to, "person_alias", "alias, alias_key, made_on");
             copyOf(was, is, to, "person_hold", "from_date, to_date, made_on");
             copyOf(was, is, to, "person_retirement", "from_date, to_date");

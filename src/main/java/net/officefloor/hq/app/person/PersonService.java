@@ -25,6 +25,7 @@ public class PersonService {
     private final PersonRepository people;
     private final PersonPatronRepository patrons;
     private final PersonGradeService grades;
+    private final PersonTermsService terms;
     private final PersonHoldRepository holds;
     private final PersonWatchRepository watches;
     private final PersonAliasRepository aliases;
@@ -37,7 +38,7 @@ public class PersonService {
     private final ClaimRepository claims;
 
     public PersonService(PersonRepository people, PersonPatronRepository patrons, PersonGradeService grades,
-            PersonHoldRepository holds, PersonWatchRepository watches, PersonAliasRepository aliases,
+            PersonTermsService terms, PersonHoldRepository holds, PersonWatchRepository watches, PersonAliasRepository aliases,
             PersonRetirementRepository retirements, PersonSnapshotRepository snapshots, SheetService sheets,
             EntityManager entityManager, History history, Audit audit, ClaimRepository claims) {
         this.claims = claims;
@@ -49,10 +50,26 @@ public class PersonService {
         this.watches = watches;
         this.patrons = patrons;
         this.grades = grades;
+        this.terms = terms;
         this.holds = holds;
         this.entityManager = entityManager;
         this.sheets = sheets;
         this.audit = audit;
+    }
+
+    /** The person's own terms in force on a date (null: none). */
+    public Integer termsOn(Person person, LocalDate date) {
+        return terms.termsOn(person, date);
+    }
+
+    /** The person's own terms in force on the sheet's today (null: none). */
+    public Integer termsToday(Person person) {
+        return terms.termsOn(person, sheets.today(person.getSheetId()));
+    }
+
+    /** Each person's dated own terms on the sheet, by person id. */
+    public Map<Long, List<PersonTerms>> datedTerms(String sheetId) {
+        return terms.bySheet(sheetId);
     }
 
     /** The sheet's people in list order. */
@@ -110,19 +127,31 @@ public class PersonService {
     @Transactional
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
             String tags) {
+        return add(sheetId, user, name, grade, terms, null, contact, tags);
+    }
+
+    /** Add a person as above, their own terms (null for none) recorded from a from-date (null: from the
+     *  beginning of time). */
+    @Transactional
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, LocalDate termsFrom,
+            String contact, String tags) {
         LocalDate today = sheets.today(sheetId);
         String trimmed = name.trim();
         requireFreeName(sheetId, trimmed, null);
         String key = contactKey(contact);
         requireFreeContact(sheetId, key, null);
         Person person = new Person(sheetId, trimmed, today);
-        person.setTerms(terms);
+        person.setTerms(termsFrom == null ? terms : null);
         person.setContact(key);
         person.setTags(ClaimService.tagsOf(tags));
         Person added = people.saveAndFlush(person);
         useTags(sheetId, added);
         grades.give(added, grade, null);
-        record("PERSON_ADDED", sheetId, user, added, grade, (terms != null ? " terms=" + terms : "")
+        if (termsFrom != null) {
+            this.terms.record(added, terms, termsFrom);
+        }
+        Integer inForce = this.terms.termsOn(added, today);
+        record("PERSON_ADDED", sheetId, user, added, grade, (inForce != null ? " terms=" + inForce : "")
                 + (key != null ? " contact=" + key : ""));
         return added;
     }
@@ -141,6 +170,16 @@ public class PersonService {
     @Transactional
     public Person update(String sheetId, String user, Long id, long version, String name, String grade,
             LocalDate gradeFrom, Integer terms, String contact, String tags) {
+        return update(sheetId, user, id, version, name, grade, gradeFrom, terms, null, contact, tags);
+    }
+
+    /** Update a person as above, recording their own terms (null for none) from a from-date, keeping
+     *  those already recorded (those for the same from-date are replaced). Without a from-date the
+     *  terms are recorded from the beginning of time, unless they are the terms in force on the
+     *  sheet's today, which are then left as they are. */
+    @Transactional
+    public Person update(String sheetId, String user, Long id, long version, String name, String grade,
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, String tags) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
         if (person.getVersion() != version) {
@@ -159,14 +198,21 @@ public class PersonService {
         String key = contactKey(contact);
         requireFreeContact(sheetId, key, id);
         person.setName(trimmed);
-        Integer before = person.getTerms();
-        person.setTerms(terms);
+        LocalDate today = sheets.today(sheetId);
+        Integer before = this.terms.termsOn(person, today);
+        boolean termsGiven = termsFrom != null || !Objects.equals(before, terms);
+        if (termsFrom != null) {
+            this.terms.record(person, terms, termsFrom);
+            // Terms recorded change the person, so an editor that loaded them before is stale.
+            entityManager.lock(person, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+        } else if (termsGiven) {
+            person.setTerms(terms);
+        }
         String contactBefore = person.getContact();
         person.setContact(key);
         if (tags != null) {
             person.setTags(ClaimService.tagsOf(tags));
         }
-        LocalDate today = sheets.today(sheetId);
         if (gradeFrom != null || !grade.equals(grades.gradeOn(id, today))) {
             grades.give(person, grade, gradeFrom != null ? gradeFrom : today);
             // A grade given changes the person, so an editor that loaded them before is stale.
@@ -175,7 +221,7 @@ public class PersonService {
         Person saved = people.saveAndFlush(person);
         useTags(sheetId, saved);
         record("PERSON_EDITED", sheetId, user, saved, grades.gradeOn(id, today),
-                (Objects.equals(before, terms) ? "" : " terms=" + (terms != null ? terms : ""))
+                (termsGiven ? " terms=" + Objects.requireNonNullElse(this.terms.termsOn(saved, today), "") : "")
                 + (Objects.equals(contactBefore, key) ? "" : " contact=" + (key != null ? key : "")));
         return saved;
     }

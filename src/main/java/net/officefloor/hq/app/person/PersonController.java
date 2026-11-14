@@ -71,7 +71,7 @@ public class PersonController {
      *  grade they were given from the earliest, how many statements were taken for them and the
      *  last one's due-total and date (null when none was), and whether they are retired and from
      *  when (null when not), and the holds put on them in the order they were, and the ids of their patrons in the order
-     *  they were named, and whether the signed-in user watches them, and their own terms (null for none), and their contact (null for none), and their aliases sorted as names are compared, and the sheet they were transferred from (null for none), and their past retirements in the order they ended, and their tags sorted (empty for none), and the snapshots written for them oldest first, and their statements' lines oldest first. */
+     *  they were named, and whether the signed-in user watches them, and their own terms in force on the sheet's today (null for none), and their contact (null for none), and their aliases sorted as names are compared, and the sheet they were transferred from (null for none), and their past retirements in the order they ended, and their tags sorted (empty for none), and the snapshots written for them oldest first, and their statements' lines oldest first. */
     public record PersonView(Long id, String name, String grade, List<GradeView> grades, long version,
             int statementCount, String statedTotal, LocalDate statementDate, boolean retired, LocalDate retiredFrom,
             List<HoldView> holds, List<Long> patronIds, boolean watched, Integer terms, String contact,
@@ -80,11 +80,11 @@ public class PersonController {
         public static PersonView of(Person person, List<PersonGrade> grades, LocalDate today,
                 StatementSummary statements, List<PersonHold> holds, List<Long> patronIds, boolean watched,
                 List<String> aliases, boolean clashing, List<PersonRetirement> retirements,
-                List<PersonSnapshot> snapshots) {
+                List<PersonSnapshot> snapshots, Integer terms) {
             return new PersonView(person.getId(), person.getName(), PersonGradeService.gradeOn(grades, today),
                     grades.stream().map(GradeView::of).toList(), person.getVersion(), statements.count(),
                     statements.lastDueTotal(), statements.lastDate(), person.isRetired(), person.getRetiredFrom(),
-                    holds.stream().map(HoldView::of).toList(), patronIds, watched, person.getTerms(),
+                    holds.stream().map(HoldView::of).toList(), patronIds, watched, terms,
                     person.getContact(), aliases, clashing, person.getOriginSheetId(),
                     retirements.stream().map(RetirementView::of).toList(), person.getTags(),
                     snapshots.stream().map(SnapshotView::of).toList(), statements.lines());
@@ -92,22 +92,25 @@ public class PersonController {
     }
 
     /** A person's fields: a name that is not blank, a grade of A, B or C, and their own terms in whole
-     *  days (null for none). */
+     *  days (null for none) recorded from their from-date (blank: from the beginning of time). */
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             @Min(0) @Max(36500) Integer terms,
+            LocalDate termsFrom,
             @Size(max = 200) String contact,
             @Size(max = 2000) String tags) {
     }
 
     /** A person's fields as saved from an editor: the grade applies from its from-date (blank takes
-     *  the sheet's today), their own terms in whole days (null for none), with the version of the person the editor loaded. */
+     *  the sheet's today), their own terms in whole days (null for none) recorded from their from-date (blank:
+     *  from the beginning of time), with the version of the person the editor loaded. */
     public record PersonUpdate(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             LocalDate gradeFrom,
             @Min(0) @Max(36500) Integer terms,
+            LocalDate termsFrom,
             @Size(max = 200) String contact,
             @Size(max = 2000) String tags,
             @NotNull Long version) {
@@ -210,6 +213,7 @@ public class PersonController {
         Map<Long, List<PersonRetirement>> retirements = service.retirements(sheet, asOf);
         Map<Long, List<PersonSnapshot>> snapshots = service.snapshots(sheet, asOf);
         LocalDate today = asOf != null ? asOf : sheets.today(sheet);
+        Map<Long, List<PersonTerms>> dated = service.datedTerms(sheet);
         List<Person> them = service.list(sheet, asOf);
         Set<Long> clashing = service.clashingIds(sheet, them, aliases);
         return them.stream()
@@ -219,7 +223,8 @@ public class PersonController {
                         patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId()),
                         aliases.getOrDefault(p.getId(), List.of()), clashing.contains(p.getId()),
                         retirements.getOrDefault(p.getId(), List.of()),
-                        snapshots.getOrDefault(p.getId(), List.of())))
+                        snapshots.getOrDefault(p.getId(), List.of()),
+                        PersonTermsService.termsOn(p, dated.getOrDefault(p.getId(), List.of()), today)))
                 .toList();
     }
 
@@ -231,7 +236,7 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.add(sheet, by, request.name(),
-                request.grade(), request.terms(), request.contact(), request.tags())), by);
+                request.grade(), request.terms(), request.termsFrom(), request.contact(), request.tags())), by);
     }
 
     /** Change a person's name and give them a grade from a date; refused when the person was saved since the editor loaded them. */
@@ -241,7 +246,8 @@ public class PersonController {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
         return withStatements(rollups.track(sheet, by, () -> service.update(sheet, by, id, request.version(),
-                request.name(), request.grade(), request.gradeFrom(), request.terms(), request.contact(), request.tags())), by);
+                request.name(), request.grade(), request.gradeFrom(), request.terms(), request.termsFrom(), request.contact(),
+                request.tags())), by);
     }
 
     /** Add or update a person per pasted line, in order, each as the form would; none when any line is refused. */
@@ -380,7 +386,7 @@ public class PersonController {
                 statements.summary(person.getSheetId(), person.getId()), service.holds(person.getId()),
                 service.patronIds(person.getId()), user != null && service.watches(person.getId(), user),
                 service.aliases(person.getId()), service.clashing(person), service.retirements(person.getId()),
-                service.snapshots(person.getId()));
+                service.snapshots(person.getId()), service.termsOn(person, sheets.today(person.getSheetId())));
     }
 
     /** A save that raced another to the same version; the editor re-reads the person. */

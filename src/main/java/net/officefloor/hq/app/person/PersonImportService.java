@@ -84,7 +84,7 @@ public class PersonImportService {
                 throw new ImportRefusedException("Line " + at + ": " + match.getName() + " is repeated");
             }
             // The grade is given from the sheet's today; terms and contact are kept unless the line gives them.
-            Integer terms = l.terms() != null ? l.terms() : match.getTerms();
+            Integer terms = l.terms() != null ? l.terms() : people.termsToday(match);
             String contact = l.contact() != null ? l.contact() : match.getContact();
             updated.add(rollups.track(sheetId, user, () -> people.update(sheetId, user, match.getId(),
                     match.getVersion(), match.getName(), l.grade(), null, terms, contact)));

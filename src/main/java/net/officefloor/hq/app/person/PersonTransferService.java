@@ -167,6 +167,7 @@ public class PersonTransferService {
                     sheetId, personId);
         }
         jdbc.update("UPDATE person_grade SET sheet_id = ? WHERE person_id = ?", to, personId);
+        jdbc.update("UPDATE person_terms SET sheet_id = ? WHERE person_id = ?", to, personId);
         jdbc.update("UPDATE person_alias SET sheet_id = ? WHERE person_id = ?", to, personId);
         jdbc.update("UPDATE statement SET sheet_id = ? WHERE person_id = ?", to, personId);
         jdbc.update("UPDATE claim SET sheet_id = ?, claim_number = NULL, ref = NULL, ref_key = NULL,"

@@ -21,6 +21,7 @@ import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodClosedException;
 import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.PersonGradeService;
+import net.officefloor.hq.app.person.PersonTermsService;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonRetiredException;
 import net.officefloor.hq.app.person.PersonRetirement;
@@ -57,6 +58,7 @@ public class ClaimService {
     private final PersonRepository people;
     private final RateService rates;
     private final PersonGradeService grades;
+    private final PersonTermsService personTerms;
     private final SheetService sheets;
     private final PeriodRepository periods;
     private final SettingService settings;
@@ -69,7 +71,8 @@ public class ClaimService {
     public ClaimService(ClaimRepository claims, ClaimLogRepository logs, PersonRepository people, RateService rates,
             PersonGradeService grades, SheetService sheets, PeriodRepository periods, SettingService settings, PersonWatchRepository watches,
             HolidayService holidays, VoidReasonService voidReasons, ClaimCommentRepository comments, PersonRetirementRepository retirements,
-            ClaimLineRepository lines, Audit audit) {
+            ClaimLineRepository lines, PersonTermsService personTerms, Audit audit) {
+        this.personTerms = personTerms;
         this.lines = lines;
         this.retirements = retirements;
         this.comments = comments;
@@ -1254,10 +1257,10 @@ public class ClaimService {
         return note == null ? "" : note.trim();
     }
 
-    /** The terms in business days a claim of the person dated on a date takes: the person's own, else their
-     *  grade's in force then, else the sheet's. */
+    /** The terms in business days a claim of the person dated on a date takes: the person's own in force
+     *  then, else their grade's in force then, else the sheet's. */
     private int termsFor(String sheetId, Person person, LocalDate on) {
-        return person.getTerms() != null ? person.getTerms()
-                : settings.termsFor(sheetId, grades.gradeOn(person.getId(), on), on);
+        Integer own = personTerms.termsOn(person, on);
+        return own != null ? own : settings.termsFor(sheetId, grades.gradeOn(person.getId(), on), on);
     }
 }
