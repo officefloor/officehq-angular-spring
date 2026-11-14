@@ -50,6 +50,7 @@ public class SettingController {
      *  (null for off) and the entry date (blank for off), and the grades'
      *  own terms by grade (a grade not listed takes the sheet's terms); and every value recorded for the
      *  dated settings, by key (floor, late-pct, terms, terms-<grade>, clerk-limit, cap, proof-threshold, note-threshold,
+     *  review-threshold,
      *  rounding); and
      *  the permission matrix, the roles each action allows by action (blank for the standing rule). */
     public record SettingsView(List<RoleView> roles, String clerkLimit, String floor, String cap, int terms, String latePct,
@@ -105,6 +106,10 @@ public class SettingController {
 
     /** A note threshold of 0.00 or more with up to two decimals; null removes the threshold. */
     public record NoteThresholdRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
+    }
+
+    /** A review threshold of 0.00 or more with up to two decimals; null removes the threshold. */
+    public record ReviewThresholdRequest(@DecimalMin("0.00") @Digits(integer = 10, fraction = 2) BigDecimal value, LocalDate from) {
     }
 
     /** Terms of 0 or more whole days. Each figure setting is recorded from its from-date; null for the
@@ -275,6 +280,17 @@ public class SettingController {
             @RequestBody @Validated NoteThresholdRequest request) {
         String sheet = sheetId.trim();
         service.setNoteThreshold(sheet, SignedInUser.decode(user), request.value(), request.from());
+        return view(sheet);
+    }
+
+    /** Change the sheet's review threshold: a claim whose due is above the one in force on its date goes
+     *  to REVIEW when opened. */
+    @PutMapping("/review-threshold")
+    public SettingsView setReviewThreshold(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated ReviewThresholdRequest request) {
+        String sheet = sheetId.trim();
+        service.setReviewThreshold(sheet, SignedInUser.decode(user), request.value(), request.from());
         return view(sheet);
     }
 

@@ -1066,7 +1066,7 @@ export class People {
   /** Per status: how many of the sheet's claims have it. */
   protected readonly statusSummary = computed(() => {
     const claims = this.claims();
-    return ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'].map((status) => ({
+    return ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'].map((status) => ({
       status,
       count: claims.filter((c) => c.status === status).length,
     }));

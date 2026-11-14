@@ -311,6 +311,12 @@ public class SettingService {
         return inForce(sheetId, "note-threshold", on).map(SettingValue::getValue).orElse(null);
     }
 
+    /** The sheet's review threshold in force on a date: a claim of that date whose due is above it goes
+     *  to REVIEW when opened; null when there is none. */
+    public BigDecimal reviewThreshold(String sheetId, LocalDate on) {
+        return inForce(sheetId, "review-threshold", on).map(SettingValue::getValue).orElse(null);
+    }
+
     /** A person's due-total held to the sheet's cap; a due-total of none (n/a) is not capped. */
     public BigDecimal capped(String sheetId, BigDecimal dueTotal) {
         return capped(sheetId, dueTotal, null);
@@ -508,6 +514,14 @@ public class SettingService {
     @Transactional
     public SettingValue setNoteThreshold(String sheetId, String by, BigDecimal threshold, LocalDate from) {
         return record(sheetId, by, "note-threshold",
+                threshold != null ? threshold.setScale(2, RoundingMode.UNNECESSARY) : null, from);
+    }
+
+    /** Record the sheet's review threshold from a date (null for the sheet's today); a null threshold
+     *  records none. */
+    @Transactional
+    public SettingValue setReviewThreshold(String sheetId, String by, BigDecimal threshold, LocalDate from) {
+        return record(sheetId, by, "review-threshold",
                 threshold != null ? threshold.setScale(2, RoundingMode.UNNECESSARY) : null, from);
     }
 

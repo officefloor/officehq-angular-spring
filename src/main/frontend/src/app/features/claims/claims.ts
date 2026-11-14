@@ -11,11 +11,12 @@ import { ClaimTemplateStore } from '../claim-templates/claim-templates';
  *  the clerk limit is PENDING until a steward approves it (SETTLED) or rejects it (OPEN again); a
  *  DRAFT, OPEN or PENDING claim can be VOID, and a steward may void a SETTLED one within 7 days of
  *  its settlement. A DRAFT can be DELETED, counting nowhere, and restored to a DRAFT on the same
- *  sheet-today. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
+ *  sheet-today. A claim whose due is above the review threshold goes to REVIEW when opened, counting
+ *  nowhere until a steward reviews it (OPEN); a REVIEW claim can be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
 
 /** A status change a claim's buttons ask for. */
-type ClaimAction = 'open' | 'settle' | 'approve' | 'reject' | 'void' | 'resettle' | 'delete' | 'restore';
+type ClaimAction = 'open' | 'review' | 'settle' | 'approve' | 'reject' | 'void' | 'resettle' | 'delete' | 'restore';
 
 export interface Claim {
   id: number;
@@ -197,6 +198,7 @@ export function money(total: number): string {
 
 const PAST: Record<ClaimAction, string> = {
   open: 'opened',
+  review: 'reviewed',
   settle: 'settled',
   approve: 'approved',
   reject: 'rejected',
@@ -325,6 +327,9 @@ const NUMBER = /^\S+$/;
           </ol>
           <button type="button" data-testid="claim-open" [attr.aria-label]="'Open claim ' + c.id" (click)="act(c, 'open')">
             Open
+          </button>
+          <button type="button" data-testid="claim-review" [attr.aria-label]="'Review claim ' + c.id" (click)="act(c, 'review')">
+            Review
           </button>
           <button type="button" data-testid="claim-settle" [attr.aria-label]="'Settle claim ' + c.id" (click)="act(c, 'settle')">
             Settle
@@ -1126,6 +1131,8 @@ export class PersonClaims {
               ? 'The claim could not be restored: only a deleted claim can, on the same day it was deleted.'
             : !forbidden && action === 'open'
               ? 'The claim could not be opened: one due above the note threshold needs a note first, its status and period must allow it, and its person must be under the cap on open claims its period sets.'
+            : forbidden && action === 'review'
+              ? 'The claim could not be reviewed: only a steward can review a claim.'
             : forbidden && action === 'resettle'
               ? 'The claim could not be re-settled: only a steward can re-settle a claim.'
               : !forbidden && action === 'void' && this.voidReasons.reasons().length > 0

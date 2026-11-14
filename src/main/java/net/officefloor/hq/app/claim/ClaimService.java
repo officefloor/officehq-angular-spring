@@ -330,7 +330,7 @@ public class ClaimService {
             case OPEN -> Permission.OPEN;
             case SETTLED -> Permission.SETTLE;
             case VOID -> Permission.VOID;
-            case DRAFT, PENDING, DELETED -> throw new StatusChangeRefusedException(claim.getStatus(), to);
+            case DRAFT, PENDING, DELETED, REVIEW -> throw new StatusChangeRefusedException(claim.getStatus(), to);
         });
         refuseClosed(sheetId, claim.getDueBy());
         // A SETTLED claim is voided only by a steward, within the void window of its settlement.
@@ -363,6 +363,9 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED && overClerkLimit(sheetId, user, due)) {
             to = ClaimStatus.PENDING;
         }
+        if (to == ClaimStatus.OPEN && overReviewThreshold(sheetId, person, claim)) {
+            to = ClaimStatus.REVIEW;
+        }
         claim.setStatus(to);
         if (to == ClaimStatus.SETTLED || to == ClaimStatus.PENDING) {
             // Settled one at a time until a bulk settle marks it with its batch.
@@ -370,6 +373,9 @@ public class ClaimService {
         }
         if (to == ClaimStatus.OPEN) {
             claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
+            claim.setOpenedBy(user);
+        } else if (to == ClaimStatus.REVIEW) {
+            // Numbered only once a steward has reviewed it.
             claim.setOpenedBy(user);
         } else if (to == ClaimStatus.SETTLED) {
             claim.setSettledDue(due);
@@ -381,6 +387,7 @@ public class ClaimService {
         String event = switch (to) {
             case OPEN -> "CLAIM_OPENED";
             case PENDING -> "CLAIM_PENDING";
+            case REVIEW -> "CLAIM_REVIEW";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
             case DRAFT, DELETED -> throw new IllegalStateException("A claim is deleted or restored on its own");
@@ -534,6 +541,31 @@ public class ClaimService {
         audit.recordOnCommit(line("CLAIM_APPROVED", sheetId, user, person, saved, saved.getNumber())
                 + " due=" + settledDueText(saved));
         notifyWatchers(sheetId, user, person, saved);
+        return saved;
+    }
+
+    /** A steward reviews a REVIEW claim: it is OPEN, taking the next number as an opened claim does, and
+     *  keeps who opened it; CLAIM_REVIEWED then CLAIM_OPENED are written. Anyone else, a claim that is
+     *  not in REVIEW, or one dated in a closed period, is refused. */
+    @Transactional
+    public Claim review(String sheetId, String user, Long personId, Long id) {
+        Person person = person(sheetId, personId);
+        // Lock the sheet first, as opening does: the claim takes the next number.
+        sheets.lock(sheetId);
+        Claim claim = claim(sheetId, personId, id);
+        refuseClosed(sheetId, claim.getDueBy());
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new StatusChangeRefusedException(claim.getStatus(), ClaimStatus.OPEN);
+        }
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ApprovalRefusedException(user);
+        }
+        claim.setStatus(ClaimStatus.OPEN);
+        claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
+        Claim saved = claims.saveAndFlush(claim);
+        log(sheetId, user, person, saved);
+        record("CLAIM_REVIEWED", sheetId, user, person, saved, null);
+        record("CLAIM_OPENED", sheetId, user, person, saved);
         return saved;
     }
 
@@ -1034,6 +1066,17 @@ public class ClaimService {
         if (claim.getProofs() == 0 && threshold != null && due != null && due.compareTo(threshold) > 0) {
             throw new ProofRequiredException(due, threshold);
         }
+    }
+
+    /** Whether a claim being opened goes to REVIEW: its due is above the review threshold in force on
+     *  its date; a due of n/a, or no threshold, does not. */
+    private boolean overReviewThreshold(String sheetId, Person person, Claim claim) {
+        BigDecimal threshold = settings.reviewThreshold(sheetId, claim.getDate());
+        if (threshold == null) {
+            return false;
+        }
+        BigDecimal due = dueOf(sheetId, person, claim);
+        return due != null && due.compareTo(threshold) > 0;
     }
 
     /** A claim whose due is above the note threshold in force on its date cannot be opened while its

@@ -318,6 +318,15 @@ public class ClaimController {
         return view(sheet, rollups.track(sheet, by, () -> service.approve(sheet, by, personId, id)));
     }
 
+    /** Review a REVIEW claim: a steward makes it OPEN, numbered then. */
+    @PostMapping("/people/{personId}/claims/{id}/review")
+    public ClaimView review(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        String sheet = sheetId.trim();
+        String by = SignedInUser.decode(user);
+        return view(sheet, rollups.track(sheet, by, () -> service.review(sheet, by, personId, id)));
+    }
+
     /** Reject a PENDING claim with a reason: a steward sends it back to OPEN. */
     @PostMapping("/people/{personId}/claims/{id}/reject")
     public ClaimView reject(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,

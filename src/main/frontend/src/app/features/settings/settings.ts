@@ -67,7 +67,7 @@ interface SettingsView {
   /** The grades' own terms in whole days, by grade; a grade not listed takes the sheet's terms. */
   gradeTerms: Record<string, number>;
   /** Every value recorded for the dated settings, by key (floor, late-pct, terms, terms-<grade>,
-   *  clerk-limit, cap, proof-threshold, rounding), each list by from-date. */
+   *  clerk-limit, cap, proof-threshold, note-threshold, review-threshold, rounding), each list by from-date. */
   dated: Record<string, DatedValue[]>;
   /** The permission matrix: the roles each action allows, comma separated, by action; blank keeps
    *  the standing rule. */
@@ -141,6 +141,8 @@ export class SettingStore {
   readonly proofThreshold = computed(() => this.onToday('proof-threshold') ?? null);
   /** The note threshold in force on the sheet's today; null when there is none. */
   readonly noteThreshold = computed(() => this.onToday('note-threshold') ?? null);
+  /** The review threshold in force on the sheet's today; null when there is none. */
+  readonly reviewThreshold = computed(() => this.onToday('review-threshold') ?? null);
   /** The rounding mode in force on the sheet's today (half-up or half-even); null when there is none
    *  (the policy date decides). */
   readonly rounding = computed(() => this.onToday('rounding') ?? null);
@@ -300,6 +302,17 @@ export class SettingStore {
     if (!sheet) throw new Error('No sheet loaded.');
     const saved = await firstValueFrom(
       this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/note-threshold`, { value, from }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.show(saved);
+  }
+
+  /** Record the active sheet's review threshold from a date (null for the sheet's today); null records none. */
+  async setReviewThreshold(value: string | null, from: string | null): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const saved = await firstValueFrom(
+      this.http.put<SettingsView>(`/api/sheets/${encodeURIComponent(sheet)}/settings/review-threshold`, { value, from }),
     );
     if (this.session.sheetId() !== sheet) return;
     this.show(saved);
@@ -533,6 +546,8 @@ export class SettingStore {
 // the cap, the most a person's due-total can be, the proof threshold, above which a claim's due (by the threshold
 // in force on its date) cannot be settled or approved until the claim has a proof, the note threshold, above
 // which a claim's due (by the threshold in force on its date) cannot be opened while its note is empty,
+// the review threshold, above which a claim's due (by the threshold in force on its date) sends it to REVIEW
+// when opened, until a steward reviews it,
 // the rounding mode (half-up or half-even), by which a claim whose date has one in force rounds its live
 // figures (with none in force, the policy date decides),
 // the terms, the days after its date a claim is due by (fixed when the claim is added), and each
@@ -546,7 +561,7 @@ export class SettingStore {
 // the roles that may open, settle, void, reassign, close and reopen (blank keeps the standing rule).
 // The settings that carry a figure are dated: each is saved from the from-date typed beside it (blank
 // for the sheet's today), keeping the values recorded before, and the value in force on the sheet's
-// today is shown for each. Saving sends only the settings typed into since the last save; the clerk limit, the cap, the proof and note thresholds, the rounding mode, the policy date,
+// today is shown for each. Saving sends only the settings typed into since the last save; the clerk limit, the cap, the proof, note and review thresholds, the rounding mode, the policy date,
 // the period numbering from, the entry date and the grace days count as typed into once focused, as a blank one (none, or the sheet's today) is a value of its own.
 @Component({
   selector: 'app-settings',
@@ -716,6 +731,23 @@ export class SettingStore {
           placeholder="yyyy-mm-dd"
           [value]="noteThresholdFrom()"
           (input)="noteThresholdFrom.set(value($event)); settingsError.set(null)"
+        />
+        <label for="setting-review-threshold">Review threshold</label>
+        <input
+          id="setting-review-threshold"
+          data-testid="setting-review-threshold"
+          inputmode="decimal"
+          [value]="reviewThreshold()"
+          (focus)="reviewThresholdTyped.set(true)"
+          (input)="reviewThreshold.set(value($event)); reviewThresholdTyped.set(true); settingsError.set(null)"
+        />
+        <label for="setting-review-threshold-from">Review threshold from</label>
+        <input
+          id="setting-review-threshold-from"
+          data-testid="setting-review-threshold-from"
+          placeholder="yyyy-mm-dd"
+          [value]="reviewThresholdFrom()"
+          (input)="reviewThresholdFrom.set(value($event)); settingsError.set(null)"
         />
         <label for="setting-rounding">Rounding mode (half-up or half-even)</label>
         <input
@@ -942,6 +974,13 @@ export class SettingStore {
         }
       </p>
       <p>
+        Review threshold in force:
+        <strong data-testid="setting-review-threshold-current">{{ store.reviewThreshold() ?? '' }}</strong>
+        @if (store.reviewThreshold() === null) {
+          <span>none</span>
+        }
+      </p>
+      <p>
         Rounding mode in force:
         <strong data-testid="setting-rounding-current">{{ store.rounding() ?? '' }}</strong>
         @if (store.rounding() === null) {
@@ -1078,6 +1117,9 @@ export class Settings {
   protected readonly noteThreshold = signal('');
   protected readonly noteThresholdTyped = signal(false);
   protected readonly noteThresholdFrom = signal('');
+  protected readonly reviewThreshold = signal('');
+  protected readonly reviewThresholdTyped = signal(false);
+  protected readonly reviewThresholdFrom = signal('');
   protected readonly rounding = signal('');
   protected readonly roundingTyped = signal(false);
   protected readonly roundingFrom = signal('');
@@ -1231,6 +1273,8 @@ export class Settings {
     const saveThreshold = this.proofThresholdTyped();
     const noteThreshold = this.noteThreshold().trim();
     const saveNoteThreshold = this.noteThresholdTyped();
+    const reviewThreshold = this.reviewThreshold().trim();
+    const saveReviewThreshold = this.reviewThresholdTyped();
     const rounding = this.rounding().trim();
     const saveRounding = this.roundingTyped();
     const terms = this.terms().trim();
@@ -1264,6 +1308,7 @@ export class Settings {
     const capFrom = this.capFrom().trim();
     const thresholdFrom = this.proofThresholdFrom().trim();
     const noteThresholdFrom = this.noteThresholdFrom().trim();
+    const reviewThresholdFrom = this.reviewThresholdFrom().trim();
     const roundingFrom = this.roundingFrom().trim();
     const termsFrom = this.termsFrom().trim();
     const latePctFrom = this.latePctFrom().trim();
@@ -1282,6 +1327,7 @@ export class Settings {
       [saveCap, capFrom, 'the cap'],
       [saveThreshold, thresholdFrom, 'the proof threshold'],
       [saveNoteThreshold, noteThresholdFrom, 'the note threshold'],
+      [saveReviewThreshold, reviewThresholdFrom, 'the review threshold'],
       [saveRounding, roundingFrom, 'the rounding mode'],
       [saveTerms, termsFrom, 'the terms'],
       ...gradeTerms.map(([grade]) => [true, gradeTermsFrom[grade] ?? '', `the terms for grade ${grade}`] as [boolean, string, string]),
@@ -1312,6 +1358,10 @@ export class Settings {
     }
     if (saveNoteThreshold && noteThreshold !== '' && !AMOUNT.test(noteThreshold)) {
       this.settingsError.set('Type a note threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
+      return;
+    }
+    if (saveReviewThreshold && reviewThreshold !== '' && !AMOUNT.test(reviewThreshold)) {
+      this.settingsError.set('Type a review threshold of 0.00 or more, with up to two decimals, or leave it blank for none.');
       return;
     }
     if (saveRounding && rounding !== '' && !ROUNDING_MODES.includes(rounding)) {
@@ -1380,6 +1430,7 @@ export class Settings {
     this.capTyped.set(false);
     this.proofThresholdTyped.set(false);
     this.noteThresholdTyped.set(false);
+    this.reviewThresholdTyped.set(false);
     this.roundingTyped.set(false);
     this.termsTyped.set(false);
     this.gradeTerms.set({});
@@ -1407,6 +1458,9 @@ export class Settings {
         if (saveNoteThreshold) {
           await this.store.setNoteThreshold(noteThreshold === '' ? null : noteThreshold, fromOf(noteThresholdFrom));
         }
+        if (saveReviewThreshold) {
+          await this.store.setReviewThreshold(reviewThreshold === '' ? null : reviewThreshold, fromOf(reviewThresholdFrom));
+        }
         if (saveRounding) await this.store.setRounding(rounding === '' ? null : rounding, fromOf(roundingFrom));
         if (saveTerms) await this.store.setTerms(Number(terms), fromOf(termsFrom));
         for (const [grade, days] of gradeTerms) {
@@ -1432,6 +1486,7 @@ export class Settings {
         if (saveCap) this.capTyped.set(true);
         if (saveThreshold) this.proofThresholdTyped.set(true);
         if (saveNoteThreshold) this.noteThresholdTyped.set(true);
+        if (saveReviewThreshold) this.reviewThresholdTyped.set(true);
         if (saveRounding) this.roundingTyped.set(true);
         if (saveTerms) this.termsTyped.set(true);
         this.gradeTerms.update((typed) => ({ ...Object.fromEntries(gradeTerms), ...typed }));
