@@ -98,7 +98,7 @@ public class PersonController {
      *  days (null for none) recorded from their from-date (blank: from the beginning of time). */
     public record PersonRequest(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @Min(0) @Max(36500) Integer terms,
             LocalDate termsFrom,
             @Size(max = 200) String contact,
@@ -110,7 +110,7 @@ public class PersonController {
      *  from the beginning of time), with the version of the person the editor loaded. */
     public record PersonUpdate(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             LocalDate gradeFrom,
             @Min(0) @Max(36500) Integer terms,
             LocalDate termsFrom,
@@ -123,7 +123,7 @@ public class PersonController {
      *  (blank takes the sheet's today). */
     public record BulkGradeRequest(
             @NotNull @Size(max = 10000) Set<@NotNull Long> personIds,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             LocalDate from) {
     }
 

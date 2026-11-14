@@ -58,8 +58,8 @@ public class RateImportService {
             throw new RateRefusedException("Line " + at + " needs grade,rate,from,to");
         }
         String grade = fields[0].trim();
-        if (!grade.matches("[ABC]")) {
-            throw new RateRefusedException("Line " + at + ": the grade must be A, B or C");
+        if (!grade.matches("[A-Z]{1,3}")) {
+            throw new RateRefusedException("Line " + at + ": the grade must be one to three capital letters");
         }
         String rate = fields[1].trim();
         if (!rate.matches("\\d{1,5}(\\.\\d{1,2})?")) {

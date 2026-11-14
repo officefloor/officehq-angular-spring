@@ -112,8 +112,8 @@ public class PersonImportService {
         if (grade.isEmpty()) {
             grade = defaultGrade;
         }
-        if (!grade.matches("[ABC]")) {
-            throw new ImportRefusedException("Line " + at + ": the grade must be A, B or C");
+        if (!grade.matches("[A-Z]{1,3}")) {
+            throw new ImportRefusedException("Line " + at + ": the grade must be one to three capital letters");
         }
         String termsText = fields.length > 2 ? fields[2].trim() : "";
         Integer terms = null;

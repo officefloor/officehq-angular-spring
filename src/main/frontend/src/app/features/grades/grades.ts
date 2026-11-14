@@ -2,10 +2,15 @@ import { HttpClient } from '@angular/common/http';
 import { Component, Injectable, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
-import { GRADES } from '../rates/rates';
+
+/** The grades every sheet has, in order; a sheet may add its own after them. */
+export const GRADES = ['A', 'B', 'C'];
+
+/** What an added grade looks like: a code of one to three capital letters. */
+const CODE = /^[A-Z]{1,3}$/;
 
 export interface Grade {
-  /** The grade (A, B or C); it names the grade's row. */
+  /** The grade (A, B, C or one added on the sheet); it names the grade's row. */
   grade: string;
   /** Whether the grade is retired on the sheet: no one can be given it any more. */
   retired: boolean;
@@ -18,6 +23,12 @@ export class GradeStore {
   private readonly session = inject(Session);
 
   readonly grades = signal<Grade[]>([]);
+  /** The sheet's grade codes, in order, for every grade select and per-grade figure; A, B and C
+   *  until the sheet's grades are read. */
+  readonly codes = computed(() => {
+    const list = this.grades();
+    return list.length ? list.map((g) => g.grade) : GRADES;
+  });
 
   constructor() {
     effect(() => {
@@ -26,6 +37,18 @@ export class GradeStore {
       this.grades.set([]);
       if (sheet) void this.read(sheet, load);
     });
+  }
+
+  /** Add a grade on the active sheet; the server refuses one that is a grade already or is not a
+   *  code of one to three capital letters. */
+  async add(grade: string): Promise<void> {
+    const sheet = this.session.sheetId();
+    if (!sheet) throw new Error('No sheet loaded.');
+    const list = await firstValueFrom(
+      this.http.post<Grade[]>(`/api/sheets/${encodeURIComponent(sheet)}/grades`, { grade }),
+    );
+    if (this.session.sheetId() !== sheet) return;
+    this.grades.set(list);
   }
 
   /** Retire a grade on the active sheet; the server refuses one retired already. */
@@ -58,13 +81,25 @@ export class GradeStore {
   }
 }
 
-// The sheet's grades, each shown with whether it is retired, and the entry that retires one. People on
+// The sheet's grades, each shown with whether it is retired, the entry that adds one and the entry
+// that retires one. People on
 // a retired grade keep it; it cannot be chosen for anyone any more.
 @Component({
   selector: 'app-grades',
   template: `
     <section aria-labelledby="grades-heading">
       <h2 id="grades-heading">Grades</h2>
+      <form (submit)="add($event)" aria-label="Add a grade">
+        <label for="grade-add-code">New grade</label>
+        <input
+          id="grade-add-code"
+          data-testid="grade-add-code"
+          maxlength="10"
+          [value]="code()"
+          (input)="code.set(text($event)); error.set(null)"
+        />
+        <button type="submit" data-testid="grade-add">Add grade</button>
+      </form>
       <form (submit)="submit($event)">
         <label for="grade-retire-select">Grade to retire</label>
         <select
@@ -128,10 +163,14 @@ export class GradeStore {
 })
 export class Grades {
   protected readonly store = inject(GradeStore);
-  protected readonly grades = GRADES;
+  protected get grades(): string[] {
+    return this.store.codes();
+  }
   protected readonly grade = signal(GRADES[0]);
   protected readonly mergeFrom = signal(GRADES[0]);
   protected readonly mergeInto = signal(GRADES[1]);
+  /** The code typed for a grade to add. */
+  protected readonly code = signal('');
   private readonly session = inject(Session);
   /** How many people the last merge gave the other grade, with the sheet load it was made on; null
    *  while it runs or before one. */
@@ -147,6 +186,31 @@ export class Grades {
 
   protected value(event: Event): string {
     return (event.target as HTMLSelectElement).value;
+  }
+
+  protected text(event: Event): string {
+    return (event.target as HTMLInputElement).value;
+  }
+
+  /** Add the typed grade; one that is a grade already, or is not one to three capital letters, is
+   *  refused beside the entry. */
+  protected async add(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.busy()) return;
+    this.error.set(null);
+    const grade = this.code().trim();
+    if (!CODE.test(grade)) {
+      this.error.set(`${grade || 'A blank code'} is not a grade: a grade is one to three capital letters.`);
+      return;
+    }
+    this.busy.set(true);
+    try {
+      await this.store.add(grade);
+    } catch {
+      this.error.set(`The grade ${grade} could not be added: it may be a grade already.`);
+    } finally {
+      this.busy.set(false);
+    }
   }
 
   /** Retire the chosen grade; one retired already is refused beside the entry. */

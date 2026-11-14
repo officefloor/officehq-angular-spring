@@ -36,6 +36,10 @@ public class GradeController {
     public record RetireRequest(@NotNull @Size(max = 10) String grade) {
     }
 
+    /** A grade to add. */
+    public record AddRequest(@NotNull @Size(max = 10) String grade) {
+    }
+
     /** A grade to merge into another. */
     public record MergeRequest(@NotNull @Size(max = 10) String from, @NotNull @Size(max = 10) String into) {
     }
@@ -56,7 +60,16 @@ public class GradeController {
     @GetMapping
     public List<GradeView> list(@PathVariable @NotBlank @Size(max = 200) String sheetId) {
         Set<String> retired = service.retired(sheetId.trim());
-        return GradeService.GRADES.stream().map(g -> new GradeView(g, retired.contains(g))).toList();
+        return service.grades(sheetId.trim()).stream().map(g -> new GradeView(g, retired.contains(g))).toList();
+    }
+
+    /** Add a grade on the sheet; the grades as they stand then. */
+    @PostMapping
+    public List<GradeView> add(@PathVariable @NotBlank @Size(max = 200) String sheetId,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated AddRequest request) {
+        String sheet = sheetId.trim();
+        service.add(sheet, SignedInUser.decode(user), request.grade().trim());
+        return list(sheet);
     }
 
     /** Retire a grade on the sheet; the grades as they stand then. */
@@ -76,7 +89,8 @@ public class GradeController {
                 request.into().trim()).size());
     }
 
-    /** A grade that is not one, or is retired already, is refused; so is a merge refused, or one that
+    /** A grade that is not one, or is retired already, or one added that is a grade already or not a
+     *  code, is refused; so is a merge refused, or one that
      *  could not give a person the grade as their editor would. */
     @ExceptionHandler({GradeRetiredException.class, GradeMergeRefusedException.class,
             DataIntegrityViolationException.class, StalePersonException.class, NameInUseException.class,

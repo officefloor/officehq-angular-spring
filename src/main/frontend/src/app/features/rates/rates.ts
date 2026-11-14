@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
+import { GradeStore } from '../grades/grades';
 
 export interface Rate {
   grade: string;
@@ -52,7 +53,6 @@ export function ratesFor(rates: Rate[], claimId: number): Rate[] {
   return theirs;
 }
 
-export const GRADES = ['A', 'B', 'C'];
 
 /** Shown for a due that has no rate to work from. */
 export const NO_RATE = 'n/a';
@@ -130,6 +130,7 @@ const PERCENT = /^\d{1,5}(\.\d{1,2})?$/;
 export class RateStore {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
+  private readonly gradeStore = inject(GradeStore);
 
   /** The sheet's rates by grade, each grade's from the earliest. */
   readonly rates = signal<Rate[]>([]);
@@ -145,7 +146,7 @@ export class RateStore {
     const today = this.session.today();
     const map = new Map<string, string>();
     if (!today) return map;
-    for (const grade of GRADES) {
+    for (const grade of this.gradeStore.codes()) {
       const rate = rateOn(this.ofOn(grade, today), today);
       if (rate !== null) map.set(grade, rate);
     }
@@ -161,7 +162,7 @@ export class RateStore {
    *  to the parent sheets' as `current` does; null when none is. Keyed grade-yyyy-mm. */
   readonly calendar = computed(() => {
     const map = new Map<string, string | null>();
-    for (const grade of GRADES) {
+    for (const grade of this.gradeStore.codes()) {
       for (const month of this.months()) {
         const first = `${month}-01`;
         map.set(`${grade}-${month}`, rateOn(this.ofOn(grade, first), first));
@@ -430,7 +431,10 @@ export class RateStore {
 export class Rates {
   protected readonly store = inject(RateStore);
   private readonly session = inject(Session);
-  protected readonly grades = GRADES;
+  protected get grades(): string[] {
+    return this.gradeStore.codes();
+  }
+  private readonly gradeStore = inject(GradeStore);
   protected readonly noRate = NO_RATE;
   protected readonly grade = signal('A');
   protected readonly pct = signal('');

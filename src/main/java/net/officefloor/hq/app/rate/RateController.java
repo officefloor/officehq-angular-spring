@@ -107,7 +107,7 @@ public class RateController {
     /** Set the rate for a grade (A, B or C) from a date, replacing the one it had from that date. */
     @PutMapping("/{grade}")
     public RateView set(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated RateRequest request) {
         String sheet = sheetId.trim();
         String by = SignedInUser.decode(user);
@@ -129,7 +129,7 @@ public class RateController {
      *  people on the grade would change were it the grade's rate on every date. Nothing is saved. */
     @GetMapping("/{grade}/preview")
     public RatePreviewView preview(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestParam @Pattern(regexp = "\\d{1,5}(\\.\\d{1,2})?") String rate) {
         ClaimService.RatePreview preview = claims.previewRate(sheetId.trim(), grade, new BigDecimal(rate).setScale(2));
         return new RatePreviewView(preview.count(), preview.diff().toPlainString());

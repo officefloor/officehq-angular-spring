@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.TreeMap;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.grade.RetiredGradeRepository;
+import net.officefloor.hq.app.grade.SheetGradeRepository;
 import net.officefloor.hq.app.claim.ProofKind;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -49,12 +50,14 @@ public class SettingService {
     private final DelegationRepository delegations;
     private final History history;
     private final Audit audit;
+    private final SheetGradeRepository addedGrades;
     private final RetiredGradeRepository retiredGrades;
 
     public SettingService(SheetService sheets, SheetRepository sheetRepository, SheetRoleRepository roles,
             SettingValueRepository values, SheetPermissionRepository permissions, DelegationRepository delegations,
-            History history, Audit audit, RetiredGradeRepository retiredGrades) {
+            History history, Audit audit, RetiredGradeRepository retiredGrades, SheetGradeRepository addedGrades) {
         this.retiredGrades = retiredGrades;
+        this.addedGrades = addedGrades;
         this.history = history;
         this.sheets = sheets;
         this.sheetRepository = sheetRepository;
@@ -789,12 +792,12 @@ public class SettingService {
         return saved;
     }
 
-    /** Change the sheet's default grade; null leaves it blank (A). A grade other than A, B or C is
-     *  refused. Changing it changes no one's grade. */
+    /** Change the sheet's default grade; null leaves it blank (A). A grade other than A, B, C or one
+     *  added on the sheet is refused. Changing it changes no one's grade. */
     @Transactional
     public Sheet setDefaultGrade(String sheetId, String by, String grade) {
-        if (grade != null && !grade.matches("[ABC]")) {
-            throw new IllegalArgumentException("A default grade is A, B or C, not " + grade);
+        if (grade != null && !grade.matches("[ABC]") && !addedGrades.existsBySheetIdAndGrade(sheetId, grade)) {
+            throw new IllegalArgumentException("A default grade is one of the sheet's grades, not " + grade);
         }
         sheets.load(sheetId);
         Sheet sheet = sheetRepository.findLockedById(sheetId).orElseThrow();

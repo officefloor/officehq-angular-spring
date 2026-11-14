@@ -289,7 +289,7 @@ public class SettingController {
     /** Set a grade's (A, B or C) clerk limit; blank leaves the sheet's to apply to the grade's claims. */
     @PutMapping("/clerk-limit/{grade}")
     public SettingsView setGradeClerkLimit(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Validated ClerkLimitRequest request) {
         String sheet = sheetId.trim();
@@ -310,7 +310,7 @@ public class SettingController {
     /** Set a grade's (A, B or C) proof threshold; blank leaves the sheet's to apply to the grade's claims. */
     @PutMapping("/proof-threshold/{grade}")
     public SettingsView setGradeProofThreshold(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Validated ProofThresholdRequest request) {
         String sheet = sheetId.trim();
@@ -353,7 +353,7 @@ public class SettingController {
     /** Set a grade's (A, B or C) own terms; they fix the due-by of the grade's claims dated from their from-date that are added from now on. */
     @PutMapping("/terms/{grade}")
     public SettingsView setGradeTerms(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Validated TermsRequest request) {
         String sheet = sheetId.trim();
@@ -364,7 +364,7 @@ public class SettingController {
     /** Set a grade's (A, B or C) grace days; the overdue claims and late charges they move are followed in the audit. */
     @PutMapping("/grace/{grade}")
     public SettingsView setGradeGrace(@PathVariable @NotBlank @Size(max = 200) String sheetId,
-            @PathVariable @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
             @RequestBody @Validated GradeGraceRequest request) {
         String sheet = sheetId.trim();

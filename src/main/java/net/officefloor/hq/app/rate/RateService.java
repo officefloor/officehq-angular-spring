@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.grade.GradeService;
 import net.officefloor.hq.app.history.History;
 import net.officefloor.hq.app.setting.SettingService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -37,10 +38,12 @@ public class RateService {
     private final History history;
     private final Audit audit;
     private final JdbcTemplate jdbc;
+    private final GradeService grades;
 
     public RateService(RateRepository rates, RateVersionRepository versions, SheetService sheets, SheetRepository sheetRepository, History history,
-            Audit audit, JdbcTemplate jdbc) {
+            Audit audit, JdbcTemplate jdbc, GradeService grades) {
         this.jdbc = jdbc;
+        this.grades = grades;
         this.rates = rates;
         this.versions = versions;
         this.sheets = sheets;
@@ -128,7 +131,7 @@ public class RateService {
         if (asOf == null) {
             return list(sheetId);
         }
-        return Stream.of("A", "B", "C")
+        return grades.grades(sheetId).stream()
                 .flatMap(grade -> history.rates(sheetId, grade, asOf).stream()
                         .sorted(Comparator.comparing(Rate::getFrom, Comparator.nullsFirst(Comparator.naturalOrder()))))
                 .toList();
@@ -203,6 +206,9 @@ public class RateService {
             throw new RateRefusedException("A rate's to-date cannot be before its from-date.");
         }
         sheets.load(sheetId);
+        if (!grades.isGrade(sheetId, grade)) {
+            throw new RateRefusedException("There is no grade " + grade);
+        }
         BigDecimal scaled = rate.setScale(2, RoundingMode.UNNECESSARY);
         Long forwardAfter = from != null && !from.isBefore(sheets.today(sheetId))
                 ? jdbc.queryForObject("SELECT COALESCE(MAX(id), 0) FROM claim", Long.class)

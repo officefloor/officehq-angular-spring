@@ -3,7 +3,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT, Claim, Late, PersonClaims, cents, claimDueCents, counts, deferred, isOpen, money, overdue, plusDays, reviewLate, sharePartCents, statusAsOf } from '../claims/claims';
-import { Grades } from '../grades/grades';
+import { GradeStore, Grades } from '../grades/grades';
 import { Holidays } from '../holidays/holidays';
 import { Notes } from '../notes/notes';
 import { VoidReasonStore, VoidReasons } from '../void-reasons/void-reasons';
@@ -1068,7 +1068,10 @@ export class People {
     return (c: Claim) => graceOn(gradeOn(grades.get(c.personId) ?? [], c.date), c.date);
   });
 
-  protected readonly grades = ['A', 'B', 'C'];
+  protected get grades(): string[] {
+    return this.gradeStore.codes();
+  }
+  private readonly gradeStore = inject(GradeStore);
   protected readonly people = signal<Person[]>([]);
   /** Whether retired people are listed; off when the screen opens and kept across sheet loads. */
   protected readonly showRetired = signal(false);

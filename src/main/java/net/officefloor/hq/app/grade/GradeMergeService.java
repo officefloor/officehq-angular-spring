@@ -22,16 +22,18 @@ public class GradeMergeService {
     private final PersonRepository people;
     private final PersonService service;
     private final PersonGradeService grades;
+    private final GradeService gradeRules;
     private final RollupService rollups;
     private final SettingService settings;
     private final SheetService sheets;
     private final Audit audit;
 
     public GradeMergeService(PersonRepository people, PersonService service, PersonGradeService grades,
-            RollupService rollups, SettingService settings, SheetService sheets, Audit audit) {
+            GradeService gradeRules, RollupService rollups, SettingService settings, SheetService sheets, Audit audit) {
         this.people = people;
         this.service = service;
         this.grades = grades;
+        this.gradeRules = gradeRules;
         this.rollups = rollups;
         this.settings = settings;
         this.sheets = sheets;
@@ -46,7 +48,7 @@ public class GradeMergeService {
      *  people given the grade, in that order. */
     @Transactional
     public List<Person> merge(String sheetId, String user, String from, String into) {
-        if (!GradeService.GRADES.contains(from) || !GradeService.GRADES.contains(into)) {
+        if (!gradeRules.isGrade(sheetId, from) || !gradeRules.isGrade(sheetId, into)) {
             throw new GradeMergeRefusedException("There is no grade " + from + " or " + into);
         }
         if (from.equals(into)) {

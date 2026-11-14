@@ -3,7 +3,8 @@ import { Component, Injectable, computed, effect, inject, signal } from '@angula
 import { firstValueFrom } from 'rxjs';
 import { Session } from '../../core/session';
 import { AMOUNT } from '../claims/claims';
-import { GRADES, RateStore } from '../rates/rates';
+import { GradeStore } from '../grades/grades';
+import { RateStore } from '../rates/rates';
 
 export interface RoleView {
   user: string;
@@ -148,6 +149,7 @@ export class SettingStore {
   private readonly http = inject(HttpClient);
   private readonly session = inject(Session);
   private readonly rates = inject(RateStore);
+  private readonly gradeStore = inject(GradeStore);
 
   readonly roles = signal<RoleView[]>([]);
   readonly delegations = signal<DelegationView[]>([]);
@@ -176,7 +178,7 @@ export class SettingStore {
    *  sheet's terms. */
   readonly gradeTerms = computed(() => {
     const byGrade: Record<string, number> = {};
-    for (const g of GRADES) {
+    for (const g of this.gradeStore.codes()) {
       const days = this.onToday(`terms-${g}`);
       if (days !== undefined && days !== null) byGrade[g] = Number(days);
     }
@@ -1399,7 +1401,10 @@ export class SettingStore {
 export class Settings {
   protected readonly store = inject(SettingStore);
   protected readonly roles = ROLES;
-  protected readonly grades = GRADES;
+  protected get grades(): string[] {
+    return this.gradeStore.codes();
+  }
+  private readonly gradeStore = inject(GradeStore);
   protected readonly permissionActions = PERMISSIONS;
 
   protected readonly user = signal('');
@@ -1782,8 +1787,8 @@ export class Settings {
       this.settingsError.set('Type proof kinds of receipt or photo, comma separated, or leave them blank for none.');
       return;
     }
-    if (saveDefaultGrade && defaultGrade !== '' && !/^[ABC]$/.test(defaultGrade)) {
-      this.settingsError.set('Type a default grade of A, B or C, or leave it blank for A.');
+    if (saveDefaultGrade && defaultGrade !== '' && !this.grades.includes(defaultGrade)) {
+      this.settingsError.set('Type a default grade that is one of the sheet\'s grades, or leave it blank for A.');
       return;
     }
     if (saveReviewSla && reviewSla !== '' && !DAYS.test(reviewSla)) {
