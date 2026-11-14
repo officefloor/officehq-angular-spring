@@ -1,0 +1,232 @@
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+index b3ef6c377..5dbddd486 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonMergeService.java
+@@ -12,6 +12,7 @@ import net.officefloor.hq.app.pool.PoolMemberRepository;
+ import net.officefloor.hq.app.setting.Role;
+ import net.officefloor.hq.app.setting.SettingService;
+ import net.officefloor.hq.app.sheet.SheetService;
++import net.officefloor.hq.app.statement.Statement;
+ import net.officefloor.hq.app.statement.StatementRepository;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+@@ -51,12 +52,13 @@ public class PersonMergeService {
+     }
+ 
+     /** A steward merges a person into another. The merged person's claims move to the other, keeping
+-     *  their numbers and dates, listed as the other's newest in the order they were added, each losing
++     *  their numbers and dates, listed as the other's newest in the order they were added, each keeping
+      *  any figure a statement bound; the merged name and aliases become the other's aliases; the merged
+      *  person's patrons are added to the other's (not the other themselves, no repeats), anyone naming
+      *  the merged person as patron names the other instead (no repeats), and the merged person's pool
+      *  memberships move to the other (shares added where the other is already a member). Their
+-     *  statements, holds, watchers and contact are dropped, and they leave the sheet. Anyone but a
++     *  statements become the other's, counted with theirs, the other's last statement staying theirs
++     *  (or, having none, becoming the merged person's last). Their holds, watchers and contact are dropped, and they leave the sheet. Anyone but a
+      *  steward, a merge into the same person, or either of them retired, is refused. Returns the other. */
+     @Transactional
+     public Person merge(String sheetId, String user, Long id, Long intoId) {
+@@ -84,7 +86,6 @@ public class PersonMergeService {
+                 .sorted(Comparator.comparing(Claim::getId)).toList();
+         for (Claim claim : moved) {
+             claim.setPersonId(into.getId());
+-            claim.unbind();
+         }
+         claims.saveAllAndFlush(moved);
+         moved.forEach(claim -> claims.relist(claim.getId()));
+@@ -130,7 +131,17 @@ public class PersonMergeService {
+             }
+         }
+ 
+-        statements.deleteAll(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, from.getId()));
++        // Their statements become the other's, before the other's own (when they have any), so the
++        // other's last statement stays theirs.
++        List<Statement> theirStatements = statements.inOrder(sheetId, from.getId());
++        List<Statement> ownStatements = statements.inOrder(sheetId, into.getId());
++        long first = ownStatements.isEmpty() ? Long.MAX_VALUE
++                : ownStatements.get(0).getOrder() - theirStatements.size();
++        for (int i = 0; i < theirStatements.size(); i++) {
++            Statement statement = theirStatements.get(i);
++            statement.moveTo(into.getId(), ownStatements.isEmpty() ? statement.getOrder() : first + i);
++        }
++        statements.saveAllAndFlush(theirStatements);
+         holds.deleteAll(holds.findByPersonIdOrderByIdAsc(from.getId()));
+         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+         from.setContact(null);
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+index ffa6d537d..fd213b4f6 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonTransferService.java
+@@ -65,10 +65,10 @@ public class PersonTransferService {
+ 
+     /** A steward transfers a person to another sheet by id. The person arrives there with every grade
+      *  they were given, their terms, contact and aliases, and their claims with their status, dates,
+-     *  notes, tags, frozen figures and logs; each claim that had a number takes the other sheet's next
+-     *  number, in the order the claims were opened (by the sheet's today when each was, then the order
+-     *  they were added). Figures a statement bound are lost with the statements, references, comments
+-     *  and settle batches are not carried; patron links, pool memberships, holds and watches are
++     *  notes, tags, frozen figures, logs and the figures a statement bound them to, and their
++     *  statements; each claim that had a number takes the other sheet's next number, in the order the
++     *  claims were opened (by the sheet's today when each was, then the order they were added).
++     *  References, comments and settle batches are not carried; patron links, pool memberships, holds and watches are
+      *  dropped. A person the other sheet already has by their name or an alias (as names are compared)
+      *  arrives and is then merged into them, as a merge does. Anyone but a steward, a retired person,
+      *  this sheet's own id, an archived sheet, a name or alias matching more than one person or a
+@@ -149,22 +149,27 @@ public class PersonTransferService {
+         entities.flush();
+ 
+         // Left behind on this sheet: patron links both ways, pool memberships, holds, watches,
+-        // statements, and the claims' comments.
++        // and the claims' comments.
+         jdbc.update("DELETE FROM person_patron WHERE person_id = ? OR patron_id = ?", personId, personId);
+         jdbc.update("DELETE FROM pool_member WHERE person_id = ?", personId);
+         jdbc.update("DELETE FROM person_hold WHERE person_id = ?", personId);
+         jdbc.update("DELETE FROM person_watch WHERE person_id = ?", personId);
+-        jdbc.update("DELETE FROM statement WHERE person_id = ?", personId);
+         jdbc.update("DELETE FROM claim_comment WHERE claim_id IN (SELECT id FROM claim WHERE person_id = ?)",
+                 personId);
+ 
+-        // Carried to the other sheet: the person, their grades, aliases and claims with their logs.
+-        jdbc.update("UPDATE person SET sheet_id = ?, added_on = ?, origin_sheet_id = ? WHERE id = ?", to, today,
+-                sheetId, personId);
++        // Carried to the other sheet: the person, their grades, aliases, statements and claims with
++        // their logs and the figures a statement bound.
++        // One to be merged stays a person of this sheet, merged and gone from it, so their name does not
++        // meet the one they are merged into on the other sheet.
++        if (intoId == null) {
++            jdbc.update("UPDATE person SET sheet_id = ?, added_on = ?, origin_sheet_id = ? WHERE id = ?", to, today,
++                    sheetId, personId);
++        }
+         jdbc.update("UPDATE person_grade SET sheet_id = ? WHERE person_id = ?", to, personId);
+         jdbc.update("UPDATE person_alias SET sheet_id = ? WHERE person_id = ?", to, personId);
+-        jdbc.update("UPDATE claim SET sheet_id = ?, claim_number = NULL, ref = NULL, ref_key = NULL, stated = FALSE,"
+-                + " stated_due = NULL, settle_batch = NULL, locked_by = NULL WHERE person_id = ?", to, personId);
++        jdbc.update("UPDATE statement SET sheet_id = ? WHERE person_id = ?", to, personId);
++        jdbc.update("UPDATE claim SET sheet_id = ?, claim_number = NULL, ref = NULL, ref_key = NULL,"
++                + " settle_batch = NULL, locked_by = NULL WHERE person_id = ?", to, personId);
+         jdbc.update("UPDATE claim_status_log SET sheet_id = ? WHERE claim_id IN (SELECT id FROM claim WHERE"
+                 + " person_id = ?)", to, personId);
+         entities.clear();
+diff --git a/src/main/java/net/officefloor/hq/app/statement/Statement.java b/src/main/java/net/officefloor/hq/app/statement/Statement.java
+index cf77ce908..97b67b9d1 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/Statement.java
++++ b/src/main/java/net/officefloor/hq/app/statement/Statement.java
+@@ -41,6 +41,10 @@ public class Statement {
+     @Column(name = "cancelled_on")
+     private LocalDate cancelledOn;
+ 
++    /** Where the statement falls among its person's statements; null: by its id. */
++    @Column(name = "ordinal")
++    private Long ordinal;
++
+     protected Statement() {
+     }
+ 
+@@ -61,6 +65,17 @@ public class Statement {
+         return personId;
+     }
+ 
++    /** Where the statement falls among its person's statements: the last is the highest. */
++    public long getOrder() {
++        return ordinal != null ? ordinal : id;
++    }
++
++    /** Move the statement to another person, falling at an order among their statements. */
++    public void moveTo(Long personId, long order) {
++        this.personId = personId;
++        this.ordinal = order;
++    }
++
+     public LocalDate getTakenOn() {
+         return takenOn;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java b/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java
+index 7b59cb437..4a52d06c4 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementRepository.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.statement;
+ 
++import java.util.Comparator;
+ import java.util.List;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+@@ -10,4 +11,10 @@ public interface StatementRepository extends JpaRepository<Statement, Long> {
+ 
+     /** A person's statements, in the order they were taken. */
+     List<Statement> findBySheetIdAndPersonIdOrderByIdAsc(String sheetId, Long personId);
++
++    /** A person's statements, in their order: the last is their last statement. */
++    default List<Statement> inOrder(String sheetId, Long personId) {
++        return findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId).stream()
++                .sorted(Comparator.comparingLong(Statement::getOrder)).toList();
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementService.java b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+index 90f096fb2..c67fa4482 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementService.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.statement;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.Comparator;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.NoSuchElementException;
+@@ -62,7 +63,7 @@ public class StatementService {
+     /** Each person's statement summary on the sheet, by person id; a person with none is absent. */
+     public Map<Long, StatementSummary> summaries(String sheetId) {
+         return statements.findBySheetIdOrderByIdAsc(sheetId).stream()
+-                .filter(Statement::isLive)
++                .filter(Statement::isLive).sorted(Comparator.comparingLong(Statement::getOrder))
+                 .collect(Collectors.groupingBy(Statement::getPersonId,
+                         Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
+     }
+@@ -72,12 +73,13 @@ public class StatementService {
+     public Map<Long, StatementSummary> summaries(String sheetId, LocalDate asOf) {
+         return statements.findBySheetIdOrderByIdAsc(sheetId).stream()
+                 .filter(statement -> asOf == null ? statement.isLive() : statement.stoodAsOf(asOf))
++                .sorted(Comparator.comparingLong(Statement::getOrder))
+                 .collect(Collectors.groupingBy(Statement::getPersonId,
+                         Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
+     }
+ 
+     public StatementSummary summary(String sheetId, Long personId) {
+-        return StatementSummary.of(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId).stream()
++        return StatementSummary.of(statements.inOrder(sheetId, personId).stream()
+                 .filter(Statement::isLive).toList());
+     }
+ 
+@@ -147,7 +149,7 @@ public class StatementService {
+         if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+             throw new StatementCancelRefusedException(user + " is not a steward: only a steward cancels a statement");
+         }
+-        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId).stream()
++        List<Statement> theirs = statements.inOrder(sheetId, personId).stream()
+                 .filter(Statement::isLive).toList();
+         if (theirs.isEmpty()) {
+             throw new StatementCancelRefusedException(person.getName() + " has no statement to cancel");
+diff --git a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+index e0bab121f..3149ba57b 100644
+--- a/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
++++ b/src/main/java/net/officefloor/hq/app/statement/StatementSummary.java
+@@ -9,7 +9,7 @@ public record StatementSummary(int count, String lastDueTotal, LocalDate lastDat
+ 
+     public static final StatementSummary NONE = new StatementSummary(0, null, null);
+ 
+-    /** The summary of one person's statements, in the order they were taken. */
++    /** The summary of one person's statements, in their order (the last is their last statement). */
+     public static StatementSummary of(List<Statement> statements) {
+         if (statements.isEmpty()) {
+             return NONE;
+diff --git a/src/main/resources/db/migration/V79__statement_ordinal.sql b/src/main/resources/db/migration/V79__statement_ordinal.sql
+new file mode 100644
+index 000000000..c338e253a
+--- /dev/null
++++ b/src/main/resources/db/migration/V79__statement_ordinal.sql
+@@ -0,0 +1,4 @@
++-- Where a statement falls among its person's statements: a person's last statement is the one with the
++-- highest ordinal, or id when it has none. A statement moved to another person by a merge, when that
++-- person has statements of their own, is given an ordinal before theirs, so their last stays theirs.
++ALTER TABLE statement ADD COLUMN ordinal BIGINT;
