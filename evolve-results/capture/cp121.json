@@ -1,0 +1,64 @@
+{
+  "checkpoint": 121,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp121_history-follows",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A transferred person shows the sheet they came from (nothing for anyone else), and the audit\nviewer, filtered by their name, lists after this sheet's lines about them the lines about them\nfrom the sheet they came from, newest first, each as that sheet's file holds it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA transferred person shows the sheet they came from (nothing for anyone else), and the audit\nviewer, filtered by their name, lists after this sheet's lines about them the lines about them\nfrom the sheet they came from, newest first, each as that sheet's file holds it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "441d6e168982829b7f8465726e42837a77601e52",
+  "reset_sha": "",
+  "preagent_sha": "7d7755db5ceb6325fc2d634621b2d53555a5f4c5",
+  "prev_sha": "7d7755db5ceb6325fc2d634621b2d53555a5f4c5",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5223314000000001,
+    "input_tokens": 24,
+    "output_tokens": 5289,
+    "cache_read_tokens": 426837,
+    "cache_creation_tokens": 41386,
+    "num_turns": 12,
+    "duration_ms": 237249,
+    "duration_api_ms": 53855,
+    "model": "claude-opus-5-5",
+    "session_id": "7e3c5d6d-669b-4004-a3a1-b9ef00bf5c36",
+    "stop_reason": "success",
+    "result_text": "The change is in, and `bin/e2e` passes all 4 tests in the spec.\n\n**What it does now**\n- **Stored data:** a new migration, `V73__person_origin.sql`, adds a nullable `origin_sheet_id` column to `person`.\n- **Recording the origin:** when someone is transferred, `PersonTransferService` writes the sheet they left into that column.\n- **Showing it:** `Person` and `PersonView` carry the value as `origin`. The people table has a new \"Came from\" column (`person-origin`) that shows the sheet a transferred person came from and is empty for everyone else.\n- **Audit viewer:** filtering by a name works as before for this sheet. If that name belongs to someone transferred in, the viewer then adds the lines about them from the sheet they came from, newest first, exactly as that sheet's file holds them. This is in `AuditViewService`.\n\n**Three behaviours to know about**\n- The person is looked up by name or alias, like elsewhere in the app. On the old sheet, though, lines are matched by the person's **current** name. If they're renamed after the transfer, their old lines (written under the old name) won't appear.\n- Only one step back is followed. For someone transferred A \u2192 B \u2192 C, filtering on C shows C's lines and B's lines, but not A's.\n- A second transfer overwrites the origin with the newest sheet they left.\n\nThe spec only covers the simple case, so none of these is tested. Matching on the name they had when transferred, or following the whole chain, are both small changes if you want either.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5223314000000001,
+        "num_turns": 12,
+        "duration_ms": 237249,
+        "duration_api_ms": 53855,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp121.agent.jsonl",
+  "agent_diff_file": "cp121.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
