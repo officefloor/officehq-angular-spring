@@ -184,14 +184,16 @@ public class ClaimController {
     private final RollupService rollups;
     private final BulkOpenService bulkOpen;
     private final BulkSettleService bulkSettle;
+    private final PartSettleService partSettle;
     private final BulkReassignService bulkReassign;
     private final BulkRedateService bulkRedate;
     private final History history;
     private final ClaimTemplateService templates;
 
     public ClaimController(ClaimService service, RollupService rollups, BulkOpenService bulkOpen,
-            BulkSettleService bulkSettle, BulkReassignService bulkReassign, BulkRedateService bulkRedate,
-            History history, ClaimTemplateService templates) {
+            BulkSettleService bulkSettle, PartSettleService partSettle, BulkReassignService bulkReassign,
+            BulkRedateService bulkRedate, History history, ClaimTemplateService templates) {
+        this.partSettle = partSettle;
         this.bulkRedate = bulkRedate;
         this.templates = templates;
         this.bulkReassign = bulkReassign;
@@ -440,6 +442,19 @@ public class ClaimController {
         String by = SignedInUser.decode(user);
         ClaimService.Split split = rollups.track(sheet, by,
                 () -> service.split(sheet, by, personId, id, request.amount()));
+        return new SplitView(view(sheet, split.kept()), view(sheet, split.added()));
+    }
+
+    /** Settle part of an OPEN claim: split the amount off it and settle the new claim at once, the
+     *  four-eyes rules and the proof rule judged on the original claim; all or nothing. */
+    @PostMapping("/people/{personId}/claims/{id}/settle-part")
+    @ResponseStatus(HttpStatus.CREATED)
+    public SplitView settlePart(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long personId,
+            @PathVariable Long id, @RequestHeader(SignedInUser.HEADER) @NotBlank String user,
+            @RequestBody @Validated SplitRequest request) {
+        String sheet = sheetId.trim();
+        ClaimService.Split split = partSettle.settlePart(sheet, SignedInUser.decode(user), personId, id,
+                request.amount());
         return new SplitView(view(sheet, split.kept()), view(sheet, split.added()));
     }
 

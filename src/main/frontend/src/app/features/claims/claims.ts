@@ -430,6 +430,22 @@ const NUMBER = /^\S+$/;
           <button type="button" data-testid="claim-split" [attr.aria-label]="'Split claim ' + c.id" (click)="split(c)">
             Split
           </button>
+          <label [for]="'claim-settle-part-amount-' + c.id">Settle part</label>
+          <input
+            [id]="'claim-settle-part-amount-' + c.id"
+            data-testid="claim-settle-part-amount"
+            inputmode="decimal"
+            [value]="settlePartAmounts()[c.id] ?? ''"
+            (input)="setSettlePartAmount(c.id, value($event))"
+          />
+          <button
+            type="button"
+            data-testid="claim-settle-part"
+            [attr.aria-label]="'Settle part of claim ' + c.id"
+            (click)="settlePart(c)"
+          >
+            Settle part
+          </button>
           <ol data-testid="claim-lines" [attr.aria-label]="'Lines of claim ' + c.id">
             @for (line of c.lines; track $index) {
               <li data-testid="claim-lines-line">{{ line }}</li>
@@ -635,6 +651,9 @@ export class PersonClaims {
 
   /** The amount typed on each claim's row to split off it, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+
+  /** The amount typed on each claim's row to settle part of it, by claim id. */
+  protected readonly settlePartAmounts = signal<Record<number, string>>({});
 
   /** The comment typed on each claim's row, by claim id. */
   protected readonly commentTexts = signal<Record<number, string>>({});
@@ -1038,6 +1057,42 @@ export class PersonClaims {
         message: forbidden
           ? 'The claim could not be split: your role may not open a claim on this sheet.'
           : 'The claim could not be split: only an open claim outside a closed period, not deferred, can be.',
+      });
+    }
+  }
+
+  protected setSettlePartAmount(id: number, amount: string): void {
+    this.settlePartAmounts.update((amounts) => ({ ...amounts, [id]: amount }));
+    if (this.rowError()?.id === id) this.rowError.set(null);
+  }
+
+  /** Settle part of an OPEN claim: split the amount typed on its row off it, as splitting does, and
+   *  settle the new claim at once, as settling does (PENDING when the clerk limit says so). The
+   *  four-eyes rules and the proof rule are judged on the original claim; a split or a settle that
+   *  would be refused refuses the whole of it on the row. */
+  protected async settlePart(claim: Claim): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const amount = (this.settlePartAmounts()[claim.id] ?? '').trim();
+    if (!AMOUNT.test(amount) || cents(amount) <= 0 || cents(amount) >= cents(claim.amount)) {
+      this.rowError.set({ id: claim.id, message: "Type an amount above 0.00 and below the claim's to settle." });
+      return;
+    }
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${this.personId()}/claims/${claim.id}/settle-part`;
+    try {
+      const result = await firstValueFrom(this.http.post<Split>(url, { amount }));
+      if (this.session.sheetId() !== sheet) return;
+      this.setSettlePartAmount(claim.id, '');
+      this.saved.emit(result.kept);
+      this.saved.emit(result.added);
+    } catch (e) {
+      const forbidden = e instanceof HttpErrorResponse && e.status === 403;
+      this.rowError.set({
+        id: claim.id,
+        message: forbidden
+          ? 'Part of the claim could not be settled: whoever opened it cannot settle it, and your role must be allowed to open and settle.'
+          : 'Part of the claim could not be settled: only an open claim outside a closed period, not deferred, with the proofs it needs, can be.',
       });
     }
   }

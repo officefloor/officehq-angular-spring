@@ -323,6 +323,30 @@ public class ClaimService {
     @Transactional
     public Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to,
             String voidReason) {
+        return changeStatus(sheetId, user, personId, id, to, voidReason, false);
+    }
+
+    /** Refuse the user settling part of a claim when settling the claim itself would be refused by the
+     *  four-eyes rules (whoever opened or last edited it cannot) or the proof rule (its due now). */
+    @Transactional
+    public void refusePartSettle(String sheetId, String user, Long personId, Long id) {
+        Person person = person(sheetId, personId);
+        Claim claim = claim(sheetId, personId, id);
+        if (claim.openedOrEditedBy(user)) {
+            throw new OwnClaimSettleRefusedException(user);
+        }
+        refuseUnproved(sheetId, person, claim, dueOf(sheetId, person, claim));
+    }
+
+    /** Settle a claim just split off another for the user, as settling it would, save that the
+     *  four-eyes rules and the proof rule were judged on the claim it was split from. */
+    @Transactional
+    public Claim settleSplitOff(String sheetId, String user, Long personId, Long id) {
+        return changeStatus(sheetId, user, personId, id, ClaimStatus.SETTLED, null, true);
+    }
+
+    private Claim changeStatus(String sheetId, String user, Long personId, Long id, ClaimStatus to,
+            String voidReason, boolean judgedOnOriginal) {
         Person person = person(sheetId, personId);
         // Lock the sheet first, so a claim opened at the same moment elsewhere waits and the claim
         // read below is its latest state.
@@ -353,7 +377,7 @@ public class ClaimService {
         if (to == ClaimStatus.VOID) {
             refuseUnreasonedVoid(sheetId, reason);
         }
-        if (to == ClaimStatus.SETTLED && claim.openedOrEditedBy(user)) {
+        if (to == ClaimStatus.SETTLED && !judgedOnOriginal && claim.openedOrEditedBy(user)) {
             throw new OwnClaimSettleRefusedException(user);
         }
         if (to == ClaimStatus.SETTLED && claim.deferredOn(sheets.today(sheetId))) {
@@ -362,7 +386,7 @@ public class ClaimService {
         // Taken while the claim is still OPEN, so a settled due freezes in the late charge it has
         // gathered by then.
         BigDecimal due = to == ClaimStatus.SETTLED ? dueOf(sheetId, person, claim) : null;
-        if (to == ClaimStatus.SETTLED) {
+        if (to == ClaimStatus.SETTLED && !judgedOnOriginal) {
             refuseUnproved(sheetId, person, claim, due);
         }
         if (to == ClaimStatus.OPEN) {
