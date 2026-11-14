@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.crew.Crew;
@@ -67,22 +68,29 @@ public class PoolService {
     }
 
     /** The sheet's crews as pools, in the order they were added: each the lead and the members at equal
-     *  shares, 100.00 split as patrons' shares are (each rounded half to even), the remainder on the lead. */
+     *  shares, 100.00 split as patrons' shares are (each rounded half to even), the remainder on the first.
+     *  A lead who has left the sheet (transferred or merged away) is not among them. */
     public List<CrewPool> crewPools(String sheetId) {
         List<Crew> list = crews.findBySheetIdOrderByIdAsc(sheetId);
         Map<Long, List<CrewMember>> byCrew = crewMembers
                 .findByCrewIdInOrderByIdAsc(list.stream().map(Crew::getId).toList()).stream()
                 .collect(Collectors.groupingBy(CrewMember::getCrewId));
+        Set<Long> onSheet = people.findBySheetIdOrderByIdAsc(sheetId).stream().map(Person::getId)
+                .collect(Collectors.toSet());
         return list.stream().map(crew -> {
             List<Long> ids = new ArrayList<>();
             ids.add(crew.getLeadId());
             byCrew.getOrDefault(crew.getId(), List.of()).forEach(m -> ids.add(m.getPersonId()));
+            ids.removeIf(id -> !onSheet.contains(id));
             return new CrewPool(crew, ids, equalShares(ids.size()));
         }).toList();
     }
 
-    /** 100.00 split equally over this many, each rounded half to even, the remainder on the first. */
+    /** 100.00 split equally over this many, each rounded half to even, the remainder on the first; none for none. */
     private static List<BigDecimal> equalShares(int count) {
+        if (count == 0) {
+            return List.of();
+        }
         BigDecimal each = HUNDRED.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_EVEN);
         List<BigDecimal> shares = new ArrayList<>();
         for (int i = 0; i < count; i++) {

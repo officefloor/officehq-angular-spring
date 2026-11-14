@@ -150,6 +150,24 @@ export class RateStore {
     }
     return map;
   });
+  /** The months (yyyy-mm) of the calendar year of the sheet's today; none when it has no today. */
+  readonly months = computed(() => {
+    const year = this.session.today()?.slice(0, 4);
+    if (!year) return [];
+    return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+  });
+  /** For each grade and month of `months`, the rate in force on the month's first day, falling back
+   *  to the parent sheets' as `current` does; null when none is. Keyed grade-yyyy-mm. */
+  readonly calendar = computed(() => {
+    const map = new Map<string, string | null>();
+    for (const grade of GRADES) {
+      for (const month of this.months()) {
+        const first = `${month}-01`;
+        map.set(`${grade}-${month}`, rateOn(this.ofOn(grade, first), first));
+      }
+    }
+    return map;
+  });
 
   /** A grade's rates; none when the grade has no rate. */
   of(grade: string): Rate[] {
@@ -357,6 +375,27 @@ export class RateStore {
             <tr>
               <th scope="row">{{ g }}</th>
               <td [attr.data-testid]="'rate-current-' + g">{{ store.current().get(g) ?? noRate }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <table>
+        <caption>Rate calendar: in force on the first of each month</caption>
+        <thead>
+          <tr>
+            <th scope="col">Grade</th>
+            @for (m of store.months(); track m) {
+              <th scope="col">{{ m }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (g of grades; track g) {
+            <tr>
+              <th scope="row">{{ g }}</th>
+              @for (m of store.months(); track m) {
+                <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ store.calendar().get(g + '-' + m) ?? noRate }}</td>
+              }
             </tr>
           }
         </tbody>
