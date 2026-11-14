@@ -34,8 +34,62 @@ function hundredths(figure: string): bigint {
   return BigInt(whole) * 100n + BigInt(part.padEnd(2, '0').slice(0, 2));
 }
 
+/** A pool's members' shares in hundredths, each with whether it is a retired person. */
+function sharesOf(pool: Pool, byId: Map<number, PoolPerson>): { share: bigint; retired: boolean }[] {
+  return pool.members.map((m) => ({
+    share: hundredths(m.share),
+    retired: m.personId !== null && (byId.get(m.personId)?.retired ?? false),
+  }));
+}
+
+/** The shares added up, a retired member's counting as 0.00, in hundredths. */
+function totalOf(list: { share: bigint; retired: boolean }[]): bigint {
+  return list.filter((m) => !m.retired).reduce((sum, m) => sum + m.share, 0n);
+}
+
+/** Each pool's cuts in hundredths, in its members' order, by pool id; null when it is unbalanced or
+ *  has no pot: a pool that is a member of none has the sheet's pot (blank for none), any other its cut
+ *  in the pool above. Chains are short. */
+export function poolCuts(pools: Pool[], people: PoolPerson[], pot: string): Map<number, bigint[] | null> {
+  const byId = new Map(people.map((p) => [p.id, p]));
+  // The pool each pool is a member of, by member pool id.
+  const above = new Map<number, Pool>();
+  pools.forEach((p) => p.members.forEach((m) => m.memberPoolId !== null && above.set(m.memberPoolId, p)));
+  const cutsOf = (pool: Pool, seen: Set<number>): bigint[] | null => {
+    if (seen.has(pool.id)) return null;
+    const list = sharesOf(pool, byId);
+    if (totalOf(list) !== 10000n) return null;
+    const parent = above.get(pool.id);
+    let from: bigint | null;
+    if (parent) {
+      const parentCuts = cutsOf(parent, new Set([...seen, pool.id]));
+      const at = parent.members.findIndex((m) => m.memberPoolId === pool.id);
+      from = parentCuts ? parentCuts[at] : null;
+    } else {
+      from = pot !== '' ? hundredths(pot) : null;
+    }
+    return from === null ? null : cuts(from, list);
+  };
+  return new Map(pools.map((pool) => [pool.id, cutsOf(pool, new Set())]));
+}
+
+/** Each person's cut total in hundredths, by person id: their cuts across every pool they are a
+ *  member of, added up; a pool that shows no cuts adds nothing. */
+export function personCutTotals(pools: Pool[], people: PoolPerson[], pot: string): Map<number, bigint> {
+  const cutsByPool = poolCuts(pools, people, pot);
+  const totals = new Map<number, bigint>(people.map((p) => [p.id, 0n]));
+  for (const pool of pools) {
+    const cut = cutsByPool.get(pool.id);
+    if (!cut) continue;
+    pool.members.forEach((m, i) => {
+      if (m.personId !== null) totals.set(m.personId, (totals.get(m.personId) ?? 0n) + cut[i]);
+    });
+  }
+  return totals;
+}
+
 /** Hundredths as a two-decimal figure. */
-function figure(hundredths: bigint): string {
+export function figure(hundredths: bigint): string {
   const sign = hundredths < 0n ? '-' : '';
   const abs = hundredths < 0n ? -hundredths : hundredths;
   return `${sign}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`;
@@ -230,37 +284,10 @@ export class Pools {
     const byId = new Map(this.people().map((p) => [p.id, p]));
     const pools = this.store.pools();
     const poolById = new Map(pools.map((p) => [p.id, p]));
-    // The pool each pool is a member of, by member pool id.
-    const above = new Map<number, Pool>();
-    pools.forEach((p) => p.members.forEach((m) => m.memberPoolId !== null && above.set(m.memberPoolId, p)));
-    const shares = (pool: Pool) =>
-      pool.members.map((m) => ({
-        share: hundredths(m.share),
-        retired: m.personId !== null && (byId.get(m.personId)?.retired ?? false),
-      }));
-    const totalOf = (list: { share: bigint; retired: boolean }[]) =>
-      list.filter((m) => !m.retired).reduce((sum, m) => sum + m.share, 0n);
-    // Each pool's cuts in hundredths, null when it is unbalanced or has no pot: a pool that is a
-    // member of none has the sheet's pot, any other its cut in the pool above. Chains are short.
-    const cutsOf = (pool: Pool, seen: Set<number>): bigint[] | null => {
-      if (seen.has(pool.id)) return null;
-      const list = shares(pool);
-      if (totalOf(list) !== 10000n) return null;
-      const parent = above.get(pool.id);
-      let pot: bigint | null;
-      if (parent) {
-        const parentCuts = cutsOf(parent, new Set([...seen, pool.id]));
-        const at = parent.members.findIndex((m) => m.memberPoolId === pool.id);
-        pot = parentCuts ? parentCuts[at] : null;
-      } else {
-        const sheetPot = this.settings.pot();
-        pot = sheetPot !== '' ? hundredths(sheetPot) : null;
-      }
-      return pot === null ? null : cuts(pot, list);
-    };
+    const cutsByPool = poolCuts(pools, this.people(), this.settings.pot());
     return pools.map((pool) => {
-      const total = totalOf(shares(pool));
-      const cut = cutsOf(pool, new Set());
+      const total = totalOf(sharesOf(pool, byId));
+      const cut = cutsByPool.get(pool.id) ?? null;
       const members = pool.members.map((m, i) => {
         const member = m.memberPoolId !== null ? poolById.get(m.memberPoolId) : undefined;
         return {

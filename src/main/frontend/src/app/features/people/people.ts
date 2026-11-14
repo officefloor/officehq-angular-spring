@@ -11,7 +11,7 @@ import { NO_RATE, PersonGrade, RateStore, Rates, gradeOn } from '../rates/rates'
 import { SettingStore, Settings } from '../settings/settings';
 import { Summary } from '../summary/summary';
 import { Counters } from '../counters/counters';
-import { Pools } from '../pools/pools';
+import { PoolStore, Pools, figure, personCutTotals } from '../pools/pools';
 
 /** A hold put on a person: from its from-date to its to-date, both included (null: it does not end). */
 interface Hold {
@@ -302,6 +302,7 @@ interface StatementTaken {
       <p>Open in total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
       <p>Overdue claims <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong></p>
       <p>Overdue in total <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+      <p>Cuts in total <strong data-testid="rollup-cut-total">{{ cutTotal() }}</strong></p>
       @if (tagTotals().length > 0) {
         <ul aria-label="Due in total by tag">
           @for (t of tagTotals(); track t.tag) {
@@ -348,6 +349,7 @@ interface StatementTaken {
             <th scope="col">Patrons</th>
             <th scope="col">Backing</th>
             <th scope="col">Excess</th>
+            <th scope="col">Cut total</th>
             @for (pd of periods.periods(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
             }
@@ -401,6 +403,7 @@ interface StatementTaken {
               <td data-testid="person-patrons">{{ patronsOf(p) }}</td>
               <td data-testid="person-backing">{{ backingOf(p) }}</td>
               <td data-testid="person-excess">{{ excessOf(p) }}</td>
+              <td data-testid="person-cut-total">{{ cutTotalOf(p) }}</td>
               @for (pd of periods.periods(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">
                   {{ money(personPeriodCents().get(pd.id)?.get(p.id) ?? 0) }}
@@ -613,6 +616,15 @@ export class People {
   protected readonly money = money;
   protected readonly cents = cents;
   protected readonly settings = inject(SettingStore);
+  private readonly pools = inject(PoolStore);
+  /** Each person's cut total in hundredths, by person id: their cuts across every pool they are a member of. */
+  protected readonly cutTotals = computed(() => personCutTotals(this.pools.pools(), this.people(), this.settings.pot()));
+  /** A person's cut total (two decimals). */
+  protected cutTotalOf(person: Person): string {
+    return figure(this.cutTotals().get(person.id) ?? 0n);
+  }
+  /** Everyone's cut total added up. */
+  protected readonly cutTotal = computed(() => figure([...this.cutTotals().values()].reduce((sum, c) => sum + c, 0n)));
   /** Whether the signed-in user is a viewer on the sheet. */
   protected readonly viewer = computed(() => {
     const user = this.session.user();
