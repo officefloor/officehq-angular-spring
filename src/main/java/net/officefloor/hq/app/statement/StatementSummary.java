@@ -9,7 +9,7 @@ public record StatementSummary(int count, String lastDueTotal, LocalDate lastDat
 
     public static final StatementSummary NONE = new StatementSummary(0, null, null);
 
-    /** The summary of one person's statements, in the order they were taken. */
+    /** The summary of one person's statements, in their order (the last is their last statement). */
     public static StatementSummary of(List<Statement> statements) {
         if (statements.isEmpty()) {
             return NONE;

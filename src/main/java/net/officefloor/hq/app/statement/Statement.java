@@ -41,6 +41,10 @@ public class Statement {
     @Column(name = "cancelled_on")
     private LocalDate cancelledOn;
 
+    /** Where the statement falls among its person's statements; null: by its id. */
+    @Column(name = "ordinal")
+    private Long ordinal;
+
     protected Statement() {
     }
 
@@ -59,6 +63,17 @@ public class Statement {
 
     public Long getPersonId() {
         return personId;
+    }
+
+    /** Where the statement falls among its person's statements: the last is the highest. */
+    public long getOrder() {
+        return ordinal != null ? ordinal : id;
+    }
+
+    /** Move the statement to another person, falling at an order among their statements. */
+    public void moveTo(Long personId, long order) {
+        this.personId = personId;
+        this.ordinal = order;
     }
 
     public LocalDate getTakenOn() {

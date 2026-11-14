@@ -65,10 +65,10 @@ public class PersonTransferService {
 
     /** A steward transfers a person to another sheet by id. The person arrives there with every grade
      *  they were given, their terms, contact and aliases, and their claims with their status, dates,
-     *  notes, tags, frozen figures and logs; each claim that had a number takes the other sheet's next
-     *  number, in the order the claims were opened (by the sheet's today when each was, then the order
-     *  they were added). Figures a statement bound are lost with the statements, references, comments
-     *  and settle batches are not carried; patron links, pool memberships, holds and watches are
+     *  notes, tags, frozen figures, logs and the figures a statement bound them to, and their
+     *  statements; each claim that had a number takes the other sheet's next number, in the order the
+     *  claims were opened (by the sheet's today when each was, then the order they were added).
+     *  References, comments and settle batches are not carried; patron links, pool memberships, holds and watches are
      *  dropped. A person the other sheet already has by their name or an alias (as names are compared)
      *  arrives and is then merged into them, as a merge does. Anyone but a steward, a retired person,
      *  this sheet's own id, an archived sheet, a name or alias matching more than one person or a
@@ -149,22 +149,27 @@ public class PersonTransferService {
         entities.flush();
 
         // Left behind on this sheet: patron links both ways, pool memberships, holds, watches,
-        // statements, and the claims' comments.
+        // and the claims' comments.
         jdbc.update("DELETE FROM person_patron WHERE person_id = ? OR patron_id = ?", personId, personId);
         jdbc.update("DELETE FROM pool_member WHERE person_id = ?", personId);
         jdbc.update("DELETE FROM person_hold WHERE person_id = ?", personId);
         jdbc.update("DELETE FROM person_watch WHERE person_id = ?", personId);
-        jdbc.update("DELETE FROM statement WHERE person_id = ?", personId);
         jdbc.update("DELETE FROM claim_comment WHERE claim_id IN (SELECT id FROM claim WHERE person_id = ?)",
                 personId);
 
-        // Carried to the other sheet: the person, their grades, aliases and claims with their logs.
-        jdbc.update("UPDATE person SET sheet_id = ?, added_on = ?, origin_sheet_id = ? WHERE id = ?", to, today,
-                sheetId, personId);
+        // Carried to the other sheet: the person, their grades, aliases, statements and claims with
+        // their logs and the figures a statement bound.
+        // One to be merged stays a person of this sheet, merged and gone from it, so their name does not
+        // meet the one they are merged into on the other sheet.
+        if (intoId == null) {
+            jdbc.update("UPDATE person SET sheet_id = ?, added_on = ?, origin_sheet_id = ? WHERE id = ?", to, today,
+                    sheetId, personId);
+        }
         jdbc.update("UPDATE person_grade SET sheet_id = ? WHERE person_id = ?", to, personId);
         jdbc.update("UPDATE person_alias SET sheet_id = ? WHERE person_id = ?", to, personId);
-        jdbc.update("UPDATE claim SET sheet_id = ?, claim_number = NULL, ref = NULL, ref_key = NULL, stated = FALSE,"
-                + " stated_due = NULL, settle_batch = NULL, locked_by = NULL WHERE person_id = ?", to, personId);
+        jdbc.update("UPDATE statement SET sheet_id = ? WHERE person_id = ?", to, personId);
+        jdbc.update("UPDATE claim SET sheet_id = ?, claim_number = NULL, ref = NULL, ref_key = NULL,"
+                + " settle_batch = NULL, locked_by = NULL WHERE person_id = ?", to, personId);
         jdbc.update("UPDATE claim_status_log SET sheet_id = ? WHERE claim_id IN (SELECT id FROM claim WHERE"
                 + " person_id = ?)", to, personId);
         entities.clear();

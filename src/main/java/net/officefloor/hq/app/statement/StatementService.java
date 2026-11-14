@@ -2,6 +2,7 @@ package net.officefloor.hq.app.statement;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -62,7 +63,7 @@ public class StatementService {
     /** Each person's statement summary on the sheet, by person id; a person with none is absent. */
     public Map<Long, StatementSummary> summaries(String sheetId) {
         return statements.findBySheetIdOrderByIdAsc(sheetId).stream()
-                .filter(Statement::isLive)
+                .filter(Statement::isLive).sorted(Comparator.comparingLong(Statement::getOrder))
                 .collect(Collectors.groupingBy(Statement::getPersonId,
                         Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
     }
@@ -72,12 +73,13 @@ public class StatementService {
     public Map<Long, StatementSummary> summaries(String sheetId, LocalDate asOf) {
         return statements.findBySheetIdOrderByIdAsc(sheetId).stream()
                 .filter(statement -> asOf == null ? statement.isLive() : statement.stoodAsOf(asOf))
+                .sorted(Comparator.comparingLong(Statement::getOrder))
                 .collect(Collectors.groupingBy(Statement::getPersonId,
                         Collectors.collectingAndThen(Collectors.toList(), StatementSummary::of)));
     }
 
     public StatementSummary summary(String sheetId, Long personId) {
-        return StatementSummary.of(statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId).stream()
+        return StatementSummary.of(statements.inOrder(sheetId, personId).stream()
                 .filter(Statement::isLive).toList());
     }
 
@@ -147,7 +149,7 @@ public class StatementService {
         if (settings.roleOf(sheetId, user) != Role.STEWARD) {
             throw new StatementCancelRefusedException(user + " is not a steward: only a steward cancels a statement");
         }
-        List<Statement> theirs = statements.findBySheetIdAndPersonIdOrderByIdAsc(sheetId, personId).stream()
+        List<Statement> theirs = statements.inOrder(sheetId, personId).stream()
                 .filter(Statement::isLive).toList();
         if (theirs.isEmpty()) {
             throw new StatementCancelRefusedException(person.getName() + " has no statement to cancel");
