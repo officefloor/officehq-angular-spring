@@ -1,0 +1,64 @@
+{
+  "checkpoint": 231,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp231_period-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the period figures as a CSV file: a header line person,period,figure,carried\nthen one line per person and period, people in list order and periods in the order added, with the\nfigures as the rows show them.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the period figures as a CSV file: a header line person,period,figure,carried\nthen one line per person and period, people in list order and periods in the order added, with the\nfigures as the rows show them.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d75f0622cfd6222a66b412570d955c757add1a0a",
+  "reset_sha": "",
+  "preagent_sha": "bf92e367ae126cf91a59b8bba22df232ba4a0471",
+  "prev_sha": "bf92e367ae126cf91a59b8bba22df232ba4a0471",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3467866,
+    "input_tokens": 24,
+    "output_tokens": 3200,
+    "cache_read_tokens": 319773,
+    "cache_creation_tokens": 27342,
+    "num_turns": 13,
+    "duration_ms": 226696,
+    "duration_api_ms": 34903,
+    "model": "claude-opus-5-5",
+    "session_id": "74782acf-c7d6-474b-8d2b-1ef7f21f0e3e",
+    "stop_reason": "success",
+    "result_text": "I added an \"Export period figures as CSV\" button (`data-testid=\"export-periods\"`), and `bin/e2e` passes all 4 tests.\n\n**What it does:** the file starts with the header `person,period,figure,carried`, then has one line per person and period. People come in list order and periods in the order they were added. The figure and carried values are the same ones shown in each row's \"Due in \u2026\" and \"Carried into \u2026\" cells, so a closed period's export uses its fixed figures. Names containing a comma, such as `\"Lee, Jo\"`, are quoted.\n\n**How:** it's a front-end-only change in `src/main/frontend/src/app/features/people/people.ts`. The new `exportPeriods()` method works like the existing claims export: it builds the lines from figures the page has already worked out and saves them with the existing `downloadCsv` helper. No server, database or audit changes were needed.\n\nTwo things to be aware of:\n- Like the claims export, it includes every person, including any the current screen filters out or reorders.\n- Values are written as plain numbers like `1234.56` and aren't formatted for the user's locale. \"As the rows show them\" could be read either way, and the test only uses the default English format.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.3467866,
+        "num_turns": 13,
+        "duration_ms": 226696,
+        "duration_api_ms": 34903,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp231.agent.jsonl",
+  "agent_diff_file": "cp231.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
