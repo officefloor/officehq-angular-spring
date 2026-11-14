@@ -89,6 +89,34 @@ public class PersonTransferService {
         }));
     }
 
+    /** A steward undoes a person's transfer to this sheet on the same sheet's today they arrived: they
+     *  are transferred back to the sheet they came from, exactly as a transfer, and this sheet then
+     *  writes its line. Anyone but a steward, a later day, or a person who did not arrive by transfer
+     *  is refused. */
+    @Transactional
+    public void undo(String sheetId, String user, Long id) {
+        Person person = people.findByIdAndSheetId(id, sheetId)
+                .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));
+        String from = person.getOriginSheetId();
+        if (from == null) {
+            throw new TransferRefusedException(person.getName() + " did not arrive by transfer");
+        }
+        Stream.of(sheetId, from).sorted().distinct().forEach(sheets::lock);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new TransferRefusedException(user + " is not a steward: only a steward undoes a transfer");
+        }
+        if (!sheets.today(sheetId).equals(person.getAddedOn())) {
+            throw new TransferRefusedException("A transfer is undone only on the day the person arrived");
+        }
+        String name = person.getName();
+        rollups.track(sheetId, user, () -> {
+            transfer(sheetId, user, id, from);
+            audit.recordOnCommit("PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + user + " name=" + name
+                    + " to=" + from);
+            return null;
+        });
+    }
+
     private void move(String sheetId, String user, Long id, String to) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new NoSuchElementException("No person " + id + " on sheet " + sheetId));

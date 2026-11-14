@@ -850,6 +850,14 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
                 >
                   Transfer
                 </button>
+                <button
+                  type="button"
+                  data-testid="person-transfer-undo"
+                  [attr.aria-label]="'Undo the transfer of ' + p.name + ' to this sheet'"
+                  (click)="undoTransfer(p)"
+                >
+                  Undo transfer
+                </button>
                 @if (rowError(); as e) {
                   @if (e.id === p.id) {
                     <p role="alert" [attr.data-testid]="e.testId ?? 'person-error'">{{ e.message }}</p>
@@ -1655,6 +1663,23 @@ export class People {
     }
     if (this.session.sheetId() !== sheet) return;
     this.transferTargets.update((targets) => ({ ...targets, [person.id]: '' }));
+    await this.read(sheet, this.session.loads());
+  }
+
+  /** Undo a person's transfer to this sheet: they go back to the sheet they came from, so the people
+   *  and claims are read again. */
+  protected async undoTransfer(person: Person): Promise<void> {
+    this.rowError.set(null);
+    const sheet = this.session.sheetId();
+    if (!sheet) return;
+    const url = `/api/sheets/${encodeURIComponent(sheet)}/people/${person.id}/transfer-undo`;
+    try {
+      await firstValueFrom(this.http.post<void>(url, {}));
+    } catch {
+      this.rowError.set({ id: person.id, message: `The transfer of ${person.name} could not be undone.` });
+      return;
+    }
+    if (this.session.sheetId() !== sheet) return;
     await this.read(sheet, this.session.loads());
   }
 

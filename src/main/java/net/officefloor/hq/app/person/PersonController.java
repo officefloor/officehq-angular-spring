@@ -339,6 +339,14 @@ public class PersonController {
         transfers.transfer(sheetId.trim(), SignedInUser.decode(user), id, request.toSheetId());
     }
 
+    /** Undo a person's transfer to this sheet: they are transferred back to the sheet they came from. */
+    @PostMapping("/{id}/transfer-undo")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void undoTransfer(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
+            @RequestHeader(SignedInUser.HEADER) @NotBlank String user) {
+        transfers.undo(sheetId.trim(), SignedInUser.decode(user), id);
+    }
+
     /** Give a person an alias. */
     @PostMapping("/{id}/aliases")
     public PersonView addAlias(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long id,
