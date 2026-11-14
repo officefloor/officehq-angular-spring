@@ -1,0 +1,64 @@
+{
+  "checkpoint": 1,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp01_signin-and-sheet",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Anyone using the app first signs in by typing a name; there is no password. The signed-in\nname shows on the screen. A sheet is chosen by typing its id and loading it; the active sheet id\nshows on the screen, and everything else in the app is kept per sheet. A sheet that has never been\nloaded before starts empty. Everything happens on the one screen at /.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAnyone using the app first signs in by typing a name; there is no password. The signed-in\nname shows on the screen. A sheet is chosen by typing its id and loading it; the active sheet id\nshows on the screen, and everything else in the app is kept per sheet. A sheet that has never been\nloaded before starts empty. Everything happens on the one screen at /.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5b591fc3a2cba436a47cc21a1f70caa23d528171",
+  "reset_sha": "",
+  "preagent_sha": "bd54dc29a5172dc290db7884e537ed46cae2a12d",
+  "prev_sha": "bd54dc29a5172dc290db7884e537ed46cae2a12d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6479384,
+    "input_tokens": 40,
+    "output_tokens": 9880,
+    "cache_read_tokens": 719092,
+    "cache_creation_tokens": 38295,
+    "num_turns": 22,
+    "duration_ms": 397777,
+    "duration_api_ms": 91437,
+    "model": "claude-opus-5-5",
+    "session_id": "1ed078b3-6cdb-41d6-8e28-7e6100a00842",
+    "stop_reason": "success",
+    "result_text": "Sign-in and sheet loading now work, and `bin/e2e` passes: two users, uma and vic, each sign in and load the same sheet, and each sees their own name and the sheet id.\n\n**How it works on screen** (all on `/`)\n- Until you sign in, the screen shows a name field (`signin-name`) and a button (`signin-submit`). A blank name shows `signin-error`.\n- Once you're in, your name shows in `current-user`, with a sheet id field (`sheet-id-input`) and a Load button (`sheet-load`) below it.\n- After a load, the active id shows in `sheet-current-id`. A blank id, or one with spaces, shows `sheet-error`. Each error goes away as soon as its form is edited or submitted again.\n\n**Server**\n- **Database:** a new `sheet` table, created by the migration `V1__sheet.sql`. It has the sheet id and who first loaded it.\n- **Sign-in:** `POST /api/session` checks the name isn't blank and sends it back trimmed. There's no password.\n- **Loading a sheet:** `POST /api/sheets/{id}/load` creates the sheet the first time an id is loaded and simply returns it after that. Each request names the user in an `X-User` header.\n- Nothing is written to the audit file, because this test doesn't expect any audit records.\n\n**Front end**\n- `core/session.ts` holds the signed-in user and the active sheet.\n- `features/home/home.ts` has the two forms.\n\nThe first test run failed: clicking sign-in did nothing and the name never appeared. The likely cause was that the forms weren't wired up as Angular forms, so the browser reloaded the page instead. Switching both forms to proper reactive forms fixed it.\n\nThe signed-in name lives only in the page's memory, so refreshing the browser signs you out. The test never refreshes, so it isn't affected.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6479384,
+        "num_turns": 22,
+        "duration_ms": 397777,
+        "duration_api_ms": 91437,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp01.agent.jsonl",
+  "agent_diff_file": "cp01.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
