@@ -498,6 +498,7 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
             <th scope="col">Cut total</th>
             @for (pd of periods.periods(); track pd.id) {
               <th scope="col">Due in {{ pd.name }}</th>
+              <th scope="col">Carried into {{ pd.name }}</th>
             }
             <th scope="col">Claims</th>
             <th scope="col">Plans</th>
@@ -600,6 +601,9 @@ function writeHiddenColumns(user: string, hidden: string[]): void {
               @for (pd of periods.periods(); track pd.id) {
                 <td [attr.data-testid]="'person-period-' + pd.name + '-due-total'">
                   {{ money(personPeriodCents().get(pd.id)?.get(p.id) ?? 0) }}
+                </td>
+                <td [attr.data-testid]="'person-period-' + pd.name + '-carried'">
+                  {{ money(personCarriedCents().get(pd.id)?.get(p.id) ?? 0) }}
                 </td>
               }
               <td>
@@ -1115,6 +1119,31 @@ export class People {
       const byPerson = totals.get(period.id)!;
       const due = claimDueCents(c, rates, this.floor(), this.late()) ?? 0;
       byPerson.set(c.personId, (byPerson.get(c.personId) ?? 0) + due);
+    }
+    return totals;
+  });
+  /** Each person's carried figure for each period, in cents, by period id then person id: the dues
+   *  shown now on their claims that count and whose due-by falls in a period ending before this one
+   *  starts, that were still OPEN or PENDING at the end of this period's last day, as their status
+   *  logs record it, and the live rules leave in (a claim with no figure adds nothing). */
+  protected readonly personCarriedCents = computed(() => {
+    const periods = this.periods.periods();
+    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+    const totals = new Map<number, Map<number, number>>(periods.map((p) => [p.id, new Map()]));
+    const keep = this.liveRulesKeep();
+    for (const c of this.claims()) {
+      const own = periodOf(periods, c.dueBy);
+      const theirs = grades.get(c.personId);
+      if (own === null || theirs === undefined || !keep(c)) continue;
+      let due: number | null = null;
+      for (const period of periods) {
+        if (own.to >= period.from) continue;
+        const then = statusAsOf(c, period.to);
+        if (then !== 'OPEN' && then !== 'PENDING') continue;
+        due ??= claimDueCents(c, this.rates.ofGradeOn(theirs, c), this.floor(), this.late()) ?? 0;
+        const byPerson = totals.get(period.id)!;
+        byPerson.set(c.personId, (byPerson.get(c.personId) ?? 0) + due);
+      }
     }
     return totals;
   });
