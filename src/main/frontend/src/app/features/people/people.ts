@@ -255,6 +255,13 @@ interface StatementTaken {
           }
         </ul>
       }
+      @if (monthTotals().length > 0) {
+        <ul aria-label="Due in total by month">
+          @for (m of monthTotals(); track m.month) {
+            <li>{{ m.month }} <strong [attr.data-testid]="'month-' + m.month + '-due-total'">{{ m.dueTotal }}</strong></li>
+          }
+        </ul>
+      }
 
       <table>
         <thead>
@@ -597,6 +604,23 @@ export class People {
       for (const tag of c.tags) totals.set(tag, (totals.get(tag) ?? 0) + due);
     }
     return [...totals.keys()].sort().map((tag) => ({ tag, dueTotal: money(totals.get(tag)!) }));
+  });
+  /** Per calendar month (yyyy-mm) any claim on the sheet is dated in, sorted: the dues shown on the
+   *  claims that count dated in it added up (a claim with no figure adds nothing). */
+  protected readonly monthTotals = computed(() => {
+    const grades = new Map(this.people().map((p) => [p.id, p.grades]));
+    const floor = this.floor();
+    const late = this.late();
+    const totals = new Map<string, number>();
+    for (const c of this.claims()) totals.set(c.date.slice(0, 7), 0);
+    for (const c of this.live()) {
+      const theirs = grades.get(c.personId);
+      if (theirs === undefined) continue;
+      const month = c.date.slice(0, 7);
+      const due = claimDueCents(c, this.rates.ofGradeOn(theirs, c.date), floor, late) ?? 0;
+      totals.set(month, (totals.get(month) ?? 0) + due);
+    }
+    return [...totals.keys()].sort().map((month) => ({ month, dueTotal: money(totals.get(month)!) }));
   });
   /** Everyone's settled-total added up (not trimmed). */
   protected readonly settledTotal = computed(() =>
