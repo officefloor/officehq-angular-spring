@@ -164,20 +164,22 @@ public class PersonService {
         return person;
     }
 
-    /** Put a person on hold ({@code held} true) or take them off it; their OPEN claims count in no
-     *  live total while held. Setting the state they already have changes nothing. */
+    /** Add a hold to a person from a date (a missing one takes the sheet's today) to an optional
+     *  one; their OPEN claims dated within it then count in no live total, unless bound by a
+     *  statement. A to-date before the from-date is refused (422). */
     @Transactional
-    public Person hold(String sheetId, String user, long id, boolean held) {
+    public Person hold(String sheetId, String user, long id, LocalDate from, LocalDate to) {
         Person person = people.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        if (person.isHeld() == held) {
-            return person;
+        LocalDate on = from != null ? from : sheets.today(sheetId);
+        if (to != null && to.isBefore(on)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "The to-date is before the from-date");
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        person.setHeld(held);
+        person.addHold(on, to);
         people.flush();
-        audit.recordOnCommit((held ? "PERSON_HELD" : "PERSON_RELEASED") + " sheet=" + sheetId + " by=" + user
-                + " name=" + person.getName());
+        audit.recordOnCommit("PERSON_HELD sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " from=" + on);
         rollup.recordChanges(sheetId, user, before);
         return person;
     }

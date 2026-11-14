@@ -324,7 +324,7 @@ public class ClaimService {
     }
 
     /** Take a statement of a person: record their due-total now, and bind each of their claims
-     *  that counts (OPEN, PENDING or SETTLED, of a held person only SETTLED) to its figure now; the others
+     *  that counts (OPEN, PENDING or SETTLED, but no unbound open one within a hold) to its figure now; the others
      *  are left unbound. */
     @Transactional
     public Statement statement(String sheetId, String user, long personId) {
@@ -400,10 +400,10 @@ public class ClaimService {
     }
 
     /** Whether a claim counts toward claimed and due totals: only OPEN (or PENDING) and SETTLED ones
-     *  do, and of a held person only SETTLED ones. */
+     *  do, but not an open one dated within a hold of its person unless bound by a statement. */
     private static boolean counts(Claim c, Person person) {
         return c.getStatus() == ClaimStatus.SETTLED
-                || (c.getStatus().isOpen() && !person.isHeld());
+                || (c.getStatus().isOpen() && (c.isBound() || !person.heldOn(c.getDate())));
     }
 
     /** The due a claim shows: the due fixed when it was settled, else its figure with its late

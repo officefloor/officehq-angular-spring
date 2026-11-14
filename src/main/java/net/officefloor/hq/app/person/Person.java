@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Embeddable;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -10,6 +11,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapKeyColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
@@ -50,9 +52,12 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
-    /** Whether the person is on hold: their OPEN claims then count in no live total. */
-    @Column(name = "held", nullable = false)
-    private boolean held;
+    /** The person's holds, in the order they were added: their OPEN claims dated within one count
+     *  in no live total (unless bound by a statement). */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderColumn(name = "position")
+    private List<Hold> holds = new ArrayList<>();
 
     /** Raised on every save, so an edit of a version someone else has since saved is refused. */
     @Version
@@ -124,12 +129,31 @@ public class Person {
         return retiredFrom != null && date.isAfter(retiredFrom);
     }
 
-    public boolean isHeld() {
-        return held;
+    /** A hold from a date to an optional one (null: open-ended), both inclusive. */
+    @Embeddable
+    public record Hold(@Column(name = "from_date", nullable = false) LocalDate from,
+            @Column(name = "to_date") LocalDate to) {
+        public boolean covers(LocalDate date) {
+            return !date.isBefore(from) && (to == null || !date.isAfter(to));
+        }
     }
 
-    public void setHeld(boolean held) {
-        this.held = held;
+    public List<Hold> getHolds() {
+        return List.copyOf(holds);
+    }
+
+    public void addHold(LocalDate from, LocalDate to) {
+        holds.add(new Hold(from, to));
+    }
+
+    /** Whether the person has any hold. */
+    public boolean isHeld() {
+        return !holds.isEmpty();
+    }
+
+    /** Whether a hold of the person covers the date. */
+    public boolean heldOn(LocalDate date) {
+        return holds.stream().anyMatch(h -> h.covers(date));
     }
 
     public long getVersion() {

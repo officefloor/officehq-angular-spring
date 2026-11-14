@@ -1,14 +1,14 @@
 import { DOCUMENT, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
-import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, isOpen, money, overdue, quickAddError, roundsHalfUp } from '../claims/claims-api';
+import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, isBound, isOpen, money, overdue, quickAddError, roundsHalfUp } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Lateness, Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
-import { GRADES, PeopleApi, Person, csvLine, gradeOn, holdError, isStale, patronError, personError, retireError, statementError } from './people-api';
+import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, retireError, statementError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total, their overdue claims, and their patrons and backing; the sheet's claimed-total,
@@ -106,8 +106,19 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, holdError, isStale, patron
               </td>
               <td>
                 <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
-                <button type="button" data-testid="person-hold-toggle" (click)="hold(p)"
-                  [attr.aria-label]="(p.held ? 'Release ' : 'Hold ') + p.name">{{ p.held ? 'Release' : 'Hold' }}</button>
+                <ul>
+                  @for (h of p.holds; track $index) {
+                    <li data-testid="person-hold-line">{{ h.from }} to {{ h.to ?? 'open' }}</li>
+                  }
+                </ul>
+                <label [for]="'person-hold-from-' + p.id" class="visually-hidden">Hold {{ p.name }} from</label>
+                <input [id]="'person-hold-from-' + p.id" type="date" data-testid="person-hold-from" #holdFrom
+                  (input)="clearRowError(p.id)" />
+                <label [for]="'person-hold-to-' + p.id" class="visually-hidden">Hold {{ p.name }} to</label>
+                <input [id]="'person-hold-to-' + p.id" type="date" data-testid="person-hold-to" #holdTo
+                  (input)="clearRowError(p.id)" />
+                <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom.value, holdTo.value)"
+                  [attr.aria-label]="'Hold ' + p.name">Hold</button>
               </td>
               <td>
                 <span data-testid="person-patrons">{{ patronNamesOf(p) }}</span>
@@ -159,12 +170,13 @@ export class People {
     this.session.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null));
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
-  /** The ids of the people on hold: their open (OPEN or PENDING) claims count in no live total. */
-  private readonly heldIds = computed(() => new Set(this.people().filter((p) => p.held).map((p) => p.id)));
-  /** Whether a claim counts in the live totals: open (OPEN or PENDING) and SETTLED ones, but of a held person only SETTLED ones. */
+  /** The holds of each person with any, by person id: their open (OPEN or PENDING) claims dated within one count in no live total. */
+  private readonly holdsById = computed(() => new Map(this.people().filter((p) => p.held).map((p) => [p.id, p.holds])));
+  /** Whether a claim counts in the live totals: open (OPEN or PENDING) and SETTLED ones, but not an open one
+   *  dated within a hold of its person unless bound by a statement. */
   private readonly countsLive = computed(() => {
-    const held = this.heldIds();
-    return (c: Claim) => counts(c) && !(isOpen(c) && held.has(c.personId));
+    const holds = this.holdsById();
+    return (c: Claim) => counts(c) && !(isOpen(c) && !isBound(c) && heldOn(holds.get(c.personId) ?? [], c.date));
   });
   /** Each person's claims (newest first) and claimed in cents (counting claims only), by person id. */
   private readonly byPerson = computed(() => {
@@ -185,7 +197,7 @@ export class People {
     today: this.session.today(), latePct: this.session.latePct(),
   }));
   /** Each person's due-total in cents, by person id: the sum of the dues their OPEN and SETTLED
-   *  claims show (each already rounded; a held person's OPEN ones left out). Null (n/a) when their grade in force on the
+   *  claims show (each already rounded; open ones within a hold, unbound, left out). Null (n/a) when their grade in force on the
    *  sheet's today has no rate then, unless a claim shows a due (a settled claim's fixed one, a stated claim's bound one,
    *  or one at the rate of the grade they had on its date): then the sum of the dues there are. */
   private readonly dueByPerson = computed(() => {
@@ -227,7 +239,7 @@ export class People {
   /** The sheet's periods, by from-date. */
   protected readonly periods = signal<Period[]>([]);
   /** Each period's due-total in cents, by period id: the dues (n/a ones skipped) of the OPEN and
-   *  SETTLED claims whose date falls in it (a held person's OPEN ones left out). */
+   *  SETTLED claims whose date falls in it (open ones within a hold of their person, unbound, left out). */
   protected readonly dueByPeriod = computed(() => {
     const out = new Map<number, number>();
     const floor = cents(this.session.floor());
@@ -419,13 +431,13 @@ export class People {
     }
   }
 
-  /** Put a person on hold, or take them off it when held; the row then shows the new state. */
-  protected async hold(p: Person): Promise<void> {
+  /** Add a hold to a person from a date (blank: the sheet's today) to an optional one; the row then shows it. */
+  protected async hold(p: Person, from: string, to: string): Promise<void> {
     this.clearRowError(p.id);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
     try {
-      const saved = await this.api.hold(sheetId, p.id, !p.held);
+      const saved = await this.api.hold(sheetId, p.id, from.trim(), to.trim());
       if (this.session.sheetId() === sheetId) this.taken(saved);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [p.id]: holdError(e) }));

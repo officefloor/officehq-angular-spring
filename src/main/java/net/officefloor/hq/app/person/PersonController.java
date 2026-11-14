@@ -28,16 +28,16 @@ public class PersonController {
 
     /** A person as the screen shows them, with their statement count and their last statement's
      *  due-total (two decimals; null when it was n/a or they have none) and date, and the date
-     *  they are retired from (null while not retired), whether they are on hold, and the ids of
+     *  they are retired from (null while not retired), whether they have any hold, their holds, and the ids of
      *  their patrons in the order they were named. The grade is the one in force on the sheet's
      *  today; grades lists every grade they have been given, by from-date, the first one undated. */
     public record PersonView(long id, String name, String grade, long version, int statementCount,
-            String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held, List<Long> patronIds,
-            List<Person.DatedGrade> grades) {
+            String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held, List<Person.Hold> holds,
+            List<Long> patronIds, List<Person.DatedGrade> grades) {
         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds) {
             return new PersonView(p.getId(), p.getName(), p.gradeOn(today), p.getVersion(), s.count(),
                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
-                    p.getRetiredFrom(), p.isHeld(), patronIds, p.getGrades());
+                    p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades());
         }
     }
 
@@ -55,8 +55,9 @@ public class PersonController {
     public record RetireForm(LocalDate from) {
     }
 
-    /** A hold as the row submits it: true puts the person on hold, false takes them off it. */
-    public record HoldForm(@NotNull Boolean held) {
+    /** A hold as the row submits it: a missing from-date takes the sheet's today; a missing to-date
+     *  leaves it open-ended. */
+    public record HoldForm(LocalDate from, LocalDate to) {
     }
 
     /** A patron as the row submits it: the id of another person on the sheet. */
@@ -123,8 +124,9 @@ public class PersonController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
-            @Valid @RequestBody HoldForm body) {
-        return view(sheetId, service.hold(sheetId, user.trim(), id, body.held()));
+            @RequestBody(required = false) HoldForm body) {
+        return view(sheetId, service.hold(sheetId, user.trim(), id, body == null ? null : body.from(),
+                body == null ? null : body.to()));
     }
 
     @PostMapping("/{id}/patrons")

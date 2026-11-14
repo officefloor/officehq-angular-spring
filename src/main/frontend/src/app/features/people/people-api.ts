@@ -24,6 +24,17 @@ export function gradeOn(grades: readonly DatedGrade[], date: string | null): str
   return best?.grade ?? grades[0]?.grade ?? '';
 }
 
+/** A hold from a date (yyyy-mm-dd) to an optional one (null: open-ended), both inclusive. */
+export interface Hold {
+  from: string;
+  to: string | null;
+}
+
+/** Whether any of the holds covers a date (yyyy-mm-dd). */
+export function heldOn(holds: readonly Hold[], date: string): boolean {
+  return holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
+}
+
 export interface Person {
   id: number;
   name: string;
@@ -41,8 +52,11 @@ export interface Person {
   statementDate: string | null;
   /** The date the person is retired from; null while not retired. Set, they count as retired. */
   retiredFrom: string | null;
-  /** Whether the person is on hold: their OPEN claims then count in no live total. */
+  /** Whether the person has any hold. */
   held: boolean;
+  /** The person's holds, in the order they were added: their OPEN claims dated within one count in
+   *  no live total, unless bound by a statement. */
+  holds: Hold[];
   /** The ids of the person's patrons (other people on the sheet), in the order they were named. */
   patronIds: number[];
 }
@@ -99,10 +113,11 @@ export class PeopleApi {
     );
   }
 
-  /** Put a person on hold (true) or take them off it (false). */
-  hold(sheetId: string, id: number, held: boolean): Promise<Person> {
+  /** Add a hold to a person from a date (blank: the sheet's today) to an optional one (blank: open-ended). */
+  hold(sheetId: string, id: number, from: string, to: string): Promise<Person> {
     return firstValueFrom(
-      this.http.post<Person>(`${this.url(sheetId)}/${id}/hold`, { held }, { headers: this.headers() }),
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/hold`, { from: from || null, to: to || null },
+        { headers: this.headers() }),
     );
   }
 
@@ -141,6 +156,8 @@ export function retireError(e: unknown): string {
 }
 
 export function holdError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter the dates as yyyy-mm-dd.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'The to-date must not be before the from-date.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   return 'Something went wrong; try again.';
 }
