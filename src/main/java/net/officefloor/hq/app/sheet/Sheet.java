@@ -22,6 +22,11 @@ public class Sheet {
     @Column(name = "last_claim_number", nullable = false)
     private long lastClaimNumber;
 
+    /** The last settle batch number given on the sheet (0 for none); the next bulk settle that
+     *  settles a claim takes the one after. */
+    @Column(name = "last_batch_number", nullable = false)
+    private long lastBatchNumber;
+
     /** The policy date: a claim dated before it rounds half up, one on or after it half to even; null
      *  for the sheet's today. */
     @Column(name = "policy_date")
@@ -109,5 +114,15 @@ public class Sheet {
     /** Take the sheet's next claim number. */
     public long nextClaimNumber() {
         return ++lastClaimNumber;
+    }
+
+    /** The last settle batch number given on the sheet; null when there has been none. */
+    public Long getLastBatchNumber() {
+        return lastBatchNumber == 0 ? null : lastBatchNumber;
+    }
+
+    /** Take the sheet's next settle batch number. */
+    public long nextBatchNumber() {
+        return ++lastBatchNumber;
     }
 }

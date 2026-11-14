@@ -26,8 +26,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Service
 public class Audit {
 
-    /** The events that only report figures: they never name a delegating steward. */
-    private static final Set<String> FIGURES_ONLY = Set.of("ROLLUP", "TOTALS", "ALERT", "SNAPSHOT");
+    /** The events that only report figures: they never name a delegating steward. A SNAPSHOT is not
+     *  one of them: it records the user's own change of the sheet's today. */
+    private static final Set<String> FIGURES_ONLY = Set.of("ROLLUP", "TOTALS", "ALERT");
 
     private final Path file;
     private final ObjectProvider<SettingService> settings;

@@ -185,6 +185,7 @@ interface StatementTaken {
       }
       <p>
         <button type="button" data-testid="bulk-settle" (click)="settleSelected()">Settle selected claims</button>
+        Last batch <strong data-testid="bulk-settle-batch">{{ lastBatch() ?? '' }}</strong>
         @if (bulkSettleResult(); as r) {
           Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>, refused
           <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong>
@@ -487,9 +488,13 @@ export class People {
   protected readonly money = money;
   protected readonly settings = inject(SettingStore);
   /** Whether the signed-in user is a viewer on the sheet. */
-  protected readonly viewer = computed(() =>
-    this.settings.roles().some((r) => r.user === this.session.user() && r.role === 'viewer'),
-  );
+  protected readonly viewer = computed(() => {
+    const user = this.session.user();
+    const today = this.session.today();
+    // A delegation of the steward role in force on the sheet's today makes the user a steward.
+    const delegated = today !== null && this.settings.delegations().some((d) => d.user === user && d.from <= today && today <= d.to);
+    return !delegated && this.settings.roles().some((r) => r.user === user && r.role === 'viewer');
+  });
   /** The sheet's floor in cents in force on a date. */
   protected readonly floor = computed(() => {
     const floorOn = this.settings.floorOn();
@@ -757,6 +762,8 @@ export class People {
   protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
   /** Why the last bulk settle could not be done at all; null when it was. */
   protected readonly bulkSettleError = signal<string | null>(null);
+  /** The number of the sheet's last settle batch; null when there has been none. */
+  protected readonly lastBatch = this.session.lastBatch.asReadonly();
   /** Whether a bulk settle is waiting for its answer; a second press meanwhile is dropped. */
   private readonly bulkSettleBusy = signal(false);
   /** The person (an id, or blank) the selected claims are to move to. */
@@ -1149,7 +1156,7 @@ export class People {
     this.bulkSettleBusy.set(true);
     try {
       const result = await firstValueFrom(
-        this.http.post<{ settled: Claim[]; refused: number }>(
+        this.http.post<{ settled: Claim[]; refused: number; batch: number | null }>(
           `/api/sheets/${encodeURIComponent(sheet)}/claims/settle`,
           { claimIds: ids },
         ),
@@ -1157,6 +1164,7 @@ export class People {
       if (this.session.sheetId() !== sheet) return;
       for (const c of result.settled) this.claimSaved(c);
       this.selectedClaims.set(new Set());
+      if (result.batch !== null) this.session.lastBatch.set(result.batch);
       this.bulkSettleResult.set({ settled: result.settled.length, refused: result.refused });
     } catch {
       this.bulkSettleError.set('The selected claims could not be settled.');

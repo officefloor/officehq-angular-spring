@@ -16,8 +16,9 @@ import org.springframework.stereotype.Service;
 public class BulkSettleService {
 
     /** What a bulk settle did: the claims it settled (SETTLED, or PENDING a steward's approval), in
-     *  the order it settled them, and how many of the selected claims it refused. */
-    public record Result(List<Claim> settled, int refused) {
+     *  the order it settled them, how many of the selected claims it refused, and the number of the
+     *  settle batch it made (null when it settled none). */
+    public record Result(List<Claim> settled, int refused, Long batch) {
     }
 
     private final ClaimListOrder order;
@@ -39,12 +40,12 @@ public class BulkSettleService {
      *  added, each person's claims newest first), by exactly the rules of settling one: a clerk's
      *  claim above the clerk limit goes PENDING and counts as settled. Each that cannot, or is not
      *  on the sheet, is refused and left as it is. Each claim is settled on its own, so a refused
-     *  one writes nothing. */
+     *  one writes nothing. Settling at least one makes a settle batch, whose number each marks. */
     public Result settle(String sheetId, String user, Set<Long> ids) {
         List<Claim> settled = new ArrayList<>();
         if (settings.isViewer(sheetId, user) || sheets.isArchived(sheetId)) {
             // A viewer, or anyone on an archived sheet, changes nothing: every selected claim is refused.
-            return new Result(settled, ids.size());
+            return new Result(settled, ids.size(), null);
         }
         for (Claim claim : order.selected(sheetId, ids)) {
             try {
@@ -55,6 +56,8 @@ public class BulkSettleService {
                 // Left as it is: its change rolled back with its own transaction.
             }
         }
-        return new Result(settled, ids.size() - settled.size());
+        // Settling at least one claim makes a batch, numbered on the sheet in the order batches happen.
+        Long batch = settled.isEmpty() ? null : service.batch(sheetId, settled);
+        return new Result(settled, ids.size() - settled.size(), batch);
     }
 }

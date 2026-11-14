@@ -66,6 +66,8 @@ export interface Claim {
   voidReason: string | null;
   /** The claim's comments, oldest first, each as <user> on <date>: <text>. */
   comments: string[];
+  /** The number of the settle batch that settled the claim; null when a bulk settle did not. */
+  batch: number | null;
 }
 
 /** What a split did: the claim that kept the rest of its amount, and the new claim split off it. */
@@ -273,6 +275,7 @@ const NUMBER = /^\S+$/;
           <span data-testid="claim-note">{{ c.note }}</span>
           <span data-testid="claim-ref">{{ c.ref ?? '' }}</span>
           <span data-testid="claim-tags">{{ c.tags.join(', ') }}</span>
+          <span data-testid="claim-batch">{{ c.batch ?? '' }}</span>
           <span data-testid="claim-due">{{ dueOf(c) }}</span>
           <span data-testid="claim-due-by">{{ dueBy(c) }}</span>
           <span data-testid="claim-overdue">{{ isOverdue(c) ? 'yes' : 'no' }}</span>

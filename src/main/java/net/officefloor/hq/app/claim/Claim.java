@@ -82,6 +82,11 @@ public class Claim {
     @Column(name = "edited_by")
     private String editedBy;
 
+    /** The number of the settle batch that settled the claim; null for one not settled by a bulk
+     *  settle. */
+    @Column(name = "settle_batch")
+    private Long batch;
+
     /** Whether the person's last statement bound the claim to the figure it had then. */
     @Column(name = "stated", nullable = false)
     private boolean stated;
@@ -255,6 +260,14 @@ public class Claim {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public Long getBatch() {
+        return batch;
+    }
+
+    public void setBatch(Long batch) {
+        this.batch = batch;
     }
 
     public String getRef() {

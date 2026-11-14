@@ -51,12 +51,14 @@ public class ClaimController {
      *  added while its period was soft-closed; remindedOn is the last day a reminder was written for it
      *  (null when none was); ref is its external reference (null when it has none); tags are its tags,
      *  sorted (empty when it has none); voidReason is the reason it was voided with (null when none
-     *  was given); comments are its comments, oldest first, each as <user> on <date>: <text>. */
+     *  was given); comments are its comments, oldest first, each as <user> on <date>: <text>; batch
+     *  is the number of the settle batch that settled it (null when a bulk settle did not). */
     public record ClaimView(Long id, Long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, LocalDate roundsBy, LocalDate dueBy, List<String> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy, boolean lateEntry,
-            LocalDate remindedOn, String ref, List<String> tags, String voidReason, List<String> comments) {
+            LocalDate remindedOn, String ref, List<String> tags, String voidReason, List<String> comments,
+            Long batch) {
         public static ClaimView of(Claim claim, LocalDate roundsBy, List<String> log, List<String> comments) {
             return new ClaimView(claim.getId(), claim.getPersonId(), claim.getAmount().toPlainString(),
                     claim.getDate(), claim.getNote(), claim.getStatus(), claim.getNumber(),
@@ -66,7 +68,7 @@ public class ClaimController {
                     claim.getCorrects(), roundsBy, claim.getDueBy(), log, claim.getDeferredUntil(),
                     claim.getProofs(), claim.getSplitFrom(), claim.getLockedBy(), claim.isLateEntry(),
                     claim.getRemindedOn(), claim.getRef(), claim.getTags(),
-                    claim.getVoidReason(), comments);
+                    claim.getVoidReason(), comments, claim.getBatch());
         }
     }
 
@@ -129,8 +131,9 @@ public class ClaimController {
     }
 
     /** What a bulk settle did: the claims it settled (SETTLED, or PENDING a steward's approval), in
-     *  list order, and how many of the selected claims it refused. */
-    public record BulkSettleView(List<ClaimView> settled, int refused) {
+     *  list order, how many of the selected claims it refused, and the number of the batch it made
+     *  (null when it settled none). */
+    public record BulkSettleView(List<ClaimView> settled, int refused, Long batch) {
     }
 
     /** The claims selected to move together, and the person on the sheet they move to. */
@@ -251,7 +254,8 @@ public class ClaimController {
             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated BulkSettleRequest request) {
         String sheet = sheetId.trim();
         BulkSettleService.Result result = bulkSettle.settle(sheet, SignedInUser.decode(user), request.claimIds());
-        return new BulkSettleView(result.settled().stream().map(claim -> view(sheet, claim)).toList(), result.refused());
+        return new BulkSettleView(result.settled().stream().map(claim -> view(sheet, claim)).toList(), result.refused(),
+                result.batch());
     }
 
     /** Approve a PENDING claim: a steward other than whoever opened it settles it. */

@@ -6,6 +6,7 @@ interface SheetView {
   id: string;
   today: string;
   archived: boolean;
+  lastBatch: number | null;
 }
 
 // Who is signed in (a typed name, no password) and which sheet is active. Everything else in the
@@ -27,6 +28,8 @@ export class Session {
   readonly today = computed(() => this.asOf() ?? this.sheetToday());
   /** Whether the active sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
+  /** The number of the active sheet's last settle batch; null when there has been none. */
+  readonly lastBatch = signal<number | null>(null);
   /** Counts sheet loads, so features re-read their data even when the same id is loaded again. */
   readonly loads = signal(0);
 
@@ -82,5 +85,6 @@ export class Session {
     this.sheetId.set(sheet.id);
     this.sheetToday.set(sheet.today);
     this.archived.set(sheet.archived);
+    this.lastBatch.set(sheet.lastBatch);
   }
 }

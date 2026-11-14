@@ -28,9 +28,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/sheets")
 public class SheetController {
 
-    public record SheetView(String id, LocalDate today, boolean archived) {
+    public record SheetView(String id, LocalDate today, boolean archived, Long lastBatch) {
         static SheetView of(Sheet sheet) {
-            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived());
+            return new SheetView(sheet.getId(), sheet.getToday(), sheet.isArchived(), sheet.getLastBatchNumber());
         }
     }
 

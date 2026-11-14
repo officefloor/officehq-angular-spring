@@ -37,6 +37,11 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query(value = "UPDATE claim SET listed = NEXT VALUE FOR claim_listed_seq WHERE id = :id", nativeQuery = true)
     void relist(@Param("id") Long id);
 
+    /** Mark the claims as settled by a settle batch. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update Claim c set c.batch = :batch where c.id in :ids")
+    void markBatch(@Param("ids") List<Long> ids, @Param("batch") Long batch);
+
     /** Release every editor's lock on the sheet's claims. */
     @Modifying(flushAutomatically = true)
     @Query("update Claim c set c.lockedBy = null where c.sheetId = :sheetId and c.lockedBy is not null")

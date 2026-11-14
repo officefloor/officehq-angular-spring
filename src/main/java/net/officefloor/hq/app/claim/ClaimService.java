@@ -217,6 +217,16 @@ public class ClaimService {
         claims.releaseLocks(sheetId);
     }
 
+    /** Make the claims settled together one settle batch: take the sheet's next batch number and
+     *  mark each with it. */
+    @Transactional
+    public long batch(String sheetId, List<Claim> settled) {
+        long batch = sheets.nextBatchNumber(sheetId);
+        claims.markBatch(settled.stream().map(Claim::getId).toList(), batch);
+        settled.forEach(claim -> claim.setBatch(batch));
+        return batch;
+    }
+
     /** Move a claim to a new status; a change its status does not allow, or one the sheet's
      *  permission matrix does not let the user's role make, is refused, as is the user who opened a
      *  claim settling it. A clerk settling a claim whose due is above the clerk limit
@@ -275,6 +285,10 @@ public class ClaimService {
             to = ClaimStatus.PENDING;
         }
         claim.setStatus(to);
+        if (to == ClaimStatus.SETTLED || to == ClaimStatus.PENDING) {
+            // Settled one at a time until a bulk settle marks it with its batch.
+            claim.setBatch(null);
+        }
         if (to == ClaimStatus.OPEN) {
             claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
             claim.setOpenedBy(user);

@@ -48,6 +48,17 @@ public class SheetService {
         return number;
     }
 
+    /** Take the sheet's next settle batch number, holding the sheet locked until the transaction
+     *  ends so bulk settles made at the same moment get different numbers. */
+    @Transactional
+    public long nextBatchNumber(String id) {
+        load(id);
+        Sheet sheet = sheets.findLockedById(id).orElseThrow();
+        long number = sheet.nextBatchNumber();
+        sheets.saveAndFlush(sheet);
+        return number;
+    }
+
     /** Hold the sheet locked until the transaction ends, so changes to it made at the same moment
      *  wait their turn. */
     @Transactional
