@@ -1,0 +1,64 @@
+{
+  "checkpoint": 189,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp189_default-grade",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a default grade (settings, one of the grades, blank means A, not dated;\nSETTING_CHANGED key=default-grade value=<grade>; anything else is refused). The quick-add bar gives\na new person that grade, and an import line with a blank grade uses it. Changing it changes no\none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a default grade (settings, one of the grades, blank means A, not dated;\nSETTING_CHANGED key=default-grade value=<grade>; anything else is refused). The quick-add bar gives\na new person that grade, and an import line with a blank grade uses it. Changing it changes no\none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "1ca1a8e170190c430d65c65e653ec2a3d61df90f",
+  "reset_sha": "",
+  "preagent_sha": "4b172447def0e26e446b20ae660ad6ec28b91eeb",
+  "prev_sha": "4b172447def0e26e446b20ae660ad6ec28b91eeb",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8517406,
+    "input_tokens": 42,
+    "output_tokens": 10471,
+    "cache_read_tokens": 946083,
+    "cache_creation_tokens": 56617,
+    "num_turns": 21,
+    "duration_ms": 335662,
+    "duration_api_ms": 99306,
+    "model": "claude-opus-5-5",
+    "session_id": "7965855d-fda9-4296-82d3-64f12d63db6d",
+    "stop_reason": "success",
+    "result_text": "The default-grade setting is in, and all 4 Playwright tests pass in `bin/e2e`: the new default-grade test and the three other scenarios in the spec.\n\nWhat it does now:\n- **The setting:** Settings has a new \"Default grade\" field (`setting-default-grade`), and the value in force is shown in `setting-default-grade-current`. It accepts A, B or C. Blank means A, and the current value then shows empty, with \"A\" printed beside it. Anything else, like `D`, shows `settings-error` and saves nothing. It isn't dated. Each save writes `SETTING_CHANGED sheet=<id> by=<user> key=default-grade value=<grade>` to the audit file, with nothing after `value=` when it's blank. The server checks the value as well.\n- **Quick-add:** a person created by quick-add now gets the sheet's default grade instead of always getting A.\n- **Import:** a line with a blank grade (e.g. `Ben,`) gets the default grade. A line that gives a grade keeps it.\n- **Changing it changes no one:** it's stored on the sheet in a new `default_grade` column (migration `V107__sheet_default_grade.sql`) and is only read when someone is added.\n\nIt also follows the rest of the app's settings: viewing past settings with the as-of date shows it, and cloning a sheet copies it.\n\n**Decision for you:** the request doesn't say what an import line with a blank grade does when the name matches someone already on the sheet. Following the wording literally, that line uses the default grade too, so it changes that person's grade from the sheet's today. Keeping their current grade would arguably make more sense. The test doesn't cover this case; say if you want it switched.\n\nThe server changes are mainly in `SettingService.java`, `SettingController.java`, `QuickAddService.java` and `PersonImportService.java`. The front end is in `settings.ts`, plus updated wording in `people.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8517406,
+        "num_turns": 21,
+        "duration_ms": 335662,
+        "duration_api_ms": 99306,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp189.agent.jsonl",
+  "agent_diff_file": "cp189.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
