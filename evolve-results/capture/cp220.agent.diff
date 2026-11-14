@@ -1,0 +1,77 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index e74f73aea..ad633b392 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -209,6 +209,26 @@ public class ClaimService {
+         return saved;
+     }
+ 
++    /** Change a DRAFT claim's amount as the claim form would, keeping its date, note, correction,
++     *  reference and tags, writing CLAIM_EDITED. A claim in any other status, or one the form would
++     *  refuse, is passed over and keeps its amount: null then. */
++    @Transactional
++    public Claim updateAmount(String sheetId, String user, Long id, BigDecimal amount) {
++        Optional<Claim> found = claims.findById(id).filter(c -> c.getSheetId().equals(sheetId));
++        if (found.isEmpty() || found.get().getStatus() != ClaimStatus.DRAFT) {
++            return null;
++        }
++        Claim claim = found.get();
++        try {
++            return update(sheetId, user, claim.getPersonId(), id, amount, claim.getDate(), claim.getNote(),
++                    claim.getCorrects(), claim.getRef(), String.join(",", claim.getTags()));
++        } catch (ClaimNotEditableException | ClaimLockedException | PeriodClosedException
++                | PersonRetiredException | CorrectionRefusedException | RefInUseException
++                | LinedAmountException e) {
++            return null;
++        }
++    }
++
+     /** Add a line to a DRAFT claim, counting as an edit of it: its amount becomes the quantities times
+      *  the unit amounts of its lines added up, and CLAIM_LINE_ADDED is written ending with the line. A
+      *  claim that is not a DRAFT, a correction, one due by a day in a closed period, one another user's
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index 848bb221c..d7bf0ad19 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -125,7 +125,8 @@ public class PlanController {
+     public PlanView amount(@PathVariable @NotBlank @Size(max = 200) String sheetId, @PathVariable Long planId,
+             @RequestHeader(SignedInUser.HEADER) @NotBlank String user, @RequestBody @Validated AmountRequest request) {
+         String sheet = sheetId.trim();
+-        Plan plan = service.changeAmount(sheet, SignedInUser.decode(user), planId, request.amount());
++        String by = SignedInUser.decode(user);
++        Plan plan = rollups.track(sheet, by, () -> service.changeAmount(sheet, by, planId, request.amount()));
+         return views(sheet, null).stream().filter(v -> v.id().equals(plan.getId())).findFirst().orElseThrow();
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index a75402221..0a5e7aa0c 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -101,7 +101,9 @@ public class PlanService {
+     }
+ 
+     /** Change the plan's amount on the sheet's today: an amount of 0.00 or more with up to two decimals.
+-     *  The claims it generates from then on take it; those it made already keep theirs. */
++     *  The claims it generates from then on take it, as do those it made already that are still DRAFT,
++     *  each edited as the claim form would (on the sheet it was made on, passed over there when the user
++     *  is a viewer or the form would refuse it); those in any other status keep theirs. */
+     @Transactional
+     public Plan changeAmount(String sheetId, String user, Long planId, String amount) {
+         sheets.lock(sheetId);
+@@ -112,6 +114,16 @@ public class PlanService {
+         changes.saveAndFlush(new PlanChange(planId, sheets.today(sheetId), figure));
+         audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                 + " start=" + plan.getStart() + " amount=" + figure.toPlainString());
++        String on = plan.getTargetSheetId() != null ? plan.getTargetSheetId() : sheetId;
++        if (!on.equals(sheetId)) {
++            if (settings.isViewer(on, user)) {
++                return plan;
++            }
++            sheets.lock(on);
++        }
++        for (PlanClaim c : made.findByPlanIdInOrderByIdAsc(List.of(planId))) {
++            claims.updateAmount(on, user, c.getClaimId(), figure);
++        }
+         return plan;
+     }
+ 
