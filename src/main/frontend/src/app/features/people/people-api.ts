@@ -79,6 +79,8 @@ export interface Person {
   snapshots: Snapshot[];
   /** One line per statement still standing, by date, oldest first (those a merge or transfer brought among them). */
   statements: StatementLine[];
+  /** The reason a steward flagged the person, while the flag is in force on the sheet's today; else null. */
+  flag: string | null;
   /** Whether the person has any hold. */
   held: boolean;
   /** The person's holds, in the order they were added: their OPEN claims dated within one count in
@@ -238,6 +240,14 @@ export class PeopleApi {
     );
   }
 
+  /** Flag a person, as a steward, with a reason until a date (blank: the sheet's today). */
+  flag(sheetId: string, id: number, reason: string, until: string): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/flag`, { reason, until: until || null },
+        { headers: this.headers() }),
+    );
+  }
+
   /** Start (on) or stop watching a person as the signed-in user. */
   watch(sheetId: string, id: number, on: boolean): Promise<Person> {
     return firstValueFrom(
@@ -386,6 +396,14 @@ export function moveError(e: unknown): string {
 export function holdError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter the dates as yyyy-mm-dd.';
   if (e instanceof HttpErrorResponse && e.status === 422) return 'The to-date must not be before the from-date.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  return otherError(e);
+}
+
+export function flagError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter the until-date as yyyy-mm-dd.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may flag a person.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'Give a reason for the flag.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   return otherError(e);
 }

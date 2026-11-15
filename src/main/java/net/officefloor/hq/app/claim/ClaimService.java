@@ -436,6 +436,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (to == ClaimStatus.OPEN) {
+            refuseIfFlagged(sheetId, user, person);
             refuseIfNoteless(claim, shownDueOf(claim, person));
             refuseIfOverCap(sheetId, claim);
             if (needsReview(claim, person)) {
@@ -554,6 +555,14 @@ public class ClaimService {
         if (reason == null ? !settings.voidReasons(sheetId).isEmpty() : !settings.isVoidReason(sheetId, reason)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Choose a reason from the sheet's list to void the claim");
+        }
+    }
+
+    /** Refuse opening a claim (403) of a person flagged on the sheet's today by anyone but a steward. */
+    private void refuseIfFlagged(String sheetId, String user, Person person) {
+        if (person.flagOn(sheets.today(sheetId)) != null && settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only a steward opens a claim of a flagged person: " + person.getFlagReason());
         }
     }
 

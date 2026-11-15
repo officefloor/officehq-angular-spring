@@ -49,7 +49,7 @@ public class PersonController {
             List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms,
             String contact, List<String> aliases, boolean clashing, String origin,
             List<Person.Retirement> retirements, String tags, List<SnapshotLine> snapshots,
-            List<StatementLine> statements) {
+            List<StatementLine> statements, String flag) {
         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
                 boolean watched, boolean clashing) {
             return of(p.getId(), p, today, s, patronIds, watched, clashing);
@@ -63,7 +63,7 @@ public class PersonController {
                     p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.termsOn(today),
                     p.getContact(), p.getAliases(), clashing, p.getOriginSheetId(), p.getRetirements(),
                     p.getTags(), p.getSnapshots().stream().map(SnapshotLine::of).toList(),
-                    s.lines().stream().map(StatementLine::of).toList());
+                    s.lines().stream().map(StatementLine::of).toList(), p.flagOn(today));
         }
     }
 
@@ -127,6 +127,11 @@ public class PersonController {
     /** A hold as the row submits it: a missing from-date takes the sheet's today; a missing to-date
      *  leaves it open-ended. */
     public record HoldForm(LocalDate from, LocalDate to) {
+    }
+
+    /** A flag as the row submits it: its reason and the last day it is in force (missing: the
+     *  sheet's today). */
+    public record FlagForm(@Size(max = 200) String reason, LocalDate until) {
     }
 
     /** A move as the row submits it: up (towards the top of the list) or down. */
@@ -325,6 +330,15 @@ public class PersonController {
             @RequestBody(required = false) HoldForm body) {
         return view(sheetId, user, service.hold(sheetId, user.trim(), id, body == null ? null : body.from(),
                 body == null ? null : body.to()));
+    }
+
+    @PostMapping("/{id}/flag")
+    public PersonView flag(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody FlagForm body) {
+        return view(sheetId, user, service.flag(sheetId, user.trim(), id, body.reason(), body.until()));
     }
 
     @PostMapping("/{id}/aliases")

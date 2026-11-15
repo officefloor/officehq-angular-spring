@@ -125,6 +125,14 @@ public class Person {
     @Column(name = "arrived_on")
     private LocalDate arrivedOn;
 
+    /** The reason a steward flagged the person; null when never flagged. */
+    @Column(name = "flag_reason")
+    private String flagReason;
+
+    /** The last day the flag is in force; null when never flagged. */
+    @Column(name = "flag_until")
+    private LocalDate flagUntil;
+
     /** Raised on every save, so an edit of a version someone else has since saved is refused. */
     @Version
     @Column(name = "version", nullable = false)
@@ -154,7 +162,7 @@ public class Person {
     }
 
     /** A copy of the person for a clone of the sheet: their name, every grade they were given (and
-     *  its from-date), their terms, contact, tags, aliases, holds, retirement (and past ones), place in the
+     *  its from-date), their terms, contact, tags, aliases, holds, retirement (and past ones), flag, place in the
      *  list and the sheet they came from. */
     public Person clonedTo(String sheetId) {
         Person copy = new Person(sheetId, name, grade);
@@ -169,6 +177,8 @@ public class Person {
         copy.holds.addAll(holds);
         copy.position = position;
         copy.originSheetId = originSheetId;
+        copy.flagReason = flagReason;
+        copy.flagUntil = flagUntil;
         return copy;
     }
 
@@ -371,6 +381,24 @@ public class Person {
     /** Whether a hold of the person covers the date. */
     public boolean heldOn(LocalDate date) {
         return holds.stream().anyMatch(h -> h.covers(date));
+    }
+
+    /** The flag's reason while it is in force on the date (on or before its until-date); else null. */
+    public String flagOn(LocalDate date) {
+        return flagReason != null && flagUntil != null && !date.isAfter(flagUntil) ? flagReason : null;
+    }
+
+    public String getFlagReason() {
+        return flagReason;
+    }
+
+    public LocalDate getFlagUntil() {
+        return flagUntil;
+    }
+
+    public void flag(String reason, LocalDate until) {
+        this.flagReason = reason;
+        this.flagUntil = until;
     }
 
     public LocalDate getArrivedOn() {

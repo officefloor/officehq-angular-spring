@@ -447,6 +447,29 @@ public class PersonService {
         return person;
     }
 
+    /** Flag the person, as a steward, with a reason (stored trimmed) until a date (a missing one
+     *  takes the sheet's today): while the sheet's today is on or before it the row shows the reason
+     *  and only a steward may open the person's claims. Refused (403) unless the user acts as a
+     *  steward, and (422) for a blank reason. */
+    @Transactional
+    public Person flag(String sheetId, String user, long id, String reason, LocalDate until) {
+        Person person = people.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward flags a person");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Give a reason for the flag");
+        }
+        String why = reason.trim();
+        LocalDate to = until != null ? until : sheets.today(sheetId);
+        person.flag(why, to);
+        people.flush();
+        audit.recordOnCommit("PERSON_FLAGGED sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " reason=" + why + " until=" + to);
+        return person;
+    }
+
     /** Merge a person into another person on the sheet, as a steward: the merged person's claims
      *  move to the other (numbers and dates kept, listed after the other's in the order they were
      *  added, each keeping the figure a statement bound it to), their name and aliases become the other's aliases,

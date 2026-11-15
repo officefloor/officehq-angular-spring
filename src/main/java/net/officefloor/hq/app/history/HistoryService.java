@@ -69,7 +69,8 @@ public class HistoryService {
 
     record PersonState(String name, String grade, List<GradeState> grades, Integer terms, LocalDate retiredFrom,
             List<HoldState> holds, String contact, List<String> aliases, Long position,
-            String originSheetId, List<HoldState> retirements, String tags, List<TermsState> datedTerms) {
+            String originSheetId, List<HoldState> retirements, String tags, List<TermsState> datedTerms,
+            String flagReason, LocalDate flagUntil) {
     }
 
     record TermsState(LocalDate from, Integer terms) {
@@ -156,7 +157,8 @@ public class HistoryService {
                     p.getRetiredFrom(), p.getHolds().stream().map(h -> new HoldState(h.from(), h.to())).toList(),
                     p.getContact(), p.getAliases(), p.getPosition(), p.getOriginSheetId(),
                     p.getRetirements().stream().map(r -> new HoldState(r.from(), r.to())).toList(), p.getTags(),
-                    p.getDatedTerms().stream().map(t -> new TermsState(t.from(), t.terms())).toList()));
+                    p.getDatedTerms().stream().map(t -> new TermsState(t.from(), t.terms())).toList(),
+                    p.getFlagReason(), p.getFlagUntil()));
         } else if (entity instanceof Rate r) {
             write(r.getSheetId(), RATE, String.valueOf(r.getId()),
                     new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo(), r.getVersion(),
@@ -351,6 +353,7 @@ public class HistoryService {
         if (s.retirements() != null) { // a version written before people could be unretired has none
             s.retirements().forEach(r -> p.addRetirement(r.from(), r.to()));
         }
+        p.flag(s.flagReason(), s.flagUntil()); // a version written before people were flagged has none
         return p;
     }
 
