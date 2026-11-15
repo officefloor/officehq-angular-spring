@@ -58,6 +58,12 @@ public class PersonStatement {
         this.takenBy = takenBy;
     }
 
+    /** A copy of the statement for a person it is carried to by a merge or a transfer: its figures,
+     *  dates and taker kept. */
+    public PersonStatement carriedTo(String sheetId, Long personId) {
+        return new PersonStatement(sheetId, personId, dueTotal, claims, takenOn, asOf, takenBy);
+    }
+
     public Long getId() {
         return id;
     }

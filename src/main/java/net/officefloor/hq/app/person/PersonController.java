@@ -328,7 +328,7 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody TransferForm body) {
         Person arrived = service.transfer(sheetId, user.trim(), id, body.toSheetId());
-        return PersonView.of(arrived, service.today(arrived.getSheetId()), StatementSummary.NONE, List.of(), false,
+        return PersonView.of(arrived, service.today(arrived.getSheetId()), service.statementSummary(arrived.getId()), List.of(), false,
                 service.clashing(arrived));
     }
 
