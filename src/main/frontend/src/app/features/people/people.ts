@@ -8,7 +8,7 @@ import { Period, PeriodsApi, periodOn, personPeriodDueCents } from '../periods/p
 import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
-import { Lateness, Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
+import { Lateness, Rate, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
 import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, retireError, statementError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
@@ -98,7 +98,7 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
       }
       <table data-testid="people-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shownPeople(); track p.id) {
@@ -136,6 +136,7 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
                   [attr.aria-label]="'Retire ' + p.name">Retire</button>
               </td>
+              <td data-testid="person-active">{{ activeIds().has(p.id) ? 'yes' : 'no' }}</td>
               <td>
                 <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
                 <ul>
@@ -215,6 +216,19 @@ export class People {
     const holds = this.holdsById();
     const today = this.session.today();
     return (c: Claim) => counts(c, today) && !(isOpen(c) && !isBound(c) && heldOn(holds.get(c.personId) ?? [], c.date));
+  });
+  /** The ids of the people who are active: with an open (OPEN or PENDING) claim that counts in the
+   *  live totals, dated within the 30 days up to and including the sheet's today. */
+  protected readonly activeIds = computed(() => {
+    const today = this.session.today();
+    const out = new Set<number>();
+    if (today === null) return out;
+    const since = plusDays(today, -29);
+    const live = this.countsLive();
+    for (const c of this.claims()) {
+      if (isOpen(c) && live(c) && since <= c.date && c.date <= today) out.add(c.personId);
+    }
+    return out;
   });
   /** Each person's claims (newest first) and claimed in cents (counting claims only), by person id. */
   private readonly byPerson = computed(() => {
@@ -334,10 +348,12 @@ export class People {
     }
     return out;
   });
-  /** Each person as the summary counts them: grade today, whether retired (as the list hides them), due-total. */
+  /** Each person as the summary counts them: grade today, whether retired (as the list hides them), due-total, whether active. */
   protected readonly summaryPeople = computed<SummaryPerson[]>(() => {
     const dues = this.dueByPerson();
-    return this.people().map((p) => ({ grade: this.gradeOf(p), retired: p.retiredFrom !== null, due: dues.get(p.id) ?? null }));
+    const active = this.activeIds();
+    return this.people().map((p) => ({ grade: this.gradeOf(p), retired: p.retiredFrom !== null, due: dues.get(p.id) ?? null,
+      active: active.has(p.id) }));
   });
   /** The names of the people on the sheet, by person id (retired ones too). */
   private readonly namesById = computed(() => new Map(this.people().map((p) => [p.id, p.name])));

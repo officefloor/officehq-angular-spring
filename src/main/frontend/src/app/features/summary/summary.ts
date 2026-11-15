@@ -12,15 +12,16 @@ export function statusCounts(claims: Claim[]): { status: string; count: number }
 }
 
 /** A person as the summary counts them: their grade in force on the sheet's today, whether they
- *  are retired, and their due-total in cents (null: n/a). */
+ *  are retired, their due-total in cents (null: n/a), and whether they are active. */
 export interface SummaryPerson {
   grade: string;
   retired: boolean;
   due: number | null;
+  active: boolean;
 }
 
 // The sheet in figures, each as the lists show it: per grade, how many people not retired are on it
-// today and their due-totals added up (n/a skipped); per period, its due-total; per status, how
+// today, their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total; per status, how
 // many claims have it.
 @Component({
   selector: 'app-summary',
@@ -30,7 +31,7 @@ export interface SummaryPerson {
       <table data-testid="summary-grades">
         <caption>By grade</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th><th scope="col">Active</th></tr>
         </thead>
         <tbody>
           @for (g of byGrade(); track g.grade) {
@@ -38,6 +39,7 @@ export interface SummaryPerson {
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ money(g.cents) }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
         </tbody>
@@ -84,7 +86,8 @@ export class Summary {
 
   protected readonly byGrade = computed(() => GRADES.map((grade) => {
     const on = this.people().filter((p) => !p.retired && p.grade === grade);
-    return { grade, count: on.length, cents: on.reduce((sum, p) => sum + (p.due ?? 0), 0) };
+    return { grade, count: on.length, cents: on.reduce((sum, p) => sum + (p.due ?? 0), 0),
+      active: on.filter((p) => p.active).length };
   }));
 
   protected readonly byStatus = computed(() => statusCounts(this.claims()));
