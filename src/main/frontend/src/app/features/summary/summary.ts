@@ -5,7 +5,7 @@ import { GRADES } from '../people/people-api';
 import { Period, periodDueCents } from '../periods/periods-api';
 
 /** The statuses the summary counts, in the order it lists them. */
-export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID'] as const;
+export const STATUSES = ['DRAFT', 'OPEN', 'PENDING', 'SETTLED', 'VOID', 'REVIEW'] as const;
 
 /** How many of the claims have each status, in the order the summary lists them. */
 export function statusCounts(claims: Claim[]): { status: string; count: number }[] {

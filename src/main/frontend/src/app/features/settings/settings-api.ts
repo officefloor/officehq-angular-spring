@@ -185,6 +185,13 @@ export class SettingsApi {
     );
   }
 
+  /** Save the value from a date (blank: the sheet's today). */
+  setReviewThreshold(sheetId: string, value: string, from = ''): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/review-threshold`, { value, from }, { headers: this.headers() }),
+    );
+  }
+
   /** Save the roles that may take an action (blank: its standing rule). */
   setPermission(sheetId: string, action: PermissionAction, value: string): Promise<Settings> {
     return firstValueFrom(

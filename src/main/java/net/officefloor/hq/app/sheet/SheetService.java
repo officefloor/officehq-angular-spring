@@ -114,6 +114,12 @@ public class SheetService {
         return sheets.findById(id).map(s -> s.noteThresholdOn(on)).orElse(null);
     }
 
+    /** The sheet's review threshold in force on a date; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal reviewThresholdOn(String id, LocalDate on) {
+        return sheets.findById(id).map(s -> s.reviewThresholdOn(on)).orElse(null);
+    }
+
     /** The ids of the other sheets of the sheet's tree, among those that exist: its ancestors (its
      *  parent, theirs, and so on) and its descendants (its children, theirs, and so on). */
     @Transactional(readOnly = true)

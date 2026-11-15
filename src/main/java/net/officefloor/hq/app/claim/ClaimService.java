@@ -408,7 +408,9 @@ public class ClaimService {
             default -> {
             }
         }
-        if (to == ClaimStatus.PENDING || (to == ClaimStatus.SETTLED && claim.getStatus() == ClaimStatus.PENDING)
+        if (to == ClaimStatus.PENDING || to == ClaimStatus.REVIEW
+                || (to == ClaimStatus.SETTLED && claim.getStatus() == ClaimStatus.PENDING)
+                || (to == ClaimStatus.OPEN && claim.getStatus() == ClaimStatus.REVIEW)
                 || !claim.getStatus().canMoveTo(to)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + to);
@@ -436,6 +438,10 @@ public class ClaimService {
         if (to == ClaimStatus.OPEN) {
             refuseIfNoteless(claim, shownDueOf(claim, person));
             refuseIfOverCap(sheetId, claim);
+            if (needsReview(claim, person)) {
+                // above the review threshold: a steward makes it OPEN
+                to = ClaimStatus.REVIEW;
+            }
         }
         // a claim bound by a statement settles at its bound figure, its late charge frozen in
         BigDecimal settling = to == ClaimStatus.SETTLED ? shownDueOf(claim, person) : null;
@@ -458,6 +464,8 @@ public class ClaimService {
             number = nextNumber(sheetId, claim.getDueBy());
             claim.setNumber(number);
             claim.setOpenedBy(user);
+        } else if (to == ClaimStatus.REVIEW) {
+            claim.setOpenedBy(user);
         } else if (to == ClaimStatus.SETTLED) {
             claim.setSettledDue(settling);
         } else if (to == ClaimStatus.VOID) {
@@ -467,6 +475,7 @@ public class ClaimService {
         logStatus(user, person, claim);
         String event = switch (to) {
             case OPEN -> "CLAIM_OPENED";
+            case REVIEW -> "CLAIM_REVIEW";
             case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
@@ -870,6 +879,42 @@ public class ClaimService {
         record("CLAIM_OPENED", user, person, split);
         rollup.recordChanges(sheetId, user, before);
         return new Split(claim, split);
+    }
+
+    /** A steward reviews a REVIEW claim: it becomes OPEN, numbered now, its opener kept;
+     *  CLAIM_REVIEWED then CLAIM_OPENED are written. Refused (404) when missing, (423) when due in a
+     *  closed period, (409) unless REVIEW, and (403) when the user is not a steward. */
+    @Transactional
+    public Claim review(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        refuseIfClosed(sheetId, claim.getDueBy());
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only a REVIEW claim is reviewed, not a " + claim.getStatus() + " one");
+        }
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward reviews a claim");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        record("CLAIM_REVIEWED", user, person, claim, null);
+        claim.setStatus(ClaimStatus.OPEN);
+        claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
+        claims.flush();
+        logStatus(user, person, claim);
+        record("CLAIM_OPENED", user, person, claim);
+        rollup.recordChanges(sheetId, user, before);
+        return claim;
+    }
+
+    /** Whether opening the claim sends it to REVIEW: its due (null: n/a never does) is above the
+     *  review threshold in force on its date. */
+    private boolean needsReview(Claim claim, Person person) {
+        BigDecimal threshold = sheets.reviewThresholdOn(claim.getSheetId(), claim.getDate());
+        BigDecimal due = shownDueOf(claim, person);
+        return threshold != null && due != null && due.compareTo(threshold) > 0;
     }
 
     /** The PENDING claim a steward decides on: refused (404) when missing, (423) when dated in a

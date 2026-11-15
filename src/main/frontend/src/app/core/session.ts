@@ -39,6 +39,9 @@ export class Session {
   /** The active sheet's note threshold (two decimals) in force on its today, null when there is
    *  none: a claim whose due is above the one in force on its date is opened only with a note. */
   readonly noteThreshold = computed(() => valueOn(this.dated(), 'note-threshold', this.today())?.value ?? null);
+  /** The active sheet's review threshold (two decimals) in force on its today, null when there is
+   *  none: a claim whose due is above the one in force on its date goes to REVIEW when opened. */
+  readonly reviewThreshold = computed(() => valueOn(this.dated(), 'review-threshold', this.today())?.value ?? null);
   /** The active sheet's rounding mode (half-up or half-even) in force on its today, null when
    *  there is none: a claim with one in force on its date rounds its live figures by it, one with
    *  none by the policy date. */

@@ -73,6 +73,9 @@ public class SettingsService {
     /** The key the note threshold is audited under. */
     public static final String NOTE_THRESHOLD = Sheet.NOTE_THRESHOLD;
 
+    /** The key the review threshold is audited under. */
+    public static final String REVIEW_THRESHOLD = Sheet.REVIEW_THRESHOLD;
+
     /** The key an action's roles in the permission matrix are audited under, followed by the action. */
     public static final String PERMISSION = "perm-";
 
@@ -477,6 +480,18 @@ public class SettingsService {
         sheets.lock(sheetId);
         BigDecimal scaled = threshold == null ? null : threshold.setScale(2);
         record(sheet, user, NOTE_THRESHOLD, scaled == null ? "" : scaled.toPlainString(), from);
+        return scaled;
+    }
+
+    /** Set the sheet's review threshold (null: none) from a date (null: the sheet's today), the
+     *  sheet created first if it was never loaded; a claim dated from then on to the next from-date
+     *  whose due is above it goes to REVIEW when opened, for a steward to make OPEN. */
+    @Transactional
+    public BigDecimal setReviewThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        BigDecimal scaled = threshold == null ? null : threshold.setScale(2);
+        record(sheet, user, REVIEW_THRESHOLD, scaled == null ? "" : scaled.toPlainString(), from);
         return scaled;
     }
 

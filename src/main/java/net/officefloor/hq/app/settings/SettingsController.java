@@ -116,6 +116,12 @@ public class SettingsController {
             @Pattern(regexp = FROM) String from) {
     }
 
+    /** The review threshold as the form submits it: 0.00 or more with up to two decimals, blank
+     *  for none, from a date (blank: the sheet's today). */
+    public record ReviewThresholdForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value,
+            @Pattern(regexp = FROM) String from) {
+    }
+
     /** The rounding mode as the form submits it: half-up or half-even, blank for none, from a date
      *  (blank: the sheet's today). */
     public record RoundingForm(@NotNull @Pattern(regexp = "(half-up|half-even)?") String value,
@@ -323,6 +329,16 @@ public class SettingsController {
             @Valid @RequestBody NoteThresholdForm body) {
         BigDecimal threshold = body.value().isEmpty() ? null : new BigDecimal(body.value());
         service.setNoteThreshold(sheetId, user.trim(), threshold, fromOf(body.from()));
+        return view(sheetId);
+    }
+
+    @PutMapping("/settings/review-threshold")
+    public SettingsView setReviewThreshold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ReviewThresholdForm body) {
+        BigDecimal threshold = body.value().isEmpty() ? null : new BigDecimal(body.value());
+        service.setReviewThreshold(sheetId, user.trim(), threshold, fromOf(body.from()));
         return view(sheetId);
     }
 

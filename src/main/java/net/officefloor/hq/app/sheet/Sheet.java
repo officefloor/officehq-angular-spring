@@ -56,6 +56,8 @@ public class Sheet {
     public static final String PROOF_THRESHOLD_OF_GRADE = "proof-threshold-";
     /** The key of the note threshold's dated values. */
     public static final String NOTE_THRESHOLD = "note-threshold";
+    /** The key of the review threshold's dated values. */
+    public static final String REVIEW_THRESHOLD = "review-threshold";
     /** The key of the rounding mode's dated values. */
     public static final String ROUNDING = "rounding";
 
@@ -381,6 +383,12 @@ public class Sheet {
      *  opened with an empty note; null when there is none. */
     public BigDecimal noteThresholdOn(LocalDate on) {
         return amountOn(NOTE_THRESHOLD, on, null);
+    }
+
+    /** The review threshold in force on a date: a claim dated then whose due is above it goes to
+     *  REVIEW when opened; null when there is none. */
+    public BigDecimal reviewThresholdOn(LocalDate on) {
+        return amountOn(REVIEW_THRESHOLD, on, null);
     }
 
     /** The rounding mode in force on the sheet's today (half-up or half-even); null when there is none. */

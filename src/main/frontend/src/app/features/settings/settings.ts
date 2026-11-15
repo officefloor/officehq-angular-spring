@@ -31,6 +31,7 @@ import { FISCAL_START_MONTH_PATTERN, GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PE
       }
       <p>Rounding mode in force (blank: none, by the policy date) <strong data-testid="setting-rounding-current">{{ session.rounding() ?? '' }}</strong></p>
       <p>Note threshold in force (blank: none) <strong data-testid="setting-note-threshold-current">{{ session.noteThreshold() ?? '' }}</strong></p>
+      <p>Review threshold in force (blank: none) <strong data-testid="setting-review-threshold-current">{{ session.reviewThreshold() ?? '' }}</strong></p>
       <p>Grace days (blank: off) <strong data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</strong></p>
       <p>Pot (blank: none) <strong data-testid="setting-pot-current">{{ session.pot() ?? '' }}</strong></p>
       <p>Alert threshold (blank: off) <strong data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' }}</strong></p>
@@ -96,6 +97,10 @@ import { FISCAL_START_MONTH_PATTERN, GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PE
         <input id="setting-note-threshold" data-testid="setting-note-threshold" formControlName="noteThreshold" inputmode="decimal" autocomplete="off" />
         <label for="setting-note-threshold-from">Note threshold from (blank: the sheet's today)</label>
         <input id="setting-note-threshold-from" type="date" data-testid="setting-note-threshold-from" formControlName="noteThresholdFrom" />
+        <label for="setting-review-threshold">Review threshold: a claim whose due is above it goes to review when opened (blank: none)</label>
+        <input id="setting-review-threshold" data-testid="setting-review-threshold" formControlName="reviewThreshold" inputmode="decimal" autocomplete="off" />
+        <label for="setting-review-threshold-from">Review threshold from (blank: the sheet's today)</label>
+        <input id="setting-review-threshold-from" type="date" data-testid="setting-review-threshold-from" formControlName="reviewThresholdFrom" />
         <label for="setting-grace-days">Grace days: when the sheet's today changes, open periods ended more than this many days before it are closed (blank: off)</label>
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric" autocomplete="off" />
         <label for="setting-pot">Pot: each balanced pool's members cut it by their shares (blank: none)</label>
@@ -251,6 +256,8 @@ export class Settings {
     roundingFrom: new FormControl('', { nonNullable: true }),
     noteThreshold: new FormControl('', { nonNullable: true }),
     noteThresholdFrom: new FormControl('', { nonNullable: true }),
+    reviewThreshold: new FormControl('', { nonNullable: true }),
+    reviewThresholdFrom: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
     alertThreshold: new FormControl('', { nonNullable: true }),
@@ -359,7 +366,7 @@ export class Settings {
         this.voidReasonForm.reset({ reason: '' }, { emitEvent: false });
         this.settingsForm.reset({
           clerkLimit: '', clerkLimitFrom: '', floor: '', floorFrom: '', terms: '', termsFrom: '', latePct: '', latePctFrom: '',
-          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', rounding: '', roundingFrom: '', noteThreshold: '', noteThresholdFrom: '', graceDays: '', pot: '', alertThreshold: '', fiscalStartMonth: '', parent: '',
+          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', rounding: '', roundingFrom: '', noteThreshold: '', noteThresholdFrom: '', reviewThreshold: '', reviewThresholdFrom: '', graceDays: '', pot: '', alertThreshold: '', fiscalStartMonth: '', parent: '',
         }, { emitEvent: false });
         this.gradeTermsForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.gradeTermsFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
@@ -387,7 +394,7 @@ export class Settings {
     this.settingsErr.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, rounding, roundingFrom, noteThreshold, noteThresholdFrom, graceDays, pot, alertThreshold, fiscalStartMonth, parent } = this.settingsForm.controls;
+    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, rounding, roundingFrom, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, pot, alertThreshold, fiscalStartMonth, parent } = this.settingsForm.controls;
     // only the settings typed into (or entered and left, as when one already blank is cleared),
     // or whose from-date was, since the last save are saved (the clerk limit when none is)
     const typed = (c: AbstractControl) => c.dirty || c.touched;
@@ -401,6 +408,7 @@ export class Settings {
     const saveProofThreshold = typed(proofThreshold) || typed(proofThresholdFrom);
     const saveRounding = typed(rounding) || typed(roundingFrom);
     const saveNoteThreshold = typed(noteThreshold) || typed(noteThresholdFrom);
+    const saveReviewThreshold = typed(reviewThreshold) || typed(reviewThresholdFrom);
     const saveGraceDays = typed(graceDays);
     const savePot = typed(pot);
     const saveAlertThreshold = typed(alertThreshold);
@@ -432,7 +440,7 @@ export class Settings {
         typed: this.permissionsForm.controls[p.action].value.trim(),
       }));
     const saveLimit = typed(clerkLimit) || typed(clerkLimitFrom)
-      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveRounding || saveNoteThreshold || saveGraceDays || savePot || saveAlertThreshold || saveFiscalStartMonth || saveParent);
+      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveRounding || saveNoteThreshold || saveReviewThreshold || saveGraceDays || savePot || saveAlertThreshold || saveFiscalStartMonth || saveParent);
     const limitFrom = clerkLimitFrom.value.trim();
     const floorFromValue = floorFrom.value.trim();
     const termsFromValue = termsFrom.value.trim();
@@ -441,6 +449,7 @@ export class Settings {
     const proofThresholdFromValue = proofThresholdFrom.value.trim();
     const roundingFromValue = roundingFrom.value.trim();
     const noteThresholdFromValue = noteThresholdFrom.value.trim();
+    const reviewThresholdFromValue = reviewThresholdFrom.value.trim();
     const badFrom = (save: boolean, from: string) => save && from !== '' && !POLICY_DATE_PATTERN.test(from);
     const limitValue = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
@@ -453,6 +462,7 @@ export class Settings {
     const proofThresholdValue = proofThreshold.value.trim();
     const roundingValue = rounding.value.trim();
     const noteThresholdValue = noteThreshold.value.trim();
+    const reviewThresholdValue = reviewThreshold.value.trim();
     const graceDaysValue = graceDays.value.trim();
     const potValue = pot.value.trim();
     const alertThresholdValue = alertThreshold.value.trim();
@@ -472,6 +482,7 @@ export class Settings {
         || (saveProofThreshold && proofThresholdValue !== '' && !LIMIT_PATTERN.test(proofThresholdValue))
         || (saveRounding && roundingValue !== '' && !ROUNDING_PATTERN.test(roundingValue))
         || (saveNoteThreshold && noteThresholdValue !== '' && !LIMIT_PATTERN.test(noteThresholdValue))
+        || (saveReviewThreshold && reviewThresholdValue !== '' && !LIMIT_PATTERN.test(reviewThresholdValue))
         || (saveGraceDays && graceDaysValue !== '' && !TERMS_PATTERN.test(graceDaysValue))
         || (savePot && potValue !== '' && !LIMIT_PATTERN.test(potValue))
         || (saveAlertThreshold && alertThresholdValue !== '' && !LIMIT_PATTERN.test(alertThresholdValue))
@@ -480,6 +491,7 @@ export class Settings {
         || badFrom(saveLimit, limitFrom) || badFrom(saveFloor, floorFromValue) || badFrom(saveTerms, termsFromValue)
         || badFrom(saveLatePct, latePctFromValue) || badFrom(saveCap, capFromValue)
         || badFrom(saveProofThreshold, proofThresholdFromValue) || badFrom(saveNoteThreshold, noteThresholdFromValue)
+        || badFrom(saveReviewThreshold, reviewThresholdFromValue)
         || badFrom(saveRounding, roundingFromValue)
         || gradeTermsToSave.some((t) => badFrom(true, t.from))
         || gradeGraceToSave.some((t) => badFrom(true, t.from))
@@ -569,6 +581,12 @@ export class Settings {
         const saved = await this.api.setNoteThreshold(sheetId, noteThresholdValue, noteThresholdFromValue);
         settled(noteThreshold, noteThresholdValue);
         settled(noteThresholdFrom, noteThresholdFromValue);
+        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+      }
+      if (saveReviewThreshold) {
+        const saved = await this.api.setReviewThreshold(sheetId, reviewThresholdValue, reviewThresholdFromValue);
+        settled(reviewThreshold, reviewThresholdValue);
+        settled(reviewThresholdFrom, reviewThresholdFromValue);
         if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
       }
       if (saveGraceDays) {
@@ -752,6 +770,9 @@ export class Settings {
         // and the note threshold's
         const noteThreshold = this.settingsForm.controls.noteThreshold;
         if (!noteThreshold.dirty) noteThreshold.setValue(this.session.noteThreshold() ?? '', { emitEvent: false });
+        // and the review threshold's
+        const reviewThreshold = this.settingsForm.controls.reviewThreshold;
+        if (!reviewThreshold.dirty) reviewThreshold.setValue(this.session.reviewThreshold() ?? '', { emitEvent: false });
         this.permissions.set(settings.permissions);
         // each action's roles start at those set, so clearing them is a change that saves the standing rule
         for (const p of PERMISSIONS) {

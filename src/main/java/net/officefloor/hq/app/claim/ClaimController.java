@@ -413,6 +413,15 @@ public class ClaimController {
         return view(service.addProof(sheetId, user.trim(), id));
     }
 
+    /** A steward makes a REVIEW claim OPEN. */
+    @PostMapping("/claims/{id}/review")
+    public ClaimView review(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return view(service.review(sheetId, user.trim(), id));
+    }
+
     @PostMapping("/claims/{id}/approve")
     public ClaimView approve(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,

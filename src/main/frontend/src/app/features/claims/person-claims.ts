@@ -123,6 +123,8 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment,
               [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date">Re-date</button>
             <button type="button" data-testid="claim-approve" (click)="changeStatus(c, 'approve')"
               [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
+            <button type="button" data-testid="claim-review" (click)="changeStatus(c, 'review')"
+              [attr.aria-label]="'Review claim of ' + c.amount + ' on ' + c.date">Review</button>
             <button type="button" data-testid="claim-resettle" (click)="changeStatus(c, 'resettle')"
               [attr.aria-label]="'Re-settle claim of ' + c.amount + ' on ' + c.date">Re-settle</button>
             <label [for]="'claim-reject-reason-' + c.id">Reject reason</label>
@@ -646,7 +648,7 @@ export class PersonClaims {
     }
   }
 
-  /** Open, settle, approve, re-settle, void, delete or restore a claim; a move its status does not allow shows an error on the claim. */
+  /** Open, settle, approve, review, re-settle, void, delete or restore a claim; a move its status does not allow shows an error on the claim. */
   protected async changeStatus(c: Claim, action: ClaimAction): Promise<void> {
     this.clearRowError(c.id);
     const sheetId = this.session.sheetId();

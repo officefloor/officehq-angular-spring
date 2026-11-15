@@ -13,11 +13,13 @@ export const CLAIM_AMOUNT_PATTERN = /^-?\d{1,13}(\.\d{1,2})?$/;
 /** DRAFT when added, then OPEN, then SETTLED; a clerk settling one above the clerk limit sends it to
  *  PENDING, which a steward approves (SETTLED) or rejects (back to OPEN). A DRAFT, OPEN or PENDING
  *  claim may be VOID, and a steward may void a SETTLED one within 7 days of its settlement. A DRAFT
- *  claim may be DELETED (counting nowhere) and restored to DRAFT on the sheet's today it was deleted. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
+ *  claim may be DELETED (counting nowhere) and restored to DRAFT on the sheet's today it was deleted.
+ *  A claim whose due is above the review threshold goes to REVIEW (counting nowhere, unnumbered)
+ *  when opened, until a steward reviews it (OPEN); a REVIEW claim may be VOID. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED' | 'REVIEW';
 
 /** A move of a claim's status, as the server names it. */
-export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'resettle' | 'delete' | 'restore';
+export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'review' | 'resettle' | 'delete' | 'restore';
 
 export interface Claim {
   id: number;
