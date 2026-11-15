@@ -1,0 +1,209 @@
+diff --git a/src/main/frontend/src/app/features/audit/audit-viewer.ts b/src/main/frontend/src/app/features/audit/audit-viewer.ts
+index 0563365df..001d14f0a 100644
+--- a/src/main/frontend/src/app/features/audit/audit-viewer.ts
++++ b/src/main/frontend/src/app/features/audit/audit-viewer.ts
+@@ -4,7 +4,8 @@ import { Session, otherError } from '../../core/session';
+ import { AuditApi } from './audit-api';
+ 
+ // The audit viewer: the sheet's audit lines as the file holds them, newest first; with a name in
+-// the filter, only the lines about that person (name= or person= it, case and spaces ignored).
++// the filter, only the lines about that person (name= or person= it, case and spaces ignored),
++// followed, for a person transferred here, by those about them on the sheet they came from.
+ @Component({
+   selector: 'app-audit-viewer',
+   imports: [ReactiveFormsModule],
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index 0ad91c9aa..fcaf3441f 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -69,6 +69,8 @@ export interface Person {
+   aliases: string[];
+   /** Whether their name or an alias is also a name or alias on another sheet of the sheet's tree. */
+   clashing: boolean;
++  /** The id of the sheet the person was transferred from; null for anyone not transferred here. */
++  origin: string | null;
+ }
+ 
+ /** A statement just taken: the person as they now show, and all their claims, newest first. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 582f416e5..cf7a65718 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -169,7 +169,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+       </form>
+       <table data-testid="people-list">
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Cut</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">From sheet</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Cut</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shownPeople(); track p.id) {
+@@ -179,6 +179,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+                   (change)="personToggled(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
+               </td>
+               <td data-testid="person-name">{{ p.name }}</td>
++              <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+               <td>
+                 <span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>
+                 <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias for {{ p.name }}</label>
+diff --git a/src/main/java/net/officefloor/hq/app/AuditController.java b/src/main/java/net/officefloor/hq/app/AuditController.java
+index 75c92059f..076ab0d7f 100644
+--- a/src/main/java/net/officefloor/hq/app/AuditController.java
++++ b/src/main/java/net/officefloor/hq/app/AuditController.java
+@@ -3,7 +3,11 @@ package net.officefloor.hq.app;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
++import java.util.ArrayList;
+ import java.util.List;
++import java.util.Objects;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.session.CurrentUser;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -20,17 +24,28 @@ import org.springframework.web.bind.annotation.RestController;
+ public class AuditController {
+ 
+     private final Audit audit;
++    private final PersonRepository people;
+ 
+-    public AuditController(Audit audit) {
++    public AuditController(Audit audit, PersonRepository people) {
+         this.audit = audit;
++        this.people = people;
+     }
+ 
+-    /** The sheet's audit lines, newest first; with a name, only those about that person. */
++    /** The sheet's audit lines, newest first; with a name, only those about that person, followed,
++     *  when that person was transferred here, by the lines about them on the sheet they came from
++     *  (newest first, as that sheet's file holds them). */
+     @GetMapping("/{id}/audit")
+     public List<String> lines(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String id,
+             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+             @RequestParam(defaultValue = "") @Size(max = 200) String name) {
+-        return audit.lines(id, name);
++        List<String> lines = new ArrayList<>(audit.lines(id, name));
++        String who = name.trim();
++        if (!who.isEmpty()) {
++            people.findBySheetIdAndNameIgnoreCase(id, who).stream()
++                    .map(Person::getOriginSheetId).filter(Objects::nonNull).findFirst()
++                    .ifPresent(origin -> lines.addAll(audit.lines(origin, who)));
++        }
++        return lines;
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/history/HistoryService.java b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+index 82485e17a..88d0d820b 100644
+--- a/src/main/java/net/officefloor/hq/app/history/HistoryService.java
++++ b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+@@ -67,7 +67,8 @@ public class HistoryService {
+     }
+ 
+     record PersonState(String name, String grade, List<GradeState> grades, Integer terms, LocalDate retiredFrom,
+-            List<HoldState> holds, String contact, List<String> aliases, Long position) {
++            List<HoldState> holds, String contact, List<String> aliases, Long position,
++            String originSheetId) {
+     }
+ 
+     record RateState(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
+@@ -142,7 +143,7 @@ public class HistoryService {
+             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
+                     all.stream().skip(1).map(g -> new GradeState(g.from(), g.grade())).toList(), p.getTerms(),
+                     p.getRetiredFrom(), p.getHolds().stream().map(h -> new HoldState(h.from(), h.to())).toList(),
+-                    p.getContact(), p.getAliases(), p.getPosition()));
++                    p.getContact(), p.getAliases(), p.getPosition(), p.getOriginSheetId()));
+         } else if (entity instanceof Rate r) {
+             write(r.getSheetId(), RATE, String.valueOf(r.getId()),
+                     new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo()));
+@@ -313,6 +314,7 @@ public class HistoryService {
+         if (s.aliases() != null) { // a version written before people had aliases has none
+             s.aliases().forEach(p::addAlias);
+         }
++        p.setOriginSheetId(s.originSheetId());
+         return p;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 2f12c2775..ba820f8da 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -87,6 +87,10 @@ public class Person {
+     @OptimisticLock(excluded = true)
+     private long position;
+ 
++    /** The id of the sheet the person was transferred from; null for anyone not transferred here. */
++    @Column(name = "origin_sheet_id")
++    private String originSheetId;
++
+     /** Raised on every save, so an edit of a version someone else has since saved is refused. */
+     @Version
+     @Column(name = "version", nullable = false)
+@@ -109,6 +113,7 @@ public class Person {
+         copy.terms = terms;
+         copy.contact = contact;
+         copy.aliases.addAll(aliases);
++        copy.originSheetId = this.sheetId;
+         return copy;
+     }
+ 
+@@ -233,6 +238,14 @@ public class Person {
+         return holds.stream().anyMatch(h -> h.covers(date));
+     }
+ 
++    public String getOriginSheetId() {
++        return originSheetId;
++    }
++
++    public void setOriginSheetId(String originSheetId) {
++        this.originSheetId = originSheetId;
++    }
++
+     public long getPosition() {
+         return position;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index e29a57b5f..406bcf78d 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -46,7 +46,7 @@ public class PersonController {
+     public record PersonView(long id, String name, String grade, long version, int statementCount,
+             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held, List<Person.Hold> holds,
+             List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms,
+-            String contact, List<String> aliases, boolean clashing) {
++            String contact, List<String> aliases, boolean clashing, String origin) {
+         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
+                 boolean watched, boolean clashing) {
+             return of(p.getId(), p, today, s, patronIds, watched, clashing);
+@@ -58,7 +58,7 @@ public class PersonController {
+             return new PersonView(id, p.getName(), p.gradeOn(today), p.getVersion(), s.count(),
+                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
+                     p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.getTerms(),
+-                    p.getContact(), p.getAliases(), clashing);
++                    p.getContact(), p.getAliases(), clashing, p.getOriginSheetId());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 61073eeb8..242fd136a 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -478,7 +478,8 @@ public class PersonService {
+ 
+     /** Transfer a person to another sheet (created first if it was never loaded), as a steward: they
+      *  arrive with every grade they were given (and its from-date), their terms, contact and
+-     *  aliases, and their claims with their status, dates, notes, tags, frozen settled figures,
++     *  aliases, the id of this sheet as the one they came from, and their claims with their status,
++     *  dates, notes, tags, frozen settled figures,
+      *  logs and comments, listed there in the order this sheet lists them; each claim that had a number
+      *  takes the other sheet's next one, in the order the claims were opened (by the sheet's today
+      *  when each was opened, then by the order they were added). Figures a statement bound, batches
+diff --git a/src/main/resources/db/migration/V70__person_origin.sql b/src/main/resources/db/migration/V70__person_origin.sql
+new file mode 100644
+index 000000000..d50b1d82d
+--- /dev/null
++++ b/src/main/resources/db/migration/V70__person_origin.sql
+@@ -0,0 +1,2 @@
++-- The id of the sheet a person was transferred from; null for anyone not transferred here.
++ALTER TABLE person ADD COLUMN origin_sheet_id VARCHAR(255);
