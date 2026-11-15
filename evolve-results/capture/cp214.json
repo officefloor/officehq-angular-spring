@@ -1,0 +1,64 @@
+{
+  "checkpoint": 214,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp214_max-open-claims",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has a maximum of open claims per person (settings, a whole number, blank means none, not\ndated; SETTING_CHANGED key=max-open value=<n>). Opening a claim, alone or by the bulk button or a\npaste, is refused when the person already has that many OPEN or PENDING claims.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has a maximum of open claims per person (settings, a whole number, blank means none, not\ndated; SETTING_CHANGED key=max-open value=<n>). Opening a claim, alone or by the bulk button or a\npaste, is refused when the person already has that many OPEN or PENDING claims.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cb26faf567156cea9f15f1cb7d53c27f5d7a7472",
+  "reset_sha": "",
+  "preagent_sha": "0ed33e87e1b01e902b0afa8d9ad529ad5271ac07",
+  "prev_sha": "0ed33e87e1b01e902b0afa8d9ad529ad5271ac07",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8397944,
+    "input_tokens": 40,
+    "output_tokens": 10320,
+    "cache_read_tokens": 843052,
+    "cache_creation_tokens": 58078,
+    "num_turns": 20,
+    "duration_ms": 366642,
+    "duration_api_ms": 95603,
+    "model": "claude-opus-5-5",
+    "session_id": "419ea88f-7b3a-4b61-9bed-cc69a9850024",
+    "stop_reason": "success",
+    "result_text": "The max-open setting is in, and `bin/e2e` passes all 4 tests in the spec: the new max-open test and the three other scenarios.\n\n**How it behaves**\n- The sheet has a new \"Most open claims per person\" setting. It takes a whole number, blank means no limit, and it isn't dated.\n- Saving it writes `SETTING_CHANGED sheet=<id> by=<user> key=max-open value=<n>` to the audit file, with an empty value when cleared.\n- When it's set, opening a claim is refused if that person already has that many OPEN or PENDING claims. The single open, the bulk button and paste all use the same server-side open step, so the check is in one place. A bulk open counts the refused ones; a paste is refused as a whole and writes nothing.\n\n**Changes**\n- **Stored data:** a new migration, `V111__sheet_max_open.sql`, adds a nullable `max_open` column to `sheet`.\n- **Server:**\n  - `Sheet` has the new field, and sheet copies carry it over.\n  - `SettingsService` reads and saves the value and writes the audit line.\n  - `SettingsController` adds `PUT /settings/max-open` and includes `maxOpen` in the settings it returns, including the as-of view.\n  - `HistoryService` saves and restores the value with the sheet's other settings.\n  - The check itself is `refuseIfOverMaxOpen` in `ClaimService`, next to the existing period-cap check.\n- **Front end:** `settings.ts` has the input `setting-max-open` and the current value `setting-max-open-current`, and `settings-api.ts` calls the new endpoint. It follows the review SLA setting, so the field starts at the saved value and clearing it saves \"none\".\n\n**Two choices to confirm**\n- A claim that goes to REVIEW and is then approved to OPEN by a steward is not checked against the limit.\n- Splitting an OPEN claim makes a new OPEN claim without checking the limit either.\n\nThe request only names opening a claim, alone, in bulk or by paste, so I left both out. Each needs only a small change if you want them included.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8397944,
+        "num_turns": 20,
+        "duration_ms": 366642,
+        "duration_api_ms": 95603,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp214.agent.jsonl",
+  "agent_diff_file": "cp214.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
