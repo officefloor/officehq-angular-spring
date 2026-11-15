@@ -57,6 +57,9 @@ public class SettingsService {
 
     /** The key the review SLA is audited under. */
     public static final String REVIEW_SLA = "review-sla";
+
+    /** The key the pending SLA is audited under. */
+    public static final String PENDING_SLA = "pending-sla";
     public static final String MAX_OPEN = "max-open";
 
     /** The key the mid score threshold is audited under. */
@@ -402,6 +405,25 @@ public class SettingsService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + REVIEW_SLA + " value=" + (reviewSla == null ? "" : reviewSla));
         return reviewSla;
+    }
+
+    /** The sheet's pending SLA in days; null when blank (none). */
+    @Transactional(readOnly = true)
+    public Integer pendingSla(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getPendingSla).orElse(null);
+    }
+
+    /** Set the sheet's pending SLA (null: none), the sheet created first if it was never loaded;
+     *  not dated, it applies to every PENDING claim at once. */
+    @Transactional
+    public Integer setPendingSla(String sheetId, String user, Integer pendingSla) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        sheet.setPendingSla(pendingSla);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + PENDING_SLA + " value=" + (pendingSla == null ? "" : pendingSla));
+        return pendingSla;
     }
 
     /** The most OPEN or PENDING claims a person on the sheet may have; null when blank (none). */

@@ -488,6 +488,8 @@ public class ClaimService {
         } else if (to == ClaimStatus.REVIEW) {
             claim.setOpenedBy(user);
             claim.setReviewOn(sheets.today(sheetId));
+        } else if (to == ClaimStatus.PENDING) {
+            claim.setPendingOn(sheets.today(sheetId));
         } else if (to == ClaimStatus.SETTLED) {
             claim.setSettledDue(settling);
             number = numberAtSettlement(sheetId, claim);
@@ -798,6 +800,7 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.addShare(new ClaimShare(holder.getId(), share.setScale(2)));
         claims.flush();
+        history.recordClaim(claim);
         record("CLAIM_SHARED", user, person, claim, claim.getNumber(),
                 " with=" + holder.getName() + " share=" + share.setScale(2).toPlainString());
         rollup.recordChanges(sheetId, user, before);

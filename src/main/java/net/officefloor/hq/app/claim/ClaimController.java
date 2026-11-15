@@ -55,7 +55,8 @@ public class ClaimController {
      *  sheet's today when it went to REVIEW (null when it never did); and whether a steward waived
      *  its late charge; and of its proofs, how many are receipts and how many photos; and whether it
      *  is held; and the people it is shared with, in the order added, each with their share; and the
-     *  user its review is assigned to (null when never assigned). */
+     *  user its review is assigned to (null when never assigned); and its pending day, the sheet's
+     *  today when it last went to PENDING (null when it never did). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
@@ -63,7 +64,7 @@ public class ClaimController {
             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason,
             List<CommentView> comments, String editedBy, Integer batch, List<LineView> lines, long added,
             LocalDate reviewOn, boolean waived, int receiptProofs, int photoProofs, boolean held,
-            List<ShareView> shares, String reviewAssignee) {
+            List<ShareView> shares, String reviewAssignee, LocalDate pendingOn) {
         static ClaimView of(Claim c, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines) {
             return of(c.getId(), c, log, comments, lines);
         }
@@ -78,7 +79,7 @@ public class ClaimController {
                     comments.stream().map(CommentView::of).toList(), c.getEditedBy(), c.getBatch(),
                     lines.stream().map(LineView::of).toList(), c.getAdded() != null ? c.getAdded() : id,
                     c.getReviewOn(), c.isWaived(), c.getReceiptProofs(), c.getPhotoProofs(), c.isHeld(),
-                    c.getShares().stream().map(ShareView::of).toList(), c.getReviewAssignee());
+                    c.getShares().stream().map(ShareView::of).toList(), c.getReviewAssignee(), c.getPendingOn());
         }
 
         private static String money(BigDecimal value) {

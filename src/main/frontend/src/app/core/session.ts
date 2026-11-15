@@ -59,6 +59,7 @@ export class Session {
   /** The active sheet's review SLA in days, null when blank (none): a REVIEW claim whose review
    *  day plus them is before its today is late. Not dated. */
   readonly reviewSla = signal<number | null>(null);
+  readonly pendingSla = signal<number | null>(null);
   /** The mid score threshold; null when blank. Not dated. */
   readonly scoreMid = signal<number | null>(null);
   /** The high score threshold; null when blank. Not dated. */

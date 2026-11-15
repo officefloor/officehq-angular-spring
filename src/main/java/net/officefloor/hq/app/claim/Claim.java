@@ -163,6 +163,11 @@ public class Claim {
     @Column(name = "review_on")
     private LocalDate reviewOn;
 
+    /** The claim's pending day: the sheet's today when it last went to PENDING; none when it never
+     *  did. */
+    @Column(name = "pending_on")
+    private LocalDate pendingOn;
+
     /** The claim's external reference, unique on its sheet without regard to case; none when not
      *  given. */
     @Column(name = "ref")
@@ -420,6 +425,14 @@ public class Claim {
         this.reviewOn = reviewOn;
     }
 
+    public LocalDate getPendingOn() {
+        return pendingOn;
+    }
+
+    public void setPendingOn(LocalDate pendingOn) {
+        this.pendingOn = pendingOn;
+    }
+
     public String getRef() {
         return ref;
     }
@@ -468,6 +481,7 @@ public class Claim {
         copy.reviewAssignee = reviewAssignee;
         copy.held = held;
         copy.reviewOn = reviewOn;
+        copy.pendingOn = pendingOn;
         copy.tags = tags;
         copy.voidReason = voidReason;
         return copy;

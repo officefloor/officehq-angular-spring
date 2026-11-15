@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimShare;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.crew.Crew;
 import net.officefloor.hq.app.crew.CrewMember;
@@ -67,7 +68,8 @@ public class HistoryService {
     record SheetState(LocalDate policyDate, List<SettingState> settings, LocalDate periodNumberingFrom,
             Integer graceDays, boolean archived, LocalDate entryDate, BigDecimal pot, Integer fiscalStartMonth,
             BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla, String proofKinds,
-            String defaultGrade, Integer scoreMid, Integer scoreHigh, Boolean scoreLog, Integer maxOpen) {
+            String defaultGrade, Integer scoreMid, Integer scoreHigh, Boolean scoreLog, Integer maxOpen,
+            Integer pendingSla) {
     }
 
     record GradeState(LocalDate from, String grade) {
@@ -96,7 +98,12 @@ public class HistoryService {
             LocalDate deferredUntil, String note, String openedBy, long listed, int proofs, String splitFrom,
             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason, String editedBy,
             Integer batch, Long added, Boolean escalated, LocalDate reviewOn,
-            Boolean waived, Integer photoProofs, Boolean held, String reviewAssignee) {
+            Boolean waived, Integer photoProofs, Boolean held, String reviewAssignee,
+            LocalDate pendingOn, List<ShareState> shares) {
+    }
+
+    /** A share of a claim; none in versions written before claims' shares were kept. */
+    record ShareState(long personId, BigDecimal share) {
     }
 
     record PeriodState(String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
@@ -168,7 +175,14 @@ public class HistoryService {
                 sheet.getPeriodNumberingFrom(), sheet.getGraceDays(), sheet.isArchived(), sheet.getEntryDate(),
                 sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(), sheet.getEscalateAfter(),
                 sheet.getReviewSla(), sheet.getProofKinds(), sheet.getDefaultGrade(),
-                sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), sheet.getMaxOpen()));
+                sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), sheet.getMaxOpen(),
+                sheet.getPendingSla()));
+    }
+
+    /** Write the version of a claim now, if it differs from the last one: a change to its shares
+     *  alone, kept apart from its row, is written by the change itself. */
+    public void recordClaim(Claim claim) {
+        record(claim);
     }
 
     /** Write the version of an entity of the sheet now, if it differs from the last one. */
@@ -180,7 +194,8 @@ public class HistoryService {
                     c.getListed(), c.getProofs(), c.getSplitFrom(), c.isLateEntry(), c.getReminded(),
                     c.getRef(), c.getTags(), c.getVoidReason(), c.getEditedBy(), c.getBatch(), c.getAdded(),
                     c.isEscalated(), c.getReviewOn(), c.isWaived(), c.getPhotoProofs(), c.isHeld(),
-                    c.getReviewAssignee()));
+                    c.getReviewAssignee(), c.getPendingOn(),
+                    c.getShares().stream().map(sh -> new ShareState(sh.getPersonId(), sh.getShare())).toList()));
         } else if (entity instanceof Person p) {
             List<Person.DatedGrade> all = p.getGrades();
             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
@@ -335,6 +350,7 @@ public class HistoryService {
                     sheet.setGraceDays(s.graceDays());
                     sheet.setEscalateAfter(s.escalateAfter());
                     sheet.setReviewSla(s.reviewSla());
+                    sheet.setPendingSla(s.pendingSla());
                     sheet.setMaxOpen(s.maxOpen());
                     sheet.setScoreMid(s.scoreMid());
                     sheet.setScoreHigh(s.scoreHigh());
@@ -465,6 +481,10 @@ public class HistoryService {
         c.setHeld(Boolean.TRUE.equals(s.held()));
         c.setReviewAssignee(s.reviewAssignee());
         c.setReviewOn(s.reviewOn());
+        c.setPendingOn(s.pendingOn());
+        if (s.shares() != null) {
+            s.shares().forEach(sh -> c.addShare(new ClaimShare(sh.personId(), sh.share())));
+        }
         c.setRef(s.ref());
         c.setTags(s.tags());
         c.setVoidReason(s.voidReason());

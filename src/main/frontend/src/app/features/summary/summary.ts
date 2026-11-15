@@ -2,7 +2,7 @@ import { Component, computed, effect, inject, input, signal } from '@angular/cor
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session, otherError } from '../../core/session';
-import { Claim, money, reviewLate } from '../claims/claims-api';
+import { Claim, money, pendingLate, reviewLate } from '../claims/claims-api';
 import { PeopleApi } from '../people/people-api';
 import { Period, periodDueCents } from '../periods/periods-api';
 
@@ -91,6 +91,7 @@ export interface SummaryPerson {
         </tbody>
       </table>
       <p>Review claims late <span data-testid="summary-review-late-count">{{ reviewLateCount() }}</span></p>
+      <p>Pending claims late <span data-testid="summary-pending-late-count">{{ pendingLateCount() }}</span></p>
       <table data-testid="summary-void-reasons">
         <caption>Voided by reason</caption>
         <thead>
@@ -163,6 +164,9 @@ export class Summary {
   /** How many REVIEW claims are late: their review day plus the review SLA is before the sheet's today. */
   protected readonly reviewLateCount = computed(() =>
     this.claims().filter((c) => reviewLate(c, this.session.today(), this.session.reviewSla())).length);
+
+  protected readonly pendingLateCount = computed(() =>
+    this.claims().filter((c) => pendingLate(c, this.session.today(), this.session.pendingSla())).length);
 
   protected readonly byVoidReason = computed(() => this.session.voidReasons().map((reason) => ({
     reason, count: this.claims().filter((c) => c.status === 'VOID' && c.voidReason === reason).length,

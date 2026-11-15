@@ -44,15 +44,18 @@ public class SettingsController {
      *  matrix: the roles set for each action, comma separated, an action left blank left out; and the
      *  escalation gap in days, null when blank (off); and the review SLA in days, null when blank (none);
      *  and the mid and high score thresholds, each null when blank; and whether the score log is on;
-     *  and the maximum of open claims per person, null when blank (none). */
+     *  and the maximum of open claims per person, null when blank (none); and the pending SLA in
+     *  days, null when blank (none). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
             Integer graceDays, LocalDate entryDate, String pot, String alertThreshold, int fiscalStartMonth, Map<String, List<DatedValue>> dated, Map<String, String> permissions,
-            Integer escalateAfter, Integer reviewSla, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Integer maxOpen) {
+            Integer escalateAfter, Integer reviewSla, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Integer maxOpen,
+            Integer pendingSla) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct, LocalDate policyDate,
                 LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, BigDecimal cap, BigDecimal proofThreshold,
                 Integer graceDays, LocalDate entryDate, BigDecimal pot, BigDecimal alertThreshold, int fiscalStartMonth, Map<String, List<DatedSetting>> dated, Map<Permission, String> permissions,
-                Integer escalateAfter, Integer reviewSla, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Integer maxOpen) {
+                Integer escalateAfter, Integer reviewSla, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Integer maxOpen,
+            Integer pendingSla) {
             Map<String, String> perms = new TreeMap<>();
             permissions.forEach((action, roles) -> perms.put(action.key(), roles));
             return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms,
@@ -61,7 +64,7 @@ public class SettingsController {
                     proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), graceDays, entryDate,
                     pot == null ? null : pot.setScale(2).toPlainString(),
                     alertThreshold == null ? null : alertThreshold.setScale(2).toPlainString(), fiscalStartMonth, DatedValue.of(dated), perms,
-                    escalateAfter, reviewSla, scoreMid, scoreHigh, scoreLog, maxOpen);
+                    escalateAfter, reviewSla, scoreMid, scoreHigh, scoreLog, maxOpen, pendingSla);
         }
     }
 
@@ -156,6 +159,10 @@ public class SettingsController {
 
     /** The review SLA as the form submits it: a whole number of days, blank for none. */
     public record ReviewSlaForm(@NotNull @Pattern(regexp = "(\\d{1,4})?") String value) {
+    }
+
+    /** The pending SLA as the form submits it: a whole number of days, blank for none. */
+    public record PendingSlaForm(@NotNull @Pattern(regexp = "(\\d{1,4})?") String value) {
     }
 
     /** The maximum of open claims per person as the form submits it: a whole number, blank for none. */
@@ -497,6 +504,16 @@ public class SettingsController {
         return view(sheetId);
     }
 
+    @PutMapping("/settings/pending-sla")
+    public SettingsView setPendingSla(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody PendingSlaForm body) {
+        Integer pendingSla = body.value().isEmpty() ? null : Integer.valueOf(body.value());
+        service.setPendingSla(sheetId, user.trim(), pendingSla);
+        return view(sheetId);
+    }
+
     @PutMapping("/settings/max-open")
     public SettingsView setMaxOpen(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
@@ -622,7 +639,8 @@ public class SettingsController {
                 service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId),
                 gradeTerms(sheetId), service.cap(sheetId), service.proofThreshold(sheetId), service.graceDays(sheetId), service.entryDate(sheetId), service.pot(sheetId), service.alertThreshold(sheetId), service.fiscalStartMonth(sheetId), service.datedSettings(sheetId),
                 service.permissions(sheetId), service.escalateAfter(sheetId), service.reviewSla(sheetId),
-                service.scoreMid(sheetId), service.scoreHigh(sheetId), service.scoreLog(sheetId), service.maxOpen(sheetId));
+                service.scoreMid(sheetId), service.scoreHigh(sheetId), service.scoreLog(sheetId), service.maxOpen(sheetId),
+                service.pendingSla(sheetId));
     }
 
     /** The settings as they stood at the end of a date, that date the sheet's today. */
@@ -638,7 +656,8 @@ public class SettingsController {
         return SettingsView.of(sheet.getClerkLimit(), sheet.getFloor(), sheet.getTerms(), sheet.getLatePct(),
                 sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(), gradeTerms, sheet.getCap(),
                 sheet.getProofThreshold(), sheet.getGraceDays(), sheet.getEntryDate(), sheet.getPot(), sheet.getAlertThreshold(), sheet.getFiscalStartMonth(), sheet.getDatedSettings(), then.permissions(),
-                sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), sheet.getMaxOpen());
+                sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), sheet.getMaxOpen(),
+                sheet.getPendingSla());
     }
 
     /** A from-date as the form submits it; null when blank or left out (the sheet's today). */

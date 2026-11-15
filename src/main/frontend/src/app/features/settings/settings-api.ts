@@ -69,6 +69,7 @@ export interface Settings {
   /** Days: a REVIEW claim whose review day plus them is before the sheet's today is late; null
    *  when blank (none). Not dated. */
   reviewSla: number | null;
+  pendingSla: number | null;
   /** The most OPEN or PENDING claims a person may have: opening one more is refused; null when
    *  blank (none). Not dated. */
   maxOpen: number | null;
@@ -239,6 +240,12 @@ export class SettingsApi {
   setReviewSla(sheetId: string, value: string): Promise<Settings> {
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/review-sla`, { value }, { headers: this.headers() }),
+    );
+  }
+
+  setPendingSla(sheetId: string, value: string): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/pending-sla`, { value }, { headers: this.headers() }),
     );
   }
 

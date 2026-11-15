@@ -80,6 +80,7 @@ export interface Claim {
   held: boolean;
   /** yyyy-mm-dd: the claim's review day (the sheet's today when it went to REVIEW); null when it never did. */
   reviewOn: string | null;
+  pendingOn: string | null;
   /** The claim's external reference, unique on its sheet without regard to case; null when none. */
   ref: string | null;
   /** The claim's tags: lower-case, sorted and comma separated; null when none. */
@@ -208,6 +209,14 @@ export function overdue(c: Claim, today: string | null, grace = 0): boolean {
 export function reviewLate(c: Claim, today: string | null, sla: number | null): boolean {
   return c.status === 'REVIEW' && sla !== null && today !== null && c.reviewOn !== null
     && plusDays(c.reviewOn, sla) < today;
+}
+
+/** Whether a claim is late pending: it is PENDING and its pending day (when it last went to
+ *  PENDING) plus the sheet's pending SLA in days (null: none, never late) is before the sheet's
+ *  today. */
+export function pendingLate(c: Claim, today: string | null, sla: number | null): boolean {
+  return c.status === 'PENDING' && sla !== null && today !== null && c.pendingOn !== null
+    && plusDays(c.pendingOn, sla) < today;
 }
 
 /** A date (yyyy-mm-dd) moved on by whole days. */
