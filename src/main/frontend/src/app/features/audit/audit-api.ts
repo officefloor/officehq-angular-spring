@@ -17,4 +17,11 @@ export class AuditApi {
       headers: { 'X-User': this.session.user() ?? '' },
     }));
   }
+
+  /** The sheet's activity lines, `<user> <EVENT> <count>`, sorted by user then event. */
+  activity(sheetId: string): Promise<string[]> {
+    return firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/activity`, {
+      headers: { 'X-User': this.session.user() ?? '' },
+    }));
+  }
 }

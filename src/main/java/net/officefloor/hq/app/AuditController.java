@@ -60,6 +60,15 @@ public class AuditController {
         return lines;
     }
 
+    /** The sheet's activity: one line {@code <user> <EVENT> <count>} for every user and event in
+     *  the sheet's audit records, sorted by user then event. */
+    @GetMapping("/{id}/activity")
+    public List<String> activity(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return audit.activity(id);
+    }
+
     /** The claim's timeline: the audit lines about it, newest first, as the file holds them — those
      *  carrying its number, or for a claim with no number those naming its person, amount and date
      *  together. Refused (404) when the claim is not on the sheet. */

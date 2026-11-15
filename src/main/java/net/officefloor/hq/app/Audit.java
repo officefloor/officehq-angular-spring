@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeMap;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -127,6 +128,38 @@ public class Audit {
         }
         Collections.reverse(found);
         return found;
+    }
+
+    /**
+     * The sheet's activity: for every user ({@code by=}) and every event in the sheet's records,
+     * one line {@code <user> <EVENT> <count>}, sorted by user then event.
+     */
+    public synchronized List<String> activity(String sheetId) {
+        TreeMap<String, TreeMap<String, Integer>> counts = new TreeMap<>();
+        for (String line : read()) {
+            int space = line.indexOf(' ');
+            String user = fieldValue(line, "by");
+            if (space <= 0 || user == null || !hasField(line, "sheet", sheetId, false)) {
+                continue;
+            }
+            counts.computeIfAbsent(user, u -> new TreeMap<>()).merge(line.substring(0, space), 1, Integer::sum);
+        }
+        List<String> found = new ArrayList<>();
+        counts.forEach((user, events) -> events.forEach((event, n) -> found.add(user + " " + event + " " + n)));
+        return found;
+    }
+
+    /** The value of the record's first {@code key=} field after the event name, up to the next
+     *  space; null when it has none. */
+    private static String fieldValue(String line, String key) {
+        String field = " " + key + "=";
+        int at = line.indexOf(field);
+        if (at < 0) {
+            return null;
+        }
+        int start = at + field.length();
+        int end = line.indexOf(' ', start);
+        return line.substring(start, end < 0 ? line.length() : end);
     }
 
     private List<String> read() {
