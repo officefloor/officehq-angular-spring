@@ -10,6 +10,7 @@ import java.util.TreeMap;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.session.CurrentUser;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,10 +38,30 @@ public class RollupController {
     public record MemberView(List<String> names, String dueTotal, String overdueTotal) {
     }
 
-    private final RollupService service;
+    /** A person of the sheet's tree: the sheet they are on, their name, their grade today and
+     *  their due-total with two decimals (n/a: none). */
+    public record TreePersonView(String sheet, String name, String grade, String dueTotal) {
+    }
 
-    public RollupController(RollupService service) {
+    private final RollupService service;
+    private final SheetService sheets;
+
+    public RollupController(RollupService service, SheetService sheets) {
         this.service = service;
+        this.sheets = sheets;
+    }
+
+    /** The people of the sheet's whole tree (its ancestors and descendants): the sheet's first in
+     *  list order, then the other sheets' by sheet id, each as it is now, or as it stood at the end
+     *  of the date the sheet is shown as of. */
+    @GetMapping("/tree/people")
+    public List<TreePersonView> treePeople(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return service.treePeople(sheetId, sheets.tree(sheetId), asOf).stream()
+                .map(p -> new TreePersonView(p.sheet(), p.name(), p.grade(), RollupService.text(p.dueTotal())))
+                .toList();
     }
 
     /** The figures of the sheet's descendants, each as it is now, or as it stood at the end of the

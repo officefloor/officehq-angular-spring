@@ -152,6 +152,14 @@ export interface DescendantFigures {
   overdueCount: number;
 }
 
+/** A person of a sheet's tree: the sheet they are on, their name, grade today and due-total (n/a: none). */
+export interface TreePerson {
+  sheet: string;
+  name: string;
+  grade: string;
+  dueTotal: string;
+}
+
 /** A person as the consolidated figures take them. */
 export interface FigureMember {
   names: string[];
@@ -312,6 +320,13 @@ export class PeopleApi {
   ownFigures(sheetId: string): Promise<DescendantFigures> {
     return firstValueFrom(this.http.get<DescendantFigures>(
       `/api/sheets/${encodeURIComponent(sheetId)}/figures`, { headers: this.headers() }));
+  }
+
+  /** The people of the sheet's whole tree: the sheet's first in list order, then the other sheets' by
+   *  sheet id, each as it is now (or, while the screen shows the sheet as of a date, as it stood then). */
+  treePeople(sheetId: string): Promise<TreePerson[]> {
+    return firstValueFrom(this.http.get<TreePerson[]>(
+      `/api/sheets/${encodeURIComponent(sheetId)}/tree/people`, { headers: this.headers() }));
   }
 
   /** The sheet compared with another, one line per grade: the grade, the sheet's summary due-total

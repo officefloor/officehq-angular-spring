@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -342,6 +343,25 @@ public class RollupService {
             }
         }
         return new Consolidated(count, due, overdue, grades, statuses, members, overdueCount);
+    }
+
+    /** A person of a sheet's tree as its export takes them: the sheet they are on, their name, their
+     *  grade on that sheet's today, and their due-total held to the cap (null: n/a). */
+    public record TreePerson(String sheet, String name, String grade, BigDecimal dueTotal) {
+    }
+
+    /** The people of the sheet and of the other sheets given, the sheet's first in list order, then
+     *  each other sheet's in id order, each in list order; each sheet as it is now, or as it stood at
+     *  the end of {@code asOf} when given. */
+    public List<TreePerson> treePeople(String sheetId, Collection<String> others, LocalDate asOf) {
+        List<String> ids = new ArrayList<>(List.of(sheetId));
+        others.stream().filter(id -> !id.equals(sheetId)).sorted().forEach(ids::add);
+        List<TreePerson> out = new ArrayList<>();
+        for (String id : ids) {
+            Snapshot figures = asOf == null ? snapshot(id) : snapshotAsOf(id, asOf);
+            figures.people().values().forEach(f -> out.add(new TreePerson(id, f.name(), f.grade(), f.dueTotal())));
+        }
+        return out;
     }
 
     /** Each person's due-total for the period from {@code from} to {@code to}, inclusive, by person

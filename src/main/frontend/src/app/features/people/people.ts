@@ -187,6 +187,7 @@ import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasEr
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
+      <button type="button" data-testid="export-tree" (click)="exportTree()">Export people of the tree (CSV)</button>
       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
       @if (bulkResult(); as r) {
         <p role="status">Opened <strong data-testid="bulk-opened">{{ r.opened }}</strong>,
@@ -1916,6 +1917,17 @@ export class People {
       }
     }
     this.download(lines.join(''), `periods-${this.session.sheetId()}.csv`);
+  }
+
+  /** Download the people of the sheet's whole tree as CSV: sheet, name, grade today and due-total, this
+   *  sheet's people first in list order, then the other sheets' by sheet id. */
+  protected async exportTree(): Promise<void> {
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const people = await this.api.treePeople(sheetId);
+    const lines = [csvLine(['sheet', 'name', 'grade', 'due-total']),
+      ...people.map((p) => csvLine([p.sheet, p.name, p.grade, p.dueTotal]))];
+    this.download(lines.join(''), `tree-${sheetId}.csv`);
   }
 
   /** Download a person's statement as CSV: their claims bound by their last statement, oldest first, with
