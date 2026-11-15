@@ -1,0 +1,64 @@
+{
+  "checkpoint": 127,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp127_my-figures",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The header shows the signed-in user's own figures when a person on the sheet has the user's name\n(by name or alias, as names are compared): that person's due-total and overdue-total; nothing when\nthere is no such person.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe header shows the signed-in user's own figures when a person on the sheet has the user's name\n(by name or alias, as names are compared): that person's due-total and overdue-total; nothing when\nthere is no such person.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6cc59a421f6387588ff028d02cc5d3b1a304511f",
+  "reset_sha": "",
+  "preagent_sha": "dae8b3142ae51758566a4084b07dc1eda4ff17e3",
+  "prev_sha": "dae8b3142ae51758566a4084b07dc1eda4ff17e3",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3910712,
+    "input_tokens": 28,
+    "output_tokens": 4087,
+    "cache_read_tokens": 394576,
+    "cache_creation_tokens": 28788,
+    "num_turns": 15,
+    "duration_ms": 245935,
+    "duration_api_ms": 43554,
+    "model": "claude-opus-5-5",
+    "session_id": "c2e34261-e1c3-4e0f-a72c-7fd83d7f4047",
+    "stop_reason": "success",
+    "result_text": "The header now shows the signed-in user's own due-total and overdue-total, and `bin/e2e` passes all 4 tests.\n\n**How it works:** the front end looks for a person on the sheet whose name or an alias matches the signed-in user's name, ignoring case (the same way the server compares names). So signing in as \"vic\" matches a person with the alias \"VIC\". If there's a match, the header shows that person's figures exactly as their row shows them, in `my-due-total` and `my-overdue-total`. If there's no match, both are empty.\n\n**What changed:** only two front-end files.\n- `src/main/frontend/src/app/features/people/people.ts` has a new `myFigures` value that finds the matching person and passes their figures to the header.\n- `src/main/frontend/src/app/features/header/header.ts` has two new optional inputs and a new \"My due total / my overdue total\" line.\n\nNothing changed on the server, in the stored data or in the audit file, because the page already had each person's figures and aliases.\n\nIf that person's due-total can't be worked out, `my-due-total` shows \"n/a\", just as their row does. None of the tests covers that case.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.3910712,
+        "num_turns": 15,
+        "duration_ms": 245935,
+        "duration_api_ms": 43554,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp127.agent.jsonl",
+  "agent_diff_file": "cp127.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,62 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index a7420191b..1c922cdcb 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -6,7 +6,8 @@ import { statusCounts } from '../summary/summary';
+ // The sheet's counters, shown at all times: how many people are on it (retired ones too), how many
+ // claims are in each status (as the summary counts them), and its due-total and overdue-total (as
+ // the sheet's totals show them); and the same figures consolidated over the sheet and all its
+-// descendants (each sheet's totals as that sheet shows them, added up).
++// descendants (each sheet's totals as that sheet shows them, added up); and the signed-in user's own
++// due-total and overdue-total, when a person on the sheet goes by their name.
+ @Component({
+   selector: 'app-header',
+   template: `
+@@ -19,6 +20,8 @@ import { statusCounts } from '../summary/summary';
+       </p>
+       <p>Due total <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
+       <p>Overdue total <strong data-testid="header-overdue-total">{{ overdueTotal() }}</strong></p>
++      <p>My due total <strong data-testid="my-due-total">{{ myDueTotal() }}</strong>,
++        my overdue total <strong data-testid="my-overdue-total">{{ myOverdueTotal() }}</strong></p>
+       <p>With its descendants: people <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong>,
+         due total <strong data-testid="consolidated-due-total">{{ consolidated().dueTotal }}</strong>,
+         overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal }}</strong></p>
+@@ -31,6 +34,9 @@ export class Header {
+   readonly dueTotal = input.required<string>();
+   readonly overdueTotal = input.required<string>();
+   readonly consolidated = input.required<DescendantFigures>();
++  /** The signed-in user's own figures (of the person on the sheet going by their name); null when none. */
++  readonly myDueTotal = input<string | null>(null);
++  readonly myOverdueTotal = input<string | null>(null);
+ 
+   protected readonly byStatus = computed(() => statusCounts(this.claims()));
+ }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d2e963693..f8836d1be 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -21,7 +21,8 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+   selector: 'app-people',
+   imports: [ReactiveFormsModule, Header, PersonClaims, Periods, Pools, Rates, Summary],
+   template: `
+-    <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()" />
++    <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()"
++      [myDueTotal]="myFigures()?.dueTotal ?? null" [myOverdueTotal]="myFigures()?.overdueTotal ?? null" />
+     <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
+     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
+@@ -570,6 +571,14 @@ export class People {
+   /** Everyone's due-total added up, skipping n/a, trimmed. */
+   protected readonly dueTotal = computed(() =>
+     money(trimmedSum([...this.dueByPerson().values()].filter((d): d is number => d !== null))));
++  /** The signed-in user's own figures: the due-total and overdue-total of the person on the sheet
++   *  who goes by the user's name (their name or an alias, ignoring case); null when there is none. */
++  protected readonly myFigures = computed(() => {
++    const user = this.session.user()?.toLowerCase();
++    if (!user) return null;
++    const me = this.people().find((p) => [p.name, ...p.aliases].some((n) => n.toLowerCase() === user));
++    return me ? { dueTotal: this.dueOf(me), overdueTotal: money(this.overdueOf(me.id).cents) } : null;
++  });
+   /** The figures of the sheet's descendants added up, as last read from the store. */
+   private readonly descendants = signal<DescendantFigures>({ people: 0, dueTotal: '0.00', overdueTotal: '0.00' });
+   /** The sheet's own figures as it is now, read from the store while the screen shows it as of a
