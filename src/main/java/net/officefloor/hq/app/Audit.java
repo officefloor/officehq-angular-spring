@@ -6,6 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -81,6 +84,45 @@ public class Audit {
             return entry;
         }
         return entry + " for=" + steward;
+    }
+
+    /**
+     * The sheet's records exactly as the file holds them, newest first; with a name (not blank),
+     * only those about that person: carrying {@code name=} or {@code person=} that name, compared
+     * as names are (case and surrounding spaces ignored).
+     */
+    public synchronized List<String> lines(String sheetId, String name) {
+        List<String> all;
+        try {
+            all = Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : List.of();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        String who = name == null ? "" : name.trim();
+        List<String> found = new ArrayList<>();
+        for (String line : all) {
+            if (hasField(line, "sheet", sheetId, false)
+                    && (who.isEmpty() || hasField(line, "name", who, true) || hasField(line, "person", who, true))) {
+                found.add(line);
+            }
+        }
+        Collections.reverse(found);
+        return found;
+    }
+
+    /** Whether the record carries the field {@code key=value}: after the event name, ending the
+     *  line or followed by a space. */
+    private static boolean hasField(String line, String key, String value, boolean ignoreCase) {
+        String field = " " + key + "=";
+        for (int at = line.indexOf(field); at >= 0; at = line.indexOf(field, at + 1)) {
+            int start = at + field.length();
+            int end = start + value.length();
+            if (end <= line.length() && line.regionMatches(ignoreCase, start, value, 0, value.length())
+                    && (end == line.length() || line.charAt(end) == ' ')) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Truncate the audit file. */

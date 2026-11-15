@@ -1,13 +1,14 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
+import { AuditViewer } from '../audit/audit-viewer';
 import { People } from '../people/people';
 import { Settings } from '../settings/settings';
 
 // The one screen: sign in by name, then load a sheet by id and work on its people.
 @Component({
   selector: 'app-home',
-  imports: [ReactiveFormsModule, People, Settings],
+  imports: [ReactiveFormsModule, AuditViewer, People, Settings],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -42,6 +43,7 @@ import { Settings } from '../settings/settings';
         </form>
         <app-settings />
         <app-people />
+        <app-audit-viewer />
       } @else {
         <p data-testid="home-empty">Load a sheet to begin.</p>
       }
