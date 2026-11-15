@@ -450,10 +450,10 @@ public class Claim {
         return status == ClaimStatus.OPEN && deferredUntil != null && deferredUntil.isAfter(today);
     }
 
-    /** Whether the claim's due is bound to {@link #statedDue}: it is stated and not PENDING (a
-     *  PENDING claim shows its live figure, and is bound again if rejected back to OPEN). */
+    /** Whether the claim's due is bound to {@link #statedDue}: it is stated (a PENDING claim too,
+     *  like any other claim that counts). */
     public boolean isBound() {
-        return stated && status != ClaimStatus.PENDING;
+        return stated;
     }
 
     /** Bind the claim to a due (null: n/a) until the person's next statement. */

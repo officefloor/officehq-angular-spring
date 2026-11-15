@@ -210,7 +210,7 @@ export interface Lateness {
 }
 
 /** A claim's due in cents: the due fixed when it was settled, else the greater of the sheet's floor in
- *  force on its date and its figure (the rate figure a statement bound it to (unless PENDING), else its
+ *  force on its date and its figure (the rate figure a statement bound it to, else its
  *  amount times its grade's rate in force on its date, rounded half up when `halfUp` (the claim's rounding
  *  policy) else half to even) with its late charge, rounded the same way, on top (a correction is neither
  *  raised to the floor nor charged late); null (n/a) with no figure. */

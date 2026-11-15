@@ -667,8 +667,8 @@ public class ClaimService {
         return claim;
     }
 
-    /** A steward approves a PENDING claim: it becomes SETTLED, its due (its live figure, with its
-     *  late charge) frozen now. Refused (409) unless PENDING, (403) for a clerk or the user who
+    /** A steward approves a PENDING claim: it becomes SETTLED, its due (the figure it shows, bound
+     *  by a statement or live, with its late charge) frozen now. Refused (409) unless PENDING, (403) for a clerk or the user who
      *  opened or last edited it, (423) when it is due in a closed period, and (422) when its due is above the
      *  proof threshold in force on its date while it has no proof. */
     @Transactional
@@ -1262,7 +1262,7 @@ public class ClaimService {
     }
 
     /** A claim's figure before any late charge or floor: the one a statement bound it to (null: n/a),
-     *  else (unbound, or PENDING) its rate figure. */
+     *  else (unbound) its rate figure. */
     private BigDecimal figureOf(Claim claim, Person person) {
         return claim.isBound() ? claim.getStatedDue() : rateFigureOf(claim, person);
     }

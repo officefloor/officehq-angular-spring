@@ -43,8 +43,8 @@ export interface Claim {
   /** The user who last edited the claim, who like its opener cannot settle or approve it; null
    *  when never edited. */
   editedBy: string | null;
-  /** Whether the person's last statement bound the claim: it then shows and totals statedDue,
-   *  except while PENDING, when it shows and totals its live figure. */
+  /** Whether the person's last statement bound the claim: it then shows and totals statedDue
+   *  (a PENDING one too). */
   stated: boolean;
   /** The due the claim was bound to, with two decimals; null when unbound or n/a then. */
   statedDue: string | null;
@@ -151,9 +151,9 @@ export function isOpen(c: Claim): boolean {
   return c.status === 'OPEN' || c.status === 'PENDING';
 }
 
-/** Whether a claim's due is bound to statedDue: stated and not PENDING. */
+/** Whether a claim's due is bound to statedDue: stated (a PENDING claim too). */
 export function isBound(c: Claim): boolean {
-  return c.stated && c.status !== 'PENDING';
+  return c.stated;
 }
 
 /** Whether a claim is deferred on the sheet's today: OPEN, deferred until a date after it. Until
