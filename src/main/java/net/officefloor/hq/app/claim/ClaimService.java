@@ -836,6 +836,35 @@ public class ClaimService {
         return claim;
     }
 
+    /** A steward sets the due-by of a DRAFT, OPEN or PENDING claim directly: it stays as set (a
+     *  holiday added later leaves it), and its overdue, late charge, grace and period follow it.
+     *  Refused (404) when missing, (403) for anyone but a steward, (423) when its due-by, or the new
+     *  one, is in a closed period, and (409) unless DRAFT, OPEN or PENDING. */
+    @Transactional
+    public Claim setDueBy(String sheetId, String user, long id, LocalDate dueBy) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward sets a claim's due-by");
+        }
+        refuseIfClosed(sheetId, claim.getDueBy());
+        refuseIfClosed(sheetId, dueBy);
+        if (claim.getStatus() != ClaimStatus.DRAFT && !claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only a DRAFT, OPEN or PENDING claim has its due-by set, not a " + claim.getStatus() + " one");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate old = claim.getDueBy();
+        claim.setDueBy(dueBy);
+        claim.setDueBySet(true);
+        claims.flush();
+        record("CLAIM_DUE_BY_SET", user, person, claim, claim.getNumber(), " old=" + old + " new=" + dueBy);
+        rollup.recordChanges(sheetId, user, before);
+        return claim;
+    }
+
     /** A steward approves a PENDING claim: it becomes SETTLED, its due (the figure it shows, bound
      *  by a statement or live, with its late charge) frozen now. Refused (409) unless PENDING, (403) for a clerk or the user who
      *  opened or last edited it, (423) when it is due in a closed period, and (422) when its due is above the
@@ -1304,7 +1333,7 @@ public class ClaimService {
     }
 
     /** A holiday just added re-fixes the due-by of every claim on the sheet that is neither SETTLED
-     *  nor VOID and is due on or after it: from its date, with the terms it was fixed with, over the
+     *  nor VOID, whose due-by a steward did not set, and is due on or after it: from its date, with the terms it was fixed with, over the
      *  holidays on the sheet now. The figures that moves are recorded. */
     @EventListener
     @Transactional
@@ -1314,7 +1343,7 @@ public class ClaimService {
         Set<LocalDate> holidays = new HashSet<>(settings.holidays(sheetId));
         for (Claim c : claims.findBySheetIdForUpdate(sheetId)) {
             if (c.getStatus() == ClaimStatus.SETTLED || c.getStatus() == ClaimStatus.VOID
-                    || c.getStatus() == ClaimStatus.DELETED || c.getDueBy().isBefore(added.day())) {
+                    || c.getStatus() == ClaimStatus.DELETED || c.isDueBySet() || c.getDueBy().isBefore(added.day())) {
                 continue;
             }
             c.setDueBy(BusinessDays.after(c.getDate(), c.getTerms(), holidays));

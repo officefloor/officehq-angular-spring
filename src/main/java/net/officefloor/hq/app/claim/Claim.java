@@ -46,7 +46,8 @@ public class Claim {
      *  terms, else the terms of their grade, else the sheet's, each as in force on the sheet's today
      *  when it is created (a split-off part keeps the terms of the claim it is split from); later
      *  changes to the terms or its date leave it. A holiday added on or before it re-fixes it (while
-     *  the claim is neither SETTLED nor VOID) from its date with {@link #terms}. */
+     *  the claim is neither SETTLED nor VOID) from its date with {@link #terms}, unless a steward
+     *  set it directly ({@link #dueBySet}). */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
 
@@ -152,6 +153,11 @@ public class Claim {
      *  total, as a held person's claims do. */
     @Column(name = "held", nullable = false)
     private boolean held;
+
+    /** Whether a steward set the claim's due-by directly: it then stays as set, a holiday added
+     *  later leaving it. */
+    @Column(name = "due_by_set", nullable = false)
+    private boolean dueBySet;
 
     /** The people the claim is shared with, in the order they were added. */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -425,6 +431,14 @@ public class Claim {
         this.reviewOn = reviewOn;
     }
 
+    public boolean isDueBySet() {
+        return dueBySet;
+    }
+
+    public void setDueBySet(boolean dueBySet) {
+        this.dueBySet = dueBySet;
+    }
+
     public LocalDate getPendingOn() {
         return pendingOn;
     }
@@ -482,6 +496,7 @@ public class Claim {
         copy.held = held;
         copy.reviewOn = reviewOn;
         copy.pendingOn = pendingOn;
+        copy.dueBySet = dueBySet;
         copy.tags = tags;
         copy.voidReason = voidReason;
         return copy;

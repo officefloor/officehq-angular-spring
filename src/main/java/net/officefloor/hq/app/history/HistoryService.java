@@ -99,7 +99,7 @@ public class HistoryService {
             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason, String editedBy,
             Integer batch, Long added, Boolean escalated, LocalDate reviewOn,
             Boolean waived, Integer photoProofs, Boolean held, String reviewAssignee,
-            LocalDate pendingOn, List<ShareState> shares) {
+            LocalDate pendingOn, List<ShareState> shares, Boolean dueBySet) {
     }
 
     /** A share of a claim; none in versions written before claims' shares were kept. */
@@ -195,7 +195,8 @@ public class HistoryService {
                     c.getRef(), c.getTags(), c.getVoidReason(), c.getEditedBy(), c.getBatch(), c.getAdded(),
                     c.isEscalated(), c.getReviewOn(), c.isWaived(), c.getPhotoProofs(), c.isHeld(),
                     c.getReviewAssignee(), c.getPendingOn(),
-                    c.getShares().stream().map(sh -> new ShareState(sh.getPersonId(), sh.getShare())).toList()));
+                    c.getShares().stream().map(sh -> new ShareState(sh.getPersonId(), sh.getShare())).toList(),
+                    c.isDueBySet()));
         } else if (entity instanceof Person p) {
             List<Person.DatedGrade> all = p.getGrades();
             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
@@ -482,6 +483,7 @@ public class HistoryService {
         c.setReviewAssignee(s.reviewAssignee());
         c.setReviewOn(s.reviewOn());
         c.setPendingOn(s.pendingOn());
+        c.setDueBySet(Boolean.TRUE.equals(s.dueBySet())); // a version written before due-bys were set has none
         if (s.shares() != null) {
             s.shares().forEach(sh -> c.addShare(new ClaimShare(sh.personId(), sh.share())));
         }

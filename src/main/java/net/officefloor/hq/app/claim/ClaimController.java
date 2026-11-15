@@ -179,6 +179,10 @@ public class ClaimController {
     public record RedateForm(@NotNull LocalDate date) {
     }
 
+    /** The due-by a steward sets on a claim. */
+    public record DueByForm(@NotNull LocalDate dueBy) {
+    }
+
     /** The user name a REVIEW claim's review is assigned to. */
     public record AssignReviewForm(@NotNull @Size(max = 100) String user) {
     }
@@ -473,6 +477,15 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ShareForm body) {
         return view(service.share(sheetId, user.trim(), id, body.personId(), new BigDecimal(body.share())));
+    }
+
+    @PostMapping("/claims/{id}/due-by")
+    public ClaimView setDueBy(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody DueByForm body) {
+        return view(service.setDueBy(sheetId, user.trim(), id, body.dueBy()));
     }
 
     @PostMapping("/claims/{id}/redate")

@@ -405,6 +405,12 @@ export class ClaimsApi {
     );
   }
 
+  setDueBy(sheetId: string, id: number, dueBy: string): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/due-by`, { dueBy }, { headers: this.headers() }),
+    );
+  }
+
   /** Add a proof of a kind (blank: none chosen, a receipt) to a claim that is neither SETTLED nor VOID. */
   addProof(sheetId: string, id: number, kind = ''): Promise<Claim> {
     return firstValueFrom(
@@ -669,6 +675,16 @@ export function redateError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 422) return "The new date is after the person's retirement date.";
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
+  return otherError(e);
+}
+
+/** Why setting a claim's due-by was refused. */
+export function dueByError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a date as yyyy-mm-dd.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return "Only a steward can set a claim's due-by.";
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft, open or pending claim can have its due-by set.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim, or its new due-by, is in a closed period.';
   return otherError(e);
 }
 

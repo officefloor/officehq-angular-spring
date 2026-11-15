@@ -6,7 +6,7 @@ import { Session, otherError } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { RateLevels, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, waiveError, assignReviewError, holdClaimError, editError, proofError, redateError, shareError, dueBy, logLineText, money, overdue, reassignError, resettleError, reviewLate, pendingLate, roundsHalfUp, settleError, settlePartError, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, waiveError, assignReviewError, holdClaimError, editError, proofError, redateError, dueByError, shareError, dueBy, logLineText, money, overdue, reassignError, resettleError, reviewLate, pendingLate, roundsHalfUp, settleError, settlePartError, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -157,6 +157,11 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, 
               [value]="redates()[c.id] ?? ''" (input)="redateChanged(c.id, $any($event.target).value)" />
             <button type="button" data-testid="claim-redate" (click)="redate(c)"
               [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date">Re-date</button>
+            <label [for]="'claim-due-by-new-' + c.id">Set due-by to</label>
+            <input [id]="'claim-due-by-new-' + c.id" type="date" data-testid="claim-due-by-new"
+              [value]="dueBys()[c.id] ?? ''" (input)="dueByChanged(c.id, $any($event.target).value)" />
+            <button type="button" data-testid="claim-set-due-by" (click)="setDueBy(c)"
+              [attr.aria-label]="'Set the due-by of claim of ' + c.amount + ' on ' + c.date">Set due-by</button>
             <button type="button" data-testid="claim-approve" (click)="changeStatus(c, 'approve')"
               [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
             <button type="button" data-testid="claim-review" (click)="changeStatus(c, 'review')"
@@ -276,6 +281,7 @@ export class PersonClaims {
   protected readonly settleDates = signal<Record<number, string>>({});
   /** The new date typed for re-dating each claim, by claim id. */
   protected readonly redates = signal<Record<number, string>>({});
+  protected readonly dueBys = signal<Record<number, string>>({});
   /** The comment typed on each claim, by claim id. */
   /** Each claim's timeline as last shown, by claim id. */
   protected readonly timelines = signal<Record<number, string[]>>({});
@@ -709,6 +715,29 @@ export class PersonClaims {
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: redateError(e) }));
+    }
+  }
+
+  protected dueByChanged(id: number, date: string): void {
+    this.clearRowError(id);
+    this.dueBys.update((ds) => ({ ...ds, [id]: date }));
+  }
+
+  /** Set the claim's due-by to the date typed for it; a refusal shows an error on the claim. */
+  protected async setDueBy(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const date = (this.dueBys()[c.id] ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Enter a date as yyyy-mm-dd to set the due-by to.' }));
+      return;
+    }
+    try {
+      const claim = await this.api.setDueBy(sheetId, c.id, date);
+      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: dueByError(e) }));
     }
   }
 
