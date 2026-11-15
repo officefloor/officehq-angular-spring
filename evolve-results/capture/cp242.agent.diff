@@ -1,0 +1,96 @@
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 1e202c4de..8b3e89f35 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -500,8 +500,13 @@ export class PersonClaims {
+       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
+       this.reset();
+     } catch (e) {
+-      this.error.set(claimError(e, correction, ref === '' ? 'none' : editing === null ? 'add' : 'edit',
+-        editing !== null && this.claims().some((c) => c.id === editing && c.lines.length > 0)));
++      const lined = this.claims().find((c) => c.id === editing && c.lines.length > 0);
++      // a claim with lines takes their total as its amount, which no edit of the form can change:
++      // its editor closes, releasing the claim, so the form is back to adding
++      if (lined && e instanceof HttpErrorResponse && e.status === 422 && cents(lined.amount) !== cents(amount)) {
++        await this.cancel();
++      }
++      this.error.set(claimError(e, correction, ref === '' ? 'none' : editing === null ? 'add' : 'edit', !!lined));
+     } finally {
+       this.submitting = false;
+     }
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index e732d871c..b228dd4bc 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -22,6 +22,23 @@ export function gradeOn(grades: readonly DatedGrade[], date: string | null): str
+   return best?.grade ?? grades[0]?.grade ?? '';
+ }
+ 
++/** A person's timeline: one line per dated thing about them, by date, and within a date their grade
++ *  changes, then their claims (by their line, as text), then holds, then retirements, then unretirements:
++ *  "<date> grade <grade>", "<date> claim <amount> <status>", "<date> hold [to <date>]",
++ *  "<date> retired", "<date> unretired". Their first grade, undated, has no line. */
++export function timelineOf(p: Person, claims: readonly Claim[]): string[] {
++  const entries: { date: string; kind: number; seq: number; text: string }[] = [];
++  const push = (date: string, kind: number, seq: number, text: string) => entries.push({ date, kind, seq, text });
++  p.grades.forEach((g, i) => { if (g.from !== null) push(g.from, 0, i, `grade ${g.grade}`); });
++  for (const c of claims) if (c.personId === p.id) push(c.date, 1, 0, `claim ${c.amount} ${c.status}`);
++  p.holds.forEach((h, i) => push(h.from, 2, i, h.to === null ? 'hold' : `hold to ${h.to}`));
++  p.retirements.forEach((r, i) => push(r.from, 3, i, 'retired'));
++  if (p.retiredFrom !== null) push(p.retiredFrom, 3, p.retirements.length, 'retired');
++  p.retirements.forEach((r, i) => push(r.to, 4, i, 'unretired'));
++  entries.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.kind - b.kind || a.seq - b.seq || (a.text < b.text ? -1 : a.text > b.text ? 1 : 0));
++  return entries.map((e) => `${e.date} ${e.text}`);
++}
++
+ /** A hold from a date (yyyy-mm-dd) to an optional one (null: open-ended), both inclusive. */
+ export interface Hold {
+   from: string;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 47e537011..cd5c1f436 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -16,7 +16,7 @@ import { STATUSES, Summary, SummaryPerson, statusCounts } from '../summary/summa
+ import { ClassicSummary } from '../summary/classic-summary';
+ import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, holderPartCents, pctOn, plusDays } from '../rates/rates-api';
+ import { Dashboard, Header } from '../header/header';
+-import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkHoldError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, mergeUndoError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
++import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkHoldError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, mergeUndoError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, timelineOf, transferError, transferUndoError, unretireError, watchError } from './people-api';
+ 
+ // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
+ // claims, what they have claimed, their due-total (held to the sheet's cap less their cut total), its excess over that and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
+@@ -316,7 +316,7 @@ import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasEr
+             <th scope="col">Hold from</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Watched</th>
+             @if (shows('patrons')) { <th scope="col">Patrons</th> }
+             @if (shows('backing')) { <th scope="col">Backing</th> }
+-            <th scope="col">Add patron</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th>
++            <th scope="col">Add patron</th><th scope="col">Timeline</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th>
+           </tr>
+         </thead>
+         <tbody>
+@@ -509,6 +509,13 @@ import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasEr
+                   <p role="alert" data-testid="person-patron-error">{{ err }}</p>
+                 }
+               </td>
++              <td>
++                <ul [attr.aria-label]="'Timeline of ' + p.name">
++                  @for (line of timelineById().get(p.id) ?? []; track $index) {
++                    <li data-testid="person-timeline-line">{{ line }}</li>
++                  }
++                </ul>
++              </td>
+               <td>
+                 <app-person-plans [personId]="p.id" [personName]="p.name" (claimSaved)="claimSaved($event)" />
+                 <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rateLevels()" [grades]="p.grades" [others]="patronChoicesFor(p)" [periods]="periods()"
+@@ -592,6 +599,11 @@ export class People {
+   protected readonly claims = signal<Claim[]>([]);
+   /** The retirement date of each person with one, by person id: from the sheet's today on or after it, their
+    *  open (OPEN or PENDING) claims count in no live total unless bound by a statement. */
++  /** Each person's timeline lines, by person id. */
++  protected readonly timelineById = computed(() => {
++    const claims = this.claims();
++    return new Map(this.people().map((p) => [p.id, timelineOf(p, claims)]));
++  });
+   private readonly retiredFromById = computed(() =>
+     new Map(this.people().filter((p) => p.retiredFrom !== null).map((p) => [p.id, p.retiredFrom as string])));
+   /** Whether an unbound open claim is left out of the live totals: its person's retirement date reached on
