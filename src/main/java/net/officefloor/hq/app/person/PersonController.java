@@ -174,6 +174,16 @@ public class PersonController {
     public record BulkGradeView(int changed) {
     }
 
+    /** A grade merge as the screen submits it: the grade merged, and the grade it is merged into. */
+    public record GradeMergeForm(
+            @NotNull @Pattern(regexp = "[ABC]") String from,
+            @NotNull @Pattern(regexp = "[ABC]") String into) {
+    }
+
+    /** A grade merge's result: how many people were given the other grade. */
+    public record GradeMergeView(int changed) {
+    }
+
     /** A bulk retire as the screen submits it: the selected people by id, and the date they are
      *  retired from (null: the sheet's today). */
     public record BulkRetireForm(
@@ -280,6 +290,15 @@ public class PersonController {
             return new BulkGradeView(0);
         }
         return new BulkGradeView(service.grade(sheetId, user.trim(), body.ids(), body.grade(), body.from()));
+    }
+
+    /** Merge a grade into another: everyone on it today is given the other, as the person form would. */
+    @PostMapping("/merge-grade")
+    public GradeMergeView mergeGrade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GradeMergeForm body) {
+        return new GradeMergeView(service.mergeGrade(sheetId, user.trim(), body.from(), body.into()));
     }
 
     /** Retire the selected people from the date; a viewer, who may change nothing, retires no one. */

@@ -345,6 +345,33 @@ public class PersonService {
         return chosen.size();
     }
 
+    /** Merge grade {@code from} into grade {@code into}: every person on the sheet whose grade in
+     *  force on the sheet's today is {@code from} is given {@code into} from the sheet's today, in
+     *  list order, as saving them in the person form would. Refused (422) when the two are the same
+     *  grade or {@code into} is retired, and (403) unless the user is a steward. Each person is
+     *  written with their PERSON_EDITED and rollup lines, then the merge's rollup lines as a whole.
+     *  Resolves to how many people were given the grade. */
+    @Transactional
+    public int mergeGrade(String sheetId, String user, String from, String into) {
+        sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may merge a grade");
+        }
+        if (from.equals(into)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A grade cannot be merged into itself");
+        }
+        sheets.requireActiveGrade(sheetId, into);
+        LocalDate today = sheets.today(sheetId);
+        List<Long> ids = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> from.equals(p.gradeOn(today))).map(Person::getId).toList();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        audit.recordOnCommit("GRADE_MERGED sheet=" + sheetId + " by=" + user + " from=" + from + " into=" + into);
+        int changed = ids.isEmpty() ? 0 : grade(sheetId, user, ids, into, null);
+        rollup.recordChanges(sheetId, user, before);
+        return changed;
+    }
+
     /** Move a person one place up (towards the top) or down the sheet's list, swapping places with
      *  the person there. Refused (422) for the top person moving up or the bottom one moving down,
      *  (404) for a person not on the sheet and (403) on an archived sheet. Answers with the sheet's

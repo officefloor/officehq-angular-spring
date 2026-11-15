@@ -223,6 +223,13 @@ export class PeopleApi {
     );
   }
 
+  /** Merge a grade into another: everyone on it on the sheet's today is given the other; how many were changed. */
+  mergeGrade(sheetId: string, from: string, into: string): Promise<{ changed: number }> {
+    return firstValueFrom(
+      this.http.post<{ changed: number }>(`${this.url(sheetId)}/merge-grade`, { from, into }, { headers: this.headers() }),
+    );
+  }
+
   /** Retire the people of the ids, in list order, from a date (blank: the sheet's today); how many were retired. */
   bulkRetire(sheetId: string, ids: number[], from: string): Promise<{ retired: number }> {
     return firstValueFrom(
@@ -383,6 +390,14 @@ export function bulkGradeError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Select people, choose a grade and enter a from-date as yyyy-mm-dd or none.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'A selected person is no longer on this sheet; reload it.';
   if (isStale(e)) return 'Someone else saved a selected person at the same moment; try again.';
+  return otherError(e);
+}
+
+export function mergeGradeError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Choose a grade to merge and a grade to merge it into: A, B or C.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can merge a grade.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'Merge a grade into another grade that is not retired.';
+  if (isStale(e)) return 'Someone else saved a person on that grade at the same moment; try again.';
   return otherError(e);
 }
 
