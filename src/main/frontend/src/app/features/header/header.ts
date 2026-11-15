@@ -36,6 +36,7 @@ export interface Dashboard {
       <p>My due total <strong data-testid="my-due-total">{{ myDueTotal() | figure }}</strong>,
         my overdue total <strong data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</strong></p>
       <p>My crew total <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
+      <p>Watched total <strong data-testid="watched-due-total">{{ watchedDueTotal() | figure }}</strong></p>
       <p>My reviews <strong data-testid="my-reviews-count">{{ myReviews() }}</strong></p>
       <p>Steward's dashboard: pending <strong data-testid="dash-pending-count">{{ dashboard()?.pending ?? '' }}</strong>,
         in review <strong data-testid="dash-review-count">{{ dashboard()?.review ?? '' }}</strong>,
@@ -69,6 +70,8 @@ export class Header {
   readonly myOverdueTotal = input<string | null>(null);
   /** The due-totals of the crews the signed-in user's person leads, added up; null when they lead none. */
   readonly myCrewDueTotal = input<string | null>(null);
+  /** The due-totals of the people the signed-in user watches, added up. */
+  readonly watchedDueTotal = input<string>('0.00');
   /** The steward's dashboard counts; null when the signed-in user is not a steward. */
   readonly dashboard = input<Dashboard | null>(null);
 

@@ -29,7 +29,7 @@ import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person,
   template: `
     <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()"
       [myDueTotal]="myFigures()?.dueTotal ?? null" [myOverdueTotal]="myFigures()?.overdueTotal ?? null"
-      [myCrewDueTotal]="myCrewDueTotal()" [dashboard]="dashboard()"
+      [myCrewDueTotal]="myCrewDueTotal()" [watchedDueTotal]="watchedDueTotal()" [dashboard]="dashboard()"
       [user]="session.user()" />
     <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" (replaced)="periods.set($event)" />
@@ -970,6 +970,12 @@ export class People {
     const dues = this.dueByPerson();
     return money(led.reduce((sum, c) =>
       sum + crewIds(c).reduce((s, id) => s + (dues.get(id) ?? 0), 0), 0));
+  });
+  /** The due-totals of the people the signed-in user watches (n/a skipped), added up; 0.00 when
+   *  they watch no one. */
+  protected readonly watchedDueTotal = computed(() => {
+    const dues = this.dueByPerson();
+    return money(this.people().filter((p) => p.watched).reduce((sum, p) => sum + (dues.get(p.id) ?? 0), 0));
   });
   /** The figures of the sheet's descendants added up, as last read from the store. */
   private readonly descendants = signal<DescendantFigures>(NO_FIGURES);
