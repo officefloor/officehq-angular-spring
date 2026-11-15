@@ -35,6 +35,13 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
 
     boolean existsBySheetIdAndPersonIdAndNumberAndStatus(String sheetId, Long personId, String number, ClaimStatus status);
 
+    /** The total of the person's corrections of a number, VOID and DELETED ones left out, and the
+     *  claim of the id (null: none) left out too; 0 with none. */
+    @Query("select coalesce(sum(c.amount), 0) from Claim c where c.sheetId = :sheetId and c.personId = :personId"
+            + " and c.corrects = :number and c.status not in (net.officefloor.hq.app.claim.ClaimStatus.VOID, net.officefloor.hq.app.claim.ClaimStatus.DELETED)"
+            + " and (:id is null or c.id <> :id)")
+    java.math.BigDecimal sumCorrections(String sheetId, Long personId, String number, Long id);
+
     /** The numbers given to claims on the sheet. */
     @Query("select c.number from Claim c where c.sheetId = :sheetId and c.number is not null")
     List<String> findNumbers(String sheetId);

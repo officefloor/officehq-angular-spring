@@ -243,7 +243,7 @@ public class ClaimService {
         LocalDate dueBy = dueByOf(sheetId, on, terms);
         refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, on);
-        String corrected = correctedBy(sheetId, personId, amount, corrects);
+        String corrected = correctedBy(sheetId, personId, null, amount, corrects);
         String reference = refOf(sheetId, null, ref);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim fresh = new Claim(sheetId, personId, amount, on, dueBy, noteOf(note));
@@ -296,7 +296,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         refuseIfRetired(person, on);
-        String corrected = correctedBy(sheetId, person.getId(), amount, corrects);
+        String corrected = correctedBy(sheetId, person.getId(), claim.getId(), amount, corrects);
         String reference = refOf(sheetId, claim.getId(), ref);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
@@ -1145,8 +1145,10 @@ public class ClaimService {
     }
 
     /** The number a claim of the amount corrects: none unless the amount is negative, when it must
-     *  be the number of a SETTLED claim of the same person, or the claim is refused (422). */
-    private String correctedBy(String sheetId, long personId, BigDecimal amount, String corrects) {
+     *  be the number of a SETTLED claim of the same person, or the claim is refused (422); refused
+     *  (422) too when it exceeds what remains of that claim: its amount less the corrections already
+     *  made against it (VOID and DELETED ones, and the claim of the id being edited, left out). */
+    private String correctedBy(String sheetId, long personId, Long id, BigDecimal amount, String corrects) {
         if (amount.signum() >= 0) {
             return null;
         }
@@ -1154,6 +1156,13 @@ public class ClaimService {
                 || !claims.existsBySheetIdAndPersonIdAndNumberAndStatus(sheetId, personId, corrects, ClaimStatus.SETTLED)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "A negative amount must correct a settled claim of the same person");
+        }
+        BigDecimal target = claims.findFirstBySheetIdAndPersonIdAndNumber(sheetId, personId, corrects)
+                .map(Claim::getAmount).orElse(BigDecimal.ZERO);
+        BigDecimal remaining = target.add(claims.sumCorrections(sheetId, personId, corrects, id));
+        if (amount.negate().compareTo(remaining) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A correction may not exceed the " + remaining + " that remains of " + corrects);
         }
         return corrects;
     }
