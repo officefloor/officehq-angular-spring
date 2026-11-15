@@ -1,0 +1,64 @@
+{
+  "checkpoint": 226,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp226_preview-date",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A user can set a preview date on their screen (an entry, a set button and a clear button; show\nit, or nothing). While it is set, every figure on the screen for that user is shown as if the\nsheet's today were that date (overdue, late charges, holds, deferrals, retirements, the grade and\nrate in force), over the sheet's current records; every change still uses the sheet's real today,\nand nothing that a change of today does (snapshots, scores, auto-closing) happens. The preview\nbelongs to the signed-in user's screen.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA user can set a preview date on their screen (an entry, a set button and a clear button; show\nit, or nothing). While it is set, every figure on the screen for that user is shown as if the\nsheet's today were that date (overdue, late charges, holds, deferrals, retirements, the grade and\nrate in force), over the sheet's current records; every change still uses the sheet's real today,\nand nothing that a change of today does (snapshots, scores, auto-closing) happens. The preview\nbelongs to the signed-in user's screen.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0bead4951d4596db19adec231a9bee33030a503c",
+  "reset_sha": "",
+  "preagent_sha": "db19001889f4090788472ba9d3241015a030fc93",
+  "prev_sha": "db19001889f4090788472ba9d3241015a030fc93",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.8308319999999998,
+    "input_tokens": 76,
+    "output_tokens": 20349,
+    "cache_read_tokens": 2854420,
+    "cache_creation_tokens": 106583,
+    "num_turns": 39,
+    "duration_ms": 1121626,
+    "duration_api_ms": 217727,
+    "model": "claude-opus-5-5",
+    "session_id": "c57b9a8e-d73a-4387-9e08-889df9c77fde",
+    "stop_reason": "success",
+    "result_text": "I've added the preview date, and all 4 tests in the spec pass when I run `bin/e2e`.\n\n**What the user sees** (in `features/home/home.ts`):\n- **Controls:** a date entry (`preview-date`), a set button (`preview-set`), a clear button (`preview-clear`), and a display (`sheet-preview`) that shows the date or nothing.\n- **Error:** an entry that isn't a date shows `preview-error`, and the error goes away as soon as the form is changed.\n- **Today line:** `sheet-today` still shows the sheet's real today.\n\n**Who it applies to:** the preview date is stored per signed-in user in `core/session.ts`, it stays set when a sheet is loaded, and setting or clearing it re-reads the sheet. Each user's screen keeps its own.\n\n**Figures on screen:** while a preview is set, every figure is worked out as if today were that date, on both the server and the screen.\n- **Server:** the screen's sheet requests now carry an `X-Preview-Date` header. A new `sheet/PreviewDate.java` uses it only for read (GET) requests, and only when no as-of date is set. `Sheet.getToday()` returns the preview date for those requests. All of Sheet's own \"in force today\" lookups (floor, terms, late percent, cap, thresholds, rounding, policy date) now go through that method.\n- **Screen:** `session.today()` is now the preview date while one is set, otherwise the real today. A new `realToday` signal holds the stored today.\n\n**Changes still use the real today:**\n- Every changing request ignores the preview date on the server.\n- On the screen, I switched the few places that use today as a default for a change to `realToday`: the period and generate from-dates, the plan start check, and closing the claim editor when today changes.\n- Nothing is saved for a preview and today is never changed, so snapshots, scores and auto-closing don't happen.\n\n**A fix outside the request:** scenario 1 never uses a preview, but it failed every time on a statement's audit line. A statement recorded Ben's due-total as 0.00, while his row and the test expect 0.50, which comes from his part of a claim shared with him. A statement's due-total left out shared parts. I changed `ClaimService.statement` so a statement taken now records the due-total the person shows, shared parts included. A statement taken as of a past date still uses the old calculation. This changes existing behaviour, so it's worth checking.\n\nOne limit: when you make a change while a preview is set, the reply to that change is worked out with the real today. The screen only shows preview figures again once it re-reads the sheet, which the tests always do.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.8308319999999998,
+        "num_turns": 39,
+        "duration_ms": 1121626,
+        "duration_api_ms": 217727,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp226.agent.jsonl",
+  "agent_diff_file": "cp226.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
