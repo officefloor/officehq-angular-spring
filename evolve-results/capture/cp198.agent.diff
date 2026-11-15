@@ -1,0 +1,48 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 84ba5c68e..1dd3d473e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -139,6 +139,14 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+           </tbody>
+         </table>
+       }
++      <button type="button" data-testid="dups-show" (click)="dupsShown.set(true)">Show duplicate claims</button>
++      @if (dupsShown()) {
++        <ul aria-label="Duplicate claims">
++          @for (d of dups(); track d) {
++            <li data-testid="dup-line">{{ d }}</li>
++          }
++        </ul>
++      }
+       <label>
+         <input type="checkbox" data-testid="show-retired" [checked]="session.showRetired()"
+           (change)="session.showRetired.set($any($event.target).checked)" />
+@@ -925,6 +933,28 @@ export class People {
+     }
+     return [...out].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([month, cents]) => ({ month, cents }));
+   });
++  /** Whether the duplicate claims are shown. */
++  protected readonly dupsShown = signal(false);
++  /** Each person, date and amount with two or more claims (VOID and DELETED ones left out), as
++   *  "<name> <date> <amount> x<count>": people in list order, then by date, then by amount. */
++  protected readonly dups = computed(() => {
++    const out: string[] = [];
++    for (const p of this.shownPeople()) {
++      const groups = new Map<string, { date: string; amount: string; count: number }>();
++      for (const c of this.claimsOf(p.id)) {
++        if (c.status === 'VOID' || c.status === 'DELETED') continue;
++        const key = c.date + ' ' + c.amount;
++        const g = groups.get(key) ?? { date: c.date, amount: c.amount, count: 0 };
++        g.count++;
++        groups.set(key, g);
++      }
++      [...groups.values()]
++        .filter((g) => g.count >= 2)
++        .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : cents(a.amount) - cents(b.amount)))
++        .forEach((g) => out.push(`${p.name} ${g.date} ${g.amount} x${g.count}`));
++    }
++    return out;
++  });
+   /** The ids of the claims selected for a bulk action. */
+   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
+   /** The last bulk open's counts; gone while one runs. */
