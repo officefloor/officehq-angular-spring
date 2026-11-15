@@ -1,0 +1,49 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 6ab6fc5c7..5db6ecbfb 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -305,7 +305,8 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+               <td data-testid="person-cut-total">{{ (money(cutTotals().get(p.id) ?? 0)) | figure }}</td>
+               <td>
+                 @for (period of periods(); track period.id) {
+-                  <span>{{ period.name }} <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ money(periodDueOf(p.id, period)) | figure }}</span></span>
++                  <span>{{ period.name }} <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ money(periodDueOf(p.id, period)) | figure }}</span>
++                    carried <span [attr.data-testid]="'person-period-' + period.name + '-carried'">{{ money(carriedOf(p.id, period)) | figure }}</span></span>
+                 }
+               </td>
+               @if (shows('overdue-count')) {
+@@ -677,6 +678,34 @@ export class People {
+     }
+     return out;
+   });
++  /** Each person's carried figure for each period in cents, by person id then period id: the dues
++   *  (n/a ones skipped) of their claims whose due-by falls in a period ending before this one starts
++   *  and that were still OPEN or PENDING at its end by their log, counted as the period figures count. */
++  private readonly carriedByPersonPeriod = computed(() => {
++    const out = new Map<number, Map<number, number>>();
++    const late = this.lateness();
++    const countsAtEnd = this.countsAtEnd();
++    const periods = this.periods();
++    for (const p of this.people()) {
++      const theirs = new Map<number, number>();
++      for (const c of this.claimsOf(p.id)) {
++        const own = periodOn(periods, c.dueBy);
++        if (own === null) continue;
++        for (const period of periods) {
++          if (own.to >= period.from) continue;
++          const status = statusOn(c, period.to);
++          if ((status !== 'OPEN' && status !== 'PENDING') || !countsAtEnd(c, period.to)) continue;
++          theirs.set(period.id, (theirs.get(period.id) ?? 0) + (this.claimDueCents(p, c, late) ?? 0));
++        }
++      }
++      out.set(p.id, theirs);
++    }
++    return out;
++  });
++  /** The person's carried figure for the period in cents (0 with nothing carried). */
++  protected carriedOf(personId: number, period: Period): number {
++    return this.carriedByPersonPeriod().get(personId)?.get(period.id) ?? 0;
++  }
+   /** The person's due-total for the period in cents: fixed when it was closed, else live. */
+   protected periodDueOf(personId: number, period: Period): number {
+     return personPeriodDueCents(period, personId, this.liveDueByPersonPeriod().get(personId) ?? new Map());
