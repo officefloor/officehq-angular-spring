@@ -1,0 +1,64 @@
+{
+  "checkpoint": 241,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp241_as-of-roles",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "While an as-of date is set, the roles shown on the screen are those in force at the end of that\nday.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nWhile an as-of date is set, the roles shown on the screen are those in force at the end of that\nday.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4c6a420880a5bf431900c08bfb2ceef288b804f6",
+  "reset_sha": "",
+  "preagent_sha": "0fd569d291a6cf8b9acf57c9401093e1679c8f0c",
+  "prev_sha": "0fd569d291a6cf8b9acf57c9401093e1679c8f0c",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6955824,
+    "input_tokens": 48,
+    "output_tokens": 7826,
+    "cache_read_tokens": 937712,
+    "cache_creation_tokens": 43916,
+    "num_turns": 24,
+    "duration_ms": 677205,
+    "duration_api_ms": 88646,
+    "model": "claude-opus-5-5",
+    "session_id": "8d19dd76-3511-4187-913f-e8987f96145b",
+    "stop_reason": "success",
+    "result_text": "All four tests in `e2e/specs/acceptance.spec.ts` now pass.\n\n**The roles change was already there.** The server's `GET /roles` returns the roles from the sheet's history as of the end of the set day (`SettingsController.java:686-692`). The front end already sends the as-of date with every sheet request. The main \"as of roles\" test and scenarios 1 and 2 passed before I changed anything.\n\n**The one failure was in editing a person.** In scenario 3, Ada has terms of 3 starting 2026-03-01. The test then clears the terms field with no from-date and expects the audit line `PERSON_EDITED \u2026 name=Ada grade=B terms=3`, but the app wrote the line without `terms=3`. The service only counted it as a change if the undated terms differed, and those were blank both before and after. Its own comment says nothing is recorded only when the new terms equal \"those in force on the sheet's today\". I changed that branch to match (`PersonService.java`, in `update`): a save with no from-date that differs from today's terms now always writes the `terms=` field. What's stored and what the row shows don't change.\n\n**Port 3000:** one `bin/e2e` run failed in all four tests because another app on this machine was already using port 3000. I left those processes alone and ran the final passing run with `PORT=3917 bin/e2e`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6955824,
+        "num_turns": 24,
+        "duration_ms": 677205,
+        "duration_api_ms": 88646,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp241.agent.jsonl",
+  "agent_diff_file": "cp241.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
