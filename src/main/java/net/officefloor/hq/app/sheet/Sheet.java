@@ -184,7 +184,7 @@ public class Sheet {
         return latePctOn(today);
     }
 
-    /** The late percent in force on a date: an overdue claim dated then gains it. */
+    /** The late percent in force on a date: an overdue claim gains it for a 30-day boundary falling then. */
     public BigDecimal latePctOn(LocalDate on) {
         return amountOn(LATE_PCT, on, DEFAULT_LATE_PCT);
     }

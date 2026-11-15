@@ -43,8 +43,8 @@ export class Session {
     return valueOn(this.dated(), 'floor', date)?.value ?? '1.00';
   }
 
-  /** The late percent (two decimals) in force on a date: an overdue claim dated then gains it for
-   *  every full 30 days overdue; the starting 0.00 before every from-date. */
+  /** The late percent (two decimals) in force on a date: an overdue claim gains it of its figure
+   *  for each 30-day boundary past its due-by falling then; the starting 0.00 before every from-date. */
   latePctOn(date: string | null): string {
     return valueOn(this.dated(), 'late-pct', date)?.value ?? '0.00';
   }

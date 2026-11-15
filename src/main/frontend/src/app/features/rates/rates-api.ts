@@ -73,7 +73,7 @@ export function dueCents(cents: number, pctHundredths: number, halfUp = false): 
   return Number(product < 0n ? -rounded : rounded);
 }
 
-/** What a claim's late charge follows: the sheet's today and the late percent in force on the claim's date. */
+/** What a claim's late charge follows: the sheet's today and the late percent in force on each boundary date. */
 export interface Lateness {
   today: string | null;
   /** The late percent with two decimals in force on a date. */
@@ -99,10 +99,21 @@ function figureCents(rates: readonly Rate[], c: Claim, floorCents: number, halfU
   return isCorrection(c) ? due : Math.max(due, floorCents);
 }
 
-/** An overdue claim's late charge in cents: the late percent of its figure for every full 30 days
- *  past its due-by, rounded by the claim's rounding policy; 0 when it is not overdue. */
+/** An overdue claim's late charge in cents: for every full 30 days past its due-by, the late percent
+ *  in force on that boundary date (the due-by plus 30, 60, 90 ... days) of its figure, each rounded by
+ *  the claim's rounding policy, added up; 0 when it is not overdue. */
 function lateChargeCents(c: Claim, figure: number, late: Lateness, halfUp: boolean): number {
   if (late.today === null || isCorrection(c) || !overdue(c, late.today)) return 0;
   const days = Math.round((Date.parse(late.today) - Date.parse(dueBy(c))) / 86_400_000);
-  return dueCents(figure, cents(late.latePctOn(c.date)) * Math.floor(days / 30), halfUp);
+  let charge = 0;
+  for (let step = 1; step <= Math.floor(days / 30); step++) {
+    const pct = cents(late.latePctOn(plusDays(dueBy(c), step * 30)));
+    if (pct !== 0) charge += dueCents(figure, pct, halfUp);
+  }
+  return charge;
+}
+
+/** A date (yyyy-mm-dd) moved on by whole days. */
+function plusDays(date: string, days: number): string {
+  return new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
 }

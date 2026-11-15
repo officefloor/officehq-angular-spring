@@ -152,8 +152,8 @@ public class SettingsService {
     }
 
     /** Set the sheet's late percent from a date (null: the sheet's today), the sheet created first
-     *  if it was never loaded; the late charge of every overdue OPEN claim dated from then on to the
-     *  next from-date (and so every total) moves with it, while settled figures stay. */
+     *  if it was never loaded; the late charge of every overdue OPEN claim with a 30-day boundary from
+     *  then on to the next from-date (and so every total) moves with it, while settled figures stay. */
     @Transactional
     public BigDecimal setLatePct(String sheetId, String user, BigDecimal latePct, LocalDate from) {
         Sheet sheet = sheets.load(sheetId, user);
