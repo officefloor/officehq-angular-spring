@@ -14,8 +14,8 @@ import { Period, PeriodsApi, periodOn, personPeriodCarriedCents, personPeriodDue
 import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { ClassicSummary } from '../summary/classic-summary';
-import { Header } from '../header/header';
 import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
+import { Dashboard, Header } from '../header/header';
 import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
@@ -29,7 +29,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
   template: `
     <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()"
       [myDueTotal]="myFigures()?.dueTotal ?? null" [myOverdueTotal]="myFigures()?.overdueTotal ?? null"
-      [myCrewDueTotal]="myCrewDueTotal()" />
+      [myCrewDueTotal]="myCrewDueTotal()" [dashboard]="dashboard()" />
     <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
@@ -649,6 +649,19 @@ export class People {
   protected agedOf(personId: number): Aged {
     return this.agedByPerson().get(personId) ?? { upTo30: 0, upTo60: 0, over60: 0 };
   }
+  /** The role the signed-in user acts in on the sheet (as it stood then, under an as-of date), as last read. */
+  private readonly myRole = signal<string | null>(null);
+  /** The steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that
+   *  count; null unless the signed-in user is a steward. */
+  protected readonly dashboard = computed<Dashboard | null>(() => {
+    if (this.myRole() !== 'steward') return null;
+    const claims = this.claims();
+    return {
+      pending: claims.filter((c) => c.status === 'PENDING').length,
+      review: claims.filter((c) => c.status === 'REVIEW').length,
+      overdue: this.overdueCount(),
+    };
+  });
   protected readonly overdueCount = computed(() =>
     [...this.overdueByPerson().values()].reduce((sum, o) => sum + o.count, 0));
   protected readonly overdueTotal = computed(() =>
@@ -1005,6 +1018,7 @@ export class People {
         this.inherited.set([]);
         this.descendants.set({ people: 0, dueTotal: '0.00', overdueTotal: '0.00' });
         this.ownLive.set(null);
+        this.myRole.set(null);
         this.periods.set([]);
         if (id) void this.read(id);
       });
@@ -1789,12 +1803,14 @@ export class People {
     const seq = ++this.readSeq;
     try {
       const asOf = this.session.asOf() !== null;
-      const [people, claims, rates, inherited, periods, tags, descendants, own, plans] = await Promise.all([
+      const [people, claims, rates, inherited, periods, tags, descendants, own, plans, role] = await Promise.all([
         this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId), this.ratesApi.inherited(sheetId),
         this.periodsApi.list(sheetId), this.claimsApi.tags(sheetId), this.api.descendantFigures(sheetId),
-        asOf ? this.api.ownFigures(sheetId) : Promise.resolve(null), this.plansApi.list(sheetId)]);
+        asOf ? this.api.ownFigures(sheetId) : Promise.resolve(null), this.plansApi.list(sheetId),
+        this.api.myRole(sheetId)]);
       if (seq === this.readSeq) {
         this.session.plans.set(plans);
+        this.myRole.set(role);
         this.descendants.set(descendants);
         this.ownLive.set(own);
         this.tagsUsed.set(tags);

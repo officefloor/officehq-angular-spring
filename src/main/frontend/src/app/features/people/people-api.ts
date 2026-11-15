@@ -272,6 +272,13 @@ export class PeopleApi {
       `/api/sheets/${encodeURIComponent(sheetId)}/figures`, { headers: this.headers() }));
   }
 
+  /** The role the signed-in user acts in on the sheet now (or, while the screen shows the sheet as of
+   *  a date, the role they had then). */
+  myRole(sheetId: string): Promise<string> {
+    return firstValueFrom(this.http.get<{ role: string }>(
+      `/api/sheets/${encodeURIComponent(sheetId)}/my-role`, { headers: this.headers() })).then((r) => r.role);
+  }
+
   /** Transfer the person to another sheet; resolves to the person as they arrived there. */
   transfer(sheetId: string, id: number, toSheetId: string): Promise<Person> {
     return firstValueFrom(

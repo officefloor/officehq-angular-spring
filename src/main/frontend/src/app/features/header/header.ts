@@ -9,7 +9,15 @@ import { statusCounts } from '../summary/summary';
 // the sheet's totals show them); and the same figures consolidated over the sheet and all its
 // descendants (each sheet's totals as that sheet shows them, added up); and the signed-in user's own
 // due-total and overdue-total, when a person on the sheet goes by their name, and their crew total,
-// when that person leads a crew.
+// when that person leads a crew; and, for a steward, their dashboard: how many claims are PENDING,
+// how many in REVIEW and how many counting ones are overdue (the cells empty for anyone else).
+/** A steward's dashboard: the sheet's PENDING claims, REVIEW claims and counting overdue claims. */
+export interface Dashboard {
+  pending: number;
+  review: number;
+  overdue: number;
+}
+
 @Component({
   selector: 'app-header',
   imports: [FigurePipe],
@@ -26,6 +34,9 @@ import { statusCounts } from '../summary/summary';
       <p>My due total <strong data-testid="my-due-total">{{ myDueTotal() | figure }}</strong>,
         my overdue total <strong data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</strong></p>
       <p>My crew total <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
+      <p>Steward's dashboard: pending <strong data-testid="dash-pending-count">{{ dashboard()?.pending ?? '' }}</strong>,
+        in review <strong data-testid="dash-review-count">{{ dashboard()?.review ?? '' }}</strong>,
+        overdue <strong data-testid="dash-overdue-count">{{ dashboard()?.overdue ?? '' }}</strong></p>
       <p>With its descendants: people <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong>,
         due total <strong data-testid="consolidated-due-total">{{ consolidated().dueTotal | figure }}</strong>,
         overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal | figure }}</strong></p>
@@ -43,6 +54,8 @@ export class Header {
   readonly myOverdueTotal = input<string | null>(null);
   /** The due-totals of the crews the signed-in user's person leads, added up; null when they lead none. */
   readonly myCrewDueTotal = input<string | null>(null);
+  /** The steward's dashboard counts; null when the signed-in user is not a steward. */
+  readonly dashboard = input<Dashboard | null>(null);
 
   protected readonly byStatus = computed(() => statusCounts(this.claims()));
 }

@@ -191,6 +191,10 @@ public class SettingsController {
     }
 
     /** A user name's role on the sheet. */
+    /** The role the signed-in user acts in. */
+    public record MyRoleView(String role) {
+    }
+
     public record RoleView(String user, String role) {
         static RoleView of(SheetRole r) {
             return new RoleView(r.getUser(), r.getRole().key());
@@ -556,6 +560,25 @@ public class SettingsController {
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         List<SheetRole> roles = asOf == null ? service.roles(sheetId) : history.asOf(sheetId, asOf).roles();
         return roles.stream().map(RoleView::of).toList();
+    }
+
+    /** The role the signed-in user acts in on the sheet: under an as-of date, the role it held then
+     *  (a steward while a steward's delegation to it covered that date). */
+    @GetMapping("/my-role")
+    public MyRoleView myRole(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        String name = user.trim();
+        if (asOf == null) {
+            return new MyRoleView(service.roleOf(sheetId, name).key());
+        }
+        HistoryService.AsOf then = history.asOf(sheetId, asOf);
+        Role held = then.roles().stream().filter(r -> r.getUser().equals(name)).map(SheetRole::getRole)
+                .findFirst().orElse(Role.CLERK);
+        boolean delegated = then.delegations().values().stream()
+                .anyMatch(d -> d.getUser().equals(name) && d.covers(asOf));
+        return new MyRoleView((held != Role.STEWARD && delegated ? Role.STEWARD : held).key());
     }
 
     @PutMapping("/roles")
