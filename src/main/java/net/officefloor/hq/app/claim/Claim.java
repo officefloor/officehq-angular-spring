@@ -1,16 +1,23 @@
 package net.officefloor.hq.app.claim;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import net.officefloor.hq.app.history.HistoryListener;
 
 /** A claim made by a person on a sheet: an amount, a date, a note and its status. */
@@ -141,6 +148,12 @@ public class Claim {
      *  total, as a held person's claims do. */
     @Column(name = "held", nullable = false)
     private boolean held;
+
+    /** The people the claim is shared with, in the order they were added. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "claim_share", joinColumns = @JoinColumn(name = "claim_id"))
+    @OrderColumn(name = "position")
+    private List<ClaimShare> shares = new ArrayList<>();
 
     /** The claim's review day: the sheet's today when it went to REVIEW; none when it never did. */
     @Column(name = "review_on")
@@ -523,5 +536,15 @@ public class Claim {
     public void unbind() {
         this.stated = false;
         this.statedDue = null;
+    }
+
+    /** The people the claim is shared with, in the order they were added. */
+    public List<ClaimShare> getShares() {
+        return List.copyOf(shares);
+    }
+
+    /** Share the claim with another person. */
+    public void addShare(ClaimShare share) {
+        shares.add(share);
     }
 }

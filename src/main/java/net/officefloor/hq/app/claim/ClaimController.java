@@ -54,14 +54,15 @@ public class ClaimController {
      *  own id, or for a copy in a clone the claim it copies was added as); and its review day, the
      *  sheet's today when it went to REVIEW (null when it never did); and whether a steward waived
      *  its late charge; and of its proofs, how many are receipts and how many photos; and whether it
-     *  is held. */
+     *  is held; and the people it is shared with, in the order added, each with their share. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason,
             List<CommentView> comments, String editedBy, Integer batch, List<LineView> lines, long added,
-            LocalDate reviewOn, boolean waived, int receiptProofs, int photoProofs, boolean held) {
+            LocalDate reviewOn, boolean waived, int receiptProofs, int photoProofs, boolean held,
+            List<ShareView> shares) {
         static ClaimView of(Claim c, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines) {
             return of(c.getId(), c, log, comments, lines);
         }
@@ -75,7 +76,8 @@ public class ClaimController {
                     c.isLateEntry(), c.getReminded(), c.getRef(), c.getTags(), c.getVoidReason(),
                     comments.stream().map(CommentView::of).toList(), c.getEditedBy(), c.getBatch(),
                     lines.stream().map(LineView::of).toList(), c.getAdded() != null ? c.getAdded() : id,
-                    c.getReviewOn(), c.isWaived(), c.getReceiptProofs(), c.getPhotoProofs(), c.isHeld());
+                    c.getReviewOn(), c.isWaived(), c.getReceiptProofs(), c.getPhotoProofs(), c.isHeld(),
+                    c.getShares().stream().map(ShareView::of).toList());
         }
 
         private static String money(BigDecimal value) {
@@ -88,6 +90,13 @@ public class ClaimController {
     public record LogLineView(ClaimStatus status, String by, LocalDate on, String due) {
         static LogLineView of(ClaimLog line) {
             return new LogLineView(line.getStatus(), line.getBy(), line.getOn(), ClaimView.money(line.getDue()));
+        }
+    }
+
+    /** A share of a claim: the person holding it and their share with two decimals. */
+    public record ShareView(long personId, String share) {
+        static ShareView of(ClaimShare s) {
+            return new ShareView(s.getPersonId(), s.getShare().setScale(2).toPlainString());
         }
     }
 
@@ -156,6 +165,12 @@ public class ClaimController {
 
     /** The date a claim is deferred until. */
     public record DeferForm(@NotNull LocalDate until) {
+    }
+
+    /** A share as the claim submits it: the person it is shared with and a percent with up to two
+     *  decimals. */
+    public record ShareForm(@NotNull Long personId,
+            @NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String share) {
     }
 
     /** The new date a claim is re-dated to. */
@@ -434,6 +449,15 @@ public class ClaimController {
 
     /** A proof as the screen submits it: its kind, receipt or photo (blank: none chosen, a receipt). */
     public record ProofForm(@Size(max = 100) String kind) {
+    }
+
+    @PostMapping("/claims/{id}/shares")
+    public ClaimView share(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ShareForm body) {
+        return view(service.share(sheetId, user.trim(), id, body.personId(), new BigDecimal(body.share())));
     }
 
     @PostMapping("/claims/{id}/redate")

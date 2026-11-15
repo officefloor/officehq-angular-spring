@@ -93,6 +93,14 @@ export interface Claim {
   /** The number of the bulk settle batch that settled the claim (or sent it to PENDING); null
    *  when it was settled one at a time or not at all. */
   batch: number | null;
+  /** The people the claim is shared with, in the order added. */
+  shares: ClaimShare[];
+}
+
+/** A share of a claim: the person holding it and their share, a percent with two decimals. */
+export interface ClaimShare {
+  personId: number;
+  share: string;
 }
 
 /** A comment on a claim: who wrote it, the sheet's today then (yyyy-mm-dd), and its text. */
@@ -367,6 +375,12 @@ export class ClaimsApi {
   }
 
   /** Re-date an OPEN or PENDING claim (a steward only). */
+  share(sheetId: string, id: number, personId: number, share: string): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/shares`, { personId, share }, { headers: this.headers() }),
+    );
+  }
+
   redate(sheetId: string, id: number, date: string): Promise<Claim> {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/redate`, { date }, { headers: this.headers() }),
@@ -608,6 +622,15 @@ export function deferError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 422) return "Defer the claim until a date after the sheet's today.";
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
+  return otherError(e);
+}
+
+/** Why a share was refused. */
+export function shareError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a share as a percent with up to two decimals.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'A settled, void or deleted claim cannot be shared, nor a share held twice.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return "Share with another person, more than 0.00, the claim's shares totalling at most 100.00.";
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
   return otherError(e);
 }
 

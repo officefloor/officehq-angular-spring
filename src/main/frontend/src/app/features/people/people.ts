@@ -648,15 +648,42 @@ export class People {
   private readonly uncappedDueByPerson = computed(() => {
     const out = new Map<number, number | null>();
     const late = this.lateness();
+    const shared = this.sharedParts();
     for (const p of this.people()) {
       const dues = this.claimsOf(p.id).filter(this.countsLive())
         .map((c) => this.claimDueCents(p, c, late))
         .filter((d): d is number => d !== null);
+      dues.push(...(shared.get(p.id) ?? []).map((part) => part.cents));
       if (pctOn(this.ratesOf(this.gradeOf(p)), this.session.today()) === null && dues.length === 0) {
         out.set(p.id, null);
         continue;
       }
       out.set(p.id, dues.reduce((sum, d) => sum + d, 0));
+    }
+    return out;
+  });
+  /** The parts of shared claims' dues in cents moving into (or, negative, out of) each person's
+   *  figures, by person id: for each counting claim with shares (its due not n/a), each holder's part
+   *  (the due times their share over 100, rounded half to even), and the same parts taken off the
+   *  claim's own person; each with whether the claim is SETTLED. */
+  private readonly sharedParts = computed(() => {
+    const out = new Map<number, { cents: number; settled: boolean }[]>();
+    const late = this.lateness();
+    const onSheet = new Set(this.people().map((p) => p.id));
+    const add = (id: number, part: { cents: number; settled: boolean }) => out.set(id, [...(out.get(id) ?? []), part]);
+    for (const p of this.people()) {
+      for (const c of this.claimsOf(p.id).filter(this.countsLive())) {
+        if (!c.shares?.length) continue;
+        const due = this.claimDueCents(p, c, late);
+        if (due === null) continue;
+        const settled = c.status === 'SETTLED';
+        for (const s of c.shares) {
+          if (!onSheet.has(s.personId)) continue;
+          const part = sharePart(due, cents(s.share));
+          add(s.personId, { cents: part, settled });
+          add(p.id, { cents: -part, settled });
+        }
+      }
     }
     return out;
   });
@@ -685,6 +712,10 @@ export class People {
           split.settled += due;
           if (!c.corrects) split.scored += due;
         } else if (isOpen(c)) split.open += due;
+      }
+      for (const part of this.sharedParts().get(p.id) ?? []) {
+        if (part.settled) split.settled += part.cents;
+        else split.open += part.cents;
       }
       out.set(p.id, split);
     }
@@ -2135,4 +2166,13 @@ interface Aged {
   upTo30: number;
   upTo60: number;
   over60: number;
+}
+
+/** A holder's part of a due in cents: the due times their share (in hundredths of a percent) over
+ *  10000, rounded half to even. */
+function sharePart(due: number, share: number): number {
+  const x = due * share;
+  const q = Math.floor(x / 10000);
+  const r = x - q * 10000;
+  return r > 5000 || (r === 5000 && q % 2 !== 0) ? q + 1 : q;
 }

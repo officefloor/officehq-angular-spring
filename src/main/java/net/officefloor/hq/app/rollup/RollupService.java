@@ -183,9 +183,11 @@ public class RollupService {
                 claimedBy.merge(c.getPersonId(), c.getAmount(), BigDecimal::add);
             }
         }
+        Map<Long, List<BigDecimal>> parts = sharedParts(counted, sheetPeople, sheetRates, floor, late, rounding);
         Map<Long, Figures> out = new LinkedHashMap<>();
         sheetPeople.forEach((id, p) -> {
             List<Claim> theirs = counted.getOrDefault(id, List.of());
+            List<BigDecimal> shared = parts.getOrDefault(id, List.of());
             BigDecimal claimed = zero().add(claimedBy.getOrDefault(id, zero()));
             List<Claim> overdueClaims = theirs.stream()
                     .filter(c -> c.getStatus().isOpen() && late.isPast(c, p))
@@ -202,13 +204,43 @@ public class RollupService {
                     .reduce(zero(), BigDecimal::add);
             int overdueCount = (int) overdueClaims.stream().filter(c -> !c.isDeferredOn(today)).count();
             out.put(id, new Figures(p.getName(), claimed,
-                    Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding), cap), overdue,
+                    Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding, shared), cap), overdue,
                     p.gradeOn(today), p.isRetired(), List.copyOf(p.getAliases()), settled, overdueCount));
         });
         Map<ClaimStatus, Integer> statuses = new LinkedHashMap<>();
         sheetClaims.stream().map(Claim::getStatus).filter(Objects::nonNull)
                 .forEach(st -> statuses.merge(st, 1, Integer::sum));
         return new Snapshot(out, statuses);
+    }
+
+    /** The parts of their counting claims' dues (n/a ones skipped) the people on the sheet share,
+     *  by person id: each holder's part (the due times their share over 100, rounded half to even),
+     *  and the same parts taken off the claim's own person. */
+    private static Map<Long, List<BigDecimal>> sharedParts(Map<Long, List<Claim>> counted, Map<Long, Person> sheetPeople,
+            RateChain.Levels sheetRates, Function<LocalDate, BigDecimal> floor, LateCharge late,
+            Function<Claim, RoundingMode> rounding) {
+        Map<Long, List<BigDecimal>> out = new LinkedHashMap<>();
+        counted.forEach((ownerId, theirs) -> {
+            Person owner = sheetPeople.get(ownerId);
+            if (owner == null) {
+                return;
+            }
+            for (Claim c : theirs) {
+                if (c.getShares().isEmpty()) {
+                    continue;
+                }
+                BigDecimal due = shownDueOf(c, owner, sheetRates, floor, late, rounding);
+                if (due == null) {
+                    continue;
+                }
+                c.getShares().stream().filter(sh -> sheetPeople.containsKey(sh.getPersonId())).forEach(sh -> {
+                    BigDecimal part = sh.partOf(due);
+                    out.computeIfAbsent(sh.getPersonId(), k -> new ArrayList<>()).add(part);
+                    out.computeIfAbsent(ownerId, k -> new ArrayList<>()).add(part.negate());
+                });
+            }
+        });
+        return out;
     }
 
     /** One line per grade (A, B, C) comparing the sheet, as it is now or as it stood at the end of
@@ -373,7 +405,7 @@ public class RollupService {
         sheetClaims.stream()
                 .filter(c -> c.getPersonId().equals(personId) && countsFor(c, person, today))
                 .forEach(c -> counted.put(c, shownDueOf(c, person, sheetRates, floor, late, rounding)));
-        BigDecimal dueTotal = dueTotalOf(List.copyOf(counted.keySet()), person, sheetRates, today, floor, late, rounding);
+        BigDecimal dueTotal = dueTotalOf(List.copyOf(counted.keySet()), person, sheetRates, today, floor, late, rounding, List.of());
         return new Stated(counted, Sheet.capped(dueTotal, sheet.getCap()));
     }
 
@@ -525,15 +557,18 @@ public class RollupService {
         return sheetPeople.stream().filter(p -> p.isHeld() || p.isRetired()).collect(Collectors.toMap(Person::getId, p -> p));
     }
 
-    /** A person's due-total: the sum of the dues their counting claims show (n/a ones skipped);
-     *  null (n/a) when their grade in force on the sheet's today has no rate then, unless a claim
-     *  shows a due (a fixed or bound one, or one at the rate of the grade they had on its date). */
+    /** A person's due-total: the sum of the dues their counting claims show (n/a ones skipped) and
+     *  of their {@code shared} parts of shared claims' dues; null (n/a) when their grade in force on
+     *  the sheet's today has no rate then, unless a claim shows a due (a fixed or bound one, or one at
+     *  the rate of the grade they had on its date) or they hold a part. */
     private static BigDecimal dueTotalOf(List<Claim> counted, Person person, RateChain.Levels sheetRates, LocalDate today,
-            Function<LocalDate, BigDecimal> floor, LateCharge late, Function<Claim, RoundingMode> rounding) {
-        List<BigDecimal> dues = counted.stream()
+            Function<LocalDate, BigDecimal> floor, LateCharge late, Function<Claim, RoundingMode> rounding,
+            List<BigDecimal> shared) {
+        List<BigDecimal> dues = new ArrayList<>(counted.stream()
                 .map(c -> shownDueOf(c, person, sheetRates, floor, late, rounding))
                 .filter(Objects::nonNull)
-                .toList();
+                .toList());
+        dues.addAll(shared);
         if (inForce(person, sheetRates.inForce(), today).isEmpty() && dues.isEmpty()) {
             return null;
         }

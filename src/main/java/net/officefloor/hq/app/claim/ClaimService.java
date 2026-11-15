@@ -730,6 +730,47 @@ public class ClaimService {
         return claim;
     }
 
+    /** Share a claim with another person on the sheet, who holds a share (a percent with two
+     *  decimals, more than 0.00) of its due; CLAIM_SHARED is written. Refused (404) when the claim or
+     *  person is missing, (409) when the claim is SETTLED, VOID or DELETED, (422) when the person is
+     *  the claim's own, (409) when they already hold a share of it, and (422) when the share is not
+     *  more than 0.00 or the claim's shares would total more than 100.00. */
+    @Transactional
+    public Claim share(String sheetId, String user, long id, long personId, BigDecimal share) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim is not shared");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        Person holder = people.findByIdAndSheetId(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (holder.getId().equals(person.getId())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A claim is not shared with its own person");
+        }
+        if (claim.getShares().stream().anyMatch(s -> s.getPersonId().equals(holder.getId()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, holder.getName() + " already holds a share of the claim");
+        }
+        if (share.signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A share is more than 0.00");
+        }
+        BigDecimal total = claim.getShares().stream().map(ClaimShare::getShare).reduce(share, BigDecimal::add);
+        if (total.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A claim's shares total at most 100.00");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.addShare(new ClaimShare(holder.getId(), share.setScale(2)));
+        claims.flush();
+        record("CLAIM_SHARED", user, person, claim, claim.getNumber(),
+                " with=" + holder.getName() + " share=" + share.setScale(2).toPlainString());
+        rollup.recordChanges(sheetId, user, before);
+        return claim;
+    }
+
     /** A steward re-dates an OPEN or PENDING claim: its due-by stays as it was fixed, a figure a
      *  statement bound it to stays bound, and so does its period (that of its due-by) and its
      *  number. Refused (404) when missing, (403) for anyone but a steward, (423) when its due-by

@@ -6,7 +6,7 @@ import { Session, otherError } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { RateLevels, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, waiveError, holdClaimError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, reviewLate, roundsHalfUp, settleError, settlePartError, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, waiveError, holdClaimError, editError, proofError, redateError, shareError, dueBy, logLineText, money, overdue, reassignError, resettleError, reviewLate, roundsHalfUp, settleError, settlePartError, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -62,6 +62,7 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, 
             <span>Due <span data-testid="claim-due">{{ dueOf(c) | figure }}</span></span>
             <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
             <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
+            <span>Shared with <span data-testid="claim-shares">{{ sharesText(c) }}</span></span>
             <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
             <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
             <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
@@ -202,6 +203,18 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, 
             </select>
             <button type="button" data-testid="claim-reassign" (click)="reassign(c, reassignTo.value)"
               [attr.aria-label]="'Reassign claim of ' + c.amount + ' on ' + c.date">Reassign</button>
+            <label [for]="'claim-share-select-' + c.id">Share with</label>
+            <select #shareWith [id]="'claim-share-select-' + c.id" data-testid="claim-share-select"
+              (change)="clearRowError(c.id)">
+              @for (o of others(); track o.id) {
+                <option [value]="o.id">{{ o.name }}</option>
+              }
+            </select>
+            <label [for]="'claim-share-pct-' + c.id">Share %</label>
+            <input [id]="'claim-share-pct-' + c.id" data-testid="claim-share-pct" inputmode="decimal" autocomplete="off"
+              [value]="sharePcts()[c.id] ?? ''" (input)="sharePctChanged(c.id, $any($event.target).value)" />
+            <button type="button" data-testid="claim-share-add" (click)="share(c, shareWith.value)"
+              [attr.aria-label]="'Share claim of ' + c.amount + ' on ' + c.date">Share</button>
             @if (editingId() === c.id) {
               <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
             }
@@ -266,6 +279,8 @@ export class PersonClaims {
   protected readonly lineDrafts = signal<Record<number, { label: string; qty: string; unit: string }>>({});
   /** The amount typed for splitting off each OPEN claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+  /** The share percent typed for sharing each claim, by claim id. */
+  protected readonly sharePcts = signal<Record<number, string>>({});
   /** The amount typed for part-settling each OPEN claim, by claim id. */
   protected readonly settlePartAmounts = signal<Record<number, string>>({});
   /** The amount typed for changing each DRAFT claim's amount in its row, by claim id. */
@@ -880,6 +895,41 @@ export class PersonClaims {
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: reassignError(e) }));
+    }
+  }
+
+  /** The claim's holders as the row shows them: <name> <share>, comma and space separated. */
+  protected sharesText(c: Claim): string {
+    const names = new Map(this.others().map((o) => [o.id, o.name]));
+    return (c.shares ?? []).map((s) => `${names.get(s.personId) ?? ''} ${s.share}`.trim()).join(', ');
+  }
+
+  protected sharePctChanged(id: number, pct: string): void {
+    this.clearRowError(id);
+    this.sharePcts.update((ps) => ({ ...ps, [id]: pct }));
+  }
+
+  /** Share the claim with the person chosen, at the percent typed for it; a refusal shows an error
+   *  on the claim. */
+  protected async share(c: Claim, personId: string): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const pct = (this.sharePcts()[c.id] ?? '').trim();
+    if (!personId) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Choose a person to share the claim with.' }));
+      return;
+    }
+    if (!/^\d{1,3}(\.\d{1,2})?$/.test(pct)) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Enter a share as a percent with up to two decimals.' }));
+      return;
+    }
+    try {
+      const claim = await this.api.share(sheetId, c.id, Number(personId), pct);
+      this.sharePcts.update(({ [c.id]: _, ...rest }) => rest);
+      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: shareError(e) }));
     }
   }
 
