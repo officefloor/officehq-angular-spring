@@ -146,6 +146,14 @@ public class PeriodController {
         return new RolloverView(done.made().size(), changed.stream().map(PeriodView::of).toList());
     }
 
+    /** Undo the sheet's last rollover; returns the sheet's periods after it, by from-date. */
+    @PostMapping("/rollover/undo")
+    public List<PeriodView> undoRollover(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return service.undoRollover(sheetId, user.trim()).stream().map(PeriodView::of).toList();
+    }
+
     /** A calendar year as the generate-quarters form submits it (yyyy). */
     public record GenerateQuartersForm(@NotNull @Pattern(regexp = "\\d{4}") String year) {
     }

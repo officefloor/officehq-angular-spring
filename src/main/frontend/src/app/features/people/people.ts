@@ -32,7 +32,7 @@ import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person,
       [myCrewDueTotal]="myCrewDueTotal()" [dashboard]="dashboard()"
       [user]="session.user()" />
     <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" />
-    <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" (replaced)="periods.set($event)" />
     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
     <app-classic-summary [periods]="periods()" [dueTotals]="classicDueByPeriod()" [dueTotal]="classicDueTotal()" />
     <app-pools [people]="people()" [crews]="crews()" (cutTotals)="cutTotals.set($event)" />

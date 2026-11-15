@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.claim;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import jakarta.persistence.LockModeType;
@@ -61,6 +62,11 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Claim c where c.personId = :personId and c.sheetId = :sheetId order by c.listed desc")
     List<Claim> findByPersonForUpdate(Long personId, String sheetId);
+
+    /** Whether any claim on the sheet, whatever its status, is dated or due inside the days given. */
+    @Query("select count(c) > 0 from Claim c where c.sheetId = :sheetId"
+            + " and ((c.date >= :from and c.date <= :to) or (c.dueBy >= :from and c.dueBy <= :to))")
+    boolean existsDatedOrDueBetween(String sheetId, LocalDate from, LocalDate to);
 
     /** The sheet's claims, locked while a holiday re-fixes their due-by. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

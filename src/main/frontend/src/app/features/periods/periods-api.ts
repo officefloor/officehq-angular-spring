@@ -112,6 +112,12 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<RolledOver>(`${this.url(sheetId)}/rollover`, { year }, { headers: this.headers() }));
   }
 
+  /** Undo the sheet's last rollover (its steward only, on the sheet-today it was made): remove the
+   *  periods it made and take back the openings it carried; returns the sheet's periods after it. */
+  undoRollover(sheetId: string): Promise<Period[]> {
+    return firstValueFrom(this.http.post<Period[]>(`${this.url(sheetId)}/rollover/undo`, null, { headers: this.headers() }));
+  }
+
   /** Add each pasted line of name,period,amount to the person's opening balance for the period;
    *  all or none go through. */
   importOpenings(sheetId: string, text: string): Promise<OpeningsImported> {
@@ -174,6 +180,14 @@ export function rolloverError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a fiscal year as yyyy.';
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may roll the year over.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That fiscal year has no periods on the sheet.';
+  return otherError(e);
+}
+
+export function rolloverUndoError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only the steward who rolled the year over may undo it.';
+  if (e instanceof HttpErrorResponse && e.status === 409) {
+    return 'The rollover cannot be undone: there is none to undo, it was made on another day, or a claim now belongs to a period it made.';
+  }
   return otherError(e);
 }
 

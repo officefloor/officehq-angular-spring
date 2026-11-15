@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
-import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, generateQuartersError, lockError, openingsError, periodDueCents, periodError, reopenError, rolloverError } from './periods-api';
+import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, generateQuartersError, lockError, openingsError, periodDueCents, periodError, reopenError, rolloverError, rolloverUndoError } from './periods-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -52,6 +52,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <label for="rollover-year">Fiscal year to roll over (yyyy)</label>
         <input id="rollover-year" data-testid="rollover-year" formControlName="year" inputmode="numeric" autocomplete="off" />
         <button type="submit" data-testid="rollover">Roll year over</button>
+        <button type="button" data-testid="rollover-undo" (click)="undoRollover()">Undo last rollover</button>
         @if (rolledOver() !== null) {
           <p role="status">Made <strong data-testid="rollover-made">{{ rolledOver() }}</strong></p>
         }
@@ -117,6 +118,8 @@ export class Periods {
   readonly dueTotals = input.required<Map<number, number>>();
   /** A period just added or closed, for the sheet to take in. */
   readonly saved = output<Period>();
+  /** The sheet's periods after a change that removed some, by from-date. */
+  readonly replaced = output<Period[]>();
 
   protected readonly error = signal<string | null>(null);
   /** The error of each period's last refused action, by period id. */
@@ -296,6 +299,25 @@ export class Periods {
       this.rolledOver.set(done.made);
     } catch (e) {
       this.rolloverErr.set(rolloverError(e));
+    } finally {
+      this.rollingOver = false;
+    }
+  }
+
+  /** Undo the sheet's last rollover; then show the sheet's periods without the ones it made. */
+  protected async undoRollover(): Promise<void> {
+    if (this.rollingOver) return;
+    this.rolledOver.set(null);
+    this.rolloverErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.rollingOver = true;
+    try {
+      const periods = await this.api.undoRollover(sheetId);
+      if (this.session.sheetId() !== sheetId) return;
+      this.replaced.emit(periods);
+    } catch (e) {
+      this.rolloverErr.set(rolloverUndoError(e));
     } finally {
       this.rollingOver = false;
     }
