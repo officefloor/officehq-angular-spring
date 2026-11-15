@@ -28,12 +28,15 @@ public class RateService {
     private static final Pattern DATE = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
 
     private final RateRepository rates;
+    private final RateVersionRepository versions;
     private final SheetService sheets;
     private final RollupService rollup;
     private final Audit audit;
 
-    public RateService(RateRepository rates, SheetService sheets, RollupService rollup, Audit audit) {
+    public RateService(RateRepository rates, RateVersionRepository versions, SheetService sheets,
+            RollupService rollup, Audit audit) {
         this.rates = rates;
+        this.versions = versions;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -45,7 +48,8 @@ public class RateService {
     }
 
     /** Set a grade's rate from a date (null: from the beginning of time) through a date (null: for
-     *  good) on the sheet, replacing the rate it had for that from-date (the sheet is created first if it was never loaded). */
+     *  good) on the sheet: a grade and from-date that already have a rate keep the value it replaces as
+     *  an older version and take the new one as their newest, the one in force (the sheet is created first if it was never loaded). */
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
         sheets.load(sheetId, user);
@@ -56,8 +60,8 @@ public class RateService {
             if (rate == null) {
                 rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, scaled));
             } else {
-                rate.setPct(scaled);
-                rate.setTo(to);
+                versions.save(new RateVersion(rate.getId(), rate.getVersion(), rate.getPct(), rate.getTo()));
+                rate.newVersion(scaled, to);
                 rates.flush();
             }
         } catch (DataIntegrityViolationException e) {

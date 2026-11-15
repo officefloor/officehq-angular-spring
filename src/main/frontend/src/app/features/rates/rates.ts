@@ -67,7 +67,7 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
       <table data-testid="rates-current">
         <caption>In force today</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
         </thead>
         <tbody>
           @for (g of grades; track g) {
@@ -81,7 +81,7 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
       <table data-testid="rates-list">
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
         </thead>
         <tbody>
           @for (r of sorted(); track r.grade + '-' + (r.from ?? 'start')) {
@@ -90,6 +90,7 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
               <td data-testid="rate-from">{{ r.from ?? '' }}</td>
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.pct }}</td>
+              <td data-testid="rate-version">{{ r.version ?? 1 }}</td>
             </tr>
           }
         </tbody>

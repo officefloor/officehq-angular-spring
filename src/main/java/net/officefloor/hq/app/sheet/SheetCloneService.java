@@ -30,6 +30,8 @@ import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateVersion;
+import net.officefloor.hq.app.rate.RateVersionRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
@@ -58,6 +60,7 @@ public class SheetCloneService {
     private final SheetRoleRepository roles;
     private final SheetPermissionRepository permissions;
     private final RateRepository rates;
+    private final RateVersionRepository rateVersions;
     private final SheetHolidayRepository holidays;
     private final SheetVoidReasonRepository voidReasons;
     private final ClaimTemplateRepository templates;
@@ -75,7 +78,7 @@ public class SheetCloneService {
     private final Audit audit;
 
     public SheetCloneService(SheetRepository sheets, SettingsService settings, SheetRoleRepository roles,
-            SheetPermissionRepository permissions, RateRepository rates, SheetHolidayRepository holidays,
+            SheetPermissionRepository permissions, RateRepository rates, RateVersionRepository rateVersions, SheetHolidayRepository holidays,
             SheetVoidReasonRepository voidReasons, ClaimTemplateRepository templates, PersonRepository people,
             PersonPatronRepository patrons, PoolRepository pools, PoolMemberRepository poolMembers,
             PeriodRepository periods, ClaimRepository claims, ClaimLogRepository claimLog, ClaimLineRepository claimLines, SheetTagRepository tags,
@@ -85,6 +88,7 @@ public class SheetCloneService {
         this.roles = roles;
         this.permissions = permissions;
         this.rates = rates;
+        this.rateVersions = rateVersions;
         this.holidays = holidays;
         this.voidReasons = voidReasons;
         this.templates = templates;
@@ -135,7 +139,10 @@ public class SheetCloneService {
         permissions.findBySheetId(sheetId)
                 .forEach(p -> permissions.save(new SheetPermission(target, p.getAction(), p.getRoles())));
         for (Rate r : rates.findBySheetIdOrderByGradeAsc(sheetId)) {
-            rates.save(new Rate(target, r.getGrade(), r.getFrom(), r.getTo(), r.getPct()));
+            Rate copy = rates.save(new Rate(target, r.getGrade(), r.getFrom(), r.getTo(), r.getPct(), r.getVersion()));
+            for (RateVersion v : rateVersions.findByRateIdOrderByVersionAsc(r.getId())) {
+                rateVersions.save(new RateVersion(copy.getId(), v.getVersion(), v.getPct(), v.getTo()));
+            }
         }
         holidays.findBySheetIdOrderByDayAsc(sheetId).forEach(h -> holidays.save(new SheetHoliday(target, h.getDay())));
         voidReasons.findBySheetIdOrderByIdAsc(sheetId)

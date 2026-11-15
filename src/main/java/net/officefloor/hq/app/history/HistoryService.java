@@ -72,7 +72,8 @@ public class HistoryService {
             String originSheetId, List<HoldState> retirements, String tags) {
     }
 
-    record RateState(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
+    /** A rate's state; its version is null in states written before rates were kept as versions (version 1). */
+    record RateState(String grade, BigDecimal pct, LocalDate from, LocalDate to, Integer version) {
     }
 
     record ClaimState(long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, ClaimStatus status,
@@ -148,7 +149,7 @@ public class HistoryService {
                     p.getRetirements().stream().map(r -> new HoldState(r.from(), r.to())).toList(), p.getTags()));
         } else if (entity instanceof Rate r) {
             write(r.getSheetId(), RATE, String.valueOf(r.getId()),
-                    new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo()));
+                    new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo(), r.getVersion()));
         } else if (entity instanceof Sheet s) {
             recordSheet(s);
         } else if (entity instanceof Period p) {
@@ -256,7 +257,7 @@ public class HistoryService {
                 case PERSON -> people.put(Long.valueOf(id), personOf(sheetId, Long.parseLong(id), json.readValue(state, PersonState.class)));
                 case RATE -> {
                     RateState r = json.readValue(state, RateState.class);
-                    rates.add(new Rate(sheetId, r.grade(), r.from(), r.to(), r.pct()));
+                    rates.add(new Rate(sheetId, r.grade(), r.from(), r.to(), r.pct(), r.version() == null ? 1 : r.version()));
                 }
                 case CLAIM -> claims.put(Long.valueOf(id), claimOf(sheetId, json.readValue(state, ClaimState.class)));
                 case PERIOD -> {

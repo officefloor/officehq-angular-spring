@@ -17,6 +17,9 @@ export interface Rate {
   to: string | null;
   /** Always with two decimals, as the server formats it. */
   pct: string;
+  /** How many versions the rate has, the one shown (its newest) being in force; absent on a rate
+   *  worked out on the screen rather than read from the server. */
+  version?: number;
 }
 
 /** Of one grade's rates, the one in force on a date (yyyy-mm-dd): the one with the latest from-date

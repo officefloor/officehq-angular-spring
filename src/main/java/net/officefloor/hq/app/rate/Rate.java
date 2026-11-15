@@ -37,6 +37,9 @@ public class Rate {
     @Column(name = "to_date")
     private LocalDate to;
 
+    @Column(name = "version", nullable = false)
+    private int version = 1;
+
     protected Rate() {
     }
 
@@ -46,6 +49,11 @@ public class Rate {
         this.from = from;
         this.to = to;
         this.pct = pct;
+    }
+
+    public Rate(String sheetId, String grade, LocalDate from, LocalDate to, BigDecimal pct, int version) {
+        this(sheetId, grade, from, to, pct);
+        this.version = version;
     }
 
     public Long getId() {
@@ -90,5 +98,17 @@ public class Rate {
 
     public void setPct(BigDecimal pct) {
         this.pct = pct;
+    }
+
+    /** How many versions the rate has: this, the newest, is the one in force. */
+    public int getVersion() {
+        return version;
+    }
+
+    /** Replace the rate's percent and to-date with a new version, its version count going up by one. */
+    public void newVersion(BigDecimal pct, LocalDate to) {
+        this.pct = pct;
+        this.to = to;
+        this.version++;
     }
 }
