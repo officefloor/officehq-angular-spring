@@ -137,7 +137,24 @@ public class Claim {
     @Column(name = "void_reason")
     private String voidReason;
 
+    /** The claim a copy in a clone of a sheet was copied from was added as; none for a claim added
+     *  on its sheet (added as its own id). */
+    @Column(name = "added")
+    private Long added;
+
     protected Claim() {
+    }
+
+    /** What the claim was added as, against a forward-only rate's mark: its own id, or for a copy in
+     *  a clone the claim it copies was added as; null for one not yet stored or rebuilt from history
+     *  without it. */
+    public Long getAdded() {
+        return added != null ? added : id;
+    }
+
+    /** Set what the claim was added as: for a copy in a clone, or a version rebuilt from history. */
+    public void setAdded(Long added) {
+        this.added = added;
     }
 
     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, String note) {
@@ -378,6 +395,7 @@ public class Claim {
         copy.ref = ref;
         copy.batch = batch;
         copy.listed = listed;
+        copy.added = getAdded();
         return copy;
     }
 

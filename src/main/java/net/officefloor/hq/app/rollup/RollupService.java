@@ -106,7 +106,7 @@ public class RollupService {
         Function<LocalDate, BigDecimal> floor = floorOf(sheet);
         BigDecimal cap = sheet.map(Sheet::getCap).orElse(null);
         LateCharge late = LateCharge.of(sheet);
-        List<Rate> sheetRates = rateChain.effective(sheetId);
+        RateChain.Levels sheetRates = rateChain.levels(sheetId);
         List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         Map<Long, Person> held = heldPeople(sheetPeople);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
@@ -178,7 +178,7 @@ public class RollupService {
         LocalDate today = sheet.map(Sheet::getToday).orElseGet(LocalDate::now);
         Function<LocalDate, BigDecimal> floor = floorOf(sheet);
         LateCharge late = LateCharge.of(sheet);
-        List<Rate> sheetRates = rateChain.effective(sheetId);
+        RateChain.Levels sheetRates = rateChain.levels(sheetId);
         List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         Map<Long, Person> held = heldPeople(sheetPeople);
         Map<Long, Person> byId = sheetPeople.stream().collect(Collectors.toMap(Person::getId, p -> p));
@@ -213,7 +213,7 @@ public class RollupService {
      *  floor, late charge and cap of the sheet and the person's holds and retirement, as the live
      *  totals do. */
     public static Stated statedOn(Sheet sheet, Person person, Long personId, List<Claim> sheetClaims,
-            List<Rate> sheetRates) {
+            RateChain.Levels sheetRates) {
         Optional<Sheet> held = Optional.of(sheet);
         LocalDate today = sheet.getToday();
         Function<LocalDate, BigDecimal> floor = floorOf(held);
@@ -352,13 +352,13 @@ public class RollupService {
     /** A person's due-total: the sum of the dues their counting claims show (n/a ones skipped);
      *  null (n/a) when their grade in force on the sheet's today has no rate then, unless a claim
      *  shows a due (a fixed or bound one, or one at the rate of the grade they had on its date). */
-    private static BigDecimal dueTotalOf(List<Claim> counted, Person person, List<Rate> sheetRates, LocalDate today,
+    private static BigDecimal dueTotalOf(List<Claim> counted, Person person, RateChain.Levels sheetRates, LocalDate today,
             Function<LocalDate, BigDecimal> floor, LateCharge late, Function<Claim, RoundingMode> rounding) {
         List<BigDecimal> dues = counted.stream()
                 .map(c -> shownDueOf(c, person, sheetRates, floor, late, rounding))
                 .filter(Objects::nonNull)
                 .toList();
-        if (inForce(person, sheetRates, today).isEmpty() && dues.isEmpty()) {
+        if (inForce(person, sheetRates.inForce(), today).isEmpty() && dues.isEmpty()) {
             return null;
         }
         return dues.stream().reduce(zero(), BigDecimal::add);
@@ -366,9 +366,9 @@ public class RollupService {
 
     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it
      *  to (null: n/a), else its amount times the rate in force on its date of its person's grade
-     *  then, rounded as its rounding policy has it; an unsettled one with its late charge on top, then raised to the
+     *  then (as the claim applies the rates: not a forward-only one saved after it was added), rounded as its rounding policy has it; an unsettled one with its late charge on top, then raised to the
      *  sheet's floor in force on its date (a correction's never is). */
-    private static BigDecimal shownDueOf(Claim c, Person person, List<Rate> sheetRates, Function<LocalDate, BigDecimal> floor,
+    private static BigDecimal shownDueOf(Claim c, Person person, RateChain.Levels sheetRates, Function<LocalDate, BigDecimal> floor,
             LateCharge late, Function<Claim, RoundingMode> rounding) {
         if (c.getSettledDue() != null) {
             return c.getSettledDue();
@@ -380,11 +380,11 @@ public class RollupService {
 
     /** A claim's figure before any late charge or floor: the one a statement bound it to (null: n/a),
      *  else its rate figure. */
-    private static BigDecimal figureOf(Claim c, Person person, List<Rate> sheetRates, RoundingMode mode) {
+    private static BigDecimal figureOf(Claim c, Person person, RateChain.Levels sheetRates, RoundingMode mode) {
         if (c.isBound()) {
             return c.getStatedDue();
         }
-        return inForce(person, sheetRates, c.getDate())
+        return inForce(person, sheetRates.forClaim(c.getAdded()), c.getDate())
                 .map(r -> c.getAmount().multiply(r.getPct()).divide(BigDecimal.valueOf(100), 2, mode))
                 .orElse(null);
     }

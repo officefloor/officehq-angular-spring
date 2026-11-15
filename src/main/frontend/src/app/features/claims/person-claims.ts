@@ -4,7 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
-import { Rate, claimDueCents } from '../rates/rates-api';
+import { RateLevels, claimDueCents } from '../rates/rates-api';
 import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
@@ -189,8 +189,8 @@ export class PersonClaims {
   readonly personName = input.required<string>();
   /** This person's claims, newest first. */
   readonly claims = input.required<Claim[]>();
-  /** Every rate the sheet has, each for a grade from its from-date. */
-  readonly rates = input.required<Rate[]>();
+  /** Every rate the sheet has, each for a grade from its from-date, as each claim applies them. */
+  readonly rates = input.required<RateLevels>();
   /** Every grade this person has been given, each from its from-date. */
   readonly grades = input.required<DatedGrade[]>();
   /** The other people on the sheet, whom a claim may be reassigned to. */
@@ -264,13 +264,14 @@ export class PersonClaims {
     });
   }
 
-  /** The claim's figure (its amount times the rate in force on the claim's date for the person's grade then, divided by 100, rounded
+  /** The claim's figure (its amount times the rate in force on the claim's date for the person's grade then (not a forward-only
+   *  one saved after the claim was added), divided by 100, rounded
    *  by the claim's rounding policy (half up before the sheet's policy date, else half to even), or the figure a statement
    *  bound it to), with its late charge on top when it is an overdue open (OPEN or PENDING) claim, then raised to the
    *  sheet's floor in force on its date; n/a with no rate in force then. A claim settled with a due shows the due fixed then. */
   protected dueOf(c: Claim): string {
     const grade = gradeOn(this.grades(), c.date);
-    const due = claimDueCents(this.rates().filter((r) => r.grade === grade), c, cents(this.session.floorOn(c.date)), {
+    const due = claimDueCents(this.rates().forClaim(c.added).filter((r) => r.grade === grade), c, cents(this.session.floorOn(c.date)), {
       today: this.session.today(), latePctOn: (d) => this.session.latePctOn(d), graceOf: (o) => this.graceOf(o),
     }, roundsHalfUp(c, this.claims(), this.session.policyDate(), this.session.today(), (d) => this.session.roundingOn(d)));
     return due === null ? 'n/a' : money(due);

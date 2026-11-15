@@ -20,6 +20,10 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query("select coalesce(max(c.listed), 0) from Claim c where c.sheetId = :sheetId")
     long findLastListed(String sheetId);
 
+    /** The highest id a claim on any sheet has; 0 with none. A claim added later has a higher one. */
+    @Query("select coalesce(max(c.id), 0) from Claim c")
+    long findLastId();
+
     /** The number of the sheet's last bulk settle batch; 0 with none. */
     @Query("select coalesce(max(c.batch), 0) from Claim c where c.sheetId = :sheetId")
     int findLastBatch(String sheetId);

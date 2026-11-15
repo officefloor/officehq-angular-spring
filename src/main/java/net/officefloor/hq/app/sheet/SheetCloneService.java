@@ -139,7 +139,8 @@ public class SheetCloneService {
         permissions.findBySheetId(sheetId)
                 .forEach(p -> permissions.save(new SheetPermission(target, p.getAction(), p.getRoles())));
         for (Rate r : rates.findBySheetIdOrderByGradeAsc(sheetId)) {
-            Rate copy = rates.save(new Rate(target, r.getGrade(), r.getFrom(), r.getTo(), r.getPct(), r.getVersion()));
+            Rate copy = rates.save(new Rate(target, r.getGrade(), r.getFrom(), r.getTo(), r.getPct(), r.getVersion(),
+                    r.getAfterClaim(), r.getEarlier()));
             for (RateVersion v : rateVersions.findByRateIdOrderByVersionAsc(r.getId())) {
                 rateVersions.save(new RateVersion(copy.getId(), v.getVersion(), v.getPct(), v.getTo()));
             }

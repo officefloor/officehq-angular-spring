@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -30,12 +31,14 @@ public class RateService {
     private final RateRepository rates;
     private final RateVersionRepository versions;
     private final SheetService sheets;
+    private final ClaimRepository claims;
     private final RollupService rollup;
     private final Audit audit;
 
     public RateService(RateRepository rates, RateVersionRepository versions, SheetService sheets,
-            RollupService rollup, Audit audit) {
+            ClaimRepository claims, RollupService rollup, Audit audit) {
         this.rates = rates;
+        this.claims = claims;
         this.versions = versions;
         this.sheets = sheets;
         this.rollup = rollup;
@@ -49,19 +52,22 @@ public class RateService {
 
     /** Set a grade's rate from a date (null: from the beginning of time) through a date (null: for
      *  good) on the sheet: a grade and from-date that already have a rate keep the value it replaces as
-     *  an older version and take the new one as their newest, the one in force (the sheet is created first if it was never loaded). */
+     *  an older version and take the new one as their newest, the one in force (the sheet is created first if it was never loaded).
+     *  One with a from-date on or after the sheet's today is forward-only: it applies only to claims
+     *  added after it is saved, those already on any sheet keeping the rates that applied to them. */
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
-        sheets.load(sheetId, user);
+        LocalDate today = sheets.load(sheetId, user).getToday();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal scaled = pct.setScale(2);
+        Long afterClaim = from != null && !from.isBefore(today) ? claims.findLastId() : null;
         Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from).orElse(null);
         try {
             if (rate == null) {
-                rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, scaled));
+                rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, scaled, 1, afterClaim, List.of()));
             } else {
                 versions.save(new RateVersion(rate.getId(), rate.getVersion(), rate.getPct(), rate.getTo()));
-                rate.newVersion(scaled, to);
+                rate.newVersion(scaled, to, afterClaim);
                 rates.flush();
             }
         } catch (DataIntegrityViolationException e) {

@@ -30,10 +30,21 @@ public class RateController {
 
     /** A grade's rate as the screen shows it: the percent always with two decimals, and its
      *  from-date (null when it applies from the beginning of time), to-date (null: for good) and how
-     *  many versions it has (the one shown, its newest, being in force). */
-    public record RateView(String grade, LocalDate from, LocalDate to, String pct, int version) {
+     *  many versions it has (the one shown, its newest, being in force); for a forward-only newest
+     *  version the highest claim id there was when it was saved (only claims added after it apply
+     *  it), and the earlier versions claims added before it apply instead, newest first. */
+    public record RateView(String grade, LocalDate from, LocalDate to, String pct, int version, Long afterClaim,
+            List<EarlierView> earlier) {
         static RateView of(Rate r) {
-            return new RateView(r.getGrade(), r.getFrom(), r.getTo(), r.getPct().setScale(2).toPlainString(), r.getVersion());
+            return new RateView(r.getGrade(), r.getFrom(), r.getTo(), r.getPct().setScale(2).toPlainString(), r.getVersion(),
+                    r.getAfterClaim(), r.getEarlier().stream().map(EarlierView::of).toList());
+        }
+    }
+
+    /** An earlier version of a rate as a claim added before its later forward-only one applies it. */
+    public record EarlierView(String pct, LocalDate to, Long afterClaim) {
+        static EarlierView of(Rate.Earlier e) {
+            return new EarlierView(e.pct().setScale(2).toPlainString(), e.to(), e.afterClaim());
         }
     }
 

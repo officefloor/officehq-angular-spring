@@ -72,15 +72,17 @@ public class HistoryService {
             String originSheetId, List<HoldState> retirements, String tags) {
     }
 
-    /** A rate's state; its version is null in states written before rates were kept as versions (version 1). */
-    record RateState(String grade, BigDecimal pct, LocalDate from, LocalDate to, Integer version) {
+    /** A rate's state; its version is null in states written before rates were kept as versions
+     *  (version 1), its earlier versions null in those written before rates could be forward-only. */
+    record RateState(String grade, BigDecimal pct, LocalDate from, LocalDate to, Integer version, Long afterClaim,
+            List<Rate.Earlier> earlier) {
     }
 
     record ClaimState(long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, ClaimStatus status,
             String number, BigDecimal settledDue, boolean stated, BigDecimal statedDue, String corrects,
             LocalDate deferredUntil, String note, String openedBy, long listed, int proofs, String splitFrom,
             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason, String editedBy,
-            Integer batch) {
+            Integer batch, Long added) {
     }
 
     record PeriodState(String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
@@ -139,7 +141,7 @@ public class HistoryService {
                     c.getDate(), c.getDueBy(), c.getStatus(), c.getNumber(), c.getSettledDue(), c.isStated(),
                     c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getNote(), c.getOpenedBy(),
                     c.getListed(), c.getProofs(), c.getSplitFrom(), c.isLateEntry(), c.getReminded(),
-                    c.getRef(), c.getTags(), c.getVoidReason(), c.getEditedBy(), c.getBatch()));
+                    c.getRef(), c.getTags(), c.getVoidReason(), c.getEditedBy(), c.getBatch(), c.getAdded()));
         } else if (entity instanceof Person p) {
             List<Person.DatedGrade> all = p.getGrades();
             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
@@ -149,7 +151,8 @@ public class HistoryService {
                     p.getRetirements().stream().map(r -> new HoldState(r.from(), r.to())).toList(), p.getTags()));
         } else if (entity instanceof Rate r) {
             write(r.getSheetId(), RATE, String.valueOf(r.getId()),
-                    new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo(), r.getVersion()));
+                    new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo(), r.getVersion(),
+                            r.getAfterClaim(), r.getEarlier()));
         } else if (entity instanceof Sheet s) {
             recordSheet(s);
         } else if (entity instanceof Period p) {
@@ -257,9 +260,10 @@ public class HistoryService {
                 case PERSON -> people.put(Long.valueOf(id), personOf(sheetId, Long.parseLong(id), json.readValue(state, PersonState.class)));
                 case RATE -> {
                     RateState r = json.readValue(state, RateState.class);
-                    rates.add(new Rate(sheetId, r.grade(), r.from(), r.to(), r.pct(), r.version() == null ? 1 : r.version()));
+                    rates.add(new Rate(sheetId, r.grade(), r.from(), r.to(), r.pct(), r.version() == null ? 1 : r.version(),
+                            r.afterClaim(), r.earlier() == null ? List.of() : r.earlier()));
                 }
-                case CLAIM -> claims.put(Long.valueOf(id), claimOf(sheetId, json.readValue(state, ClaimState.class)));
+                case CLAIM -> claims.put(Long.valueOf(id), claimOf(sheetId, Long.parseLong(id), json.readValue(state, ClaimState.class)));
                 case PERIOD -> {
                     PeriodState p = json.readValue(state, PeriodState.class);
                     Period period = new Period(sheetId, p.name(), p.from(), p.to());
@@ -332,8 +336,10 @@ public class HistoryService {
         return p;
     }
 
-    private static Claim claimOf(String sheetId, ClaimState s) {
+    private static Claim claimOf(String sheetId, long id, ClaimState s) {
         Claim c = new Claim(sheetId, s.personId(), s.amount(), s.date(), s.dueBy(), "");
+        // a version written before claims kept what they were added as was added as its own id
+        c.setAdded(s.added() != null ? s.added() : id);
         c.setStatus(s.status());
         c.setNumber(s.number());
         c.setSettledDue(s.settledDue());

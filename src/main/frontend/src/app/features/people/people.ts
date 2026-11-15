@@ -12,7 +12,7 @@ import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { ClassicSummary } from '../summary/classic-summary';
 import { Header } from '../header/header';
-import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, effectiveRates, pctOn, plusDays } from '../rates/rates-api';
+import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
 import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, retireError, statementError, transferError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
@@ -348,7 +348,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
               </td>
               <td>
                 <app-person-plans [personId]="p.id" [personName]="p.name" />
-                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="effectiveRates()" [grades]="p.grades" [others]="patronChoicesFor(p)" [periods]="periods()"
+                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rateLevels()" [grades]="p.grades" [others]="patronChoicesFor(p)" [periods]="periods()"
                   [selected]="selectedClaims()" (toggled)="claimToggled($event)" (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -456,8 +456,10 @@ export class People {
   protected readonly rates = signal<Rate[]>([]);
   /** The rates of each of the sheet's ancestors, its parent's first. */
   private readonly inherited = signal<Rate[][]>([]);
+  /** The sheet's own rates and those it inherits, as the rates panel and each claim apply them. */
+  protected readonly rateLevels = computed(() => new RateLevels(this.rates(), this.inherited()));
   /** The rates in force on the sheet: its own, else (for a grade and date with none) its ancestors'. */
-  protected readonly effectiveRates = computed(() => effectiveRates(this.rates(), this.inherited()));
+  protected readonly effectiveRates = computed(() => this.rateLevels().inForce);
   /** What every late charge follows: the sheet's today and late percent. */
   private readonly lateness = computed<Lateness>(() => ({
     today: this.session.today(), latePctOn: (d) => this.session.latePctOn(d),
@@ -937,10 +939,12 @@ export class People {
     return { count, cents: diff };
   };
 
-  /** A claim's due in cents, at the rate of the person's grade in force on the claim's date (or at
-   *  the given rates in its place). */
+  /** A claim's due in cents, at the rate of the person's grade in force on the claim's date as the
+   *  claim applies the rates (not a forward-only one saved after it was added), or at the given
+   *  rates in their place. */
   private claimDueCents(p: Person, c: Claim, late: Lateness, rates?: Rate[]): number | null {
-    return claimDueCents(rates ?? this.ratesOf(gradeOn(p.grades, c.date)), c, cents(this.session.floorOn(c.date)),
+    const grade = gradeOn(p.grades, c.date);
+    return claimDueCents(rates ?? this.rateLevels().forClaim(c.added).filter((r) => r.grade === grade), c, cents(this.session.floorOn(c.date)),
       { ...late, graceOf: (o) => this.graceOf(p, o) },
       roundsHalfUp(c, this.claimsOf(p.id), this.session.policyDate(), late.today, (d) => this.session.roundingOn(d)));
   }

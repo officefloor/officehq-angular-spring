@@ -23,6 +23,9 @@ export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'review' | 'r
 
 export interface Claim {
   id: number;
+  /** What the claim was added as against a forward-only rate's mark: its own id, or for a copy in a
+   *  clone the claim it copies was added as. */
+  added: number;
   personId: number;
   /** Always with two decimals, as the server formats it. */
   amount: string;

@@ -996,7 +996,7 @@ public class ClaimService {
         List<Claim> theirs = claims.findByPersonForUpdate(personId, sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         RollupService.Stated stated = RollupService.statedOn(then.sheet(), was, personId,
-                List.copyOf(then.claims().values()), RateChain.flatten(sheetId, then.rates(),
+                List.copyOf(then.claims().values()), new RateChain.Levels(sheetId, then.rates(),
                         rateChain.ancestors(sheetId).stream().map(a -> history.asOf(a, asOf).rates()).toList()));
         Map<Long, BigDecimal> bound = new HashMap<>();
         then.claims().forEach((id, c) -> {
@@ -1255,10 +1255,11 @@ public class ClaimService {
         return dues.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
     }
 
-    /** The claim's amount times the rate, in force on the claim's date, of its person's grade then, divided by
+    /** The claim's amount times the rate, in force on the claim's date, of its person's grade then (as
+     *  the claim applies the rates: not a forward-only one saved after it was added), divided by
      *  100, rounded as its rounding policy has it; null with no rate in force then. */
     private BigDecimal rateFigureOf(Claim claim, Person person) {
-        return rateChain.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
+        return rateChain.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate(), claim.getAdded())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, roundingOf(claim)))
                 .orElse(null);

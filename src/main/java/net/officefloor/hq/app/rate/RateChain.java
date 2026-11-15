@@ -2,9 +2,12 @@ package net.officefloor.hq.app.rate;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
@@ -63,6 +66,86 @@ public class RateChain {
     @Transactional(readOnly = true)
     public List<Rate> effective(String sheetId, List<Rate> own) {
         return flatten(sheetId, own, inherited(sheetId));
+    }
+
+    /** The sheet's own rates and those it inherits, to apply to its claims. */
+    @Transactional(readOnly = true)
+    public Levels levels(String sheetId) {
+        return new Levels(sheetId, rates.findBySheetIdOrderByGradeAsc(sheetId), inherited(sheetId));
+    }
+
+    /** A sheet's own rates and those of each of its ancestors (its parent's first): {@link #inForce}
+     *  the rates in force on it as one list, as the rates panel shows them, and {@link #forClaim} the
+     *  ones a claim applies, leaving out the forward-only versions saved after it was added. */
+    public static final class Levels {
+
+        private final String sheetId;
+        private final List<Rate> own;
+        private final List<List<Rate>> inherited;
+        private final List<Rate> inForce;
+        /** Every forward-only mark the rates have, lowest first. */
+        private final List<Long> marks;
+        /** The rates claims apply, by how many of the marks they were added after. */
+        private final Map<Integer, List<Rate>> byMark = new HashMap<>();
+
+        public Levels(String sheetId, List<Rate> own, List<List<Rate>> inherited) {
+            this.sheetId = sheetId;
+            this.own = own;
+            this.inherited = inherited;
+            this.inForce = flatten(sheetId, own, inherited);
+            TreeSet<Long> all = new TreeSet<>();
+            List<List<Rate>> levels = new ArrayList<>(inherited);
+            levels.add(own);
+            levels.forEach(l -> l.forEach(r -> {
+                if (r.getAfterClaim() != null) {
+                    all.add(r.getAfterClaim());
+                }
+                r.getEarlier().forEach(e -> {
+                    if (e.afterClaim() != null) {
+                        all.add(e.afterClaim());
+                    }
+                });
+            }));
+            this.marks = List.copyOf(all);
+        }
+
+        /** The rates in force on the sheet, with what it inherits, as one list. */
+        public List<Rate> inForce() {
+            return inForce;
+        }
+
+        /** The rates, with what the sheet inherits, as one list, as a claim added as {@code added}
+         *  (null: one added now) applies them. */
+        public List<Rate> forClaim(Long added) {
+            if (marks.isEmpty() || added == null) {
+                return inForce;
+            }
+            // how many marks it was added after (one added as a mark itself was there when it was saved)
+            int at = Collections.binarySearch(marks, added);
+            int passed = at >= 0 ? at : -at - 1;
+            if (passed == marks.size()) {
+                return inForce;
+            }
+            return byMark.computeIfAbsent(passed, k -> flatten(sheetId, Rate.forClaim(own, added),
+                    inherited.stream().map(l -> Rate.forClaim(l, added)).toList()));
+        }
+    }
+
+    /** The grade's rate on a date on the sheet, as a claim added as {@code added} (null: one added
+     *  now) applies it: its own, else the nearest ancestor's. */
+    @Transactional(readOnly = true)
+    public Optional<Rate> findInForce(String sheetId, String grade, LocalDate on, Long added) {
+        Optional<Rate> own = inForce(Rate.forClaim(rates.findBySheetIdAndGrade(sheetId, grade), added), grade, on);
+        if (own.isPresent()) {
+            return own;
+        }
+        for (String ancestor : ancestors(sheetId)) {
+            Optional<Rate> found = inForce(Rate.forClaim(rates.findBySheetIdAndGrade(ancestor, grade), added), grade, on);
+            if (found.isPresent()) {
+                return found;
+            }
+        }
+        return Optional.empty();
     }
 
     /** The grade's rate in force on a date on the sheet: its own, else the nearest ancestor's. */

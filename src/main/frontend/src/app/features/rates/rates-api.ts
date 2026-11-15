@@ -20,6 +20,68 @@ export interface Rate {
   /** How many versions the rate has, the one shown (its newest) being in force; absent on a rate
    *  worked out on the screen rather than read from the server. */
   version?: number;
+  /** For a forward-only newest version (saved with a from-date on or after the sheet's today then),
+   *  the highest claim id there was when it was saved: only claims added after it apply it; null or
+   *  absent when it applies to every claim. */
+  afterClaim?: number | null;
+  /** The versions a claim added before the newest one applies instead, newest first. */
+  earlier?: EarlierRate[];
+}
+
+/** An earlier version of a rate as a claim added before its later forward-only one applies it. */
+export interface EarlierRate {
+  pct: string;
+  to: string | null;
+  afterClaim: number | null;
+}
+
+/** Of rates, each as it applies to a claim added as `added` (its own id, or for a copy in a clone
+ *  the claim it copies was added as): a forward-only version saved after it was added gives way to
+ *  the newest earlier one that applies to it; a rate none of whose versions does is left out. */
+export function ratesForClaim(rates: readonly Rate[], added: number): Rate[] {
+  const out: Rate[] = [];
+  for (const r of rates) {
+    if (r.afterClaim == null || added > r.afterClaim) {
+      out.push(r);
+      continue;
+    }
+    const e = (r.earlier ?? []).find((v) => v.afterClaim === null || added > v.afterClaim);
+    if (e) out.push({ grade: r.grade, from: r.from, to: e.to, pct: e.pct, version: r.version });
+  }
+  return out;
+}
+
+/** A sheet's own rates and those of each of its ancestors (its parent's first): `inForce` the rates
+ *  in force on it as one list, as the rates panel shows them, and `forClaim` the ones a claim
+ *  applies, leaving out the forward-only versions saved after it was added. */
+export class RateLevels {
+  readonly inForce: Rate[];
+  /** Every forward-only mark the rates have, lowest first. */
+  private readonly marks: number[];
+  /** The rates claims apply, by how many of the marks they were added after. */
+  private readonly byMark = new Map<number, Rate[]>();
+
+  constructor(private readonly own: readonly Rate[], private readonly inherited: readonly (readonly Rate[])[]) {
+    this.inForce = effectiveRates(own, inherited);
+    const marks = new Set<number>();
+    for (const r of [...own, ...inherited.flat()]) {
+      if (r.afterClaim != null) marks.add(r.afterClaim);
+      for (const e of r.earlier ?? []) if (e.afterClaim !== null) marks.add(e.afterClaim);
+    }
+    this.marks = [...marks].sort((a, b) => a - b);
+  }
+
+  /** The rates, with what the sheet inherits, as one list, as a claim added as `added` applies them. */
+  forClaim(added: number): Rate[] {
+    const passed = this.marks.filter((m) => m < added).length;
+    if (passed === this.marks.length) return this.inForce;
+    let rates = this.byMark.get(passed);
+    if (!rates) {
+      rates = effectiveRates(ratesForClaim(this.own, added), this.inherited.map((l) => ratesForClaim(l, added)));
+      this.byMark.set(passed, rates);
+    }
+    return rates;
+  }
 }
 
 /** Of one grade's rates, the one in force on a date (yyyy-mm-dd): the one with the latest from-date
