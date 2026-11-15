@@ -144,5 +144,12 @@ export function valueOn(dated: DatedSettings, key: string, date: string | null):
 }
 
 function message(e: unknown, invalid: string): string {
-  return e instanceof HttpErrorResponse && e.status === 400 ? invalid : 'Something went wrong; try again.';
+  return e instanceof HttpErrorResponse && e.status === 400 ? invalid : otherError(e);
+}
+
+/** The message for a failure no form names: a refusal (403) of a viewer, who may change nothing,
+ *  else a plain try again. */
+export function otherError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not change anything on this sheet.';
+  return 'Something went wrong; try again.';
 }

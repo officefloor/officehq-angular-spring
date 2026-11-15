@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Session } from '../../core/session';
+import { Session, otherError } from '../../core/session';
 import type { Person } from '../people/people-api';
 
 /** An amount of 0.00 or more with up to two decimals. */
@@ -250,7 +250,7 @@ export function claimError(e: unknown, correction = false): string {
       ? "A correction must name the number of a settled claim of this person, and be dated by the person's retirement date."
       : "The date is after the person's retirement date.";
   }
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 export function quickAddError(e: unknown): string {
@@ -258,7 +258,7 @@ export function quickAddError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That name was just added by someone else; try again.';
   if (e instanceof HttpErrorResponse && e.status === 423) return "The sheet's today is in a closed period.";
   if (e instanceof HttpErrorResponse && e.status === 422) return "The sheet's today is after that person's retirement date.";
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 /** Why a paste of claims was refused: nothing was added. */
@@ -270,7 +270,7 @@ export function pasteError(e: unknown): string {
     return "Every name must be on the sheet, and every date by that person's retirement date; an amount below zero is a correction, which the paste does not take.";
   }
   if (e instanceof HttpErrorResponse && e.status === 423) return 'A date is in a closed period.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 /** Why a status change was refused; `opener` says whether the user is the one who opened the claim. */
@@ -285,7 +285,7 @@ export function statusError(e: unknown, opener: boolean): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
   if (e instanceof HttpErrorResponse && e.status === 422) return 'This claim\'s due is above the proof threshold; add a proof first.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 /** Why adding a proof was refused. */
@@ -293,7 +293,7 @@ export function proofError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'A settled or void claim takes no more proofs.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 /** Why a deferral was refused. */
@@ -303,7 +303,7 @@ export function deferError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 422) return "Defer the claim until a date after the sheet's today.";
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 /** Why a re-settle was refused. */
@@ -312,7 +312,7 @@ export function resettleError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a settled claim can be re-settled.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 /** Why a reassignment was refused. */
@@ -322,7 +322,7 @@ export function reassignError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
   if (e instanceof HttpErrorResponse && e.status === 422) return "The claim's date is after that person's retirement date.";
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 /** An amount in whole cents (negative for a negative amount). */

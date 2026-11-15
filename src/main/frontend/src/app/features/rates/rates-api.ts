@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Session } from '../../core/session';
+import { Session, otherError } from '../../core/session';
 import { Claim, cents, dueBy, isBound, isCorrection, overdue } from '../claims/claims-api';
 
 /** A percent of 0.00 or more with up to two decimals. */
@@ -58,7 +58,7 @@ export class RatesApi {
 export function rateError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Choose a grade, enter a percent of 0.00 or more with up to two decimals and a from-date and to-date as yyyy-mm-dd or none, the to-date not before the from-date.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The rate was changed at the same moment; try again.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 /** Whole cents times a percent (in hundredths of a percent), divided by 100, in whole cents,

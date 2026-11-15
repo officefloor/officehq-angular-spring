@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Session } from '../../core/session';
+import { Session, otherError } from '../../core/session';
 import { Claim } from '../claims/claims-api';
 
 export const GRADES = ['A', 'B', 'C'] as const;
@@ -141,25 +141,25 @@ export function personError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name, choose a grade and enter a from-date as yyyy-mm-dd or none.';
   if (isStale(e)) return 'Someone else saved this person since you opened it; the form now shows their values.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That name is already in use on this sheet.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 export function statementError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 export function retireError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a date as yyyy-mm-dd.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 export function holdError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter the dates as yyyy-mm-dd.';
   if (e instanceof HttpErrorResponse && e.status === 422) return 'The to-date must not be before the from-date.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 export function patronError(e: unknown): string {
@@ -167,7 +167,7 @@ export function patronError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That person is already a patron.';
   if (e instanceof HttpErrorResponse && e.status === 422) return 'A person cannot be their own patron.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 /** Whether a save was refused because someone else saved the person since the editor loaded it. */

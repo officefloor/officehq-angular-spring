@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.session.CurrentUser;
 import net.officefloor.hq.app.settings.SettingsController.DatedValue;
+import net.officefloor.hq.app.settings.ViewerAllowed;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -48,6 +49,7 @@ public class SheetController {
     }
 
     @PostMapping("/{id}/load")
+    @ViewerAllowed
     public SheetView load(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {

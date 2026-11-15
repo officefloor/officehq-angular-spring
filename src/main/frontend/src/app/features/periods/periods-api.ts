@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Session } from '../../core/session';
+import { Session, otherError } from '../../core/session';
 import { cents } from '../claims/claims-api';
 
 export interface Period {
@@ -74,19 +74,19 @@ export class PeriodsApi {
 export function periodError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name without spaces and a from-date on or before the to-date, as yyyy-mm-dd.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The name is in use on the sheet, or the dates overlap another period.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 export function closeError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not close a period.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is already closed.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That period is no longer on this sheet.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 export function reopenError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not reopen a period.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is not closed.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That period is no longer on this sheet.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }

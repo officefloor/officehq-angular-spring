@@ -1,10 +1,11 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { DatedSettings, Session } from '../../core/session';
+import { DatedSettings, Session, otherError } from '../../core/session';
 
-/** The roles a user name can hold on a sheet; a name without one is a clerk. */
-export const ROLES = ['clerk', 'steward'] as const;
+/** The roles a user name can hold on a sheet; a name without one is a clerk. A viewer sees the
+ *  sheet and may change nothing on it. */
+export const ROLES = ['clerk', 'steward', 'viewer'] as const;
 
 /** The actions whose roles the permission matrix sets, each with its standing rule (used while
  *  its entry is blank). */
@@ -170,11 +171,11 @@ export const SETTINGS_INVALID =
 
 export function settingsError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return SETTINGS_INVALID;
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }
 
 export function roleError(e: unknown): string {
-  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a user name without spaces and a role of clerk or steward.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a user name without spaces and a role of clerk, steward or viewer.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The role was changed at the same moment; try again.';
-  return 'Something went wrong; try again.';
+  return otherError(e);
 }

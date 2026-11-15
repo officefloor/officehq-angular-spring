@@ -1,8 +1,9 @@
 package net.officefloor.hq.app.settings;
 
-/** A user's role on a sheet. Any name without one is a clerk. */
+/** A user's role on a sheet. Any name without one is a clerk. A viewer sees the sheet and changes
+ *  nothing on it. */
 public enum Role {
-    CLERK, STEWARD;
+    CLERK, STEWARD, VIEWER;
 
     /** The role as it is stored, shown and audited. */
     public String key() {

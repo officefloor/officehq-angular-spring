@@ -125,10 +125,10 @@ public class SettingsController {
         }
     }
 
-    /** A role as the form submits it: a user name without spaces and clerk or steward. */
+    /** A role as the form submits it: a user name without spaces and clerk, steward or viewer. */
     public record RoleForm(
             @NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String user,
-            @NotNull @Pattern(regexp = "clerk|steward") String role) {
+            @NotNull @Pattern(regexp = "clerk|steward|viewer") String role) {
     }
 
     /** The grades a person can hold. */

@@ -258,6 +258,12 @@ public class SettingsService {
         return roles.findBySheetIdAndUser(sheetId, user).map(SheetRole::getRole).orElse(Role.CLERK);
     }
 
+    /** Whether the user name is a viewer on the sheet: sees it and may change nothing on it. */
+    @Transactional(readOnly = true)
+    public boolean isViewer(String sheetId, String user) {
+        return roleOf(sheetId, user) == Role.VIEWER;
+    }
+
     /** Give a user name a role on the sheet, the sheet created first if it was never loaded. */
     @Transactional
     public SheetRole setRole(String sheetId, String user, String name, Role role) {

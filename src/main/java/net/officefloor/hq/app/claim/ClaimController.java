@@ -12,6 +12,8 @@ import java.util.Map;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.session.CurrentUser;
+import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.settings.ViewerAllowed;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -110,10 +112,12 @@ public class ClaimController {
 
     private final ClaimService service;
     private final PersonService people;
+    private final SettingsService settings;
 
-    public ClaimController(ClaimService service, PersonService people) {
+    public ClaimController(ClaimService service, PersonService people, SettingsService settings) {
         this.service = service;
         this.people = people;
+        this.settings = settings;
     }
 
     @GetMapping("/claims")
@@ -154,10 +158,15 @@ public class ClaimController {
     /** Open each selected claim in list order (people in the order added, newest claim first),
      *  each on its own, numbered in that order; a claim that cannot be opened is left as it is. */
     @PostMapping("/claims/bulk-open")
+    @ViewerAllowed
     public BulkOpenView bulkOpen(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody BulkForm body) {
+        int selected = (int) body.ids().stream().distinct().count();
+        if (settings.isViewer(sheetId, user.trim())) {
+            return new BulkOpenView(0, selected);
+        }
         List<Long> ordered = service.inListOrder(sheetId, body.ids());
         int opened = 0;
         for (long id : ordered) {
@@ -168,7 +177,7 @@ public class ClaimController {
                 // refused: left as it is
             }
         }
-        return new BulkOpenView(opened, (int) body.ids().stream().distinct().count() - opened);
+        return new BulkOpenView(opened, selected - opened);
     }
 
     @PostMapping("/claims/{id}/settle")
@@ -183,10 +192,15 @@ public class ClaimController {
      *  each on its own by the rules of settling one; a claim sent to PENDING counts as settled, and
      *  a claim that cannot be settled is left as it is. */
     @PostMapping("/claims/bulk-settle")
+    @ViewerAllowed
     public BulkSettleView bulkSettle(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody BulkForm body) {
+        int selected = (int) body.ids().stream().distinct().count();
+        if (settings.isViewer(sheetId, user.trim())) {
+            return new BulkSettleView(0, selected);
+        }
         List<Long> ordered = service.inListOrder(sheetId, body.ids());
         int settled = 0;
         for (long id : ordered) {
@@ -197,7 +211,7 @@ public class ClaimController {
                 // refused: left as it is
             }
         }
-        return new BulkSettleView(settled, (int) body.ids().stream().distinct().count() - settled);
+        return new BulkSettleView(settled, selected - settled);
     }
 
     @PostMapping("/claims/{id}/defer")
