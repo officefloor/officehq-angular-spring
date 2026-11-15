@@ -1,0 +1,64 @@
+{
+  "checkpoint": 149,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp149_period-claim-cap",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A period may cap the number of open claims per person (a whole number on the period form, blank\nfor none; PERIOD_ADDED gains cap=<n> at the end when given). Opening a claim that belongs to the\nperiod, alone or by the bulk button, is refused with an error on the claim when the person already\nhas that many OPEN or PENDING claims in it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA period may cap the number of open claims per person (a whole number on the period form, blank\nfor none; PERIOD_ADDED gains cap=<n> at the end when given). Opening a claim that belongs to the\nperiod, alone or by the bulk button, is refused with an error on the claim when the person already\nhas that many OPEN or PENDING claims in it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ae93ff188f06291003e20bfb09ab68412913d5bd",
+  "reset_sha": "",
+  "preagent_sha": "0ca7edb9184c6de3e5a2966842c7071cac5e31cd",
+  "prev_sha": "0ca7edb9184c6de3e5a2966842c7071cac5e31cd",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9807072000000002,
+    "input_tokens": 50,
+    "output_tokens": 10022,
+    "cache_read_tokens": 1262576,
+    "cache_creation_tokens": 65944,
+    "num_turns": 25,
+    "duration_ms": 296929,
+    "duration_api_ms": 110563,
+    "model": "claude-opus-5-5",
+    "session_id": "1436ac39-065e-4dcf-9c46-c8349bb1aa0c",
+    "stop_reason": "success",
+    "result_text": "Periods can now cap open claims per person, and all 4 Playwright tests pass under `bin/e2e`. The tests don't really exercise the refusal itself, though. The one opening they expect to fail is of a claim that is already open, so it would be refused with or without the cap. The cap check is in place, but no test has actually triggered it.\n\n**What it does**\n- **Which period a claim belongs to:** the one containing the claim's due-by date. The existing \"Period\" column on each claim already works this way, so the cap follows it.\n- **Period form:** a new optional cap field (`period-form-cap`). Blank means no cap. Anything other than a whole number of 1 or more, including 0, is refused with `period-form-error`. Each period row shows its cap in `period-cap`.\n- **Audit:** `PERIOD_ADDED` ends with ` cap=<n>` only when a cap was given.\n- **Opening a claim:** this is refused when the claim belongs to a capped period and its person already has that many OPEN or PENDING claims due in that period. The refusal shows on the claim's row and changes nothing. The single open button and the bulk open button both go through this check, and bulk open counts these refusals as refused.\n\n**Where the changes are**\n- **Database:** a new migration, `V82__period_cap.sql`, adds a nullable `claim_cap` column to `period`.\n- **Server:**\n  - `Period`, `PeriodService.add` and `PeriodController` take and return the cap.\n  - The check itself is `refuseIfOverCap` in `ClaimService`. It runs only when a claim is moved to OPEN.\n  - The cap is also kept in the period's history (`HistoryService`) and when a sheet is cloned (`SheetCloneService`).\n- **Front end:** the cap field, its checks and the cap column are in `periods.ts` and `periods-api.ts`. I also reworded the general 409 message in `claims-api.ts` so it now gives the cap as one possible reason.\n\nSplitting a claim, approving or rejecting a PENDING claim, and restoring a deleted one don't check the cap. The request only mentions opening, so I left them alone. A split, for example, can push a person over the cap.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9807072000000002,
+        "num_turns": 25,
+        "duration_ms": 296929,
+        "duration_api_ms": 110563,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp149.agent.jsonl",
+  "agent_diff_file": "cp149.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
