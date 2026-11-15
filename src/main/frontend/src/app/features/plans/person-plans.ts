@@ -2,7 +2,7 @@ import { Component, computed, effect, inject, input, signal, untracked } from '@
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { AMOUNT_PATTERN } from '../claims/claims-api';
-import { PlansApi, planError } from './plans-api';
+import { PlansApi, nextDates, planError, type Plan } from './plans-api';
 
 // One person's plans, in the order they were added, and the form that adds one.
 @Component({
@@ -37,7 +37,8 @@ import { PlansApi, planError } from './plans-api';
               every <span data-testid="plan-every">{{ pl.every }}</span> days
             }
             to <span data-testid="plan-end">{{ pl.end }}</span>;
-            made <span data-testid="plan-generated">{{ pl.generated }}</span>
+            made <span data-testid="plan-generated">{{ pl.generated }}</span>;
+            next <span data-testid="plan-next-dates">{{ next(pl) }}</span>
           </li>
         }
       </ul>
@@ -73,6 +74,12 @@ export class PersonPlans {
         this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
       });
     });
+  }
+
+  /** The plan's next five dates after the sheet's today, comma and space separated. */
+  protected next(plan: Plan): string {
+    const today = this.session.today();
+    return today === null ? '' : nextDates(plan, today).join(', ');
   }
 
   protected fieldId(name: string): string {
