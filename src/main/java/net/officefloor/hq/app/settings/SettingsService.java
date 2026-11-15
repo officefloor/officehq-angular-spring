@@ -328,6 +328,24 @@ public class SettingsService {
         return made;
     }
 
+    /** Archive the sheet, the sheet created first if it was never loaded; refused (403) unless the
+     *  user acts as a steward, and (409) when it is archived already. */
+    @Transactional
+    public Sheet archive(String sheetId, String user) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        if (roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may archive the sheet");
+        }
+        if (sheet.isArchived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet is archived already");
+        }
+        sheet.archive();
+        sheets.flush();
+        audit.recordOnCommit("SHEET_ARCHIVED sheet=" + sheetId + " by=" + user);
+        return sheet;
+    }
+
     /** Whether the user name is a viewer on the sheet: sees it and may change nothing on it. */
     @Transactional(readOnly = true)
     public boolean isViewer(String sheetId, String user) {

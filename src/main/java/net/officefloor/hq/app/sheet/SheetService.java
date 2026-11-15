@@ -89,6 +89,12 @@ public class SheetService {
         return sheets.findById(id).map(s -> s.proofThresholdOn(on)).orElse(null);
     }
 
+    /** Whether the sheet is archived: every change on it is refused. */
+    @Transactional(readOnly = true)
+    public boolean archived(String id) {
+        return sheets.findById(id).map(Sheet::isArchived).orElse(false);
+    }
+
     /** Whether a claim opened now is numbered within its period. */
     @Transactional(readOnly = true)
     public boolean periodNumberingOn(String id) {

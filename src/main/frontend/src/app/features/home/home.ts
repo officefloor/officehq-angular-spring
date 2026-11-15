@@ -21,6 +21,9 @@ import { Settings } from '../settings/settings';
       </form>
       @if (session.sheetId(); as id) {
         <p>Sheet <strong data-testid="sheet-current-id">{{ id }}</strong></p>
+        <p>Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong>
+          <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
+        </p>
         <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
         <form [formGroup]="todayForm" (ngSubmit)="saveToday()" aria-label="Sheet today">
           <label for="sheet-today-input">Change today</label>
@@ -83,6 +86,11 @@ export class Home {
       return;
     }
     this.sheetError.set(await this.session.loadSheet(id));
+  }
+
+  protected async archive(): Promise<void> {
+    this.sheetError.set(null);
+    this.sheetError.set(await this.session.archive());
   }
 
   protected async saveToday(): Promise<void> {

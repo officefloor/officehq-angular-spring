@@ -13,6 +13,7 @@ import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.session.CurrentUser;
 import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.settings.ViewerAllowed;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -122,11 +123,13 @@ public class ClaimController {
     private final ClaimService service;
     private final PersonService people;
     private final SettingsService settings;
+    private final SheetService sheets;
 
-    public ClaimController(ClaimService service, PersonService people, SettingsService settings) {
+    public ClaimController(ClaimService service, PersonService people, SettingsService settings, SheetService sheets) {
         this.service = service;
         this.people = people;
         this.settings = settings;
+        this.sheets = sheets;
     }
 
     @GetMapping("/claims")
@@ -173,7 +176,7 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody BulkForm body) {
         int selected = (int) body.ids().stream().distinct().count();
-        if (settings.isViewer(sheetId, user.trim())) {
+        if (settings.isViewer(sheetId, user.trim()) || sheets.archived(sheetId)) {
             return new BulkOpenView(0, selected);
         }
         List<Long> ordered = service.inListOrder(sheetId, body.ids());
@@ -207,7 +210,7 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody BulkForm body) {
         int selected = (int) body.ids().stream().distinct().count();
-        if (settings.isViewer(sheetId, user.trim())) {
+        if (settings.isViewer(sheetId, user.trim()) || sheets.archived(sheetId)) {
             return new BulkSettleView(0, selected);
         }
         List<Long> ordered = service.inListOrder(sheetId, body.ids());

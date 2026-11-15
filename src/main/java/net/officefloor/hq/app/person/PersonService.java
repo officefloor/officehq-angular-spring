@@ -93,9 +93,13 @@ public class PersonService {
         return watches.existsByPersonIdAndUserName(personId, user);
     }
 
-    /** Start (on) or stop watching the person as the user; already so, nothing changes. */
+    /** Start (on) or stop watching the person as the user; already so, nothing changes; refused
+     *  (403) on an archived sheet. */
     @Transactional
     public Person watch(String sheetId, String user, long id, boolean on) {
+        if (sheets.archived(sheetId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The sheet is archived: nothing on it may change");
+        }
         Person person = people.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (on) {

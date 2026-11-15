@@ -31,6 +31,8 @@ export class Session {
   /** The active sheet's proof threshold (two decimals) in force on its today, null when there is
    *  none: a claim whose due is above the one in force on its date is settled only with a proof. */
   readonly proofThreshold = computed(() => valueOn(this.dated(), 'proof-threshold', this.today())?.value ?? null);
+  /** Whether the active sheet is archived: everything stays visible and every change is refused. */
+  readonly archived = signal(false);
   /** Whether the people list shows retired people too: off at first, and kept as it is when a
    *  sheet is loaded. */
   readonly showRetired = signal(false);
@@ -85,6 +87,7 @@ export class Session {
       this.today.set(res.today);
       this.dated.set(res.dated);
       this.policyDate.set(res.policyDate);
+      this.archived.set(res.archived);
       this.loads.update((n) => n + 1);
       return null;
     } catch (e) {
@@ -109,6 +112,26 @@ export class Session {
       return message(e, 'Enter a date as yyyy-mm-dd.');
     }
   }
+
+  /** Archive the active sheet (a steward only); resolves to an error message, or null. */
+  async archive(): Promise<string | null> {
+    const user = this.user();
+    const id = this.sheetId();
+    if (!user || !id) return 'Load a sheet first.';
+    try {
+      const res = await firstValueFrom(
+        this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/archive`, null, {
+          headers: { 'X-User': user },
+        }),
+      );
+      if (this.sheetId() === res.id) this.archived.set(res.archived);
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409) return 'The sheet is archived already.';
+      if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may archive an open sheet.';
+      return otherError(e);
+    }
+  }
 }
 
 interface SheetView {
@@ -120,6 +143,7 @@ interface SheetView {
   policyDate: string | null;
   cap: string | null;
   dated: DatedSettings;
+  archived: boolean;
 }
 
 /** A value recorded for a dated setting: in force from its from-date (yyyy-mm-dd) until the next
