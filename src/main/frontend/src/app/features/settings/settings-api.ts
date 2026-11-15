@@ -38,6 +38,8 @@ export const ROUNDING_PATTERN = /^(half-up|half-even)$/;
 
 /** Terms of a whole number of days. */
 export const TERMS_PATTERN = /^\d{1,4}$/;
+/** A score threshold: a whole number, possibly below zero. */
+export const SCORE_PATTERN = /^-?\d{1,6}$/;
 /** A fiscal year start month: 1 to 12. */
 export const FISCAL_START_MONTH_PATTERN = /^(0?[1-9]|1[0-2])$/;
 
@@ -70,6 +72,12 @@ export interface Settings {
   /** Days: a REVIEW claim whose review day plus them is before the sheet's today is late; null
    *  when blank (none). Not dated. */
   reviewSla: number | null;
+  /** A whole number: while both thresholds are set, a person whose score is at or above it shows
+   *  MID (HIGH at or above the high one); null when blank. Not dated. */
+  scoreMid: number | null;
+  /** A whole number: while both thresholds are set, a person whose score is at or above it shows
+   *  HIGH; null when blank. Not dated. */
+  scoreHigh: number | null;
   /** Two decimals, as the server formats it: each balanced pool's members cut it by their shares;
    *  null when blank (none). Not dated. */
   pot: string | null;
@@ -228,6 +236,18 @@ export class SettingsApi {
   setReviewSla(sheetId: string, value: string): Promise<Settings> {
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/review-sla`, { value }, { headers: this.headers() }),
+    );
+  }
+
+  setScoreMid(sheetId: string, value: string): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/score-mid`, { value }, { headers: this.headers() }),
+    );
+  }
+
+  setScoreHigh(sheetId: string, value: string): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/score-high`, { value }, { headers: this.headers() }),
     );
   }
 

@@ -58,6 +58,12 @@ public class SettingsService {
     /** The key the review SLA is audited under. */
     public static final String REVIEW_SLA = "review-sla";
 
+    /** The key the mid score threshold is audited under. */
+    public static final String SCORE_MID = "score-mid";
+
+    /** The key the high score threshold is audited under. */
+    public static final String SCORE_HIGH = "score-high";
+
     /** The key the pot is audited under. */
     public static final String POT = "pot";
 
@@ -389,6 +395,44 @@ public class SettingsService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + REVIEW_SLA + " value=" + (reviewSla == null ? "" : reviewSla));
         return reviewSla;
+    }
+
+    /** The sheet's mid score threshold; null when blank. */
+    @Transactional(readOnly = true)
+    public Integer scoreMid(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getScoreMid).orElse(null);
+    }
+
+    /** Set the sheet's mid score threshold (null: blank), the sheet created first if it was never
+     *  loaded; not dated, while the high one is set too every person's band follows it at once. */
+    @Transactional
+    public Integer setScoreMid(String sheetId, String user, Integer scoreMid) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        sheet.setScoreMid(scoreMid);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + SCORE_MID + " value=" + (scoreMid == null ? "" : scoreMid));
+        return scoreMid;
+    }
+
+    /** The sheet's high score threshold; null when blank. */
+    @Transactional(readOnly = true)
+    public Integer scoreHigh(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getScoreHigh).orElse(null);
+    }
+
+    /** Set the sheet's high score threshold (null: blank), the sheet created first if it was never
+     *  loaded; not dated, while the mid one is set too every person's band follows it at once. */
+    @Transactional
+    public Integer setScoreHigh(String sheetId, String user, Integer scoreHigh) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        sheet.setScoreHigh(scoreHigh);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + SCORE_HIGH + " value=" + (scoreHigh == null ? "" : scoreHigh));
+        return scoreHigh;
     }
 
     /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. */

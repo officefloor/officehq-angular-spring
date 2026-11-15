@@ -287,6 +287,7 @@ import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person,
             @if (shows('overdue-count')) { <th scope="col">Overdue</th> }
             @if (shows('overdue-total')) { <th scope="col">Overdue total</th> }
             <th scope="col">Score</th>
+            <th scope="col">Band</th>
             <th scope="col">Aged</th>
             @if (shows('statement-count')) { <th scope="col">Statements</th> }
             @if (shows('stated-total')) { <th scope="col">Last stated</th> }
@@ -366,6 +367,7 @@ import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person,
                 <td data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) | figure }}</td>
               }
               <td data-testid="person-score">{{ scoreOf(p.id) }}</td>
+              <td data-testid="person-band">{{ bandOf(p.id) }}</td>
               <td>
                 <span>0–30 <span data-testid="person-aged-0-30">{{ money(agedOf(p.id).upTo30) | figure }}</span></span>
                 <span>31–60 <span data-testid="person-aged-31-60">{{ money(agedOf(p.id).upTo60) | figure }}</span></span>
@@ -724,6 +726,15 @@ export class People {
     const q = Math.floor(x / 10000);
     const r = x - q * 10000;
     return r > 5000 || (r === 5000 && q % 2 !== 0) ? q + 1 : q;
+  }
+  /** The person's band while both score thresholds are set: HIGH when their score is at or above
+   *  the high one, MID when at or above the mid one, else LOW; blank while either is blank. */
+  protected bandOf(personId: number): string {
+    const mid = this.session.scoreMid();
+    const high = this.session.scoreHigh();
+    if (mid === null || high === null) return '';
+    const score = this.scoreOf(personId);
+    return score >= high ? 'HIGH' : score >= mid ? 'MID' : 'LOW';
   }
   /** Each person's open (OPEN and PENDING) counting claims' dues in cents (n/a ones skipped), by person id,
    *  split by the claim's age on the sheet's today (days from its date): 0 to 30, 31 to 60, 61 or more;
