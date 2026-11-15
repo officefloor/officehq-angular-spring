@@ -1,0 +1,64 @@
+{
+  "checkpoint": 141,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp141_monthly-plans",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan may instead run monthly on a day of the month (1 to 31): the plan dates are that day in\nevery month from the start's month, a day beyond the month's length falling on its last day, dates\nbefore the start left out (PLAN_ADDED ends day=<day> end=<date> instead of every=).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan may instead run monthly on a day of the month (1 to 31): the plan dates are that day in\nevery month from the start's month, a day beyond the month's length falling on its last day, dates\nbefore the start left out (PLAN_ADDED ends day=<day> end=<date> instead of every=).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "4cc224178ccb2024280d31fcf4c6ded4d1823d9c",
+  "reset_sha": "",
+  "preagent_sha": "838ff8ac14281d332a82d8f6cf13c806a84dc159",
+  "prev_sha": "838ff8ac14281d332a82d8f6cf13c806a84dc159",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5748006,
+    "input_tokens": 24,
+    "output_tokens": 7348,
+    "cache_read_tokens": 396203,
+    "cache_creation_tokens": 43563,
+    "num_turns": 12,
+    "duration_ms": 266972,
+    "duration_api_ms": 62890,
+    "model": "claude-opus-5-5",
+    "session_id": "eea3afda-3d14-4da3-bbc3-7a4ab750a11b",
+    "stop_reason": "success",
+    "result_text": "Plans can now run monthly on a day of the month, and all 4 acceptance tests pass under `bin/e2e`.\n\n**What it does**\n- A plan repeats either every so many days or monthly on a day from 1 to 31 \u2014 exactly one of the two, not both and not neither.\n- A monthly plan makes a claim on that day in each month, starting from the start's month. If the month is too short for the day, the claim falls on the month's last day (day 31 gives 2026-02-28). Dates before the start or after the end are left out.\n- A day of 0 or 32 is refused with the usual plan error, and nothing is saved.\n- For a monthly plan, the audit line ends `... start=<date> day=<day> end=<date>`. Plans that repeat every so many days still write `every=<n>` as before.\n\n**Changes**\n- **Database:** new migration `V77__plan_month_day.sql` adds a `month_day` column to `plan` and lets `every_days` be empty. Existing plans keep working unchanged.\n- **Server** (`plan/Plan.java`, `PlanController.java`, `PlanService.java`): the plan stores and returns the day; adding a plan checks the rules above; date generation handles monthly plans.\n- **Front end** (`person-plans.ts`, `plans-api.ts`): a new \"Or monthly on day\" field (`plan-form-day`) with the same checks. A monthly plan's row shows \"monthly on day N\" with a new `plan-day` testid in place of the \"every N days\" text; the test doesn't check this.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5748006,
+        "num_turns": 12,
+        "duration_ms": 266972,
+        "duration_api_ms": 62890,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp141.agent.jsonl",
+  "agent_diff_file": "cp141.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
