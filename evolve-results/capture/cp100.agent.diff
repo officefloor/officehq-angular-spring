@@ -1,0 +1,88 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 2028d996d..a603f9f9c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -306,10 +306,10 @@ public class ClaimController {
+         return view(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED));
+     }
+ 
+-    /** Settle each selected claim in list order (people in the order added, newest claim first),
+-     *  each on its own by the rules of settling one; a claim sent to PENDING counts as settled, and
+-     *  a claim that cannot be settled is left as it is. A bulk settle that settles any is the
+-     *  sheet's next batch, and each claim it settles carries that batch's number. */
++    /** Settle the selected claims in list order (people in the order added, newest claim first)
++     *  by the rules of settling one, all or nothing: a claim sent to PENDING counts as settled, and
++     *  when any cannot be settled (or is missing) none is, and every one counts as refused. A bulk
++     *  settle that settles them is the sheet's next batch, and each claim carries its number. */
+     @PostMapping("/claims/bulk-settle")
+     @ViewerAllowed
+     public BulkSettleView bulkSettle(
+@@ -321,17 +321,16 @@ public class ClaimController {
+             return new BulkSettleView(0, selected);
+         }
+         List<Long> ordered = service.inListOrder(sheetId, body.ids());
+-        int settled = 0;
+-        Integer batch = null;
+-        for (long id : ordered) {
+-            try {
+-                batch = service.settleInBatch(sheetId, user.trim(), id, batch).getBatch();
+-                settled++;
+-            } catch (ResponseStatusException e) {
+-                // refused: left as it is
+-            }
++        if (ordered.size() != selected) {
++            return new BulkSettleView(0, selected);
++        }
++        try {
++            service.settleBatch(sheetId, user.trim(), ordered);
++        } catch (ResponseStatusException e) {
++            // refused: the whole batch is rolled back
++            return new BulkSettleView(0, selected);
+         }
+-        return new BulkSettleView(settled, selected - settled);
++        return new BulkSettleView(selected, 0);
+     }
+ 
+     @PostMapping("/claims/{id}/defer")
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 134760102..edb0b75b8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -298,15 +298,29 @@ public class ClaimService {
+         return changeStatus(sheetId, user, id, to, null);
+     }
+ 
+-    /** Settle a claim as {@link #changeStatus} does, as part of a bulk settle's batch of the
+-     *  number (null: the bulk settle has settled none yet, so this claim starts the sheet's next
+-     *  batch); the claim carries the batch's number. */
++    /** Settle the claims (in the order given) as {@link #changeStatus} does, all or nothing, as the
++     *  sheet's next batch: each claim carries the batch's number, a claim sent to PENDING counts in
++     *  it, and BATCH_SETTLED follows the claims' own records with the batch's count and the total of
++     *  the frozen figures of those SETTLED. Any refusal refuses the whole batch, leaving every claim
++     *  as it was and recording nothing. */
+     @Transactional
+-    public Claim settleInBatch(String sheetId, String user, long id, Integer batch) {
+-        int number = batch != null ? batch : claims.findLastBatch(sheetId) + 1;
+-        Claim claim = changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null);
+-        claim.setBatch(number);
+-        return claims.save(claim);
++    public void settleBatch(String sheetId, String user, List<Long> ids) {
++        if (ids.isEmpty()) {
++            return;
++        }
++        int number = claims.findLastBatch(sheetId) + 1;
++        BigDecimal total = BigDecimal.ZERO.setScale(2);
++        for (long id : ids) {
++            Claim claim = changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null);
++            claim.setBatch(number);
++            claims.save(claim);
++            if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
++                total = total.add(claim.getSettledDue());
++            }
++        }
++        claims.flush();
++        audit.recordOnCommit("BATCH_SETTLED sheet=" + sheetId + " by=" + user + " batch=" + number
++                + " count=" + ids.size() + " total=" + total.setScale(2).toPlainString());
+     }
+ 
+     /** Void a claim as {@link #changeStatus} does, with a reason from the sheet's list of void
