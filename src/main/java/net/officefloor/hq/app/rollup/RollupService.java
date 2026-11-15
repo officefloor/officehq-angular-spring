@@ -111,9 +111,10 @@ public class RollupService {
         return new Snapshot(out);
     }
 
-    /** The due-total of the period from {@code from} to {@code to}, inclusive: the dues (n/a ones
-     *  skipped) its OPEN and SETTLED claims dated inside it show now (OPEN ones within a hold of their person, unbound, left out). */
-    public BigDecimal dueTotalBetween(String sheetId, LocalDate from, LocalDate to) {
+    /** Each person's due-total for the period from {@code from} to {@code to}, inclusive, by person
+     *  id, for everyone on the sheet: the dues (n/a ones skipped) their OPEN and SETTLED claims dated
+     *  inside it show now (OPEN ones within a hold of their person, unbound, left out). */
+    public Map<Long, BigDecimal> dueByPersonBetween(String sheetId, LocalDate from, LocalDate to) {
         Optional<Sheet> sheet = sheets.findById(sheetId);
         BigDecimal floor = floorOf(sheet);
         LateCharge late = LateCharge.of(sheet);
@@ -123,13 +124,21 @@ public class RollupService {
         Map<Long, Person> byId = sheetPeople.stream().collect(Collectors.toMap(Person::getId, p -> p));
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         Function<Claim, RoundingMode> rounding = roundingOf(sheet, sheetClaims);
-        return sheetClaims.stream()
+        Map<Long, BigDecimal> out = new LinkedHashMap<>();
+        for (Person p : sheetPeople) {
+            out.put(p.getId(), zero());
+        }
+        sheetClaims.stream()
                 .filter(c -> counts(c, held))
                 .filter(c -> !c.getDate().isBefore(from) && !c.getDate().isAfter(to))
                 .filter(c -> byId.containsKey(c.getPersonId()))
-                .map(c -> shownDueOf(c, byId.get(c.getPersonId()), sheetRates, floor, late, rounding))
-                .filter(Objects::nonNull)
-                .reduce(zero(), BigDecimal::add);
+                .forEach(c -> {
+                    BigDecimal due = shownDueOf(c, byId.get(c.getPersonId()), sheetRates, floor, late, rounding);
+                    if (due != null) {
+                        out.merge(c.getPersonId(), due, BigDecimal::add);
+                    }
+                });
+        return out;
     }
 
     /** Record, once the transaction commits, a ROLLUP line for each person whose figures moved

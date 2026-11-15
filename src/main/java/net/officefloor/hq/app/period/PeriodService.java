@@ -68,8 +68,8 @@ public class PeriodService {
         return period;
     }
 
-    /** Close a period, fixing its due-total at the figure it shows now; refused (409) when it is
-     *  already closed. */
+    /** Close a period, fixing each person's due-total for it, and its own (their sum), at the
+     *  figures they show now; refused (409) when it is already closed. */
     @Transactional
     public Period close(String sheetId, String user, long id) {
         // held until the transaction ends, so no claim in the period changes while it is closed
@@ -79,9 +79,9 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed");
         }
-        BigDecimal total = rollup.dueTotalBetween(sheetId, period.getFrom(), period.getTo());
-        period.close(total);
+        period.close(rollup.dueByPersonBetween(sheetId, period.getFrom(), period.getTo()));
         periods.flush();
+        BigDecimal total = period.getClosedTotal();
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user
                 + " period=" + period.getName() + " total=" + total.toPlainString());
         return period;

@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, isBound, isOpen, money, overdue, quickAddError, roundsHalfUp } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
-import { Period, PeriodsApi, periodOn } from '../periods/periods-api';
+import { Period, PeriodsApi, periodOn, personPeriodDueCents } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
@@ -85,7 +85,7 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
       }
       <table data-testid="people-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shownPeople(); track p.id) {
@@ -96,6 +96,11 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
               <td>
                 <span data-testid="person-due-total">{{ dueOf(p) }}</span>
                 <span>excess <span data-testid="person-excess">{{ money(excessOf(p.id)) }}</span></span>
+              </td>
+              <td>
+                @for (period of periods(); track period.id) {
+                  <span>{{ period.name }} <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ money(periodDueOf(p.id, period)) }}</span></span>
+                }
               </td>
               <td>
                 <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
@@ -266,18 +271,33 @@ export class People {
   protected readonly money = money;
   /** The sheet's periods, by from-date. */
   protected readonly periods = signal<Period[]>([]);
-  /** Each period's due-total in cents, by period id: the dues (n/a ones skipped) of the OPEN and
-   *  SETTLED claims whose date falls in it (open ones within a hold of their person, unbound, left out). */
-  protected readonly dueByPeriod = computed(() => {
-    const out = new Map<number, number>();
+  /** Each person's live due-total for each period in cents, by person id then period id: the dues
+   *  (n/a ones skipped) of their OPEN and SETTLED claims whose date falls in it (open ones within a
+   *  hold, unbound, left out). */
+  private readonly liveDueByPersonPeriod = computed(() => {
+    const out = new Map<number, Map<number, number>>();
     const floor = cents(this.session.floor());
     const late = this.lateness();
     for (const p of this.people()) {
+      const theirs = new Map<number, number>();
       for (const c of this.claimsOf(p.id).filter(this.countsLive())) {
         const period = periodOn(this.periods(), c.date);
         if (period === null) continue;
-        out.set(period.id, (out.get(period.id) ?? 0) + (this.claimDueCents(p, c, floor, late) ?? 0));
+        theirs.set(period.id, (theirs.get(period.id) ?? 0) + (this.claimDueCents(p, c, floor, late) ?? 0));
       }
+      out.set(p.id, theirs);
+    }
+    return out;
+  });
+  /** The person's due-total for the period in cents: fixed when it was closed, else live. */
+  protected periodDueOf(personId: number, period: Period): number {
+    return personPeriodDueCents(period, personId, this.liveDueByPersonPeriod().get(personId) ?? new Map());
+  }
+  /** Each period's due-total in cents, by period id: the people's due-totals for it added up. */
+  protected readonly dueByPeriod = computed(() => {
+    const out = new Map<number, number>();
+    for (const period of this.periods()) {
+      out.set(period.id, this.people().reduce((sum, p) => sum + this.periodDueOf(p.id, period), 0));
     }
     return out;
   });

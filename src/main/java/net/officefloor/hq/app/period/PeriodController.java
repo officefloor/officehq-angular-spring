@@ -6,7 +6,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.session.CurrentUser;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -24,12 +26,16 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PeriodController {
 
-    /** A period as the screen shows it: whether it is closed, and the due-total fixed when it was
-     *  closed (null while open). */
-    public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, String closedTotal) {
+    /** A period as the screen shows it: whether it is closed, the due-total fixed when it was
+     *  closed (null while open), and each person's due-total for it fixed then, by person id
+     *  (empty while open). */
+    public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, String closedTotal,
+            Map<Long, String> closedPersonTotals) {
         static PeriodView of(Period p) {
+            Map<Long, String> personTotals = new LinkedHashMap<>();
+            p.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, total.setScale(2).toPlainString()));
             return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo(), p.isClosed(),
-                    p.getClosedTotal() == null ? null : p.getClosedTotal().setScale(2).toPlainString());
+                    p.getClosedTotal() == null ? null : p.getClosedTotal().setScale(2).toPlainString(), personTotals);
         }
     }
 

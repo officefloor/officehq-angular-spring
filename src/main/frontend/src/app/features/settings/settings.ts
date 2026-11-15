@@ -1,5 +1,5 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, POLICY_DATE_PATTERN, ROLES, TERMS_PATTERN, RoleGrant, SETTINGS_INVALID, SettingsApi, roleError, settingsError } from './settings-api';
 
@@ -159,17 +159,19 @@ export class Settings {
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
     const { clerkLimit, floor, terms, latePct, policyDate, periodNumberingFrom, cap } = this.settingsForm.controls;
-    // only the settings typed into since the last save are saved (the clerk limit when none is)
-    const saveFloor = floor.dirty;
-    const saveTerms = terms.dirty;
-    const saveLatePct = latePct.dirty;
-    const savePolicyDate = policyDate.dirty;
-    const savePeriodNumberingFrom = periodNumberingFrom.dirty;
-    const saveCap = cap.dirty;
+    // only the settings typed into (or entered and left, as when one already blank is cleared)
+    // since the last save are saved (the clerk limit when none is)
+    const typed = (c: AbstractControl) => c.dirty || c.touched;
+    const saveFloor = typed(floor);
+    const saveTerms = typed(terms);
+    const saveLatePct = typed(latePct);
+    const savePolicyDate = typed(policyDate);
+    const savePeriodNumberingFrom = typed(periodNumberingFrom);
+    const saveCap = typed(cap);
     const gradeTermsToSave = GRADES
-      .filter((g) => this.gradeTermsForm.controls[g].dirty)
+      .filter((g) => typed(this.gradeTermsForm.controls[g]))
       .map((g) => ({ grade: g, control: this.gradeTermsForm.controls[g], value: this.gradeTermsForm.controls[g].value.trim() }));
-    const saveLimit = clerkLimit.dirty
+    const saveLimit = typed(clerkLimit)
       || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveCap);
     const limitValue = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
@@ -193,42 +195,42 @@ export class Settings {
     try {
       if (saveLimit) {
         const saved = await this.api.setClerkLimit(sheetId, limitValue);
-        if (clerkLimit.value.trim() === limitValue) clerkLimit.markAsPristine();
+        if (clerkLimit.value.trim() === limitValue) { clerkLimit.markAsPristine(); clerkLimit.markAsUntouched(); }
         if (this.session.sheetId() === sheetId) this.clerkLimit.set(saved.clerkLimit);
       }
       if (saveFloor) {
         const saved = await this.api.setFloor(sheetId, floorValue);
-        if (floor.value.trim() === floorValue) floor.markAsPristine();
+        if (floor.value.trim() === floorValue) { floor.markAsPristine(); floor.markAsUntouched(); }
         if (this.session.sheetId() === sheetId) this.session.floor.set(saved.floor);
       }
       if (saveTerms) {
         const saved = await this.api.setTerms(sheetId, termsValue);
-        if (terms.value.trim() === termsValue) terms.markAsPristine();
+        if (terms.value.trim() === termsValue) { terms.markAsPristine(); terms.markAsUntouched(); }
         if (this.session.sheetId() === sheetId) this.session.terms.set(saved.terms);
       }
       for (const t of gradeTermsToSave) {
         const saved = await this.api.setGradeTerms(sheetId, t.grade, t.value);
-        if (t.control.value.trim() === t.value) t.control.markAsPristine();
+        if (t.control.value.trim() === t.value) { t.control.markAsPristine(); t.control.markAsUntouched(); }
         if (this.session.sheetId() === sheetId) this.gradeTerms.set(saved.gradeTerms);
       }
       if (saveLatePct) {
         const saved = await this.api.setLatePct(sheetId, latePctValue);
-        if (latePct.value.trim() === latePctValue) latePct.markAsPristine();
+        if (latePct.value.trim() === latePctValue) { latePct.markAsPristine(); latePct.markAsUntouched(); }
         if (this.session.sheetId() === sheetId) this.session.latePct.set(saved.latePct);
       }
       if (savePolicyDate) {
         const saved = await this.api.setPolicyDate(sheetId, policyDateValue);
-        if (policyDate.value.trim() === policyDateValue) policyDate.markAsPristine();
+        if (policyDate.value.trim() === policyDateValue) { policyDate.markAsPristine(); policyDate.markAsUntouched(); }
         if (this.session.sheetId() === sheetId) this.session.policyDate.set(saved.policyDate);
       }
       if (savePeriodNumberingFrom) {
         const saved = await this.api.setPeriodNumberingFrom(sheetId, periodNumberingFromValue);
-        if (periodNumberingFrom.value.trim() === periodNumberingFromValue) periodNumberingFrom.markAsPristine();
+        if (periodNumberingFrom.value.trim() === periodNumberingFromValue) { periodNumberingFrom.markAsPristine(); periodNumberingFrom.markAsUntouched(); }
         if (this.session.sheetId() === sheetId) this.periodNumberingFrom.set(saved.periodNumberingFrom);
       }
       if (saveCap) {
         const saved = await this.api.setCap(sheetId, capValue);
-        if (cap.value.trim() === capValue) cap.markAsPristine();
+        if (cap.value.trim() === capValue) { cap.markAsPristine(); cap.markAsUntouched(); }
         if (this.session.sheetId() === sheetId) this.session.cap.set(saved.cap);
       }
     } catch (e) {
