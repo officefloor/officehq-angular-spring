@@ -223,8 +223,9 @@ public class Sheet {
         return createdBy;
     }
 
+    /** The sheet's today, or the date the screen reading it previews it as of (see {@link PreviewDate}). */
     public LocalDate getToday() {
-        return today;
+        return PreviewDate.or(today);
     }
 
     public void setToday(LocalDate today) {
@@ -263,19 +264,19 @@ public class Sheet {
 
     /** The clerk limit in force on the sheet's today; null when there is none. */
     public BigDecimal getClerkLimit() {
-        return amountOn(CLERK_LIMIT, today, null);
+        return amountOn(CLERK_LIMIT, getToday(), null);
     }
 
     /** The clerk limit in force on the sheet's today for a grade: its own then when one is set,
      *  else the sheet's; null when there is none. */
     public BigDecimal clerkLimitFor(String grade) {
-        BigDecimal own = grade == null ? null : amountOn(CLERK_LIMIT_OF_GRADE + grade, today, null);
+        BigDecimal own = grade == null ? null : amountOn(CLERK_LIMIT_OF_GRADE + grade, getToday(), null);
         return own != null ? own : getClerkLimit();
     }
 
     /** The floor in force on the sheet's today. */
     public BigDecimal getFloor() {
-        return floorOn(today);
+        return floorOn(getToday());
     }
 
     /** The floor in force on a date: a claim dated then has a live due of at least it. */
@@ -285,7 +286,7 @@ public class Sheet {
 
     /** The sheet's terms in force on the sheet's today. */
     public int getTerms() {
-        return termsOn(today);
+        return termsOn(getToday());
     }
 
     /** The sheet's terms in force on a date. */
@@ -296,7 +297,7 @@ public class Sheet {
     /** The terms of a grade's own in force on the sheet's today; null when it has none then (it
      *  uses the sheet's terms). */
     public Integer getGradeTerms(String grade) {
-        return gradeTermsOn(grade, today);
+        return gradeTermsOn(grade, getToday());
     }
 
     private Integer gradeTermsOn(String grade, LocalDate on) {
@@ -311,7 +312,7 @@ public class Sheet {
 
     /** The grace days of a grade's in force on the sheet's today; null when it has none then. */
     public Integer getGradeGrace(String grade) {
-        return gradeGraceOn(grade, today);
+        return gradeGraceOn(grade, getToday());
     }
 
     private Integer gradeGraceOn(String grade, LocalDate on) {
@@ -327,7 +328,7 @@ public class Sheet {
 
     /** The late percent in force on the sheet's today. */
     public BigDecimal getLatePct() {
-        return latePctOn(today);
+        return latePctOn(getToday());
     }
 
     /** The late percent in force on a date: an overdue claim gains it for a 30-day boundary falling then. */
@@ -345,7 +346,7 @@ public class Sheet {
 
     /** The policy date in force: the one set, else the sheet's today. */
     public LocalDate getPolicyDateInForce() {
-        return policyDate != null ? policyDate : today;
+        return policyDate != null ? policyDate : getToday();
     }
 
     public LocalDate getPeriodNumberingFrom() {
@@ -366,7 +367,7 @@ public class Sheet {
 
     /** The date a new claim left undated takes: the entry date while set, else the sheet's today. */
     public LocalDate getEntryDateInForce() {
-        return entryDate != null ? entryDate : today;
+        return entryDate != null ? entryDate : getToday();
     }
 
     public Integer getGraceDays() {
@@ -502,17 +503,17 @@ public class Sheet {
     /** Whether a claim opened now is numbered within its period: the setting is a date and the
      *  sheet's today is on or after it. */
     public boolean isPeriodNumberingOn() {
-        return periodNumberingFrom != null && !today.isBefore(periodNumberingFrom);
+        return periodNumberingFrom != null && !getToday().isBefore(periodNumberingFrom);
     }
 
     /** The cap in force on the sheet's today; null when there is none. */
     public BigDecimal getCap() {
-        return amountOn(CAP, today, null);
+        return amountOn(CAP, getToday(), null);
     }
 
     /** The proof threshold in force on the sheet's today; null when there is none. */
     public BigDecimal getProofThreshold() {
-        return proofThresholdOn(today);
+        return proofThresholdOn(getToday());
     }
 
     /** The proof threshold in force on a date: a claim dated then whose due is above it cannot be
@@ -530,7 +531,7 @@ public class Sheet {
 
     /** The note threshold in force on the sheet's today; null when there is none. */
     public BigDecimal getNoteThreshold() {
-        return noteThresholdOn(today);
+        return noteThresholdOn(getToday());
     }
 
     /** The note threshold in force on a date: a claim dated then whose due is above it cannot be
@@ -547,7 +548,7 @@ public class Sheet {
 
     /** The rounding mode in force on the sheet's today (half-up or half-even); null when there is none. */
     public String getRounding() {
-        return roundingOn(today);
+        return roundingOn(getToday());
     }
 
     /** The rounding mode in force on a date: a claim dated then rounds its live figures by it;

@@ -18,8 +18,11 @@ export class Session {
 
   readonly user = signal<string | null>(null);
   readonly sheetId = signal<string | null>(null);
-  /** The active sheet's today (yyyy-mm-dd): every date decision and default date uses it. */
-  readonly today = signal<string | null>(null);
+  /** The active sheet's real today (yyyy-mm-dd): every change and default date uses it. */
+  readonly realToday = signal<string | null>(null);
+  /** The today (yyyy-mm-dd) every figure on this user's screen is shown as of: the preview date
+   *  while one is set, else the sheet's real today. */
+  readonly today = computed(() => this.shownPreview() ?? this.realToday());
   /** Every value recorded for the active sheet's dated settings (its clerk limit, floor, terms,
    *  terms per grade, late percent, cap, proof threshold and proof threshold per grade), by key, each key's by from-date. */
   readonly dated = signal<DatedSettings>({});
@@ -99,6 +102,14 @@ export class Session {
   readonly asOf = signal<string | null>(null);
   /** The as-of date the sheet on screen was loaded with; null when it shows the sheet as it stands. */
   readonly shownAsOf = signal<string | null>(null);
+  /** The preview date each user has set on this screen, by user name: while set, every figure is
+   *  shown over the sheet's current records as if its today were that date, while every change
+   *  still uses its real today. Kept as it is when a sheet is loaded. */
+  private readonly previewByUser = signal<ReadonlyMap<string, string>>(new Map());
+  /** The preview date (yyyy-mm-dd) the signed-in user has set, null when none. */
+  readonly preview = computed(() => this.previewByUser().get(this.user() ?? '') ?? null);
+  /** The preview date the sheet on screen was loaded with; null when none. */
+  readonly shownPreview = signal<string | null>(null);
   /** The signed-in user's locale: how the screen shows figures. en unless chosen, kept per user. */
   readonly locale = signal<UserLocale>('en');
   /** Bumped on every sheet load, so a load of the same id again re-reads what the sheet holds. */
@@ -190,6 +201,7 @@ export class Session {
     const user = this.user();
     if (!user) return 'Sign in first.';
     const asOf = this.asOf();
+    const preview = this.preview();
     try {
       const res = await firstValueFrom(
         this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null, {
@@ -198,7 +210,8 @@ export class Session {
       );
       await this.loadLocale();
       this.sheetId.set(res.id);
-      this.today.set(res.today);
+      this.realToday.set(res.today);
+      this.shownPreview.set(preview);
       this.dated.set(res.dated);
       this.policyDate.set(res.policyDate);
       this.archived.set(res.archived);
@@ -252,6 +265,20 @@ export class Session {
     return this.loadSheet(id);
   }
 
+  /** Preview the active sheet as of a date on the signed-in user's screen (null: none), re-reading
+   *  it; resolves to an error message, or null. */
+  async showPreview(date: string | null): Promise<string | null> {
+    const id = this.sheetId();
+    if (!id) return 'Load a sheet first.';
+    const user = this.user() ?? '';
+    this.previewByUser.update((all) => {
+      const next = new Map(all);
+      if (date === null) next.delete(user); else next.set(user, date);
+      return next;
+    });
+    return this.loadSheet(id);
+  }
+
   /** Change the active sheet's today; resolves to an error message, or null. */
   async setToday(today: string): Promise<string | null> {
     const user = this.user();
@@ -263,7 +290,7 @@ export class Session {
           headers: { 'X-User': user },
         }),
       );
-      if (this.sheetId() === res.id) this.today.set(res.today);
+      if (this.sheetId() === res.id) this.realToday.set(res.today);
       return null;
     } catch (e) {
       return message(e, 'Enter a date as yyyy-mm-dd.');

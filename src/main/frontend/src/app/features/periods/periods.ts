@@ -203,7 +203,7 @@ export class Periods {
     this.generateErr.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    const from = this.generateForm.controls.from.value.trim() || (this.session.today() ?? '');
+    const from = this.generateForm.controls.from.value.trim() || (this.session.realToday() ?? '');
     const to = this.generateForm.controls.to.value.trim();
     if (!DATE.test(from) || !DATE.test(to)) {
       this.generateErr.set('Enter a from-date and a to-date as yyyy-mm-dd.');
@@ -412,7 +412,7 @@ export class Periods {
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
     const name = this.form.controls.name.value.trim();
-    const from = this.form.controls.from.value.trim() || (this.session.today() ?? '');
+    const from = this.form.controls.from.value.trim() || (this.session.realToday() ?? '');
     const to = this.form.controls.to.value.trim();
     const capText = this.form.controls.cap.value.trim();
     if (!/^\S+$/.test(name)) {

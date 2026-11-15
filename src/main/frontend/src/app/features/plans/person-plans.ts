@@ -205,7 +205,7 @@ export class PersonPlans {
       this.error.set('Enter a sheet id without spaces, or leave it blank.');
       return;
     }
-    const from = start === '' ? this.session.today() : start;
+    const from = start === '' ? this.session.realToday() : start;
     if (from !== null && end < from) {
       this.error.set('The end cannot be before the start.');
       return;

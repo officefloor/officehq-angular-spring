@@ -1186,7 +1186,9 @@ public class ClaimService {
         List<Claim> theirs = claims.findByPersonForUpdate(personId, sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         List<Claim> counted = theirs.stream().filter(c -> counts(c, person, today)).toList();
-        BigDecimal dueTotal = Sheet.capped(dueTotalOf(counted, person, today),
+        // the due-total as the person shows it: their parts of claims shared with them included
+        RollupService.Figures shown = before.people().get(personId);
+        BigDecimal dueTotal = shown != null ? shown.dueTotal() : Sheet.capped(dueTotalOf(counted, person, today),
                 RollupService.capLessCut(sheets.cap(sheetId), rollup.cutTotals(sheetId).get(personId)));
         for (Claim c : theirs) {
             if (counts(c, person, today)) {

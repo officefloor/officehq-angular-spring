@@ -50,7 +50,7 @@ import { Templates } from '../templates/templates';
           <p>Cloned to <strong data-testid="sheet-cloned-to">{{ clonedTo() ?? '' }}</strong></p>
         </form>
         <p>Parent sheet <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></p>
-        <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
+        <p>Today <strong data-testid="sheet-today">{{ session.realToday() }}</strong></p>
         <form [formGroup]="asOfForm" (ngSubmit)="setAsOf()" aria-label="Show the sheet as of a date">
           <p>As of <strong data-testid="sheet-asof">{{ session.shownAsOf() ?? '' }}</strong></p>
           <label for="asof-date">Show as of</label>
@@ -59,6 +59,16 @@ import { Templates } from '../templates/templates';
           <button type="button" data-testid="asof-clear" (click)="clearAsOf()">Clear as-of date</button>
           @if (asOfError(); as err) {
             <p role="alert" data-testid="asof-error">{{ err }}</p>
+          }
+        </form>
+        <form [formGroup]="previewForm" (ngSubmit)="setPreview()" aria-label="Preview the sheet as of a date">
+          <p>Preview <strong data-testid="sheet-preview">{{ session.shownPreview() ?? '' }}</strong></p>
+          <label for="preview-date">Preview as if today were</label>
+          <input id="preview-date" type="date" data-testid="preview-date" formControlName="date" />
+          <button type="submit" data-testid="preview-set">Set preview date</button>
+          <button type="button" data-testid="preview-clear" (click)="clearPreview()">Clear preview date</button>
+          @if (previewError(); as err) {
+            <p role="alert" data-testid="preview-error">{{ err }}</p>
           }
         </form>
         <form [formGroup]="todayForm" (ngSubmit)="saveToday()" aria-label="Sheet today">
@@ -104,6 +114,9 @@ export class Home {
   protected readonly asOfForm = new FormGroup({
     date: new FormControl('', { nonNullable: true, validators: Validators.required }),
   });
+  protected readonly previewForm = new FormGroup({
+    date: new FormControl('', { nonNullable: true, validators: Validators.required }),
+  });
   protected readonly locales = LOCALES;
   protected readonly localeForm = new FormGroup({
     locale: new FormControl<UserLocale>('en', { nonNullable: true }),
@@ -116,6 +129,7 @@ export class Home {
   protected readonly clonedTo = signal<string | null>(null);
   protected readonly signinError = signal<string | null>(null);
   protected readonly asOfError = signal<string | null>(null);
+  protected readonly previewError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
 
   constructor() {
@@ -123,6 +137,7 @@ export class Home {
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(null));
     this.todayForm.valueChanges.subscribe(() => this.sheetError.set(null));
     this.asOfForm.valueChanges.subscribe(() => this.asOfError.set(null));
+    this.previewForm.valueChanges.subscribe(() => this.previewError.set(null));
     this.cloneForm.valueChanges.subscribe(() => this.sheetError.set(null));
     this.localeForm.valueChanges.subscribe(() => this.localeError.set(null));
     effect(() => {
@@ -193,6 +208,21 @@ export class Home {
   protected async clearAsOf(): Promise<void> {
     this.asOfError.set(null);
     this.asOfError.set(await this.session.showAsOf(null));
+  }
+
+  protected async setPreview(): Promise<void> {
+    this.previewError.set(null);
+    const date = this.previewForm.controls.date.value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.previewError.set('Enter a date as yyyy-mm-dd.');
+      return;
+    }
+    this.previewError.set(await this.session.showPreview(date));
+  }
+
+  protected async clearPreview(): Promise<void> {
+    this.previewError.set(null);
+    this.previewError.set(await this.session.showPreview(null));
   }
 
   protected async saveToday(): Promise<void> {
