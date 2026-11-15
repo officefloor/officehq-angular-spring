@@ -87,6 +87,10 @@ public class Person {
     @OptimisticLock(excluded = true)
     private long position;
 
+    /** The id of the sheet the person was transferred from; null for anyone not transferred here. */
+    @Column(name = "origin_sheet_id")
+    private String originSheetId;
+
     /** Raised on every save, so an edit of a version someone else has since saved is refused. */
     @Version
     @Column(name = "version", nullable = false)
@@ -109,6 +113,7 @@ public class Person {
         copy.terms = terms;
         copy.contact = contact;
         copy.aliases.addAll(aliases);
+        copy.originSheetId = this.sheetId;
         return copy;
     }
 
@@ -231,6 +236,14 @@ public class Person {
     /** Whether a hold of the person covers the date. */
     public boolean heldOn(LocalDate date) {
         return holds.stream().anyMatch(h -> h.covers(date));
+    }
+
+    public String getOriginSheetId() {
+        return originSheetId;
+    }
+
+    public void setOriginSheetId(String originSheetId) {
+        this.originSheetId = originSheetId;
     }
 
     public long getPosition() {

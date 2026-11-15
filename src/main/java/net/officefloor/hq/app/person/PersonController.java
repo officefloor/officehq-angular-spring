@@ -46,7 +46,7 @@ public class PersonController {
     public record PersonView(long id, String name, String grade, long version, int statementCount,
             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held, List<Person.Hold> holds,
             List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms,
-            String contact, List<String> aliases, boolean clashing) {
+            String contact, List<String> aliases, boolean clashing, String origin) {
         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
                 boolean watched, boolean clashing) {
             return of(p.getId(), p, today, s, patronIds, watched, clashing);
@@ -58,7 +58,7 @@ public class PersonController {
             return new PersonView(id, p.getName(), p.gradeOn(today), p.getVersion(), s.count(),
                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
                     p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.getTerms(),
-                    p.getContact(), p.getAliases(), clashing);
+                    p.getContact(), p.getAliases(), clashing, p.getOriginSheetId());
         }
     }
 

@@ -69,6 +69,8 @@ export interface Person {
   aliases: string[];
   /** Whether their name or an alias is also a name or alias on another sheet of the sheet's tree. */
   clashing: boolean;
+  /** The id of the sheet the person was transferred from; null for anyone not transferred here. */
+  origin: string | null;
 }
 
 /** A statement just taken: the person as they now show, and all their claims, newest first. */

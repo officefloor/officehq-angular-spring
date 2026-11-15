@@ -4,7 +4,8 @@ import { Session, otherError } from '../../core/session';
 import { AuditApi } from './audit-api';
 
 // The audit viewer: the sheet's audit lines as the file holds them, newest first; with a name in
-// the filter, only the lines about that person (name= or person= it, case and spaces ignored).
+// the filter, only the lines about that person (name= or person= it, case and spaces ignored),
+// followed, for a person transferred here, by those about them on the sheet they came from.
 @Component({
   selector: 'app-audit-viewer',
   imports: [ReactiveFormsModule],

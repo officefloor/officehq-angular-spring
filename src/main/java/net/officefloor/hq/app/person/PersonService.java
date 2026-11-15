@@ -478,7 +478,8 @@ public class PersonService {
 
     /** Transfer a person to another sheet (created first if it was never loaded), as a steward: they
      *  arrive with every grade they were given (and its from-date), their terms, contact and
-     *  aliases, and their claims with their status, dates, notes, tags, frozen settled figures,
+     *  aliases, the id of this sheet as the one they came from, and their claims with their status,
+     *  dates, notes, tags, frozen settled figures,
      *  logs and comments, listed there in the order this sheet lists them; each claim that had a number
      *  takes the other sheet's next one, in the order the claims were opened (by the sheet's today
      *  when each was opened, then by the order they were added). Figures a statement bound, batches
