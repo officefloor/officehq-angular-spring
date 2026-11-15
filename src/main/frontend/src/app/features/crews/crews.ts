@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
-import { type Person } from '../people/people-api';
+import { type Person, gradeOn } from '../people/people-api';
 import { Crew, CrewsApi, crewError, crewIds, crewMemberError } from './crews-api';
 
 // One crew's row: its lead, its due-total, its members, and the form that adds a member to it.
@@ -13,7 +13,7 @@ import { Crew, CrewsApi, crewError, crewIds, crewMemberError } from './crews-api
   host: { '[attr.data-testid]': "'crew-row-' + crew().name" },
   template: `
       <h3 data-testid="crew-name">{{ crew().name }}</h3>
-      <p>Lead <strong data-testid="crew-lead">{{ nameOf(crew().leadId) }}</strong>
+      <p>Lead <strong data-testid="crew-lead">{{ leadName() }}</strong>
         Due-total <strong data-testid="crew-due-total">{{ dueTotal() | figure }}</strong></p>
       <ul [attr.aria-label]="'Members of crew ' + crew().name">
         @for (id of crew().memberIds; track id) {
@@ -64,6 +64,13 @@ export class CrewRow {
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(null));
   }
+
+  /** The lead as <name> (<grade in force on the sheet's today>); blank when the crew has none. */
+  protected readonly leadName = computed(() => {
+    const leadId = this.crew().leadId;
+    const lead = leadId === null ? undefined : this.byId().get(leadId);
+    return lead?.name ? `${lead.name} (${gradeOn(lead.grades, this.session.today())})` : '';
+  });
 
   protected nameOf(personId: number | null): string {
     return (personId !== null && this.byId().get(personId)?.name) || '';

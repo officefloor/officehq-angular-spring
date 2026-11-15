@@ -284,7 +284,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
                 <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
                   (change)="personToggled(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
               </td>
-              <td data-testid="person-name">{{ p.name }}</td>
+              <td data-testid="person-name">{{ p.name }} ({{ gradeOf(p) }})</td>
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
               @if (shows('aliases')) {
                 <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
@@ -826,7 +826,7 @@ export class People {
       active: active.has(p.id) }));
   });
   /** The names of the people on the sheet, by person id (retired ones too). */
-  private readonly namesById = computed(() => new Map(this.people().map((p) => [p.id, p.name])));
+  private readonly peopleById = computed(() => new Map(this.people().map((p) => [p.id, p])));
   /** Everyone's due-total added up, skipping n/a, trimmed. */
   protected readonly dueTotal = computed(() =>
     money(trimmedSum([...this.dueByPerson().values()].filter((d): d is number => d !== null))));
@@ -1169,15 +1169,16 @@ export class People {
     return due === null || due === undefined ? 'n/a' : money(due);
   }
 
-  /** The person's patrons as <name> <share>, sorted by name, comma and space separated. */
+  /** The person's patrons as <name> (<grade today>) <share>, sorted by name, comma and space separated. */
   protected patronNamesOf(p: Person): string {
-    const names = this.namesById();
+    const byId = this.peopleById();
     const shares = patronShares(p.patronIds.length);
     return p.patronIds
-      .map((id, i) => ({ name: names.get(id) ?? '', share: shares[i] }))
-      .filter((o) => o.name)
+      .map((id, i) => ({ patron: byId.get(id), share: shares[i] }))
+      .filter((o): o is { patron: Person; share: number } => !!o.patron?.name)
+      .map((o) => ({ name: o.patron.name, grade: this.gradeOf(o.patron), share: o.share }))
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-      .map((o) => `${o.name} ${money(o.share)}`)
+      .map((o) => `${o.name} (${o.grade}) ${money(o.share)}`)
       .join(', ');
   }
 

@@ -1,5 +1,6 @@
 package net.officefloor.hq.app.search;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -15,8 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SearchService {
 
-    /** A person found: the sheet they are on, their name and their due-total as the screen shows it. */
-    public record Found(String sheetId, String name, String dueTotal) {
+    /** A person found: the sheet they are on, their name, their due-total as the screen shows it and
+     *  their grade in force on that sheet's today. */
+    public record Found(String sheetId, String name, String dueTotal, String grade) {
     }
 
     private final SheetService sheets;
@@ -45,9 +47,11 @@ public class SearchService {
                 continue;
             }
             Map<Long, RollupService.Figures> figures = rollup.snapshot(id).people();
+            LocalDate today = sheets.today(id);
             for (Person p : matching) {
                 RollupService.Figures f = figures.get(p.getId());
-                out.add(new Found(id, p.getName(), RollupService.text(f == null ? null : f.dueTotal())));
+                out.add(new Found(id, p.getName(), RollupService.text(f == null ? null : f.dueTotal()),
+                        p.gradeOn(today)));
             }
         }
         return out;

@@ -21,7 +21,7 @@ import { Found, SearchApi } from './search-api';
       </form>
       <ul aria-label="People found">
         @for (f of found() ?? []; track $index) {
-          <li data-testid="search-line">{{ f.sheetId }} {{ f.name }} {{ f.dueTotal }}</li>
+          <li data-testid="search-line">{{ f.sheetId }} {{ f.name }} ({{ f.grade }}) {{ f.dueTotal }}</li>
         }
       </ul>
     </section>
