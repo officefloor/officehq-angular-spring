@@ -1,0 +1,74 @@
+{
+  "checkpoint": 132,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp132_tree-numbering",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    112,
+    123,
+    128,
+    130
+  ],
+  "replaced_tests": [
+    "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 1",
+    "cp123_bulk-retire.spec.ts::bulk retire scenario 1",
+    "cp128_transfer-merges.spec.ts::transfer merges scenario 2",
+    "cp130_period-comparison.spec.ts::period comparison scenario 2"
+  ],
+  "request": {
+    "spec": "The sheets of a tree now share one sheet-wide number sequence: a claim opened on any sheet of the\ntree receives the next number after the last number given anywhere in the tree (numbers given before\nthis stay as they are). Per-period numbering stays per sheet.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheets of a tree now share one sheet-wide number sequence: a claim opened on any sheet of the\ntree receives the next number after the last number given anywhere in the tree (numbers given before\nthis stay as they are). Per-period numbering stays per sheet.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6d5bd9660529917396191175747d2dc19d94e38e",
+  "reset_sha": "",
+  "preagent_sha": "d7e6e6074d566d75ccf1d640a790e4ebe2aa6955",
+  "prev_sha": "d7e6e6074d566d75ccf1d640a790e4ebe2aa6955",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.43391520000000006,
+    "input_tokens": 26,
+    "output_tokens": 4193,
+    "cache_read_tokens": 396396,
+    "cache_creation_tokens": 33834,
+    "num_turns": 13,
+    "duration_ms": 240955,
+    "duration_api_ms": 44784,
+    "model": "claude-opus-5-5",
+    "session_id": "a2ba0b10-a2c8-4f27-9ce5-632f043b0962",
+    "stop_reason": "success",
+    "result_text": "The sheets of a tree now share one claim-number sequence, and all 4 tests pass when run with `bin/e2e`.\n\n**How it works:** when a claim is opened, the app looks at every sheet in the tree (parents, grandparents and so on, plus all children and their children). It gives the claim the next number after the highest one any of those sheets has used, and records that as the opening sheet's own last number. Numbers given before this change stay as they are. Per-period numbering (`P1-1` and so on) is still per sheet.\n\n**What changed:** only two server files, no database or front-end changes:\n- `Sheet.java` can now report its last number and give the next number after a given value.\n- `SheetService.nextClaimNumber` now works out the highest number across the tree. It locks every sheet in the tree, in id order, so two people opening claims at the same moment on different sheets can't get the same number.\n\nTwo side effects follow from the tree rule:\n- Because a sheet clone copies the parent, a cloned sheet's claims take their new numbers from that tree too.\n- If two separate trees are joined by setting a parent, the next number continues after the higher of the two.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.43391520000000006,
+        "num_turns": 13,
+        "duration_ms": 240955,
+        "duration_api_ms": 44784,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp132.agent.jsonl",
+  "agent_diff_file": "cp132.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
