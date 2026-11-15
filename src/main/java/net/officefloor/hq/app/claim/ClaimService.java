@@ -298,15 +298,29 @@ public class ClaimService {
         return changeStatus(sheetId, user, id, to, null);
     }
 
-    /** Settle a claim as {@link #changeStatus} does, as part of a bulk settle's batch of the
-     *  number (null: the bulk settle has settled none yet, so this claim starts the sheet's next
-     *  batch); the claim carries the batch's number. */
+    /** Settle the claims (in the order given) as {@link #changeStatus} does, all or nothing, as the
+     *  sheet's next batch: each claim carries the batch's number, a claim sent to PENDING counts in
+     *  it, and BATCH_SETTLED follows the claims' own records with the batch's count and the total of
+     *  the frozen figures of those SETTLED. Any refusal refuses the whole batch, leaving every claim
+     *  as it was and recording nothing. */
     @Transactional
-    public Claim settleInBatch(String sheetId, String user, long id, Integer batch) {
-        int number = batch != null ? batch : claims.findLastBatch(sheetId) + 1;
-        Claim claim = changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null);
-        claim.setBatch(number);
-        return claims.save(claim);
+    public void settleBatch(String sheetId, String user, List<Long> ids) {
+        if (ids.isEmpty()) {
+            return;
+        }
+        int number = claims.findLastBatch(sheetId) + 1;
+        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        for (long id : ids) {
+            Claim claim = changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null);
+            claim.setBatch(number);
+            claims.save(claim);
+            if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
+                total = total.add(claim.getSettledDue());
+            }
+        }
+        claims.flush();
+        audit.recordOnCommit("BATCH_SETTLED sheet=" + sheetId + " by=" + user + " batch=" + number
+                + " count=" + ids.size() + " total=" + total.setScale(2).toPlainString());
     }
 
     /** Void a claim as {@link #changeStatus} does, with a reason from the sheet's list of void

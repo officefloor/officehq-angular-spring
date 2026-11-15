@@ -306,10 +306,10 @@ public class ClaimController {
         return view(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED));
     }
 
-    /** Settle each selected claim in list order (people in the order added, newest claim first),
-     *  each on its own by the rules of settling one; a claim sent to PENDING counts as settled, and
-     *  a claim that cannot be settled is left as it is. A bulk settle that settles any is the
-     *  sheet's next batch, and each claim it settles carries that batch's number. */
+    /** Settle the selected claims in list order (people in the order added, newest claim first)
+     *  by the rules of settling one, all or nothing: a claim sent to PENDING counts as settled, and
+     *  when any cannot be settled (or is missing) none is, and every one counts as refused. A bulk
+     *  settle that settles them is the sheet's next batch, and each claim carries its number. */
     @PostMapping("/claims/bulk-settle")
     @ViewerAllowed
     public BulkSettleView bulkSettle(
@@ -321,17 +321,16 @@ public class ClaimController {
             return new BulkSettleView(0, selected);
         }
         List<Long> ordered = service.inListOrder(sheetId, body.ids());
-        int settled = 0;
-        Integer batch = null;
-        for (long id : ordered) {
-            try {
-                batch = service.settleInBatch(sheetId, user.trim(), id, batch).getBatch();
-                settled++;
-            } catch (ResponseStatusException e) {
-                // refused: left as it is
-            }
+        if (ordered.size() != selected) {
+            return new BulkSettleView(0, selected);
         }
-        return new BulkSettleView(settled, selected - settled);
+        try {
+            service.settleBatch(sheetId, user.trim(), ordered);
+        } catch (ResponseStatusException e) {
+            // refused: the whole batch is rolled back
+            return new BulkSettleView(0, selected);
+        }
+        return new BulkSettleView(selected, 0);
     }
 
     @PostMapping("/claims/{id}/defer")
