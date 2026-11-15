@@ -124,10 +124,11 @@ public class ClaimService {
      *  set, else its today. Refused
      *  (423) when the due-by it would be fixed with is in a closed period, (422) when it is after the person's
      *  retirement date, and (422) when it is a correction (a negative amount) that does not name
-     *  the number of a SETTLED claim of the same person. */
+     *  the number of a SETTLED claim of the same person, and (409) when its reference (blank: none) is
+     *  already used on the sheet, comparing without regard to case. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.entryDate(sheetId);
@@ -135,15 +136,18 @@ public class ClaimService {
         refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, on);
         String corrected = correctedBy(sheetId, personId, amount, corrects);
+        String reference = refOf(sheetId, null, ref);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim fresh = new Claim(sheetId, personId, amount, on, dueBy, noteOf(note));
         fresh.setCorrects(corrected);
+        fresh.setRef(reference);
         // the sheet is locked (refuseIfClosed), so two claims added at once are listed one after the other
         fresh.setListed(claims.findLastListed(sheetId) + 1);
         fresh.setLateEntry(periods.softClosedOn(sheetId, dueBy));
         Claim claim = claims.saveAndFlush(fresh);
         logStatus(user, person, claim);
-        record("CLAIM_ADDED", user, person, claim);
+        record("CLAIM_ADDED", user, person, claim, claim.getNumber(),
+                claim.getRef() != null ? " ref=" + claim.getRef() : "");
         if (claim.isLateEntry()) {
             record("LATE_ENTRY", user, person, claim, null);
         }
@@ -156,10 +160,11 @@ public class ClaimService {
      *  Refused (409) once the claim is no longer a DRAFT (an open claim is voided and a new one
      *  added instead), and (423) when its due-by (which the edit leaves) is in a closed period, and (422) when the new
      *  date is after the person's retirement date, or when it is a correction that does not name
-     *  the number of a SETTLED claim of the same person. */
+     *  the number of a SETTLED claim of the same person, and (409) when its reference (blank: none) is
+     *  used by another claim on the sheet, comparing without regard to case. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
-            String corrects) {
+            String corrects, String ref) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         LocalDate on = date != null ? date : sheets.entryDate(sheetId);
@@ -173,9 +178,11 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         refuseIfRetired(person, on);
         String corrected = correctedBy(sheetId, person.getId(), amount, corrects);
+        String reference = refOf(sheetId, claim.getId(), ref);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setAmount(amount);
         claim.setCorrects(corrected);
+        claim.setRef(reference);
         claim.setDate(on);
         claim.setNote(noteOf(note));
         claim.setLockedBy(null);
@@ -803,6 +810,20 @@ public class ClaimService {
                     "A negative amount must correct a settled claim of the same person");
         }
         return corrects;
+    }
+
+    /** A claim's reference with surrounding spaces removed: none when blank; refused (409) when
+     *  another claim on the sheet than the one of the id (null: a new claim) already carries it,
+     *  comparing without regard to case. */
+    private String refOf(String sheetId, Long id, String ref) {
+        if (ref == null || ref.isBlank()) {
+            return null;
+        }
+        String trimmed = ref.trim();
+        if (claims.existsRef(sheetId, trimmed, id)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The reference " + trimmed + " is already used on the sheet");
+        }
+        return trimmed;
     }
 
     /** Refuse (422) a claim dated after its person's retirement date. */

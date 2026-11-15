@@ -32,7 +32,8 @@ public class PasteClaimsService {
 
     /** Add a DRAFT claim for each line of name,amount,date,note, in order: the name of a person on
      *  the sheet (ignoring case and surrounding spaces), an amount, a date (blank: the sheet's
-     *  entry date while set, else its today) and a note that may hold commas or be absent; blank lines are skipped. Each line is
+     *  entry date while set, else its today) and a note that may hold commas or be absent, ending
+     *  in ` #<reference>` to give the claim that reference (not part of the note); blank lines are skipped. Each line is
      *  taken by the claim form's rules; one change, so when any line is refused (400 when it is not
      *  a claim the form takes, 422 when its name is not on the sheet, else as the claim form
      *  refuses it) nothing is added. */
@@ -56,6 +57,12 @@ public class PasteClaimsService {
             String amount = f[1].trim();
             String date = f.length > 2 ? f[2].trim() : "";
             String note = f.length > 3 ? f[3].trim() : "";
+            String ref = null;
+            int hash = note.lastIndexOf(" #");
+            if (hash >= 0 && !note.substring(hash + 2).isBlank()) {
+                ref = note.substring(hash + 2).trim();
+                note = note.substring(0, hash).trim();
+            }
             if (name.isEmpty() || !AMOUNT.matcher(amount).matches() || note.length() > NOTE_MAX) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Line " + n + ": not a claim the form takes");
             }
@@ -68,7 +75,7 @@ public class PasteClaimsService {
             Person person = people.findBySheetIdAndNameIgnoreCase(sheetId, name).stream().findFirst()
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                             "Line " + n + ": no person named " + name));
-            added.add(claims.add(sheetId, user, person.getId(), new BigDecimal(amount), on, note, null));
+            added.add(claims.add(sheetId, user, person.getId(), new BigDecimal(amount), on, note, null, ref));
         }
         return added;
     }

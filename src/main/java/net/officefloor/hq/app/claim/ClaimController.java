@@ -44,12 +44,12 @@ public class ClaimController {
      *  it was deferred until (null when never deferred); how many proofs it has; the number of the
      *  claim it was split from (null when not made by a split); the user whose open editor locks
      *  it (null while unlocked); whether it was added while its period was soft-closed; the last
-     *  day it was reminded (null when never reminded). */
+     *  day it was reminded (null when never reminded); its external reference (null when none). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
-            boolean lateEntry, LocalDate reminded) {
+            boolean lateEntry, LocalDate reminded, String ref) {
         static ClaimView of(Claim c, List<ClaimLog> log) {
             return of(c.getId(), c, log);
         }
@@ -60,7 +60,7 @@ public class ClaimController {
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
                     c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
                     log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLockedBy(),
-                    c.isLateEntry(), c.getReminded());
+                    c.isLateEntry(), c.getReminded(), c.getRef());
         }
 
         private static String money(BigDecimal value) {
@@ -86,12 +86,14 @@ public class ClaimController {
 
     /** A claim's values as the form submits them: an amount with up to two decimals (negative
      *  for a correction), an optional date (the sheet's today when absent), an optional note, and
-     *  the number of the claim a correction corrects. */
+     *  the number of the claim a correction corrects, and an optional external reference (blank:
+     *  none). */
     public record ClaimForm(
             @NotNull @Pattern(regexp = "-?\\d{1,13}(\\.\\d{1,2})?") String amount,
             LocalDate date,
             @Size(max = 1000) String note,
-            @Size(max = 120) @Pattern(regexp = "\\s*\\S+\\s*") String corrects) {
+            @Size(max = 120) @Pattern(regexp = "\\s*\\S+\\s*") String corrects,
+            @Size(max = 120) String ref) {
     }
 
     /** The reason a steward gives for rejecting a PENDING claim. */
@@ -177,7 +179,8 @@ public class ClaimController {
             @PathVariable long personId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm body) {
-        return view(service.add(sheetId, user.trim(), personId, new BigDecimal(body.amount()), body.date(), body.note(), trimmed(body.corrects())));
+        return view(service.add(sheetId, user.trim(), personId, new BigDecimal(body.amount()), body.date(), body.note(), trimmed(body.corrects()),
+                body.ref()));
     }
 
     @PutMapping("/claims/{id}")
@@ -186,7 +189,8 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm body) {
-        return view(service.update(sheetId, user.trim(), id, new BigDecimal(body.amount()), body.date(), body.note(), trimmed(body.corrects())));
+        return view(service.update(sheetId, user.trim(), id, new BigDecimal(body.amount()), body.date(), body.note(), trimmed(body.corrects()),
+                body.ref()));
     }
 
     /** Open the claim's editor, locking the claim for other users until it is saved or cancelled

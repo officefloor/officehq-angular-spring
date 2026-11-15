@@ -24,6 +24,8 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine,
       <label [for]="fieldId('corrects')">Corrects claim no.</label>
       <input [id]="fieldId('corrects')" data-testid="claim-form-corrects" formControlName="corrects"
         autocomplete="off" />
+      <label [for]="fieldId('ref')">Reference</label>
+      <input [id]="fieldId('ref')" data-testid="claim-form-ref" formControlName="ref" autocomplete="off" />
       <button type="submit" data-testid="claim-form-submit">{{ editingId() === null ? 'Add claim' : 'Save claim' }}</button>
       @if (error(); as err) {
         <p role="alert" data-testid="claim-form-error">{{ err }}</p>
@@ -40,6 +42,7 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine,
             <span data-testid="claim-amount">{{ c.amount }}</span>
             <span data-testid="claim-date">{{ c.date }}</span>
             <span data-testid="claim-note">{{ c.note }}</span>
+            <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
             <span>Corrects No. <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
             <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
             <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
@@ -169,6 +172,7 @@ export class PersonClaims {
     date: new FormControl('', { nonNullable: true }),
     note: new FormControl('', { nonNullable: true }),
     corrects: new FormControl('', { nonNullable: true }),
+    ref: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -258,7 +262,8 @@ export class PersonClaims {
       if (this.session.sheetId() !== sheetId) return false;
       this.saved.emit(claim);
       if (this.editingId() === c.id && this.form.pristine) {
-        this.form.setValue({ amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '' });
+        this.form.setValue({ amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '',
+          ref: claim.ref ?? '' });
       }
       return true;
     }, (e: unknown) => {
@@ -271,7 +276,7 @@ export class PersonClaims {
 
   private openEditor(c: Claim): void {
     this.editingId.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' });
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '', ref: c.ref ?? '' });
   }
 
   /** Close the claim's editor without saving, releasing its lock. */
@@ -318,7 +323,13 @@ export class PersonClaims {
       this.error.set('A negative amount must name the number of the settled claim it corrects.');
       return;
     }
-    const form = { amount, date: date || null, note: value.note, corrects: corrects === '' ? null : corrects };
+    const ref = value.ref.trim();
+    if (ref.length > 120) {
+      this.error.set('Enter a reference of up to 120 characters.');
+      return;
+    }
+    const form = { amount, date: date || null, note: value.note, corrects: corrects === '' ? null : corrects,
+      ref: ref === '' ? null : ref };
     const editing = this.editingId();
     this.submitting = true;
     try {
@@ -334,7 +345,7 @@ export class PersonClaims {
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
       this.reset();
     } catch (e) {
-      this.error.set(claimError(e, correction));
+      this.error.set(claimError(e, correction, ref === '' ? 'none' : editing === null ? 'add' : 'edit'));
     } finally {
       this.submitting = false;
     }
@@ -495,7 +506,7 @@ export class PersonClaims {
       return;
     }
     try {
-      const claim = await this.api.update(sheetId, c.id, { amount, date: c.date, note: c.note, corrects: c.corrects });
+      const claim = await this.api.update(sheetId, c.id, { amount, date: c.date, note: c.note, corrects: c.corrects, ref: c.ref });
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: claimError(e, amount.startsWith('-')) }));
@@ -526,7 +537,7 @@ export class PersonClaims {
   protected reset(): void {
     this.editingId.set(null);
     this.locking = null;
-    this.form.reset({ amount: '', date: '', note: '', corrects: '' });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '' });
     this.error.set(null);
   }
 }

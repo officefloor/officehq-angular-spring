@@ -31,6 +31,12 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query("select c.number from Claim c where c.sheetId = :sheetId and c.number is not null")
     List<String> findNumbers(String sheetId);
 
+    /** Whether another claim on the sheet than the one of the id (null: any) carries the reference,
+     *  comparing without regard to case. */
+    @Query("select count(c) > 0 from Claim c where c.sheetId = :sheetId and lower(c.ref) = lower(:ref)"
+            + " and (:id is null or c.id <> :id)")
+    boolean existsRef(String sheetId, String ref, Long id);
+
     /** The claim, locked for a status change or edit so two users cannot change it at once. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Claim c where c.id = :id and c.sheetId = :sheetId")

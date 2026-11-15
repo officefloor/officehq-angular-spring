@@ -61,6 +61,8 @@ export interface Claim {
   lateEntry: boolean;
   /** yyyy-mm-dd: the last day (the sheet's today then) the claim was reminded; null when never reminded. */
   reminded: string | null;
+  /** The claim's external reference, unique on its sheet without regard to case; null when none. */
+  ref: string | null;
 }
 
 /** A line of a claim's status log: the status, who moved the claim there, the sheet's today then
@@ -159,6 +161,8 @@ export interface ClaimForm {
   note: string;
   /** The number of the claim a correction corrects; null when none is named. */
   corrects: string | null;
+  /** The claim's external reference; null (or blank) for none. */
+  ref: string | null;
 }
 
 export interface QuickAddForm {
@@ -292,9 +296,13 @@ export class ClaimsApi {
 }
 
 /** Why a claim form was refused; `correction` says whether its amount was negative. */
-export function claimError(e: unknown, correction = false): string {
+export function claimError(e: unknown, correction = false, ref: 'none' | 'add' | 'edit' = 'none'): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount with up to two decimals.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 409 && ref === 'add') return 'That reference is already used on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 409 && ref === 'edit') {
+    return 'That reference is already used on this sheet, or the claim is no longer a draft.';
+  }
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft claim can be edited; void it and add a new one.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'The claim would be due in a closed period.';
   if (e instanceof HttpErrorResponse && e.status === 422) {
@@ -320,6 +328,9 @@ export function pasteError(e: unknown): string {
   }
   if (e instanceof HttpErrorResponse && e.status === 422) {
     return "Every name must be on the sheet, and every date by that person's retirement date; an amount below zero is a correction, which the paste does not take.";
+  }
+  if (e instanceof HttpErrorResponse && e.status === 409) {
+    return 'Every reference must be new to the sheet and given only once in the paste.';
   }
   if (e instanceof HttpErrorResponse && e.status === 423) return 'A claim would be due in a closed period.';
   return otherError(e);

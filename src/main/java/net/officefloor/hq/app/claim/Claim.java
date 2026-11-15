@@ -108,6 +108,11 @@ public class Claim {
     @Column(name = "reminded")
     private LocalDate reminded;
 
+    /** The claim's external reference, unique on its sheet without regard to case; none when not
+     *  given. */
+    @Column(name = "ref")
+    private String ref;
+
     protected Claim() {
     }
 
@@ -264,6 +269,14 @@ public class Claim {
 
     public void setReminded(LocalDate reminded) {
         this.reminded = reminded;
+    }
+
+    public String getRef() {
+        return ref;
+    }
+
+    public void setRef(String ref) {
+        this.ref = ref;
     }
 
     /** Whether another user than this one holds the claim's editor open. */
