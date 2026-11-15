@@ -201,11 +201,12 @@ export class People {
   protected readonly claims = signal<Claim[]>([]);
   /** The holds of each person with any, by person id: their open (OPEN or PENDING) claims dated within one count in no live total. */
   private readonly holdsById = computed(() => new Map(this.people().filter((p) => p.held).map((p) => [p.id, p.holds])));
-  /** Whether a claim counts in the live totals: open (OPEN or PENDING) and SETTLED ones, but not an open one
-   *  dated within a hold of its person unless bound by a statement. */
+  /** Whether a claim counts in the live totals: open (OPEN or PENDING) and SETTLED ones, but not a deferred one,
+   *  nor an open one dated within a hold of its person unless bound by a statement. */
   private readonly countsLive = computed(() => {
     const holds = this.holdsById();
-    return (c: Claim) => counts(c) && !(isOpen(c) && !isBound(c) && heldOn(holds.get(c.personId) ?? [], c.date));
+    const today = this.session.today();
+    return (c: Claim) => counts(c, today) && !(isOpen(c) && !isBound(c) && heldOn(holds.get(c.personId) ?? [], c.date));
   });
   /** Each person's claims (newest first) and claimed in cents (counting claims only), by person id. */
   private readonly byPerson = computed(() => {

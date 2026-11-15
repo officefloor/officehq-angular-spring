@@ -163,7 +163,7 @@ public class ClaimService {
     }
 
     /** Move a claim to a new status; a move its status does not allow is refused (409), as is
-     *  settling by the user who opened the claim (403), settling a PENDING claim (409: it is
+     *  settling by the user who opened the claim (403), settling a deferred claim (409), settling a PENDING claim (409: it is
      *  approved or rejected instead), and any move of a claim dated in a closed period (423). A
      *  clerk settling a claim whose due is above the sheet's clerk limit sends it to PENDING. */
     @Transactional
@@ -175,6 +175,10 @@ public class ClaimService {
                 || !claim.getStatus().canMoveTo(to)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + to);
+        }
+        if (to == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then");
         }
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -213,6 +217,33 @@ public class ClaimService {
         } else {
             record(event, user, person, claim, number);
         }
+        rollup.recordChanges(sheetId, user, before);
+        return claim;
+    }
+
+    /** Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches
+     *  it, the claim counts in no total, is not overdue, cannot be settled and is left unbound by a
+     *  statement. Refused (404) when missing, (423) when dated in a closed period, (409) unless
+     *  OPEN, and (422) when the date is not after the sheet's today. */
+    @Transactional
+    public Claim defer(String sheetId, String user, long id, LocalDate until) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only an OPEN claim is deferred, not a " + claim.getStatus() + " one");
+        }
+        if (!until.isAfter(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A claim is deferred until a date after the sheet's today");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setDeferredUntil(until);
+        claims.flush();
+        record("CLAIM_DEFERRED", user, person, claim, claim.getNumber(), " until=" + until);
         rollup.recordChanges(sheetId, user, before);
         return claim;
     }
@@ -354,7 +385,7 @@ public class ClaimService {
     }
 
     /** Take a statement of a person: record their due-total now, and bind each of their claims
-     *  that counts (OPEN, PENDING or SETTLED, but no unbound open one within a hold) to its figure now; the others
+     *  that counts (OPEN, PENDING or SETTLED, but no unbound open one within a hold, nor a deferred one) to its figure now; the others
      *  are left unbound. */
     @Transactional
     public Statement statement(String sheetId, String user, long personId) {
@@ -363,10 +394,10 @@ public class ClaimService {
         LocalDate today = sheets.today(sheetId);
         List<Claim> theirs = claims.findByPersonForUpdate(personId, sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        List<Claim> counted = theirs.stream().filter(c -> counts(c, person)).toList();
+        List<Claim> counted = theirs.stream().filter(c -> counts(c, person, today)).toList();
         BigDecimal dueTotal = Sheet.capped(dueTotalOf(counted, person, today), sheets.cap(sheetId));
         for (Claim c : theirs) {
-            if (counts(c, person)) {
+            if (counts(c, person, today)) {
                 // the statement binds the figure; the late charge keeps following the sheet's today
                 c.bind(c.getSettledDue() != null ? c.getSettledDue() : figureOf(c, person));
             } else {
@@ -430,10 +461,11 @@ public class ClaimService {
     }
 
     /** Whether a claim counts toward claimed and due totals: only OPEN (or PENDING) and SETTLED ones
-     *  do, but not an open one dated within a hold of its person unless bound by a statement. */
-    private static boolean counts(Claim c, Person person) {
+     *  do, but not an open one dated within a hold of its person unless bound by a statement, nor
+     *  one deferred on the sheet's today. */
+    private static boolean counts(Claim c, Person person, LocalDate today) {
         return c.getStatus() == ClaimStatus.SETTLED
-                || (c.getStatus().isOpen() && (c.isBound() || !person.heldOn(c.getDate())));
+                || (c.getStatus().isOpen() && !c.isDeferredOn(today) && (c.isBound() || !person.heldOn(c.getDate())));
     }
 
     /** The due a claim shows: the due fixed when it was settled, else its figure with its late

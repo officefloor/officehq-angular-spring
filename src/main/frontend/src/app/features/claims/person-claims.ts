@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, statusError } from './claims-api';
+import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, deferError, deferred, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, statusError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -48,6 +48,8 @@ import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cent
             <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
             <span>Due by <span data-testid="claim-due-by">{{ dueByOf(c) }}</span></span>
             <span>Overdue <span data-testid="claim-overdue">{{ overdueOf(c) ? 'yes' : 'no' }}</span></span>
+            <span>Deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span></span>
+            <span>Deferred until <span data-testid="claim-deferred-until">{{ deferredOf(c) ? c.deferredUntil : '' }}</span></span>
             <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
               @for (l of c.log; track $index) {
                 <li data-testid="claim-log-line">{{ logText(l) }}</li>
@@ -57,6 +59,11 @@ import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cent
               [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
             <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'settle')"
               [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
+            <label [for]="'claim-defer-date-' + c.id">Defer until</label>
+            <input [id]="'claim-defer-date-' + c.id" type="date" data-testid="claim-defer-date"
+              [value]="deferDates()[c.id] ?? ''" (input)="deferDateChanged(c.id, $any($event.target).value)" />
+            <button type="button" data-testid="claim-defer" (click)="defer(c)"
+              [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date">Defer</button>
             <button type="button" data-testid="claim-approve" (click)="changeStatus(c, 'approve')"
               [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
             <button type="button" data-testid="claim-resettle" (click)="changeStatus(c, 'resettle')"
@@ -122,6 +129,8 @@ export class PersonClaims {
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** The reason typed for rejecting each PENDING claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
+  /** The date typed for deferring each OPEN claim until, by claim id. */
+  protected readonly deferDates = signal<Record<number, string>>({});
   protected readonly fieldId = (name: string) => `claim-form-${name}-${this.personId()}`;
 
   protected readonly form = new FormGroup({
@@ -160,6 +169,11 @@ export class PersonClaims {
   /** Whether the claim is open (OPEN or PENDING) with its due-by before the sheet's today. */
   protected overdueOf(c: Claim): boolean {
     return overdue(c, this.session.today());
+  }
+
+  /** Whether the claim is deferred on the sheet's today. */
+  protected deferredOf(c: Claim): boolean {
+    return deferred(c, this.session.today());
   }
 
   /** The name of the period whose dates contain the claim's date; blank when none does. */
@@ -221,6 +235,29 @@ export class PersonClaims {
       this.error.set(claimError(e, correction));
     } finally {
       this.submitting = false;
+    }
+  }
+
+  protected deferDateChanged(id: number, date: string): void {
+    this.clearRowError(id);
+    this.deferDates.update((ds) => ({ ...ds, [id]: date }));
+  }
+
+  /** Defer an OPEN claim until the date typed for it; a refusal shows an error on the claim. */
+  protected async defer(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const until = (this.deferDates()[c.id] ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Enter a date as yyyy-mm-dd to defer the claim until.' }));
+      return;
+    }
+    try {
+      const claim = await this.api.defer(sheetId, c.id, until);
+      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: deferError(e) }));
     }
   }
 

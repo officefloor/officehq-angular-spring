@@ -92,7 +92,7 @@ public class RollupService {
         Function<Claim, RoundingMode> rounding = roundingOf(sheet, sheetClaims);
         Map<Long, List<Claim>> counted = new LinkedHashMap<>();
         for (Claim c : sheetClaims) {
-            if (counts(c, held)) {
+            if (counts(c, held, today)) {
                 counted.computeIfAbsent(c.getPersonId(), id -> new ArrayList<>()).add(c);
             }
         }
@@ -113,9 +113,10 @@ public class RollupService {
 
     /** Each person's due-total for the period from {@code from} to {@code to}, inclusive, by person
      *  id, for everyone on the sheet: the dues (n/a ones skipped) their OPEN and SETTLED claims dated
-     *  inside it show now (OPEN ones within a hold of their person, unbound, left out). */
+     *  inside it show now (OPEN ones within a hold of their person, unbound, or deferred, left out). */
     public Map<Long, BigDecimal> dueByPersonBetween(String sheetId, LocalDate from, LocalDate to) {
         Optional<Sheet> sheet = sheets.findById(sheetId);
+        LocalDate today = sheet.map(Sheet::getToday).orElseGet(LocalDate::now);
         Function<LocalDate, BigDecimal> floor = floorOf(sheet);
         LateCharge late = LateCharge.of(sheet);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
@@ -129,7 +130,7 @@ public class RollupService {
             out.put(p.getId(), zero());
         }
         sheetClaims.stream()
-                .filter(c -> counts(c, held))
+                .filter(c -> counts(c, held, today))
                 .filter(c -> !c.getDate().isBefore(from) && !c.getDate().isAfter(to))
                 .filter(c -> byId.containsKey(c.getPersonId()))
                 .forEach(c -> {
@@ -162,12 +163,12 @@ public class RollupService {
 
     /** Whether a claim counts toward claimed and due totals: only OPEN (or PENDING) and SETTLED ones
      *  do, but not an open one dated within a hold of its person (by id in {@code held}) unless bound
-     *  by a statement. */
-    private static boolean counts(Claim c, Map<Long, Person> held) {
+     *  by a statement, nor one deferred on the sheet's today. */
+    private static boolean counts(Claim c, Map<Long, Person> held, LocalDate today) {
         if (c.getStatus() == ClaimStatus.SETTLED) {
             return true;
         }
-        if (!c.getStatus().isOpen()) {
+        if (!c.getStatus().isOpen() || c.isDeferredOn(today)) {
             return false;
         }
         Person person = held.get(c.getPersonId());

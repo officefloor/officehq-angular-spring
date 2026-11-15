@@ -49,6 +49,8 @@ export interface Claim {
   dueBy: string;
   /** The claim's status log, oldest first: one line per status it has had. */
   log: ClaimLogLine[];
+  /** yyyy-mm-dd: the date the claim was deferred until; null when it was never deferred. */
+  deferredUntil: string | null;
 }
 
 /** A line of a claim's status log: the status, who moved the claim there, the sheet's today then
@@ -85,9 +87,16 @@ export function isBound(c: Claim): boolean {
   return c.stated && c.status !== 'PENDING';
 }
 
-/** Whether a claim counts toward claimed and due totals: only open (OPEN or PENDING) and SETTLED ones do. */
-export function counts(c: Claim): boolean {
-  return isOpen(c) || c.status === 'SETTLED';
+/** Whether a claim is deferred on the sheet's today: OPEN, deferred until a date after it. Until
+ *  then it counts in no total, is not overdue and cannot be settled. */
+export function deferred(c: Claim, today: string | null): boolean {
+  return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+}
+
+/** Whether a claim counts toward claimed and due totals on the sheet's today: only open (OPEN or
+ *  PENDING) and SETTLED ones do, but not a deferred one. */
+export function counts(c: Claim, today: string | null): boolean {
+  return (isOpen(c) || c.status === 'SETTLED') && !deferred(c, today);
 }
 
 /** A claim's due-by (yyyy-mm-dd), fixed when it was created. */
@@ -95,9 +104,9 @@ export function dueBy(c: Claim): string {
   return c.dueBy;
 }
 
-/** Whether a claim is overdue: open (OPEN or PENDING) with its due-by before the sheet's today. */
+/** Whether a claim is overdue: open (OPEN or PENDING), not deferred, with its due-by before the sheet's today. */
 export function overdue(c: Claim, today: string | null): boolean {
-  return isOpen(c) && today !== null && dueBy(c) < today;
+  return isOpen(c) && today !== null && dueBy(c) < today && !deferred(c, today);
 }
 
 /** Whether a claim's live figures round half up: its date (a correction's, the date of the claim
@@ -165,6 +174,13 @@ export class ClaimsApi {
   changeStatus(sheetId: string, id: number, action: ClaimAction): Promise<Claim> {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, null, { headers: this.headers() }),
+    );
+  }
+
+  /** Defer an OPEN claim until a date after the sheet's today. */
+  defer(sheetId: string, id: number, until: string): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/defer`, { until }, { headers: this.headers() }),
     );
   }
 
@@ -240,10 +256,20 @@ export function pasteError(e: unknown): string {
 /** Why a status change was refused; `opener` says whether the user is the one who opened the claim. */
 export function statusError(e: unknown, opener: boolean): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a reason for rejecting the claim.';
-  if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status, or is deferred.';
   if (e instanceof HttpErrorResponse && e.status === 403) {
     return opener ? 'The user who opened this claim cannot settle or approve it.' : 'Only a steward can approve or reject a pending claim.';
   }
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
+  return 'Something went wrong; try again.';
+}
+
+/** Why a deferral was refused. */
+export function deferError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a date as yyyy-mm-dd.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open claim can be deferred.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return "Defer the claim until a date after the sheet's today.";
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
   return 'Something went wrong; try again.';

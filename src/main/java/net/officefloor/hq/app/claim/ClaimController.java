@@ -34,15 +34,17 @@ public class ClaimController {
      *  due as fixed when it was settled (null, so the due is live, when its grade had no rate then,
      *  and for other claims); who opened it (null while DRAFT); whether the person's last statement
      *  bound it, and the due it was bound to (null when unbound or n/a then); the number of the
-     *  claim a correction corrects (null for other claims); its status log, oldest first. */
+     *  claim a correction corrects (null for other claims); its status log, oldest first; the date
+     *  it was deferred until (null when never deferred). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
-            String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log) {
+            String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
+            LocalDate deferredUntil) {
         static ClaimView of(Claim c, List<ClaimLog> log) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
                     c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
-                    log.stream().map(LogLineView::of).toList());
+                    log.stream().map(LogLineView::of).toList(), c.getDeferredUntil());
         }
 
         private static String money(BigDecimal value) {
@@ -78,6 +80,10 @@ public class ClaimController {
 
     /** The person a claim is reassigned to. */
     public record ReassignForm(@NotNull Long personId) {
+    }
+
+    /** The date a claim is deferred until. */
+    public record DeferForm(@NotNull LocalDate until) {
     }
 
     /** The claims selected for a bulk action, by id. */
@@ -192,6 +198,15 @@ public class ClaimController {
             }
         }
         return new BulkSettleView(settled, (int) body.ids().stream().distinct().count() - settled);
+    }
+
+    @PostMapping("/claims/{id}/defer")
+    public ClaimView defer(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody DeferForm body) {
+        return view(service.defer(sheetId, user.trim(), id, body.until()));
     }
 
     @PostMapping("/claims/{id}/approve")

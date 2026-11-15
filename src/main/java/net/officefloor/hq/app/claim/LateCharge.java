@@ -27,7 +27,7 @@ public record LateCharge(LocalDate today, Function<LocalDate, BigDecimal> pctOn)
 
     /** The claim's figure (null: n/a, which stays n/a) with its late charge, rounded by {@code mode}, added. */
     public BigDecimal addTo(Claim claim, BigDecimal figure, RoundingMode mode) {
-        if (!claim.getStatus().isOpen()) {
+        if (!claim.getStatus().isOpen() || claim.isDeferredOn(today)) {
             return figure;
         }
         return addToOpen(claim, figure, mode);
