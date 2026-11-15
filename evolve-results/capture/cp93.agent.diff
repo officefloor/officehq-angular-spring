@@ -1,0 +1,177 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 51e6a1a89..088c0a78e 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -328,6 +328,12 @@ export class ClaimsApi {
+       { headers: this.headers() }));
+   }
+ 
++  /** Move each of the claims to the person, in list order, as reassigning one would; those that cannot be moved are left as they are. */
++  bulkReassign(sheetId: string, ids: number[], personId: number): Promise<{ reassigned: number; refused: number }> {
++    return firstValueFrom(this.http.post<{ reassigned: number; refused: number }>(`${this.url(sheetId)}/claims/bulk-reassign`,
++      { ids, personId }, { headers: this.headers() }));
++  }
++
+   private url(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}`;
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 50dd04dd2..3189fd5d6 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -108,6 +108,20 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
+       @if (bulkSettleError(); as err) {
+         <p role="alert" data-testid="bulk-settle-error">{{ err }}</p>
+       }
++      <label for="bulk-reassign-to">Reassign selected claims to</label>
++      <select #bulkReassignTo id="bulk-reassign-to" data-testid="bulk-reassign-to" (change)="bulkReassignError.set(null)">
++        @for (p of people(); track p.id) {
++          <option [value]="p.id">{{ p.name }}</option>
++        }
++      </select>
++      <button type="button" data-testid="bulk-reassign" (click)="bulkReassign(bulkReassignTo.value)">Reassign selected claims</button>
++      @if (bulkReassignResult(); as r) {
++        <p role="status">Reassigned <strong data-testid="bulk-reassigned">{{ r.reassigned }}</strong>,
++          refused <strong data-testid="bulk-reassign-refused">{{ r.refused }}</strong></p>
++      }
++      @if (bulkReassignError(); as err) {
++        <p role="alert" data-testid="bulk-reassign-error">{{ err }}</p>
++      }
+       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade selected people">
+         <label for="bulk-grade">Grade selected people</label>
+         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
+@@ -501,6 +515,10 @@ export class People {
+   protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
+   protected readonly bulkSettleError = signal<string | null>(null);
+   private bulkSettling = false;
++  /** The last bulk reassign's counts; gone while one runs. */
++  protected readonly bulkReassignResult = signal<{ reassigned: number; refused: number } | null>(null);
++  protected readonly bulkReassignError = signal<string | null>(null);
++  private bulkReassigning = false;
+   /** The ids of the people selected for a bulk grade. */
+   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+   /** The bulk grade bar: a grade and the date it is in force from (blank: the sheet's today). */
+@@ -574,6 +592,8 @@ export class People {
+         this.bulkError.set(null);
+         this.bulkSettleResult.set(null);
+         this.bulkSettleError.set(null);
++        this.bulkReassignResult.set(null);
++        this.bulkReassignError.set(null);
+         this.selectedPeople.set(new Set());
+         this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
+         this.bulkGraded.set(null);
+@@ -831,6 +851,35 @@ export class People {
+     }
+   }
+ 
++  /** Move every selected claim that can be moved to the person, in list order, by the rules of
++   *  reassigning one; then show how many were moved and refused, and the claims as the store now
++   *  holds them. */
++  protected async bulkReassign(personId: string): Promise<void> {
++    if (this.bulkReassigning) return;
++    this.bulkReassignResult.set(null);
++    this.bulkReassignError.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    if (!personId) {
++      this.bulkReassignError.set('Choose a person to reassign the claims to.');
++      return;
++    }
++    const ids = [...this.selectedClaims()];
++    this.bulkReassigning = true;
++    try {
++      const result = await this.claimsApi.bulkReassign(sheetId, ids, Number(personId));
++      const claims = await this.claimsApi.list(sheetId);
++      if (this.session.sheetId() !== sheetId) return;
++      this.claims.set(claims);
++      this.selectedClaims.set(new Set());
++      this.bulkReassignResult.set(result);
++    } catch {
++      this.bulkReassignError.set('Something went wrong reassigning the claims; try again.');
++    } finally {
++      this.bulkReassigning = false;
++    }
++  }
++
+   /** Select a person for a bulk grade, or take them out of the selection. */
+   protected personToggled(id: number, on: boolean): void {
+     this.bulkGradeErr.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 5287e0757..8a66971d3 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -150,6 +150,14 @@ public class ClaimController {
+     public record BulkOpenView(int opened, int refused) {
+     }
+ 
++    /** The claims selected for a bulk reassign, by id, and the person they are moved to. */
++    public record BulkReassignForm(@NotNull @Size(max = 10000) List<@NotNull Long> ids, @NotNull Long personId) {
++    }
++
++    /** A bulk reassign's result: how many of the selected claims were moved and how many refused. */
++    public record BulkReassignView(int reassigned, int refused) {
++    }
++
+     /** A bulk settle's result: how many of the selected claims were settled (a claim sent to
+      *  PENDING counts) and how many refused. */
+     public record BulkSettleView(int settled, int refused) {
+@@ -400,6 +408,32 @@ public class ClaimController {
+         return view(service.reassign(sheetId, user.trim(), id, body.personId()));
+     }
+ 
++    /** Move each selected claim to the person in list order (people in the order added, newest
++     *  claim first), each on its own by the rules of reassigning one; a claim that cannot be moved
++     *  is left as it is. */
++    @PostMapping("/claims/bulk-reassign")
++    @ViewerAllowed
++    public BulkReassignView bulkReassign(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody BulkReassignForm body) {
++        int selected = (int) body.ids().stream().distinct().count();
++        if (settings.isViewer(sheetId, user.trim()) || sheets.archived(sheetId)) {
++            return new BulkReassignView(0, selected);
++        }
++        List<Long> ordered = service.inListOrder(sheetId, body.ids());
++        int reassigned = 0;
++        for (long id : ordered) {
++            try {
++                service.reassign(sheetId, user.trim(), id, body.personId(), true);
++                reassigned++;
++            } catch (ResponseStatusException e) {
++                // refused: left as it is
++            }
++        }
++        return new BulkReassignView(reassigned, selected - reassigned);
++    }
++
+     @PostMapping("/claims/{id}/split")
+     public SplitView split(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 4c2854910..e385af195 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -629,6 +629,13 @@ public class ClaimService {
+      *  the new person's retirement date. */
+     @Transactional
+     public Claim reassign(String sheetId, String user, long id, long toPersonId) {
++        return reassign(sheetId, user, id, toPersonId, false);
++    }
++
++    /** Reassign a claim as {@link #reassign(String, String, long, long)} does; when {@code toSame}
++     *  a claim already the person's is moved too (listed as their newest), as a bulk reassign does. */
++    @Transactional
++    public Claim reassign(String sheetId, String user, long id, long toPersonId, boolean toSame) {
+         Claim claim = claims.findForUpdate(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+         Person to = people.findByIdAndSheetId(toPersonId, sheetId)
+@@ -639,7 +646,7 @@ public class ClaimService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT,
+                     "A " + claim.getStatus() + " claim cannot be reassigned");
+         }
+-        if (claim.getPersonId() == toPersonId) {
++        if (!toSame && claim.getPersonId() == toPersonId) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already that person's");
+         }
+         refuseIfRetired(to, claim.getDate());
