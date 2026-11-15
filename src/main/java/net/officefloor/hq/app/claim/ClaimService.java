@@ -1039,8 +1039,9 @@ public class ClaimService {
     }
 
     /** A claim's tags as the form gives them, comma separated: each trimmed and lower-cased, blank
-     *  ones and repeats dropped, sorted and joined by commas; none when no tag is left. */
-    static String tagsOf(String tags) {
+     *  ones and repeats dropped, sorted and joined by commas; none when no tag is left. A person's
+     *  tags are taken the same way. */
+    public static String tagsOf(String tags) {
         if (tags == null) {
             return null;
         }

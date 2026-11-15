@@ -68,7 +68,7 @@ public class HistoryService {
 
     record PersonState(String name, String grade, List<GradeState> grades, Integer terms, LocalDate retiredFrom,
             List<HoldState> holds, String contact, List<String> aliases, Long position,
-            String originSheetId, List<HoldState> retirements) {
+            String originSheetId, List<HoldState> retirements, String tags) {
     }
 
     record RateState(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
@@ -144,7 +144,7 @@ public class HistoryService {
                     all.stream().skip(1).map(g -> new GradeState(g.from(), g.grade())).toList(), p.getTerms(),
                     p.getRetiredFrom(), p.getHolds().stream().map(h -> new HoldState(h.from(), h.to())).toList(),
                     p.getContact(), p.getAliases(), p.getPosition(), p.getOriginSheetId(),
-                    p.getRetirements().stream().map(r -> new HoldState(r.from(), r.to())).toList()));
+                    p.getRetirements().stream().map(r -> new HoldState(r.from(), r.to())).toList(), p.getTags()));
         } else if (entity instanceof Rate r) {
             write(r.getSheetId(), RATE, String.valueOf(r.getId()),
                     new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo()));
@@ -308,6 +308,7 @@ public class HistoryService {
         s.grades().forEach(g -> p.recordGrade(g.grade(), g.from()));
         p.setTerms(s.terms());
         p.setContact(s.contact());
+        p.setTags(s.tags());
         p.setRetiredFrom(s.retiredFrom());
         s.holds().forEach(h -> p.addHold(h.from(), h.to()));
         // a version written before people had positions is placed by its id, as they then were

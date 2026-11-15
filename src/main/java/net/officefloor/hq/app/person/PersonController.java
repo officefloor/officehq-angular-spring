@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import net.officefloor.hq.app.claim.ClaimService;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.session.CurrentUser;
@@ -47,7 +48,7 @@ public class PersonController {
             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held, List<Person.Hold> holds,
             List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms,
             String contact, List<String> aliases, boolean clashing, String origin,
-            List<Person.Retirement> retirements) {
+            List<Person.Retirement> retirements, String tags) {
         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
                 boolean watched, boolean clashing) {
             return of(p.getId(), p, today, s, patronIds, watched, clashing);
@@ -59,7 +60,8 @@ public class PersonController {
             return new PersonView(id, p.getName(), p.gradeOn(today), p.getVersion(), s.count(),
                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
                     p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.getTerms(),
-                    p.getContact(), p.getAliases(), clashing, p.getOriginSheetId(), p.getRetirements());
+                    p.getContact(), p.getAliases(), clashing, p.getOriginSheetId(), p.getRetirements(),
+                    p.getTags());
         }
     }
 
@@ -67,18 +69,25 @@ public class PersonController {
      *  An edit carries the version of the person its editor loaded, and the date its grade is in
      *  force from (null: the sheet's today); an add's grade is in force from the beginning of time.
      *  The terms are the person's own in whole days, blank or null for none. The contact is stored
-     *  trimmed and lower-cased; blank or null for none. */
+     *  trimmed and lower-cased; blank or null for none. The tags are comma separated, taken as a
+     *  claim's are; blank or null for none. */
     public record PersonForm(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             Long version,
             LocalDate gradeFrom,
             @Pattern(regexp = "\\s*\\d{0,4}\\s*") String terms,
-            @Size(max = 200) String contact) {
+            @Size(max = 200) String contact,
+            @Size(max = 1000) String tags) {
 
         /** The terms in days; null when blank. */
         public Integer termsDays() {
             return terms == null || terms.isBlank() ? null : Integer.valueOf(terms.trim());
+        }
+
+        /** The tags as stored: lower-case, sorted and comma separated, without repeats; null when none. */
+        public String tagsValue() {
+            return ClaimService.tagsOf(tags);
         }
 
         /** The contact as stored: trimmed and lower-cased; null when blank. */
@@ -200,7 +209,7 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm body) {
         return view(sheetId, user, service.add(sheetId, user.trim(), body.name(), body.grade(),
-                body.termsDays(), body.contactValue()));
+                body.termsDays(), body.contactValue(), body.tagsValue()));
     }
 
     @PutMapping("/{id}")
@@ -210,7 +219,7 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm body) {
         return view(sheetId, user, service.update(sheetId, user.trim(), id, body.version(), body.name(), body.grade(),
-                body.gradeFrom(), body.termsDays(), body.contactValue()));
+                body.gradeFrom(), body.termsDays(), body.contactValue(), body.tagsValue()));
     }
 
     /** Give the selected people the grade; a viewer, who may change nothing, changes no one. */

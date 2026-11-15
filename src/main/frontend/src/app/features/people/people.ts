@@ -12,7 +12,7 @@ import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, effectiveRates, pctOn, plusDays } from '../rates/rates-api';
-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, cancelStatementError, retireError, statementError, transferError, unretireError, watchError } from './people-api';
+import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, retireError, statementError, transferError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -44,6 +44,8 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
         <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" autocomplete="off" />
         <label for="person-form-contact">Contact</label>
         <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact" autocomplete="off" />
+        <label for="person-form-tags">Tags (comma separated)</label>
+        <input id="person-form-tags" data-testid="person-form-tags" formControlName="tags" autocomplete="off" />
         @if (editingId() !== null) {
           <label for="person-form-grade-from">Grade from</label>
           <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
@@ -193,7 +195,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
       </form>
       <table data-testid="people-list">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">From sheet</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Cut</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">From sheet</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Cut</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shownPeople(); track p.id) {
@@ -216,6 +218,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              <td data-testid="person-tags">{{ personTags(p).join(', ') }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td>
                 <span data-testid="person-due-total">{{ dueOf(p) }}</span>
@@ -526,6 +529,7 @@ export class People {
   protected readonly overdueTotal = computed(() =>
     money(trimmedSum([...this.overdueByPerson().values()].map((o) => o.cents))));
   protected readonly money = money;
+  protected readonly personTags = personTags;
   /** The sheet's periods, by from-date. */
   protected readonly periods = signal<Period[]>([]);
   /** Whether a claim counts in a period's live due-total, taken in the status its log gives it at
@@ -614,18 +618,20 @@ export class People {
     money(this.people().reduce((sum, p) => sum + (this.byPerson().get(p.id)?.cents ?? 0), 0)));
   /** Every tag ever used on the sheet, as last read from the store. */
   private readonly tagsUsed = signal<string[]>([]);
-  /** Each tag ever used on the sheet (those read, and any a claim carries now), in order, with
-   *  the dues in cents (n/a ones skipped) of the counting claims that carry it; a claim with two
-   *  tags counts in both. */
+  /** Each tag ever used on the sheet (those read, and any a claim or person carries now), in order,
+   *  with the dues in cents (n/a ones skipped) of the counting claims that carry it, themselves or
+   *  through their person, once each; a claim with two tags counts in both. */
   protected readonly tagTotals = computed(() => {
     const out = new Map<string, number>(this.tagsUsed().map((t) => [t, 0]));
     for (const c of this.claims()) for (const t of tagsOf(c)) if (!out.has(t)) out.set(t, 0);
+    for (const p of this.people()) for (const t of personTags(p)) if (!out.has(t)) out.set(t, 0);
     const late = this.lateness();
     const live = this.countsLive();
     for (const p of this.people()) {
-      for (const c of this.claimsOf(p.id).filter((c) => c.tags !== null && live(c))) {
+      const own = personTags(p);
+      for (const c of this.claimsOf(p.id).filter((c) => (c.tags !== null || own.length > 0) && live(c))) {
         const due = this.claimDueCents(p, c, late) ?? 0;
-        for (const t of tagsOf(c)) out.set(t, (out.get(t) ?? 0) + due);
+        for (const t of new Set([...tagsOf(c), ...own])) out.set(t, (out.get(t) ?? 0) + due);
       }
     }
     return [...out].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([tag, cents]) => ({ tag, cents }));
@@ -700,6 +706,8 @@ export class People {
     terms: new FormControl('', { nonNullable: true }),
     /** The person's contact; blank for none. */
     contact: new FormControl('', { nonNullable: true }),
+    /** The person's tags, comma separated; blank for none. */
+    tags: new FormControl('', { nonNullable: true }),
   });
 
   /** The quick-add bar: a name and an amount make a DRAFT claim for that person. */
@@ -798,7 +806,8 @@ export class People {
     this.error.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
-    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: termsText(p), contact: p.contact ?? '' });
+    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: termsText(p), contact: p.contact ?? '',
+      tags: personTags(p).join(', ') });
   }
 
   protected claimsOf(personId: number): Claim[] {
@@ -1322,12 +1331,12 @@ export class People {
     try {
       if (editing === null) {
         const added = await this.api.add(sheetId, { name: value.name, grade: value.grade, terms: value.terms.trim(),
-          contact: value.contact.trim() });
+          contact: value.contact.trim(), tags: value.tags.trim() });
         if (this.session.sheetId() === sheetId) this.people.update((ps) => [...ps, added]);
       } else {
         const saved = await this.api.update(sheetId, editing,
           { ...value, gradeFrom: value.gradeFrom.trim() || null, terms: value.terms.trim(), contact: value.contact.trim(),
-            version: this.editingVersion });
+            tags: value.tags.trim(), version: this.editingVersion });
         if (this.session.sheetId() === sheetId) this.taken(saved);
       }
       this.reset();
@@ -1458,7 +1467,7 @@ export class People {
       this.taken(current);
       this.editingVersion = current.version;
       this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: this.form.getRawValue().gradeFrom,
-        terms: termsText(current), contact: current.contact ?? '' },
+        terms: termsText(current), contact: current.contact ?? '', tags: personTags(current).join(', ') },
         { emitEvent: false });
     } catch {
       // the error shown already says the save was refused
@@ -1467,7 +1476,7 @@ export class People {
 
   private reset(): void {
     this.editingId.set(null);
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '' });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '', tags: '' });
     this.error.set(null);
   }
 

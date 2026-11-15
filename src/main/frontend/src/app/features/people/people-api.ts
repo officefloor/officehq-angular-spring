@@ -74,6 +74,9 @@ export interface Person {
   terms: number | null;
   /** The person's contact, trimmed and lower-cased; null when none. */
   contact: string | null;
+  /** The person's tags: lower-case, sorted and comma separated, without repeats; null when none.
+   *  A claim counts for a tag its person carries as well as for its own. */
+  tags: string | null;
   /** The person's aliases, sorted as names are compared (ignoring case). */
   aliases: string[];
   /** Whether their name or an alias is also a name or alias on another sheet of the sheet's tree. */
@@ -99,6 +102,13 @@ export interface PersonForm {
   terms: string;
   /** The person's contact; blank for none. */
   contact: string;
+  /** The person's tags, comma separated; blank for none. */
+  tags: string;
+}
+
+/** The person's tags, in order. */
+export function personTags(p: Person): string[] {
+  return p.tags ? p.tags.split(',') : [];
 }
 
 // The people kept on the active sheet, read and written through the server.

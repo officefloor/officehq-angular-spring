@@ -204,9 +204,11 @@ public class PersonService {
     }
 
     /** Add a person to the sheet (the sheet is created first if it was never loaded); {@code contact}
-     *  (trimmed and lower-cased, null: none) is refused when another person on the sheet has it. */
+     *  (trimmed and lower-cased, null: none) is refused when another person on the sheet has it;
+     *  {@code tags} (as {@link net.officefloor.hq.app.claim.ClaimService#tagsOf} has them, null: none). */
     @Transactional
-    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
+            String tags) {
         sheets.load(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String trimmed = name.trim();
@@ -217,6 +219,7 @@ public class PersonService {
             Person fresh = new Person(sheetId, trimmed, grade);
             fresh.setTerms(terms);
             fresh.setContact(contact);
+            fresh.setTags(tags);
             fresh.setPosition(people.nextPosition(sheetId));
             person = people.saveAndFlush(fresh);
         } catch (DataIntegrityViolationException e) {
@@ -232,10 +235,11 @@ public class PersonService {
      *  The grade is recorded from {@code gradeFrom} (null: the sheet's today), keeping those already
      *  recorded; with no from-date, a grade the same as the one in force on the sheet's today records nothing.
      *  The person's own terms become {@code terms} (null: none), and their contact {@code contact}
-     *  (null: none), refused when another person on the sheet has it. */
+     *  (null: none), refused when another person on the sheet has it; their tags become {@code tags}
+     *  (null: none). */
     @Transactional
     public Person update(String sheetId, String user, long id, Long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms, String contact) {
+            LocalDate gradeFrom, Integer terms, String contact, String tags) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (version == null || version != person.getVersion()) {
@@ -255,6 +259,7 @@ public class PersonService {
         person.setTerms(terms);
         boolean contactChanged = !Objects.equals(contact, person.getContact());
         person.setContact(contact);
+        person.setTags(tags);
         LocalDate today = sheets.today(sheetId);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.recordGrade(grade, gradeFrom != null ? gradeFrom : today);

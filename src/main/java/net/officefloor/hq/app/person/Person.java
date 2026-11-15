@@ -63,6 +63,11 @@ public class Person {
     @Column(name = "contact")
     private String contact;
 
+    /** The person's tags: lower-case, sorted and comma separated, without repeats; null when they
+     *  have none. A claim counts for a tag its person carries as well as for its own. */
+    @Column(name = "tags")
+    private String tags;
+
     /** The person's aliases, kept trimmed: other names the person is found by. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
@@ -113,25 +118,27 @@ public class Person {
     }
 
     /** A copy of the person for another sheet, as a transfer carries them: their name, every grade
-     *  they were given (and its from-date), their terms, contact and aliases. */
+     *  they were given (and its from-date), their terms, contact, tags and aliases. */
     public Person transferredTo(String sheetId) {
         Person copy = new Person(sheetId, name, grade);
         copy.datedGrades.putAll(datedGrades);
         copy.terms = terms;
         copy.contact = contact;
+        copy.tags = tags;
         copy.aliases.addAll(aliases);
         copy.originSheetId = this.sheetId;
         return copy;
     }
 
     /** A copy of the person for a clone of the sheet: their name, every grade they were given (and
-     *  its from-date), their terms, contact, aliases, holds, retirement (and past ones), place in the
+     *  its from-date), their terms, contact, tags, aliases, holds, retirement (and past ones), place in the
      *  list and the sheet they came from. */
     public Person clonedTo(String sheetId) {
         Person copy = new Person(sheetId, name, grade);
         copy.datedGrades.putAll(datedGrades);
         copy.terms = terms;
         copy.contact = contact;
+        copy.tags = tags;
         copy.aliases.addAll(aliases);
         copy.retiredFrom = retiredFrom;
         copy.retirements.addAll(retirements);
@@ -194,6 +201,14 @@ public class Person {
 
     public void setContact(String contact) {
         this.contact = contact;
+    }
+
+    public String getTags() {
+        return tags;
+    }
+
+    public void setTags(String tags) {
+        this.tags = tags;
     }
 
     /** The person's aliases, sorted as names are compared (ignoring case). */

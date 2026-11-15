@@ -88,11 +88,11 @@ public class ImportPeopleService {
         for (Line line : lines) {
             Person p = line.existing();
             if (p == null) {
-                added.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact()));
+                added.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact(), null));
             } else {
                 updated.add(people.update(sheetId, user, p.getId(), p.getVersion(), p.getName(), line.grade(), null,
                         line.terms() != null ? line.terms() : p.getTerms(),
-                        line.contact() != null ? line.contact() : p.getContact()));
+                        line.contact() != null ? line.contact() : p.getContact(), p.getTags()));
             }
         }
         return new Imported(added, updated);

@@ -36,7 +36,7 @@ public class QuickAddService {
         Person person = people.findBySheetIdAndNameOrAlias(sheetId, trimmed).orElse(null);
         boolean added = person == null;
         if (added) {
-            person = personService.add(sheetId, user, trimmed, NEW_PERSON_GRADE, null, null);
+            person = personService.add(sheetId, user, trimmed, NEW_PERSON_GRADE, null, null, null);
         }
         Claim claim = claimService.add(sheetId, user, person.getId(), amount, null, "", null, null, null);
         return new QuickAdd(person, added, claim);
