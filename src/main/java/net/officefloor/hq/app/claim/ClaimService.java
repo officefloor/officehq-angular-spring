@@ -781,7 +781,8 @@ public class ClaimService {
     }
 
     /** Reassign a claim as {@link #reassign(String, String, long, long)} does; when {@code toSame}
-     *  a claim already the person's is moved too (listed as their newest), as a bulk reassign does. */
+     *  a claim already the person's is moved too (listed as their newest, taking the next number in
+     *  its sequence), as a bulk reassign does. */
     @Transactional
     public Claim reassign(String sheetId, String user, long id, long toPersonId, boolean toSame) {
         Claim claim = claims.findForUpdate(id, sheetId)
@@ -802,8 +803,9 @@ public class ClaimService {
         Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        if (claim.getNumber() != null && claim.getPersonId() != toPersonId) {
-            // moved to another person: the next number in its sequence, the old one never given again
+        if (claim.getNumber() != null) {
+            // moved (to another person, or as the person's newest): the next number in its sequence,
+            // the old one never given again
             retired.save(new RetiredNumber(sheetId, claim.getNumber()));
             claims.flush();
             claim.setNumber(nextNumber(sheetId, claim.getDueBy()));

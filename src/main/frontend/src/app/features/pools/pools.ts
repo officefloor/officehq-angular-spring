@@ -26,7 +26,8 @@ function shareOf(cents: number, share: number, total: number): number {
 
 /** Each member's cut of the pool's pot, by member key: the pot times their share divided by the
  *  shares of the members with a cut, rounded half to even, the remainder going to the member with
- *  the largest share among them (the earliest added on a tie) so the cuts total the pot. A retired
+ *  the smallest non-zero cut (the latest added on a tie; a member with no cut gets none, and a pool
+ *  with no non-zero cut gives it to the last member with a share) so the cuts total the pot. A retired
  *  member, and one held on the sheet's today, gets 0.00, their share spread over the others (all
  *  0.00 when none is left with a cut; no cuts at all when every member is retired); none unless the
  *  pool is balanced (a retirement or hold leaves the balance as it is) and has a pot. A member
@@ -44,9 +45,12 @@ function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => b
   const total = cutShares.reduce((sum, c) => sum + c, 0);
   const raw = cutShares.map((share) => (share === 0 ? 0 : shareOf(potCents, share, total)));
   if (total > 0) {
-    let largest = 0;
-    cutShares.forEach((share, i) => { if (share > cutShares[largest]) largest = i; });
-    raw[largest] += potCents - raw.reduce((sum, c) => sum + c, 0);
+    let target = -1;
+    raw.forEach((cut, i) => {
+      if (cut !== 0 && (target < 0 || Math.abs(cut) <= Math.abs(raw[target]))) target = i;
+    });
+    if (target < 0) cutShares.forEach((share, i) => { if (share > 0) target = i; });
+    raw[target] += potCents - raw.reduce((sum, c) => sum + c, 0);
   }
   pool.members.forEach((m, i) => { if (memberOn(m, day)) cutsByKey.set(memberKey(m), money(raw[i])); });
   return cutsByKey;
