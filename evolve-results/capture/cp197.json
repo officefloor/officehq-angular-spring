@@ -1,0 +1,64 @@
+{
+  "checkpoint": 197,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp197_activity-counts",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show the activity of the sheet: for every user and every event in the sheet's audit file, one\nline <user> <EVENT> <count>, sorted by user then event.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow the activity of the sheet: for every user and every event in the sheet's audit file, one\nline <user> <EVENT> <count>, sorted by user then event.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "78ed80e1e4a6cd8a85025dcf508eb6fcddb16171",
+  "reset_sha": "",
+  "preagent_sha": "6dc3c2463307fc6603a6d834526e251aaef4243b",
+  "prev_sha": "6dc3c2463307fc6603a6d834526e251aaef4243b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3515508,
+    "input_tokens": 20,
+    "output_tokens": 4055,
+    "cache_read_tokens": 255014,
+    "cache_creation_tokens": 27421,
+    "num_turns": 10,
+    "duration_ms": 455411,
+    "duration_api_ms": 41538,
+    "model": "claude-opus-5-5",
+    "session_id": "2b2609e8-eed6-4283-9970-3bb9b008c818",
+    "stop_reason": "success",
+    "result_text": "The sheet now has an activity view: press **Show activity** and it lists one `<user> <EVENT> <count>` line for each user and event in the sheet's audit records, sorted by user then event. All 4 acceptance tests pass on `bin/e2e`.\n\nThe first `bin/e2e` run failed all 4 tests because the browser couldn't connect to the app at `localhost:3000`, so it apparently hadn't finished starting. I made no changes and ran it again, and all 4 passed. If that comes back, it's in app startup, not this change.\n\nWhat changed:\n- **Server:** a new `Audit.activity(sheetId)` method in `Audit.java` reads the audit file. It keeps only the lines for the sheet (`sheet=<id>`), counts them by the `by=` user and the event name, and returns them sorted. `AuditController.java` serves this at `GET /api/sheets/{id}/activity`.\n- **Front end:** a new `activity.ts` component with the `activity-show` button and the `activity-line` items the test reads. If the request fails it shows an `activity-error`. It sits on the home screen below the audit viewer.\n\nTwo behaviours you might not expect:\n- Audit lines with no `by=` field are skipped, since they have no user to count under.\n- Only the sheet's own records are counted. Unlike the audit viewer's person filter, it doesn't pull in records from descendant or origin sheets.\n\nNothing new is stored and the database schema is unchanged; the counts are worked out from the audit file each time you ask.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.3515508,
+        "num_turns": 10,
+        "duration_ms": 455411,
+        "duration_api_ms": 41538,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp197.agent.jsonl",
+  "agent_diff_file": "cp197.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
