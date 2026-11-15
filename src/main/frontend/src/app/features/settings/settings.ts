@@ -13,9 +13,9 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
       <h2 id="settings-heading">Settings</h2>
       <p>Clerk limit in force <strong data-testid="setting-clerk-limit-current">{{ session.clerkLimit() ?? '' }}</strong></p>
       <p>Floor in force <strong data-testid="setting-floor-current">{{ session.floor() }}</strong></p>
-      <p>Terms in force (days) <strong data-testid="setting-terms-current">{{ session.terms() }}</strong></p>
+      <p>Terms in force (business days) <strong data-testid="setting-terms-current">{{ session.terms() }}</strong></p>
       @for (g of grades; track g) {
-        <p>Terms in force for grade {{ g }} (days) <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ termsOf(g) }}</strong></p>
+        <p>Terms in force for grade {{ g }} (business days) <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ termsOf(g) }}</strong></p>
       }
       <p>Late percent in force <strong data-testid="setting-late-pct-current">{{ session.latePct() }}</strong></p>
       <p>Policy date in force (blank: the sheet's today) <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>

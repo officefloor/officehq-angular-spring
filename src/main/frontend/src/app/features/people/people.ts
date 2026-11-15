@@ -35,7 +35,7 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
             <option [value]="g">{{ g }}</option>
           }
         </select>
-        <label for="person-form-terms">Terms (days)</label>
+        <label for="person-form-terms">Terms (business days)</label>
         <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" autocomplete="off" />
         @if (editingId() !== null) {
           <label for="person-form-grade-from">Grade from</label>
