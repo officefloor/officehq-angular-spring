@@ -12,11 +12,12 @@ export const CLAIM_AMOUNT_PATTERN = /^-?\d{1,13}(\.\d{1,2})?$/;
 
 /** DRAFT when added, then OPEN, then SETTLED; a clerk settling one above the clerk limit sends it to
  *  PENDING, which a steward approves (SETTLED) or rejects (back to OPEN). A DRAFT, OPEN or PENDING
- *  claim may be VOID, and a steward may void a SETTLED one within 7 days of its settlement. */
-export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
+ *  claim may be VOID, and a steward may void a SETTLED one within 7 days of its settlement. A DRAFT
+ *  claim may be DELETED (counting nowhere) and restored to DRAFT on the sheet's today it was deleted. */
+export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID' | 'DELETED';
 
 /** A move of a claim's status, as the server names it. */
-export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'resettle';
+export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'resettle' | 'delete' | 'restore';
 
 export interface Claim {
   id: number;
@@ -409,6 +410,20 @@ export const VOID_REASON_NEEDED = 'Choose a reason from the sheet\'s list to voi
 export function voidError(e: unknown, opener: boolean): string {
   if (e instanceof HttpErrorResponse && e.status === 422) return VOID_REASON_NEEDED;
   return statusError(e, opener);
+}
+
+export function deleteError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft claim that no one else is editing can be deleted.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
+  return otherError(e);
+}
+
+export function restoreError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 409) return "Only a deleted claim can be restored, and only on the sheet's today it was deleted.";
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
+  return otherError(e);
 }
 
 export function statusError(e: unknown, opener: boolean): string {

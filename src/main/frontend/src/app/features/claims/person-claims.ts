@@ -5,7 +5,7 @@ import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment, ClaimLogLine, ClaimsApi, cents, claimError, commentError, commentText, deferError, remindError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, remindError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -126,6 +126,10 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment,
             }
             <button type="button" data-testid="claim-void" (click)="voidClaim(c)"
               [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+            <button type="button" data-testid="claim-delete" (click)="changeStatus(c, 'delete')"
+              [attr.aria-label]="'Delete claim of ' + c.amount + ' on ' + c.date">Delete</button>
+            <button type="button" data-testid="claim-restore" (click)="changeStatus(c, 'restore')"
+              [attr.aria-label]="'Restore claim of ' + c.amount + ' on ' + c.date">Restore</button>
             <button type="button" data-testid="claim-edit" (click)="edit(c)"
               [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
             <label [for]="'claim-inline-amount-' + c.id">Amount</label>
@@ -348,6 +352,8 @@ export class PersonClaims {
   protected async submit(): Promise<void> {
     if (this.submitting) return;
     this.error.set(null);
+    // submitting is the next action on these claims: a refusal left on one of them goes
+    this.rowErrors.set({});
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
     const value = this.form.getRawValue();
@@ -587,7 +593,7 @@ export class PersonClaims {
     }
   }
 
-  /** Open, settle, approve, re-settle or void a claim; a move its status does not allow shows an error on the claim. */
+  /** Open, settle, approve, re-settle, void, delete or restore a claim; a move its status does not allow shows an error on the claim. */
   protected async changeStatus(c: Claim, action: ClaimAction): Promise<void> {
     this.clearRowError(c.id);
     const sheetId = this.session.sheetId();
@@ -596,7 +602,8 @@ export class PersonClaims {
       const claim = await this.api.changeStatus(sheetId, c.id, action);
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
-      const err = action === 'resettle' ? resettleError(e) : statusError(e, this.isOpenerOrEditor(c));
+      const err = action === 'resettle' ? resettleError(e) : action === 'delete' ? deleteError(e)
+        : action === 'restore' ? restoreError(e) : statusError(e, this.isOpenerOrEditor(c));
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: err }));
     }
   }

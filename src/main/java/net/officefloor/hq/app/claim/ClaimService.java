@@ -403,7 +403,7 @@ public class ClaimService {
             case PENDING -> "CLAIM_PENDING";
             case SETTLED -> "CLAIM_SETTLED";
             case VOID -> "CLAIM_VOIDED";
-            case DRAFT -> throw new IllegalArgumentException("A claim cannot return to DRAFT");
+            case DRAFT, DELETED -> throw new IllegalArgumentException("A claim is deleted and restored on its own");
         };
         if (to == ClaimStatus.SETTLED) {
             record(event, user, person, claim, number, " due=" + dueText(claim.getSettledDue()));
@@ -414,6 +414,59 @@ public class ClaimService {
         } else {
             record(event, user, person, claim, number);
         }
+        rollup.recordChanges(sheetId, user, before);
+        return claim;
+    }
+
+    /** Delete a DRAFT claim: it becomes DELETED, counting nowhere, its log gains a DELETED line
+     *  and CLAIM_DELETED is written. Refused (404) when missing, (423) when due in a closed
+     *  period, (409) unless a DRAFT, and (409) while another user holds its editor open. */
+    @Transactional
+    public Claim delete(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        refuseIfClosed(sheetId, claim.getDueBy());
+        if (!claim.getStatus().canMoveTo(ClaimStatus.DELETED)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only a DRAFT claim is deleted, not a " + claim.getStatus() + " one");
+        }
+        refuseIfLocked(claim, user);
+        return moveDeleted(sheetId, user, claim, ClaimStatus.DELETED, "CLAIM_DELETED");
+    }
+
+    /** Restore a DELETED claim to DRAFT on the sheet's today it was deleted (its last DELETED log
+     *  line): its log gains a DRAFT line and CLAIM_RESTORED is written. Refused (404) when missing,
+     *  (423) when due in a closed period, (409) unless DELETED, and (409) on a later day. */
+    @Transactional
+    public Claim restore(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        refuseIfClosed(sheetId, claim.getDueBy());
+        if (!claim.getStatus().canMoveTo(ClaimStatus.DRAFT)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only a DELETED claim is restored, not a " + claim.getStatus() + " one");
+        }
+        LocalDate deletedOn = log.findByClaimIdOrderByIdAsc(claim.getId()).stream()
+                .filter(line -> line.getStatus() == ClaimStatus.DELETED)
+                .map(ClaimLog::getOn)
+                .reduce((first, second) -> second)
+                .orElse(null);
+        if (!sheets.today(sheetId).equals(deletedOn)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim is restored only on the day it was deleted");
+        }
+        return moveDeleted(sheetId, user, claim, ClaimStatus.DRAFT, "CLAIM_RESTORED");
+    }
+
+    private Claim moveDeleted(String sheetId, String user, Claim claim, ClaimStatus to, String event) {
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setStatus(to);
+        claim.setLockedBy(null);
+        claims.flush();
+        logStatus(user, person, claim);
+        record(event, user, person, claim);
         rollup.recordChanges(sheetId, user, before);
         return claim;
     }
@@ -562,7 +615,8 @@ public class ClaimService {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         refuseIfClosed(sheetId, claim.getDueBy());
-        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim takes no more proofs");
         }
@@ -671,7 +725,8 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         refuseIfClosed(sheetId, claim.getDueBy());
         settings.refuseUnlessAllowed(sheetId, user, Permission.REASSIGN);
-        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID
+                || claim.getStatus() == ClaimStatus.DELETED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be reassigned");
         }
@@ -910,7 +965,7 @@ public class ClaimService {
         Set<LocalDate> holidays = new HashSet<>(settings.holidays(sheetId));
         for (Claim c : claims.findBySheetIdForUpdate(sheetId)) {
             if (c.getStatus() == ClaimStatus.SETTLED || c.getStatus() == ClaimStatus.VOID
-                    || c.getDueBy().isBefore(added.day())) {
+                    || c.getStatus() == ClaimStatus.DELETED || c.getDueBy().isBefore(added.day())) {
                 continue;
             }
             c.setDueBy(BusinessDays.after(c.getDate(), c.getTerms(), holidays));

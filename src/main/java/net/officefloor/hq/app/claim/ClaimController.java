@@ -446,6 +446,22 @@ public class ClaimController {
         return new SplitView(view(s.original()), view(s.split()));
     }
 
+    @PostMapping("/claims/{id}/delete")
+    public ClaimView delete(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return view(service.delete(sheetId, user.trim(), id));
+    }
+
+    @PostMapping("/claims/{id}/restore")
+    public ClaimView restore(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return view(service.restore(sheetId, user.trim(), id));
+    }
+
     @PostMapping("/claims/{id}/void")
     public ClaimView voidClaim(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
