@@ -57,6 +57,7 @@ public class SettingsService {
 
     /** The key the review SLA is audited under. */
     public static final String REVIEW_SLA = "review-sla";
+    public static final String MAX_OPEN = "max-open";
 
     /** The key the mid score threshold is audited under. */
     public static final String SCORE_MID = "score-mid";
@@ -398,6 +399,25 @@ public class SettingsService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + REVIEW_SLA + " value=" + (reviewSla == null ? "" : reviewSla));
         return reviewSla;
+    }
+
+    /** The most OPEN or PENDING claims a person on the sheet may have; null when blank (none). */
+    @Transactional(readOnly = true)
+    public Integer maxOpen(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getMaxOpen).orElse(null);
+    }
+
+    /** Set the sheet's maximum of open claims per person (null: none), the sheet created first if
+     *  it was never loaded; not dated, it applies to every opening from then on. */
+    @Transactional
+    public Integer setMaxOpen(String sheetId, String user, Integer maxOpen) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        sheet.setMaxOpen(maxOpen);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + MAX_OPEN + " value=" + (maxOpen == null ? "" : maxOpen));
+        return maxOpen;
     }
 
     /** The sheet's mid score threshold; null when blank. */

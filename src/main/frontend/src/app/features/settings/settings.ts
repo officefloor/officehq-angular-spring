@@ -40,6 +40,7 @@ import { PROOF_KINDS } from '../claims/claims-api';
       <p>Grace days (blank: off) <strong data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</strong></p>
       <p>Escalation gap in days (blank: off) <strong data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</strong></p>
       <p>Review SLA in days (blank: none) <strong data-testid="setting-review-sla-current">{{ session.reviewSla() ?? '' }}</strong></p>
+      <p>Most open claims per person (blank: none) <strong data-testid="setting-max-open-current">{{ maxOpen() ?? '' }}</strong></p>
       <p>Mid score threshold (blank: none) <strong data-testid="setting-score-mid-current">{{ session.scoreMid() ?? '' }}</strong></p>
       <p>High score threshold (blank: none) <strong data-testid="setting-score-high-current">{{ session.scoreHigh() ?? '' }}</strong></p>
       <p>Score log (on or blank) <strong data-testid="setting-score-log-current">{{ scoreLog() ? 'on' : '' }}</strong></p>
@@ -125,6 +126,8 @@ import { PROOF_KINDS } from '../claims/claims-api';
         <input id="setting-escalate-after" data-testid="setting-escalate-after" formControlName="escalateAfter" inputmode="numeric" autocomplete="off" />
         <label for="setting-review-sla">Review SLA: a review claim whose review day plus this many days is before the sheet's today is late (blank: none)</label>
         <input id="setting-review-sla" data-testid="setting-review-sla" formControlName="reviewSla" inputmode="numeric" autocomplete="off" />
+        <label for="setting-max-open">Most open claims per person: opening a claim is refused while the person has this many OPEN or PENDING claims (blank: none)</label>
+        <input id="setting-max-open" data-testid="setting-max-open" formControlName="maxOpen" inputmode="numeric" autocomplete="off" />
         <label for="setting-score-mid">Mid score threshold: while both thresholds are set, a person whose score is at or above it shows MID (blank: none)</label>
         <input id="setting-score-mid" data-testid="setting-score-mid" formControlName="scoreMid" inputmode="numeric" autocomplete="off" />
         <label for="setting-score-high">High score threshold: while both thresholds are set, a person whose score is at or above it shows HIGH (blank: none)</label>
@@ -243,6 +246,7 @@ export class Settings {
   protected readonly scoreLog = signal(false);
   /** The sheet's escalation gap in days; null when blank (off). */
   protected readonly escalateAfter = signal<number | null>(null);
+  protected readonly maxOpen = signal<number | null>(null);
   /** The sheet's alert threshold (two decimals); null when blank (off). */
   protected readonly alertThreshold = signal<string | null>(null);
   protected readonly grades = GRADES;
@@ -297,6 +301,7 @@ export class Settings {
     graceDays: new FormControl('', { nonNullable: true }),
     escalateAfter: new FormControl('', { nonNullable: true }),
     reviewSla: new FormControl('', { nonNullable: true }),
+    maxOpen: new FormControl('', { nonNullable: true }),
     scoreMid: new FormControl('', { nonNullable: true }),
     scoreHigh: new FormControl('', { nonNullable: true }),
     scoreLog: new FormControl('', { nonNullable: true }),
@@ -406,6 +411,7 @@ export class Settings {
         this.entryDate.set(null);
         this.graceDays.set(null);
         this.escalateAfter.set(null);
+        this.maxOpen.set(null);
         this.alertThreshold.set(null);
         this.session.reviewSla.set(null);
         this.session.scoreMid.set(null);
@@ -428,7 +434,7 @@ export class Settings {
         this.voidReasonForm.reset({ reason: '' }, { emitEvent: false });
         this.settingsForm.reset({
           clerkLimit: '', clerkLimitFrom: '', floor: '', floorFrom: '', terms: '', termsFrom: '', latePct: '', latePctFrom: '',
-          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', rounding: '', roundingFrom: '', noteThreshold: '', noteThresholdFrom: '', reviewThreshold: '', reviewThresholdFrom: '', graceDays: '', escalateAfter: '', reviewSla: '', scoreMid: '', scoreHigh: '', scoreLog: '', pot: '', alertThreshold: '', fiscalStartMonth: '', parent: '', proofKinds: '', defaultGrade: '',
+          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', rounding: '', roundingFrom: '', noteThreshold: '', noteThresholdFrom: '', reviewThreshold: '', reviewThresholdFrom: '', graceDays: '', escalateAfter: '', reviewSla: '', maxOpen: '', scoreMid: '', scoreHigh: '', scoreLog: '', pot: '', alertThreshold: '', fiscalStartMonth: '', parent: '', proofKinds: '', defaultGrade: '',
         }, { emitEvent: false });
         this.gradeClerkLimitForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.gradeClerkLimitFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
@@ -458,7 +464,7 @@ export class Settings {
     this.settingsErr.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, rounding, roundingFrom, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, escalateAfter, reviewSla, scoreMid, scoreHigh, scoreLog, pot, alertThreshold, fiscalStartMonth, parent, proofKinds, defaultGrade } = this.settingsForm.controls;
+    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, rounding, roundingFrom, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, escalateAfter, reviewSla, maxOpen, scoreMid, scoreHigh, scoreLog, pot, alertThreshold, fiscalStartMonth, parent, proofKinds, defaultGrade } = this.settingsForm.controls;
     // only the settings typed into (or entered and left, as when one already blank is cleared),
     // or whose from-date was, since the last save are saved (the clerk limit when none is)
     const typed = (c: AbstractControl) => c.dirty || c.touched;
@@ -476,6 +482,7 @@ export class Settings {
     const saveGraceDays = typed(graceDays);
     const saveEscalateAfter = typed(escalateAfter);
     const saveReviewSla = typed(reviewSla);
+    const saveMaxOpen = typed(maxOpen);
     const saveScoreMid = typed(scoreMid);
     const saveScoreHigh = typed(scoreHigh);
     const saveScoreLog = typed(scoreLog);
@@ -517,7 +524,7 @@ export class Settings {
         typed: this.permissionsForm.controls[p.action].value.trim(),
       }));
     const saveLimit = typed(clerkLimit) || typed(clerkLimitFrom)
-      || !(saveFloor || saveTerms || gradeClerkLimitToSave.length > 0 || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveRounding || saveNoteThreshold || saveReviewThreshold || saveGraceDays || saveEscalateAfter || saveReviewSla || saveScoreMid || saveScoreHigh || saveScoreLog || savePot || saveAlertThreshold || saveFiscalStartMonth || saveParent || saveProofKinds || saveDefaultGrade);
+      || !(saveFloor || saveTerms || gradeClerkLimitToSave.length > 0 || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveRounding || saveNoteThreshold || saveReviewThreshold || saveGraceDays || saveEscalateAfter || saveReviewSla || saveMaxOpen || saveScoreMid || saveScoreHigh || saveScoreLog || savePot || saveAlertThreshold || saveFiscalStartMonth || saveParent || saveProofKinds || saveDefaultGrade);
     const limitFrom = clerkLimitFrom.value.trim();
     const floorFromValue = floorFrom.value.trim();
     const termsFromValue = termsFrom.value.trim();
@@ -543,6 +550,7 @@ export class Settings {
     const graceDaysValue = graceDays.value.trim();
     const escalateAfterValue = escalateAfter.value.trim();
     const reviewSlaValue = reviewSla.value.trim();
+    const maxOpenValue = maxOpen.value.trim();
     const scoreMidValue = scoreMid.value.trim();
     const scoreHighValue = scoreHigh.value.trim();
     const scoreLogValue = scoreLog.value.trim();
@@ -571,6 +579,7 @@ export class Settings {
         || (saveGraceDays && graceDaysValue !== '' && !TERMS_PATTERN.test(graceDaysValue))
         || (saveEscalateAfter && escalateAfterValue !== '' && !TERMS_PATTERN.test(escalateAfterValue))
         || (saveReviewSla && reviewSlaValue !== '' && !TERMS_PATTERN.test(reviewSlaValue))
+        || (saveMaxOpen && maxOpenValue !== '' && !TERMS_PATTERN.test(maxOpenValue))
         || (saveScoreMid && scoreMidValue !== '' && !SCORE_PATTERN.test(scoreMidValue))
         || (saveScoreHigh && scoreHighValue !== '' && !SCORE_PATTERN.test(scoreHighValue))
         || (saveScoreLog && scoreLogValue !== '' && scoreLogValue !== 'on')
@@ -702,6 +711,11 @@ export class Settings {
         const saved = await this.api.setReviewSla(sheetId, reviewSlaValue);
         if (reviewSla.value.trim() === reviewSlaValue) { reviewSla.markAsPristine(); reviewSla.markAsUntouched(); }
         if (this.session.sheetId() === sheetId) this.session.reviewSla.set(saved.reviewSla);
+      }
+      if (saveMaxOpen) {
+        const saved = await this.api.setMaxOpen(sheetId, maxOpenValue);
+        if (maxOpen.value.trim() === maxOpenValue) { maxOpen.markAsPristine(); maxOpen.markAsUntouched(); }
+        if (this.session.sheetId() === sheetId) this.maxOpen.set(saved.maxOpen);
       }
       if (saveScoreMid) {
         const saved = await this.api.setScoreMid(sheetId, scoreMidValue);
@@ -882,6 +896,7 @@ export class Settings {
         this.graceDays.set(settings.graceDays);
         this.escalateAfter.set(settings.escalateAfter);
         this.session.reviewSla.set(settings.reviewSla);
+        this.maxOpen.set(settings.maxOpen);
         this.session.scoreMid.set(settings.scoreMid);
         this.session.scoreHigh.set(settings.scoreHigh);
         this.scoreLog.set(settings.scoreLog);
@@ -894,6 +909,9 @@ export class Settings {
         // the review SLA's field starts at the SLA, so clearing it is a change that saves "none"
         const reviewSla = this.settingsForm.controls.reviewSla;
         if (!reviewSla.dirty) reviewSla.setValue(settings.reviewSla === null ? '' : String(settings.reviewSla), { emitEvent: false });
+        // likewise the most open claims' field starts at the maximum
+        const maxOpen = this.settingsForm.controls.maxOpen;
+        if (!maxOpen.dirty) maxOpen.setValue(settings.maxOpen === null ? '' : String(settings.maxOpen), { emitEvent: false });
         // the pot's field starts at the pot, so clearing it is a change that saves "none"
         const pot = this.settingsForm.controls.pot;
         if (!pot.dirty) pot.setValue(settings.pot ?? '', { emitEvent: false });
