@@ -200,6 +200,21 @@ export function dueCents(cents: number, pctHundredths: number, halfUp = false): 
   return Number(product < 0n ? -rounded : rounded);
 }
 
+/** A holder's part in cents of an unsettled shared claim: its amount times their share (in hundredths
+ *  of a percent) over 100, times the rate of the holder's own grade in force on the claim's date (`rates`:
+ *  those of that grade) over 100, rounded half up when `halfUp` (the claim's rounding policy) else half
+ *  to even; null (a part of 0.00) when that grade has no rate then. */
+export function holderPartCents(rates: readonly Rate[], c: Claim, shareHundredths: number, halfUp: boolean): number | null {
+  const pct = pctOn(rates, c.date);
+  if (pct === null) return null;
+  const product = BigInt(cents(c.amount)) * BigInt(shareHundredths) * BigInt(cents(pct));
+  const size = product < 0n ? -product : product;
+  const whole = size / 100000000n;
+  const rest = size % 100000000n;
+  const rounded = rest > 50000000n || (rest === 50000000n && (halfUp || whole % 2n === 1n)) ? whole + 1n : whole;
+  return Number(product < 0n ? -rounded : rounded);
+}
+
 /** What a claim's late charge follows: the sheet's today and the late percent in force on each boundary date. */
 export interface Lateness {
   today: string | null;

@@ -21,6 +21,7 @@ import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimLog;
 import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimShare;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.LateCharge;
 import net.officefloor.hq.app.claim.Rounding;
@@ -246,8 +247,9 @@ public class RollupService {
     }
 
     /** The parts of their counting claims' dues (n/a ones skipped) the people on the sheet share,
-     *  by person id: each holder's part (the due times their share over 100, rounded half to even),
-     *  and the same parts taken off the claim's own person. */
+     *  by person id: each holder's part (see {@link #holderPartOf}; a settled claim's kept frozen as
+     *  its settled due times their share over 100, rounded half to even), and the same parts taken
+     *  off the claim's own person. */
     private static Map<Long, List<BigDecimal>> sharedParts(Map<Long, List<Claim>> counted, Map<Long, Person> sheetPeople,
             RateChain.Levels sheetRates, Function<LocalDate, BigDecimal> floor, LateCharge late,
             Function<Claim, RoundingMode> rounding) {
@@ -266,13 +268,29 @@ public class RollupService {
                     continue;
                 }
                 c.getShares().stream().filter(sh -> sheetPeople.containsKey(sh.getPersonId())).forEach(sh -> {
-                    BigDecimal part = sh.partOf(due);
+                    BigDecimal part = c.getSettledDue() != null ? sh.partOf(due)
+                            : holderPartOf(c, sh, sheetPeople.get(sh.getPersonId()), sheetRates, rounding.apply(c));
+                    if (part == null) {
+                        return;
+                    }
                     out.computeIfAbsent(sh.getPersonId(), k -> new ArrayList<>()).add(part);
                     out.computeIfAbsent(ownerId, k -> new ArrayList<>()).add(part.negate());
                 });
             }
         });
         return out;
+    }
+
+    /** A holder's part of an unsettled shared claim: its amount times their share over 100, times
+     *  the rate, in force on the claim's date, of the holder's own grade then (as the claim applies
+     *  the rates) over 100, rounded as the claim rounds; null (a part of 0.00, which they are not counted as holding)
+     *  when that grade has no rate then. */
+    private static BigDecimal holderPartOf(Claim c, ClaimShare share, Person holder, RateChain.Levels sheetRates,
+            RoundingMode mode) {
+        return inForce(holder, sheetRates.forClaim(c.getAdded()), c.getDate())
+                .map(r -> c.getAmount().multiply(share.getShare()).multiply(r.getPct())
+                        .divide(BigDecimal.valueOf(10000), 2, mode))
+                .orElse(null);
     }
 
     /** One line per grade of the sheet (A, B, C, then those added) comparing the sheet, as it is now or as it stood at the end of

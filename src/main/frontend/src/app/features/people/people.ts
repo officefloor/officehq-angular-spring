@@ -14,7 +14,7 @@ import { Period, PeriodsApi, periodOn, personPeriodCarriedCents, personPeriodDue
 import { Rates } from '../rates/rates';
 import { STATUSES, Summary, SummaryPerson, statusCounts } from '../summary/summary';
 import { ClassicSummary } from '../summary/classic-summary';
-import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
+import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, holderPartCents, pctOn, plusDays } from '../rates/rates-api';
 import { Dashboard, Header } from '../header/header';
 import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkHoldError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, mergeUndoError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
 
@@ -682,12 +682,13 @@ export class People {
   });
   /** The parts of shared claims' dues in cents moving into (or, negative, out of) each person's
    *  figures, by person id: for each counting claim with shares (its due not n/a), each holder's part
-   *  (the due times their share over 100, rounded half to even), and the same parts taken off the
-   *  claim's own person; each with whether the claim is SETTLED. */
+   *  (see holderPartCents; a settled claim's kept frozen as its fixed due times their share over 100,
+   *  rounded half to even), and the same parts taken off the claim's own person; each with whether the
+   *  claim is SETTLED. */
   private readonly sharedParts = computed(() => {
     const out = new Map<number, { cents: number; settled: boolean }[]>();
     const late = this.lateness();
-    const onSheet = new Set(this.people().map((p) => p.id));
+    const byId = new Map(this.people().map((p) => [p.id, p]));
     const add = (id: number, part: { cents: number; settled: boolean }) => out.set(id, [...(out.get(id) ?? []), part]);
     for (const p of this.people()) {
       for (const c of this.claimsOf(p.id).filter(this.countsLive())) {
@@ -696,8 +697,10 @@ export class People {
         if (due === null) continue;
         const settled = c.status === 'SETTLED';
         for (const s of c.shares) {
-          if (!onSheet.has(s.personId)) continue;
-          const part = sharePart(due, cents(s.share));
+          const holder = byId.get(s.personId);
+          if (!holder) continue;
+          const part = c.settledDue !== null ? sharePart(due, cents(s.share)) : this.holderPartCents(holder, c, cents(s.share));
+          if (part === null) continue;
           add(s.personId, { cents: part, settled });
           add(p.id, { cents: -part, settled });
         }
@@ -1393,6 +1396,16 @@ export class People {
     return claimDueCents(rates ?? this.rateLevels().forClaim(c.added).filter((r) => r.grade === grade), c, cents(this.session.floorOn(c.date)),
       { ...late, graceOf: (o) => this.graceOf(p, o) },
       roundsHalfUp(c, this.claimsOf(p.id), this.session.policyDate(), late.today, (d) => this.session.roundingOn(d)));
+  }
+
+  /** A holder's part in cents of an unsettled shared claim: its amount times their share over 100,
+   *  times the rate of the holder's own grade in force on its date (as the claim applies the rates)
+   *  over 100, rounded like the claim; null (0.00) when that grade has no rate then. */
+  private holderPartCents(holder: Person, c: Claim, share: number): number | null {
+    const grade = gradeOn(holder.grades, c.date);
+    const owner = this.claimsOf(c.personId);
+    return holderPartCents(this.rateLevels().forClaim(c.added).filter((r) => r.grade === grade), c, share,
+      roundsHalfUp(c, owner, this.session.policyDate(), this.lateness().today, (d) => this.session.roundingOn(d)));
   }
 
   /** A claim's grace days: those of the person's grade in force on the claim's date. */
