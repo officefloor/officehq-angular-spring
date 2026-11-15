@@ -1,0 +1,83 @@
+{
+  "checkpoint": 124,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp124_retired-share-reallocates",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    105,
+    106,
+    113,
+    116,
+    119,
+    120,
+    121,
+    122
+  ],
+  "replaced_tests": [
+    "cp105_pools.spec.ts::pools",
+    "cp106_pool-cuts.spec.ts::pool cuts",
+    "cp106_pool-cuts.spec.ts::pool cuts scenario 2",
+    "cp113_import-people.spec.ts::import people scenario 2",
+    "cp116_import-upserts.spec.ts::import upserts scenario 1",
+    "cp119_cut-totals.spec.ts::cut totals scenario 2",
+    "cp120_hold-pauses-cuts.spec.ts::hold pauses cuts scenario 3",
+    "cp121_history-follows.spec.ts::history follows scenario 2",
+    "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 1"
+  ],
+  "request": {
+    "spec": "A retired member of a pool is now left out of the cuts and their share is spread over the other\nmembers in proportion to those members' shares (as a held member's is), instead of counting as 0.00:\nthe pool's total share and balance count the retired member's share as given. A pool whose every\nmember is retired shows no cuts; a pool whose members are all held, or held and retired, shows a cut\nof 0.00 for each.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA retired member of a pool is now left out of the cuts and their share is spread over the other\nmembers in proportion to those members' shares (as a held member's is), instead of counting as 0.00:\nthe pool's total share and balance count the retired member's share as given. A pool whose every\nmember is retired shows no cuts; a pool whose members are all held, or held and retired, shows a cut\nof 0.00 for each.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5e0fee53a16994d20e41c53bc504e7989db59832",
+  "reset_sha": "",
+  "preagent_sha": "1dbfb24b05a876adb36fc9ab05b485ebd70c78a1",
+  "prev_sha": "1dbfb24b05a876adb36fc9ab05b485ebd70c78a1",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.3470786,
+    "input_tokens": 18,
+    "output_tokens": 3353,
+    "cache_read_tokens": 247973,
+    "cache_creation_tokens": 28794,
+    "num_turns": 9,
+    "duration_ms": 244151,
+    "duration_api_ms": 33690,
+    "model": "claude-opus-5-5",
+    "session_id": "b1b98cc2-941c-4646-90f9-4e2a368ff07a",
+    "stop_reason": "success",
+    "result_text": "A retired pool member is now left out of the cuts, and their share is spread over the other members in proportion to their shares, the same way a held member's is. `bin/e2e` passes all 4 tests in the spec.\n\nThe change is all in `src/main/frontend/src/app/features/pools/pools.ts`, because pool cuts are worked out only in the front end. No server or stored-data changes were needed.\n\n- **Total and balance:** a retired member's share now counts toward the pool's total share and whether it is balanced. A member whose dates don't include the sheet's today still counts as 0.00, as before.\n- **Cuts:**\n  - A retired or held member gets a cut of 0.00, and the pot is divided among the rest by their shares.\n  - If every member in the pool on that day is retired, the pool shows no cuts at all.\n  - If every member is held, or some are held and the rest retired, each shows 0.00.\n  - The rest is unchanged: a pool shows no cuts unless it is balanced and has a pot.\n\nIn the spec's first test, with a pot of 10.00 and Cam (20%) retired, Ada (50%) gets 6.25 and Ben (30%) gets 3.75. Cam shows 0.00 in pool P1 and no cut in P2, where Cam is the only member.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.3470786,
+        "num_turns": 9,
+        "duration_ms": 244151,
+        "duration_api_ms": 33690,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp124.agent.jsonl",
+  "agent_diff_file": "cp124.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
