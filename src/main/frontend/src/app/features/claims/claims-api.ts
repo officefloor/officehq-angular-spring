@@ -32,7 +32,7 @@ export interface Claim {
   date: string;
   note: string;
   status: ClaimStatus;
-  /** The sheet's number for the claim, given when it is opened and kept if it is voided; null while DRAFT.
+  /** The sheet's number for the claim, given when it is settled or approved and kept if it is voided; null while DRAFT, OPEN, PENDING or REVIEW.
    *  A sheet-wide number, or under period numbering one within its period (P1-1, X-1 in no period). */
   number: string | null;
   /** The due fixed when the claim was settled, with two decimals; null, so the due is live, for

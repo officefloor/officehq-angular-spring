@@ -469,21 +469,20 @@ public class ClaimService {
             to = ClaimStatus.PENDING;
         }
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        // a voided claim keeps its number (never reused), and the VOIDED record carries it
+        // a voided claim keeps any number it was settled with (never reused), and the VOIDED record carries it
         String number = claim.getNumber();
         // a voided SETTLED claim keeps its frozen figure, which leaves every total
         boolean reversing = to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
         BigDecimal reversed = claim.getSettledDue();
         claim.setStatus(to);
         if (to == ClaimStatus.OPEN) {
-            number = nextNumber(sheetId, claim.getDueBy());
-            claim.setNumber(number);
             claim.setOpenedBy(user);
         } else if (to == ClaimStatus.REVIEW) {
             claim.setOpenedBy(user);
             claim.setReviewOn(sheets.today(sheetId));
         } else if (to == ClaimStatus.SETTLED) {
             claim.setSettledDue(settling);
+            number = numberAtSettlement(sheetId, claim);
         } else if (to == ClaimStatus.VOID) {
             claim.setVoidReason(voidReason);
         }
@@ -781,6 +780,7 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.SETTLED);
         claim.setSettledDue(due);
+        numberAtSettlement(sheetId, claim);
         claims.flush();
         logStatus(user, person, claim);
         record("CLAIM_APPROVED", user, person, claim, claim.getNumber(), " due=" + dueText(due));
@@ -960,7 +960,7 @@ public class ClaimService {
 
     /** Split an amount off an OPEN claim: the claim keeps the rest of its amount and loses any
      *  figure a statement bound it to, and a new OPEN claim of the amount, with the same date,
-     *  note and tags, the next number, opened by the user, its due-by fixed now from the terms in force on
+     *  note and tags, no number (one is given at settlement), opened by the user, its due-by fixed now from the terms in force on
      *  the date (the person's own, else their grade's, else the sheet's), and naming the original's number as split-from, is listed as the person's newest (a late entry
      *  when a soft-closed period contains its due-by).
      *  Refused (404) when missing, (423) when due in a closed period, (403) for a role the
@@ -994,7 +994,6 @@ public class ClaimService {
         Claim fresh = new Claim(sheetId, person.getId(), amount, on, dueByOf(sheetId, on, terms), claim.getNote());
         fresh.setTerms(terms);
         fresh.setStatus(ClaimStatus.OPEN);
-        fresh.setNumber(nextNumber(sheetId, fresh.getDueBy()));
         fresh.setOpenedBy(user);
         fresh.setSplitFrom(claim.getNumber());
         fresh.setTags(claim.getTags());
@@ -1002,7 +1001,7 @@ public class ClaimService {
         fresh.setListed(claims.findLastListed(sheetId) + 1);
         Claim split = claims.saveAndFlush(fresh);
         logStatus(user, person, split);
-        record("CLAIM_SPLIT", user, person, claim, claim.getNumber(), " into=" + split.getNumber());
+        record("CLAIM_SPLIT", user, person, claim, claim.getNumber(), " into=" + (split.getNumber() == null ? "" : split.getNumber()));
         record("CLAIM_OPENED", user, person, split);
         rollup.recordChanges(sheetId, user, before);
         return new Split(claim, split);
@@ -1026,7 +1025,7 @@ public class ClaimService {
         return new Split(s.original(), settled);
     }
 
-    /** A steward reviews a REVIEW claim: it becomes OPEN, numbered now, its opener kept;
+    /** A steward reviews a REVIEW claim: it becomes OPEN, still unnumbered, its opener kept;
      *  CLAIM_REVIEWED then CLAIM_OPENED are written. Refused (404) when missing, (423) when due in a
      *  closed period, (409) unless REVIEW, and (403) when the user is not a steward. */
     @Transactional
@@ -1046,7 +1045,6 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         record("CLAIM_REVIEWED", user, person, claim, null);
         claim.setStatus(ClaimStatus.OPEN);
-        claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
         claims.flush();
         logStatus(user, person, claim);
         record("CLAIM_OPENED", user, person, claim);
@@ -1243,7 +1241,18 @@ public class ClaimService {
         rollup.recordChanges(sheetId, added.user(), before);
     }
 
-    /** The number a claim due by {@code date} takes as it is opened: under period numbering (set,
+    /** Number a claim as it is settled or approved, unless it was numbered already (a claim
+     *  numbered before numbering moved to settlement keeps its number): the next in the sequence
+     *  its due-by places it in now. Returns the claim's number. */
+    private String numberAtSettlement(String sheetId, Claim claim) {
+        if (claim.getNumber() == null) {
+            claims.flush();
+            claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
+        }
+        return claim.getNumber();
+    }
+
+    /** The number a claim due by {@code date} takes as it is settled: under period numbering (set,
      *  and the sheet's today on or after it) the next within the period containing the due-by
      *  (<period name>-<n>), or X-<n> when none does; otherwise the sheet's next number within the
      *  fiscal year of the due-by (FY<yyyy>-<n>). */

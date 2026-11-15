@@ -54,8 +54,9 @@ public class Claim {
     @Column(name = "status", nullable = false)
     private ClaimStatus status = ClaimStatus.DRAFT;
 
-    /** The sheet's number for the claim, given when it is opened and kept if it is voided; none
-     *  while DRAFT. A sheet-wide number (1, 2, ...), or under period numbering one within its
+    /** The sheet's number for the claim, given when it is settled (or approved) and kept if it is
+     *  voided; none while DRAFT, OPEN, PENDING or REVIEW (a claim numbered when opened, before
+     *  numbering moved to settlement, keeps its number). A sheet-wide number (1, 2, ...), or under period numbering one within its
      *  period (<period name>-<n>, X-<n> in no period). */
     @Column(name = "claim_number")
     private String number;

@@ -56,7 +56,7 @@ export interface Settings {
   /** yyyy-mm-dd: a claim dated before it rounds half up, one on or after it half to even; null when
    *  blank, when the sheet's today is the policy date. */
   policyDate: string | null;
-  /** yyyy-mm-dd: while the sheet's today is on or after it, a claim opened is numbered within its
+  /** yyyy-mm-dd: while the sheet's today is on or after it, a claim settled is numbered within its
    *  period; null when blank (off). */
   periodNumberingFrom: string | null;
   /** yyyy-mm-dd: while set, a new claim left undated takes it instead of the sheet's today; null
