@@ -8,6 +8,7 @@ import { PersonPlans } from '../plans/person-plans';
 import { PlansApi } from '../plans/plans-api';
 import { Pools } from '../pools/pools';
 import { Crews } from '../crews/crews';
+import { Crew } from '../crews/crews-api';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn, personPeriodCarriedCents, personPeriodDueCents } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
@@ -27,13 +28,14 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
   imports: [FigurePipe, ReactiveFormsModule, Header, PersonClaims, PersonPlans, Periods, Pools, Crews, Rates, Summary, ClassicSummary],
   template: `
     <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()"
-      [myDueTotal]="myFigures()?.dueTotal ?? null" [myOverdueTotal]="myFigures()?.overdueTotal ?? null" />
+      [myDueTotal]="myFigures()?.dueTotal ?? null" [myOverdueTotal]="myFigures()?.overdueTotal ?? null"
+      [myCrewDueTotal]="myCrewDueTotal()" />
     <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
     <app-classic-summary [periods]="periods()" [dueTotals]="classicDueByPeriod()" [dueTotal]="classicDueTotal()" />
     <app-pools [people]="people()" (cutTotals)="cutTotals.set($event)" />
-    <app-crews [people]="people()" [dueTotals]="dueByPerson()" />
+    <app-crews [people]="people()" [dueTotals]="dueByPerson()" [(crews)]="crews" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
@@ -769,10 +771,27 @@ export class People {
   /** The signed-in user's own figures: the due-total and overdue-total of the person on the sheet
    *  who goes by the user's name (their name or an alias, ignoring case); null when there is none. */
   protected readonly myFigures = computed(() => {
-    const user = this.session.user()?.toLowerCase();
-    if (!user) return null;
-    const me = this.people().find((p) => [p.name, ...p.aliases].some((n) => n.toLowerCase() === user));
+    const me = this.me();
     return me ? { dueTotal: this.dueOf(me), overdueTotal: money(this.overdueOf(me.id).cents) } : null;
+  });
+  /** The person on the sheet who goes by the signed-in user's name (their name or an alias,
+   *  ignoring case); undefined when there is none. */
+  private readonly me = computed(() => {
+    const user = this.session.user()?.toLowerCase();
+    if (!user) return undefined;
+    return this.people().find((p) => [p.name, ...p.aliases].some((n) => n.toLowerCase() === user));
+  });
+  /** The sheet's crews, as the crews section last read or saved them. */
+  protected readonly crews = signal<Crew[]>([]);
+  /** The signed-in user's crew total: the due-totals of the crews their person leads (each the
+   *  lead's and members' due-totals, n/a skipped), added up; null when they lead none. */
+  protected readonly myCrewDueTotal = computed(() => {
+    const me = this.me();
+    const led = me ? this.crews().filter((c) => c.leadId === me.id) : [];
+    if (led.length === 0) return null;
+    const dues = this.dueByPerson();
+    return money(led.reduce((sum, c) =>
+      sum + [c.leadId, ...c.memberIds].reduce((s, id) => s + (dues.get(id) ?? 0), 0), 0));
   });
   /** The figures of the sheet's descendants added up, as last read from the store. */
   private readonly descendants = signal<DescendantFigures>({ people: 0, dueTotal: '0.00', overdueTotal: '0.00' });

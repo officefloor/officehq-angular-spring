@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, input, model, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
@@ -141,7 +141,8 @@ export class Crews {
   /** Each person's due-total in cents, by person id (null for n/a). */
   readonly dueTotals = input.required<ReadonlyMap<number, number | null>>();
 
-  protected readonly crews = signal<Crew[]>([]);
+  /** The sheet's crews, as last read from the store or saved; shared with the screen around it. */
+  readonly crews = model<Crew[]>([]);
   protected readonly error = signal<string | null>(null);
   private saving = false;
   /** Guards against a slower, older read landing over a newer one. */
