@@ -116,6 +116,8 @@ public class RollupService {
         return sum.subtract(max).subtract(min);
     }
 
+    private static final List<String> GRADES = List.of("A", "B", "C");
+
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final ClaimLogRepository log;
@@ -207,6 +209,20 @@ public class RollupService {
         sheetClaims.stream().map(Claim::getStatus).filter(Objects::nonNull)
                 .forEach(st -> statuses.merge(st, 1, Integer::sum));
         return new Snapshot(out, statuses);
+    }
+
+    /** One line per grade (A, B, C) comparing the sheet, as it is now or as it stood at the end of
+     *  {@code asOf} when given, with another sheet as it is now: the grade, then each sheet's summary
+     *  due-total for it (the due-totals of the people not retired on it, n/a skipped), zero for a
+     *  grade a sheet has no one on; no lines when the other sheet does not exist. */
+    public List<String> compare(String sheetId, String otherId, LocalDate asOf) {
+        if (sheets.findById(otherId).isEmpty()) {
+            return List.of();
+        }
+        Map<String, BigDecimal> mine = (asOf == null ? snapshot(sheetId) : snapshotAsOf(sheetId, asOf)).dueByGrade();
+        Map<String, BigDecimal> theirs = snapshot(otherId).dueByGrade();
+        return GRADES.stream().map(g -> g + " " + mine.getOrDefault(g, zero()).setScale(2).toPlainString() + " "
+                + theirs.getOrDefault(g, zero()).setScale(2).toPlainString()).toList();
     }
 
     /** Figures added up over sheets: how many people (retired ones too), the due-totals and

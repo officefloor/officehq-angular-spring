@@ -307,6 +307,13 @@ export class PeopleApi {
       `/api/sheets/${encodeURIComponent(sheetId)}/figures`, { headers: this.headers() }));
   }
 
+  /** The sheet compared with another, one line per grade: the grade, the sheet's summary due-total
+   *  for it and the other sheet's; no lines when the other sheet does not exist. */
+  compare(sheetId: string, other: string): Promise<string[]> {
+    return firstValueFrom(this.http.get<string[]>(
+      `/api/sheets/${encodeURIComponent(sheetId)}/compare`, { headers: this.headers(), params: { other } }));
+  }
+
   /** The role the signed-in user acts in on the sheet now (or, while the screen shows the sheet as of
    *  a date, the role they had then). */
   myRole(sheetId: string): Promise<string> {

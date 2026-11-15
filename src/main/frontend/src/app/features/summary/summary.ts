@@ -1,8 +1,9 @@
-import { Component, computed, inject, input } from '@angular/core';
+import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
-import { Session } from '../../core/session';
+import { Session, otherError } from '../../core/session';
 import { Claim, money, reviewLate } from '../claims/claims-api';
-import { GRADES } from '../people/people-api';
+import { GRADES, PeopleApi } from '../people/people-api';
 import { Period, periodDueCents } from '../periods/periods-api';
 
 /** The statuses the summary counts, in the order it lists them. */
@@ -27,7 +28,7 @@ export interface SummaryPerson {
 // many claims have it; per void reason on the sheet's list, how many VOID claims were voided with it.
 @Component({
   selector: 'app-summary',
-  imports: [FigurePipe],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="summary-heading">
       <h2 id="summary-heading">Summary</h2>
@@ -47,6 +48,19 @@ export interface SummaryPerson {
           }
         </tbody>
       </table>
+      <form [formGroup]="compareForm" (ngSubmit)="compare()" aria-label="Compare with another sheet">
+        <label for="compare-sheet">Compare with sheet id</label>
+        <input id="compare-sheet" data-testid="compare-sheet" formControlName="other" autocomplete="off" />
+        <button type="submit" data-testid="compare">Compare</button>
+        @if (compareError(); as err) {
+          <p role="alert" data-testid="compare-error">{{ err }}</p>
+        }
+        <ul aria-label="Comparison by grade">
+          @for (line of compareLines(); track $index) {
+            <li data-testid="compare-line">{{ line }}</li>
+          }
+        </ul>
+      </form>
       <table data-testid="summary-periods">
         <caption>By period</caption>
         <thead>
@@ -110,6 +124,39 @@ export class Summary {
   }));
 
   private readonly session = inject(Session);
+  private readonly api = inject(PeopleApi);
+
+  protected readonly compareForm = new FormGroup({
+    other: new FormControl('', { nonNullable: true }),
+  });
+  /** The comparison last asked for: one line per grade; none for a sheet that does not exist. */
+  protected readonly compareLines = signal<string[]>([]);
+  protected readonly compareError = signal<string | null>(null);
+
+  constructor() {
+    this.compareForm.valueChanges.subscribe(() => this.compareError.set(null));
+    effect(() => {
+      this.session.sheetId();
+      this.compareLines.set([]);
+    });
+  }
+
+  protected async compare(): Promise<void> {
+    this.compareError.set(null);
+    this.compareLines.set([]);
+    const sheetId = this.session.sheetId();
+    const other = this.compareForm.controls.other.value.trim();
+    if (!sheetId) return;
+    if (!/^\S+$/.test(other)) {
+      this.compareError.set('Enter a sheet id without spaces.');
+      return;
+    }
+    try {
+      this.compareLines.set(await this.api.compare(sheetId, other));
+    } catch (e) {
+      this.compareError.set(otherError(e));
+    }
+  }
 
   protected readonly byStatus = computed(() => statusCounts(this.claims()));
 
