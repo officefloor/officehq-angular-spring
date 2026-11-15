@@ -1,0 +1,64 @@
+{
+  "checkpoint": 207,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp207_year-end-rollover",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can roll the year over: a year entry and a button. It generates the next fiscal year's\ntwelve periods exactly as the fiscal year generator does, and for each person their open figure at\nthe end of the old year's last period (the due of their claims that count, belonging to a period of\nthe old year, OPEN or PENDING at that period's end) is added to their carried figure for the new\nyear's first period as OPENING_SET lines; then ROLLOVER fy=<old FY> periods=<made> is written. A year\nwith no periods, anyone but a steward, or a bad year is refused with an error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can roll the year over: a year entry and a button. It generates the next fiscal year's\ntwelve periods exactly as the fiscal year generator does, and for each person their open figure at\nthe end of the old year's last period (the due of their claims that count, belonging to a period of\nthe old year, OPEN or PENDING at that period's end) is added to their carried figure for the new\nyear's first period as OPENING_SET lines; then ROLLOVER fy=<old FY> periods=<made> is written. A year\nwith no periods, anyone but a steward, or a bad year is refused with an error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "603991fe28c4bab100a382de06bd79430c7ac272",
+  "reset_sha": "",
+  "preagent_sha": "04eeab613e3815bd5e944708442972979ac7ed60",
+  "prev_sha": "04eeab613e3815bd5e944708442972979ac7ed60",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3333860000000002,
+    "input_tokens": 58,
+    "output_tokens": 14675,
+    "cache_read_tokens": 1749550,
+    "cache_creation_tokens": 86218,
+    "num_turns": 29,
+    "duration_ms": 433125,
+    "duration_api_ms": 159624,
+    "model": "claude-opus-5-5",
+    "session_id": "98bcdeed-7a8c-4087-8155-b5415caec1ba",
+    "stop_reason": "success",
+    "result_text": "The rollover works and three of the four tests pass. Scenario 2 still fails, on a rate check that doesn't involve rollover and that I don't think my change caused.\n\n**What I added**\n- **Server** (`PeriodService.rollover`, `POST /api/sheets/{id}/periods/rollover`):\n  - Refuses a bad year with 400 (same check as the fiscal year generator) and anyone but a steward with 403.\n  - Refuses with 409 when the old fiscal year has no periods on the sheet, counted by the sheet's fiscal start month.\n  - Otherwise it works out each person's open figure at the end of the old year's last period. That is the due on their counting claims that fall in an old-year period and were still OPEN or PENDING then.\n  - It then makes the next year's periods through the existing fiscal year generator and adds each non-zero figure to that person's opening balance for the new year's first period.\n  - Audit lines are written in the order the spec expects: `PERIOD_ADDED`\u2026, `OPENING_SET`\u2026, then `ROLLOVER fy=FY<yyyy> periods=<made>`.\n  - All checks run before anything is written, so a refusal changes nothing.\n- **Front end** (Periods section): a year entry `rollover-year`, a button `rollover`, the count `rollover-made` (cleared while it runs) and the error `rollover-error`.\n\n**Test results** (`bin/e2e`)\n- The main rollover test, scenario 1 and scenario 3 pass.\n- Scenario 2 fails at `rate-month-C-2026-04`: it expects `12.50` and the screen shows `n/a`. That screen is looking at the sheet as of 2026-03-20. The child sheet's own 12.50 rate for grade C ends on 03-25, so April should fall back to the parent sheet's 12.50. But the parent sheet's \"today\" is the machine's real date, 2026-11-16, so its history says that rate didn't exist yet on 03-20. The outcome therefore depends on the clock. I didn't change any rate or history code, so it shouldn't be from my change, though I didn't run the original code to confirm it failed there too.\n- To check the rest of scenario 2, I ran a temporary copy with only the April\u2013December grade-C rate-grid lines removed, and it passed. I then deleted the copy; the real spec is untouched.\n\n**Decision for you:** I left the rate history alone because it's outside this request and changing it would be a guess. Making scenario 2 pass would mean changing how as-of views pick up a parent sheet's rates, or giving the parent sheet a fixed \"today\". Say if you want me to look at that.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3333860000000002,
+        "num_turns": 29,
+        "duration_ms": 433125,
+        "duration_api_ms": 159624,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp207.agent.jsonl",
+  "agent_diff_file": "cp207.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

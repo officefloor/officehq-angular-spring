@@ -1,0 +1,241 @@
+diff --git a/src/main/frontend/src/app/features/periods/periods-api.ts b/src/main/frontend/src/app/features/periods/periods-api.ts
+index e9e1d0ed3..06d81be6d 100644
+--- a/src/main/frontend/src/app/features/periods/periods-api.ts
++++ b/src/main/frontend/src/app/features/periods/periods-api.ts
+@@ -37,6 +37,12 @@ export interface OpeningsImported {
+   periods: Period[];
+ }
+ 
++/** What a rollover did: how many periods it made, and the periods it made or carried openings into. */
++export interface RolledOver {
++  made: number;
++  periods: Period[];
++}
++
+ /** The period whose dates contain a date (yyyy-mm-dd), or null when none does. */
+ export function periodOn(periods: readonly Period[], date: string): Period | null {
+   return periods.find((p) => p.from <= date && date <= p.to) ?? null;
+@@ -100,6 +106,12 @@ export class PeriodsApi {
+     return firstValueFrom(this.http.post<Period[]>(`${this.url(sheetId)}/generate-quarters`, { year }, { headers: this.headers() }));
+   }
+ 
++  /** Roll a fiscal year over (a steward only): make the next fiscal year's periods and carry each
++   *  person's open figure at the old year's end into the new year's first period. */
++  rollover(sheetId: string, year: string): Promise<RolledOver> {
++    return firstValueFrom(this.http.post<RolledOver>(`${this.url(sheetId)}/rollover`, { year }, { headers: this.headers() }));
++  }
++
+   /** Add each pasted line of name,period,amount to the person's opening balance for the period;
+    *  all or none go through. */
+   importOpenings(sheetId: string, text: string): Promise<OpeningsImported> {
+@@ -158,6 +170,13 @@ export function generateQuartersError(e: unknown): string {
+   return otherError(e);
+ }
+ 
++export function rolloverError(e: unknown): string {
++  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a fiscal year as yyyy.';
++  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may roll the year over.';
++  if (e instanceof HttpErrorResponse && e.status === 409) return 'That fiscal year has no periods on the sheet.';
++  return otherError(e);
++}
++
+ export function openingsError(e: unknown): string {
+   if (e instanceof HttpErrorResponse && e.status === 400) return 'Give each line as name,period,amount, the amount with two decimals, 0.00 or more.';
+   if (e instanceof HttpErrorResponse && e.status === 404) return 'A line names a person or period not on the sheet.';
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index bd35e1f39..b905f4b37 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { FigurePipe } from '../../core/figure.pipe';
+ import { Session } from '../../core/session';
+ import { money } from '../claims/claims-api';
+-import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, generateQuartersError, lockError, openingsError, periodDueCents, periodError, reopenError } from './periods-api';
++import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, generateQuartersError, lockError, openingsError, periodDueCents, periodError, reopenError, rolloverError } from './periods-api';
+ 
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+@@ -48,6 +48,17 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+           <p role="alert" data-testid="period-generate-error">{{ err }}</p>
+         }
+       </form>
++      <form [formGroup]="rolloverForm" (ngSubmit)="rollover()" aria-label="Roll the year over">
++        <label for="rollover-year">Fiscal year to roll over (yyyy)</label>
++        <input id="rollover-year" data-testid="rollover-year" formControlName="year" inputmode="numeric" autocomplete="off" />
++        <button type="submit" data-testid="rollover">Roll year over</button>
++        @if (rolledOver() !== null) {
++          <p role="status">Made <strong data-testid="rollover-made">{{ rolledOver() }}</strong></p>
++        }
++        @if (rolloverErr(); as err) {
++          <p role="alert" data-testid="rollover-error">{{ err }}</p>
++        }
++      </form>
+       <form [formGroup]="openingForm" (ngSubmit)="importOpenings()" aria-label="Paste opening balances">
+         <label for="opening-import">Opening balances (one name,period,amount per line)</label>
+         <textarea id="opening-import" data-testid="opening-import" formControlName="text" rows="3"></textarea>
+@@ -138,6 +149,15 @@ export class Periods {
+   protected readonly generateErr = signal<string | null>(null);
+   private generating = false;
+ 
++  /** The fiscal year to roll over. */
++  protected readonly rolloverForm = new FormGroup({
++    year: new FormControl('', { nonNullable: true }),
++  });
++  /** How many periods the last rollover made; null while one runs or before the first. */
++  protected readonly rolledOver = signal<number | null>(null);
++  protected readonly rolloverErr = signal<string | null>(null);
++  private rollingOver = false;
++
+   /** The pasted opening balances, one name,period,amount per line. */
+   protected readonly openingForm = new FormGroup({
+     text: new FormControl('', { nonNullable: true }),
+@@ -153,6 +173,7 @@ export class Periods {
+     this.fyForm.valueChanges.subscribe(() => this.generateErr.set(null));
+     this.quartersForm.valueChanges.subscribe(() => this.generateErr.set(null));
+     this.openingForm.valueChanges.subscribe(() => this.openingErr.set(null));
++    this.rolloverForm.valueChanges.subscribe(() => this.rolloverErr.set(null));
+     effect(() => {
+       this.session.sheetId();
+       this.session.loads();
+@@ -165,6 +186,9 @@ export class Periods {
+         this.openingForm.reset({ text: '' });
+         this.openingsDone.set(null);
+         this.openingErr.set(null);
++        this.rolloverForm.reset({ year: '' });
++        this.rolledOver.set(null);
++        this.rolloverErr.set(null);
+       });
+     });
+   }
+@@ -251,6 +275,32 @@ export class Periods {
+     }
+   }
+ 
++  /** Roll a fiscal year over: make the next year's periods and carry each person's open figure
++   *  into its first period; then show how many periods were made. */
++  protected async rollover(): Promise<void> {
++    if (this.rollingOver) return;
++    this.rolledOver.set(null);
++    this.rolloverErr.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    const year = this.rolloverForm.controls.year.value.trim();
++    if (!/^\d{4}$/.test(year)) {
++      this.rolloverErr.set('Enter a fiscal year as yyyy.');
++      return;
++    }
++    this.rollingOver = true;
++    try {
++      const done = await this.api.rollover(sheetId, year);
++      if (this.session.sheetId() !== sheetId) return;
++      for (const period of done.periods) this.saved.emit(period);
++      this.rolledOver.set(done.made);
++    } catch (e) {
++      this.rolloverErr.set(rolloverError(e));
++    } finally {
++      this.rollingOver = false;
++    }
++  }
++
+   /** Add the pasted opening balances, all or none; then show how many lines went through. */
+   protected async importOpenings(): Promise<void> {
+     if (this.importing) return;
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index 625032d1f..6bb0fed0b 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
++import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+@@ -129,6 +130,22 @@ public class PeriodController {
+                 .map(PeriodView::of).toList();
+     }
+ 
++    /** A rollover: how many periods it made, and the periods it made or carried openings into, by from-date. */
++    public record RolloverView(int made, List<PeriodView> periods) {
++    }
++
++    @PostMapping("/rollover")
++    public RolloverView rollover(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody GenerateFiscalYearForm body) {
++        PeriodService.Rollover done = service.rollover(sheetId, user.trim(), Integer.parseInt(body.year()));
++        List<Period> changed = new ArrayList<>(done.made());
++        if (done.opened() != null && !changed.contains(done.opened())) changed.add(done.opened());
++        changed.sort(Comparator.comparing(Period::getFrom));
++        return new RolloverView(done.made().size(), changed.stream().map(PeriodView::of).toList());
++    }
++
+     /** A calendar year as the generate-quarters form submits it (yyyy). */
+     public record GenerateQuartersForm(@NotNull @Pattern(regexp = "\\d{4}") String year) {
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index cc0b82dbb..b3255739b 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -159,6 +159,59 @@ public class PeriodService {
+         return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
+     }
+ 
++    /** A year rolled over: the new fiscal year's periods it made, by from-date, and the new year's
++     *  first period when openings were carried into it (null when none were). */
++    public record Rollover(List<Period> made, Period opened) {
++    }
++
++    /** Roll a fiscal year over: generate the next fiscal year's twelve periods as
++     *  {@link #generateFiscalYear} does, then add each person's open figure at the end of the old
++     *  year's last period (the dues of their counting claims due inside a period of the old year
++     *  and still OPEN or PENDING at that period's end) to their opening balance for the new year's
++     *  first period. Refused (403) unless the user is a steward, and (409) when the old year has
++     *  no periods on the sheet. */
++    @Transactional
++    public Rollover rollover(String sheetId, String user, int year) {
++        sheets.load(sheetId, user);
++        sheets.lock(sheetId);
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may roll the year over");
++        }
++        int startMonth = settings.fiscalStartMonth(sheetId);
++        LocalDate oldFirst = YearMonth.of(year, startMonth).atDay(1);
++        LocalDate newFirst = oldFirst.plusYears(1);
++        List<Period> old = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
++                .filter(p -> !p.getFrom().isBefore(oldFirst) && p.getFrom().isBefore(newFirst))
++                .toList();
++        if (old.isEmpty()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "FY" + year + " has no periods");
++        }
++        LocalDate oldEnd = old.stream().map(Period::getTo).max(Comparator.naturalOrder()).orElseThrow();
++        // the claims carried out of the old year: due inside one of its periods, still open at its end
++        Map<Long, BigDecimal> open = rollup.carriedByPersonInto(sheetId, oldEnd.plusDays(1), oldEnd, date -> old.stream()
++                .filter(p -> p.contains(date)).findFirst().map(Period::getTo).orElse(null));
++        List<Period> made = generateFiscalYear(sheetId, user, year + 1);
++        LocalDate newEnd = newFirst.plusYears(1);
++        Period first = periods.findBySheetIdOrderByFromAsc(sheetId).stream()
++                .filter(p -> !p.getFrom().isBefore(newFirst) && p.getFrom().isBefore(newEnd))
++                .findFirst().orElse(null);
++        Period opened = null;
++        if (first != null) {
++            for (Person person : people.findBySheetIdOrderByPositionAscIdAsc(sheetId)) {
++                BigDecimal amount = open.get(person.getId());
++                if (amount == null || amount.signum() == 0) continue;
++                amount = amount.setScale(2);
++                first.addOpening(person.getId(), amount);
++                opened = first;
++                audit.recordOnCommit("OPENING_SET sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                        + " period=" + first.getName() + " amount=" + amount.toPlainString());
++            }
++            periods.flush();
++        }
++        audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + year + " periods=" + made.size());
++        return new Rollover(made, opened);
++    }
++
+     /** One pasted opening balance: the person and period it names and its amount. */
+     private record Opening(Person person, Period period, BigDecimal amount) {
+     }
