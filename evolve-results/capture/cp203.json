@@ -1,0 +1,64 @@
+{
+  "checkpoint": 203,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp203_plan-pause",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A plan can be paused and resumed (buttons on the plan; PLAN_PAUSED and PLAN_RESUMED\nname=<person> start=<plan start>; pausing a paused plan or resuming a running one is refused).\nA plan date on or after the day it was paused and before the day it was resumed is skipped, not\npostponed: generate makes nothing for it and the plan's next dates leave it out (a plan paused and\nnot resumed shows no next dates). Show paused yes/no on the plan.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA plan can be paused and resumed (buttons on the plan; PLAN_PAUSED and PLAN_RESUMED\nname=<person> start=<plan start>; pausing a paused plan or resuming a running one is refused).\nA plan date on or after the day it was paused and before the day it was resumed is skipped, not\npostponed: generate makes nothing for it and the plan's next dates leave it out (a plan paused and\nnot resumed shows no next dates). Show paused yes/no on the plan.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "5178de534c2d3f61cede3844322ba76ce566eba0",
+  "reset_sha": "",
+  "preagent_sha": "2f3ff2fb5d62826e4cc10d368014ece58b6f1883",
+  "prev_sha": "2f3ff2fb5d62826e4cc10d368014ece58b6f1883",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8103195999999998,
+    "input_tokens": 40,
+    "output_tokens": 11154,
+    "cache_read_tokens": 837478,
+    "cache_creation_tokens": 52448,
+    "num_turns": 21,
+    "duration_ms": 351157,
+    "duration_api_ms": 106226,
+    "model": "claude-opus-5-5",
+    "session_id": "e9091201-8d35-4f44-bcef-543a47ba0e95",
+    "stop_reason": "success",
+    "result_text": "Plans can now be paused and resumed, and all 4 tests in `bin/e2e` pass (the pause test and the three regression scenarios).\n\n**What it does**\n- Each plan row has **Pause** and **Resume** buttons and shows `paused yes/no`. Pausing a plan that's already paused, or resuming one that's running, is refused: it writes nothing and shows an error on that plan's row. The error goes away when you next act on that row.\n- A pause starts on the sheet's today when you press Pause and ends on the sheet's today when you press Resume. A plan date on or after the pause day and before the resume day is skipped, not postponed. Generate makes no claim for it and it isn't shown in the plan's next dates. A plan that is still paused skips every date from the pause day on, so it shows no next dates.\n- A plan can be paused and resumed more than once; every past pause is kept and its dates stay skipped.\n- Pausing and resuming write `PLAN_PAUSED` / `PLAN_RESUMED sheet=\u2026 by=\u2026 name=<person> start=<plan start>` to the audit file.\n- Viewers and archived sheets are refused by the existing guard, the same as other changes.\n\n**Where the changes are**\n- **Database:** new migration `V105__plan_pause.sql`. It adds a `paused_on` column to `plan` and a `plan_pause` table for past pauses.\n- **Server:** `Plan.java` decides which dates are skipped. `PlanService.setPaused` checks and records a pause or resume. `PlanController` has the new `POST /plans/{planId}/pause` and `/resume` endpoints, and a plan now also returns the day it was paused and its past pauses.\n- **Front end:** in `plans-api.ts`, the next-dates calculation leaves out skipped dates. `person-plans.ts` has the buttons, the paused value and the per-row error.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8103195999999998,
+        "num_turns": 21,
+        "duration_ms": 351157,
+        "duration_api_ms": 106226,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp203.agent.jsonl",
+  "agent_diff_file": "cp203.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
