@@ -1,0 +1,64 @@
+{
+  "checkpoint": 161,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp161_as-of-exports",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The people, claims and pools exports taken while an as-of date is set use the as-of figures.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe people, claims and pools exports taken while an as-of date is set use the as-of figures.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c869e7cef6f52163b3f20306643fbeccc5e0d252",
+  "reset_sha": "",
+  "preagent_sha": "c869e7cef6f52163b3f20306643fbeccc5e0d252",
+  "prev_sha": "c869e7cef6f52163b3f20306643fbeccc5e0d252",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.37716320000000003,
+    "input_tokens": 22,
+    "output_tokens": 2521,
+    "cache_read_tokens": 329716,
+    "cache_creation_tokens": 32589,
+    "num_turns": 11,
+    "duration_ms": 225949,
+    "duration_api_ms": 29450,
+    "model": "claude-opus-5-5",
+    "session_id": "40dbff61-c973-4af1-8768-adfc55802f5f",
+    "stop_reason": "success",
+    "result_text": "This needed no code changes: the app already does what the request asks. I ran `bin/e2e` before touching anything and all 4 tests in `e2e/specs/acceptance.spec.ts` passed, including the three longer scenarios.\n\n**Why it already works:**\n- While an as-of date is set, `core/as-of.interceptor.ts` adds an `X-As-Of` header to every `/api/sheets/...` request. The server answers those reads from `HistoryService.asOf(...)`, so the screen reloads with the sheet as it stood on that date.\n- All three exports are built in the browser from what the screen is currently showing:\n  - **People** (`features/people/people.ts:1511`) uses the listed people, their grades and their due totals.\n  - **Claims** (`features/people/people.ts:1520`) uses the listed claims and their due amounts.\n  - **Pools** (`features/pools/pools.ts:320`) uses the listed pools and their cuts.\n\nSo with an as-of date set, each export uses the as-of figures, and once the date is cleared they go back to today's. The tests check exactly that: in the first test, Ada's due is 1.00 as of 2026-03-01 and 2.00 now, Ben's claim and retirement don't appear as of that date, and the pool cut is 10.00 as of then and 20.00 now.\n\nI left the code as it is, since changing it would only risk breaking behaviour that already works.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.37716320000000003,
+        "num_turns": 11,
+        "duration_ms": 225949,
+        "duration_api_ms": 29450,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp161.agent.jsonl",
+  "agent_diff_file": "cp161.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
