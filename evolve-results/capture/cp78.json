@@ -1,0 +1,64 @@
+{
+  "checkpoint": 78,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp78_age-buckets",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person the due of their OPEN and PENDING claims that count, split by the age of\nthe claim on the sheet's today (the days from the claim's date): aged 0 to 30 days, 31 to 60, and\n61 or more. A claim dated after today counts as 0 to 30.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person the due of their OPEN and PENDING claims that count, split by the age of\nthe claim on the sheet's today (the days from the claim's date): aged 0 to 30 days, 31 to 60, and\n61 or more. A claim dated after today counts as 0 to 30.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f1132de47853e40ca61b8a41d1397c1300f34761",
+  "reset_sha": "",
+  "preagent_sha": "f7141b3226f99fe1bd1b75eb121ef9390af80522",
+  "prev_sha": "f7141b3226f99fe1bd1b75eb121ef9390af80522",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5403646,
+    "input_tokens": 32,
+    "output_tokens": 4446,
+    "cache_read_tokens": 612543,
+    "cache_creation_tokens": 41101,
+    "num_turns": 16,
+    "duration_ms": 762680,
+    "duration_api_ms": 48423,
+    "model": "claude-opus-5-5",
+    "session_id": "1366fd3f-edab-49f2-97c1-3181cd97c8f2",
+    "stop_reason": "success",
+    "result_text": "Each person's row now has an \"Aged\" column that splits the due on their open claims (OPEN and PENDING) into three amounts, by how many days old each claim is on the sheet's today: 0 to 30, 31 to 60, and 61 or more. A claim dated after today goes in 0 to 30. `bin/e2e` passes all 4 tests in the spec.\n\n- **What counts:** the same open claims the person's due total already counts. Settled, deferred and held claims are left out, and so are claims whose due shows n/a. The cap is not applied to these amounts.\n- **Where:** everything is in `src/main/frontend/src/app/features/people/people.ts`. The per-person due figures are already worked out in the front end, so this adds one more calculation there plus the three cells (`person-aged-0-30`, `person-aged-31-60`, `person-aged-61`). There are no changes to the server, the stored data or the audit file, and the test doesn't expect any.\n\nAfter the test run I corrected one line of the comment at the top of that file. I didn't run the test again since only a comment changed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5403646,
+        "num_turns": 16,
+        "duration_ms": 762680,
+        "duration_api_ms": 48423,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp78.agent.jsonl",
+  "agent_diff_file": "cp78.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

@@ -1,0 +1,76 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a01c98004..8eaea9626 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -12,7 +12,7 @@ import { Lateness, Rate, RatesApi, claimDueCents, pctOn, plusDays } from '../rat
+ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
+ 
+ // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
+-// claims, what they have claimed, their due-total (held to the sheet's cap) and its excess over the cap, their overdue claims, and their patrons and backing (their patrons' recent settled figures); the sheet's claimed-total,
++// claims, what they have claimed, their due-total (held to the sheet's cap) and its excess over the cap, their overdue claims, their open claims' dues by age, and their patrons and backing (their patrons' recent settled figures); the sheet's claimed-total,
+ // due-total and overdue claims; a header of counters repeating them; a summary of them by grade, period and status; and
+ // the one form that adds a person or, with a
+ // person's editor open, saves that person.
+@@ -115,7 +115,7 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
+       </form>
+       <table data-testid="people-list">
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shownPeople(); track p.id) {
+@@ -141,6 +141,11 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
+                 <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
+                 <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span></span>
+               </td>
++              <td>
++                <span>0–30 <span data-testid="person-aged-0-30">{{ money(agedOf(p.id).upTo30) }}</span></span>
++                <span>31–60 <span data-testid="person-aged-31-60">{{ money(agedOf(p.id).upTo60) }}</span></span>
++                <span>61+ <span data-testid="person-aged-61">{{ money(agedOf(p.id).over60) }}</span></span>
++              </td>
+               <td>
+                 <span data-testid="person-statement-count">{{ p.statementCount }}</span>
+                 <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) }}</span></span>
+@@ -338,6 +343,30 @@ export class People {
+     }
+     return out;
+   });
++  /** Each person's open (OPEN and PENDING) counting claims' dues in cents (n/a ones skipped), by person id,
++   *  split by the claim's age on the sheet's today (days from its date): 0 to 30, 31 to 60, 61 or more;
++   *  one dated after today counts as 0 to 30. */
++  private readonly agedByPerson = computed(() => {
++    const out = new Map<number, Aged>();
++    const late = this.lateness();
++    const today = late.today;
++    const from31 = today === null ? null : plusDays(today, -31);
++    const from61 = today === null ? null : plusDays(today, -61);
++    for (const p of this.people()) {
++      const aged: Aged = { upTo30: 0, upTo60: 0, over60: 0 };
++      for (const c of this.claimsOf(p.id).filter(this.countsLive()).filter(isOpen)) {
++        const due = this.claimDueCents(p, c, late) ?? 0;
++        if (from61 !== null && c.date <= from61) aged.over60 += due;
++        else if (from31 !== null && c.date <= from31) aged.upTo60 += due;
++        else aged.upTo30 += due;
++      }
++      out.set(p.id, aged);
++    }
++    return out;
++  });
++  protected agedOf(personId: number): Aged {
++    return this.agedByPerson().get(personId) ?? { upTo30: 0, upTo60: 0, over60: 0 };
++  }
+   protected readonly overdueCount = computed(() =>
+     [...this.overdueByPerson().values()].reduce((sum, o) => sum + o.count, 0));
+   protected readonly overdueTotal = computed(() =>
+@@ -946,3 +975,10 @@ function trimmedSum(figures: number[]): number {
+ function termsText(p: Person): string {
+   return p.terms === null ? '' : String(p.terms);
+ }
++
++/** A person's open claims' dues in cents by age on the sheet's today: 0 to 30 days, 31 to 60, 61 or more. */
++interface Aged {
++  upTo30: number;
++  upTo60: number;
++  over60: number;
++}
