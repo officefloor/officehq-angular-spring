@@ -1,0 +1,64 @@
+{
+  "checkpoint": 142,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp142_plan-preview",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each plan its next dates: the first five plan dates after the sheet's today and on or\nbefore the end, comma and space separated.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each plan its next dates: the first five plan dates after the sheet's today and on or\nbefore the end, comma and space separated.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "eb534fb82e8d05a5dcff39459248272bcc20ad4e",
+  "reset_sha": "",
+  "preagent_sha": "0c36ca5f08e2836bbdd5c359d5ffe1c0300ead79",
+  "prev_sha": "0c36ca5f08e2836bbdd5c359d5ffe1c0300ead79",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5278708,
+    "input_tokens": 6,
+    "output_tokens": 469,
+    "cache_read_tokens": 99963,
+    "cache_creation_tokens": 2668,
+    "num_turns": 2,
+    "duration_ms": 6062,
+    "duration_api_ms": 54168,
+    "model": "claude-opus-5-5",
+    "session_id": "5a3ca7f6-665b-44c6-919c-05b555f1012d",
+    "stop_reason": "success",
+    "result_text": "Each plan row now shows its next dates, and all 4 tests in the acceptance spec pass when run with `bin/e2e`.\n\nThe dates appear in `plan-next-dates`, separated by \", \". They are the plan's first five dates after the sheet's today and on or before its end. When there are none left, the field is empty.\n\n- **Where the dates are worked out:** in the browser, by a new `nextDates` function in `features/plans/plans-api.ts`. The row itself is in `features/plans/person-plans.ts`. Changing the sheet's today doesn't re-fetch the plans list, but the dates still update straight away because they're calculated from the current today.\n- **The cost of that choice:** the rules for working out plan dates now exist twice, in the server's `Plan.datesUpTo` and in `nextDates`. If those rules change, both need updating.\n\nNothing changed on the server or in the stored data, and no audit records were added because the spec expects none for this.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5278708,
+        "num_turns": 2,
+        "duration_ms": 6062,
+        "duration_api_ms": 54168,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp142.agent.jsonl",
+  "agent_diff_file": "cp142.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
