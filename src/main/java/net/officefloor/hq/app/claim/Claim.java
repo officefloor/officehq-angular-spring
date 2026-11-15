@@ -347,6 +347,29 @@ public class Claim {
         this.voidReason = voidReason;
     }
 
+    /** A copy of the claim for a person on another sheet, as a transfer carries it: its amount,
+     *  dates, terms, note, status, frozen settled figure, opener and editor, deferral, proofs, tags
+     *  and the rest of its own values. Its number, batch, reference, statement binding, lock and
+     *  listing are left for the other sheet to give; corrects and split-from name this sheet's
+     *  numbers, so the caller maps them. */
+    public Claim transferredTo(String sheetId, Long personId) {
+        Claim copy = new Claim(sheetId, personId, amount, date, dueBy, note);
+        copy.terms = terms;
+        copy.status = status;
+        copy.settledDue = settledDue;
+        copy.openedBy = openedBy;
+        copy.editedBy = editedBy;
+        copy.corrects = corrects;
+        copy.deferredUntil = deferredUntil;
+        copy.proofs = proofs;
+        copy.splitFrom = splitFrom;
+        copy.lateEntry = lateEntry;
+        copy.reminded = reminded;
+        copy.tags = tags;
+        copy.voidReason = voidReason;
+        return copy;
+    }
+
     /** Whether another user than this one holds the claim's editor open. */
     public boolean isLockedFor(String user) {
         return lockedBy != null && !lockedBy.equals(user);

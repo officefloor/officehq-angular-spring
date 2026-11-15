@@ -922,7 +922,7 @@ public class ClaimService {
     /** The number a claim due by {@code date} takes as it is opened: under period numbering (set,
      *  and the sheet's today on or after it) the next within the period containing the due-by
      *  (<period name>-<n>), or X-<n> when none does; otherwise the sheet's next number. */
-    private String nextNumber(String sheetId, LocalDate date) {
+    public String nextNumber(String sheetId, LocalDate date) {
         if (!sheets.periodNumberingOn(sheetId)) {
             return String.valueOf(sheets.nextClaimNumber(sheetId));
         }
@@ -1000,7 +1000,7 @@ public class ClaimService {
     }
 
     /** Keep each of the claim's tags among those ever used on its sheet. */
-    private void keepTags(Claim claim) {
+    public void keepTags(Claim claim) {
         if (claim.getTags() == null) {
             return;
         }

@@ -94,6 +94,17 @@ public class Person {
         this.grade = grade;
     }
 
+    /** A copy of the person for another sheet, as a transfer carries them: their name, every grade
+     *  they were given (and its from-date), their terms, contact and aliases. */
+    public Person transferredTo(String sheetId) {
+        Person copy = new Person(sheetId, name, grade);
+        copy.datedGrades.putAll(datedGrades);
+        copy.terms = terms;
+        copy.contact = contact;
+        copy.aliases.addAll(aliases);
+        return copy;
+    }
+
     public Long getId() {
         return id;
     }

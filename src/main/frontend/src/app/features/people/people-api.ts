@@ -186,6 +186,19 @@ export class PeopleApi {
     );
   }
 
+  /** The sheet's own figures as it is now, even while the screen shows it as of a date. */
+  ownFigures(sheetId: string): Promise<DescendantFigures> {
+    return firstValueFrom(this.http.get<DescendantFigures>(
+      `/api/sheets/${encodeURIComponent(sheetId)}/figures`, { headers: this.headers() }));
+  }
+
+  /** Transfer the person to another sheet; resolves to the person as they arrived there. */
+  transfer(sheetId: string, id: number, toSheetId: string): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/transfer`, { toSheetId }, { headers: this.headers() }),
+    );
+  }
+
   /** The figures of the sheet's descendants (its children, theirs, and so on), each as it is now, added up. */
   descendantFigures(sheetId: string): Promise<DescendantFigures> {
     return firstValueFrom(this.http.get<DescendantFigures>(
@@ -259,6 +272,15 @@ export function mergeError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may merge people.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 422) return 'A person is merged only into someone else, neither of them retired, with pool shares of at most 100.00.';
+  return otherError(e);
+}
+
+export function transferError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter the id of the sheet to transfer to.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may transfer people, and neither sheet may be archived.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Their name, an alias or their contact is already on that sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'A person is transferred only to another sheet, and not once retired.';
   return otherError(e);
 }
 

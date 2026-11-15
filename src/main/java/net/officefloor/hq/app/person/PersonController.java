@@ -110,6 +110,10 @@ public class PersonController {
     public record MergeForm(@NotNull Long intoId) {
     }
 
+    /** A transfer as the row submits it: the id of the sheet to transfer the person to. */
+    public record TransferForm(@NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String toSheetId) {
+    }
+
     /** A bulk grade as the screen submits it: the selected people by id, the grade, and the date it
      *  is in force from (null: the sheet's today). */
     public record BulkGradeForm(
@@ -250,6 +254,17 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody MergeForm body) {
         return view(sheetId, user, service.merge(sheetId, user.trim(), id, body.intoId()));
+    }
+
+    /** Transfer the person to another sheet; answers with the person as they arrived there. */
+    @PostMapping("/{id}/transfer")
+    public PersonView transfer(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody TransferForm body) {
+        Person arrived = service.transfer(sheetId, user.trim(), id, body.toSheetId());
+        return PersonView.of(arrived, service.today(arrived.getSheetId()), StatementSummary.NONE, List.of(), false);
     }
 
     /** Start or stop watching the person as the signed-in user; refused for a viewer, who may change nothing. */

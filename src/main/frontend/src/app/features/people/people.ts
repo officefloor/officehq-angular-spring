@@ -10,7 +10,7 @@ import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, effectiveRates, pctOn, plusDays } from '../rates/rates-api';
-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, mergeError, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
+import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, mergeError, patronError, personError, cancelStatementError, retireError, statementError, transferError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -275,6 +275,11 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
                 </select>
                 <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto.value)"
                   [attr.aria-label]="'Merge ' + p.name">Merge</button>
+                <label [for]="'person-transfer-to-' + p.id" class="visually-hidden">Transfer {{ p.name }} to sheet</label>
+                <input [id]="'person-transfer-to-' + p.id" data-testid="person-transfer-to" #transferTo
+                  placeholder="Sheet id" (input)="clearRowError(p.id)" />
+                <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo.value)"
+                  [attr.aria-label]="'Transfer ' + p.name">Transfer</button>
                 @if (rowErrors()[p.id]; as err) {
                   <p role="alert" data-testid="person-error">{{ err }}</p>
                 }
@@ -525,13 +530,19 @@ export class People {
     money(trimmedSum([...this.dueByPerson().values()].filter((d): d is number => d !== null))));
   /** The figures of the sheet's descendants added up, as last read from the store. */
   private readonly descendants = signal<DescendantFigures>({ people: 0, dueTotal: '0.00', overdueTotal: '0.00' });
-  /** The sheet's own figures and its descendants' added up. */
+  /** The sheet's own figures as it is now, read from the store while the screen shows it as of a
+   *  date; null when it shows the sheet as it stands (the screen's own figures are then live). */
+  private readonly ownLive = signal<DescendantFigures | null>(null);
+  /** The sheet's own figures as it is now and its descendants' added up. */
   protected readonly consolidated = computed<DescendantFigures>(() => {
     const d = this.descendants();
+    const own = this.ownLive() ?? {
+      people: this.people().length, dueTotal: this.dueTotal(), overdueTotal: this.overdueTotal(),
+    };
     return {
-      people: this.people().length + d.people,
-      dueTotal: money(cents(this.dueTotal()) + cents(d.dueTotal)),
-      overdueTotal: money(cents(this.overdueTotal()) + cents(d.overdueTotal)),
+      people: own.people + d.people,
+      dueTotal: money(cents(own.dueTotal) + cents(d.dueTotal)),
+      overdueTotal: money(cents(own.overdueTotal) + cents(d.overdueTotal)),
     };
   });
   protected readonly claimedTotal = computed(() =>
@@ -672,6 +683,7 @@ export class People {
         this.rates.set([]);
         this.inherited.set([]);
         this.descendants.set({ people: 0, dueTotal: '0.00', overdueTotal: '0.00' });
+        this.ownLive.set(null);
         this.periods.set([]);
         if (id) void this.read(id);
       });
@@ -822,6 +834,26 @@ export class People {
       await this.read(sheetId);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [p.id]: mergeError(e) }));
+    }
+  }
+
+  /** Transfer a person to another sheet; the row then leaves the list, and the sheet's people and
+   *  claims are read again to show what they left behind. */
+  protected async transfer(p: Person, toSheetId: string): Promise<void> {
+    this.clearRowError(p.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    if (!toSheetId.trim()) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: 'Enter the id of the sheet to transfer to.' }));
+      return;
+    }
+    try {
+      await this.api.transfer(sheetId, p.id, toSheetId.trim());
+      if (this.session.sheetId() !== sheetId) return;
+      this.people.update((ps) => ps.filter((o) => o.id !== p.id));
+      await this.read(sheetId);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: transferError(e) }));
     }
   }
 
@@ -1222,11 +1254,14 @@ export class People {
   private async read(sheetId: string): Promise<void> {
     const seq = ++this.readSeq;
     try {
-      const [people, claims, rates, inherited, periods, tags, descendants] = await Promise.all([
+      const asOf = this.session.asOf() !== null;
+      const [people, claims, rates, inherited, periods, tags, descendants, own] = await Promise.all([
         this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId), this.ratesApi.inherited(sheetId),
-        this.periodsApi.list(sheetId), this.claimsApi.tags(sheetId), this.api.descendantFigures(sheetId)]);
+        this.periodsApi.list(sheetId), this.claimsApi.tags(sheetId), this.api.descendantFigures(sheetId),
+        asOf ? this.api.ownFigures(sheetId) : Promise.resolve(null)]);
       if (seq === this.readSeq) {
         this.descendants.set(descendants);
+        this.ownLive.set(own);
         this.tagsUsed.set(tags);
         this.rates.set(rates);
         this.inherited.set(inherited);

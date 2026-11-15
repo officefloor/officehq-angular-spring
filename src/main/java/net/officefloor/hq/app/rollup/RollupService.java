@@ -135,6 +135,13 @@ public class RollupService {
     public record Consolidated(int people, BigDecimal dueTotal, BigDecimal overdueTotal) {
     }
 
+    /** The sheet's own figures as it is now: how many people (retired ones too), and the
+     *  due-total and overdue-total it shows. */
+    public Consolidated own(String sheetId) {
+        Snapshot figures = snapshot(sheetId);
+        return new Consolidated(figures.people().size(), figures.dueTotal(), figures.overdueTotal());
+    }
+
     /** The figures of the sheet's descendants (its children, theirs, and so on), each sheet's as
      *  it is now, added up; all zero for a sheet with no children. */
     public Consolidated descendants(String sheetId) {
