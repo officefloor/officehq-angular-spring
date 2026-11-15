@@ -17,7 +17,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /** The rates in force on a sheet: a grade with no rate of its own in force on a date takes its
- *  parent sheet's for that grade and date, then its parent's parent's, up to {@link #LEVELS} levels up. */
+ *  parent sheet's for that grade and date, then its parent's parent's, up to {@link #LEVELS} levels up;
+ *  then, for a sheet that was cloned, the source sheet's, and so on up that sheet's parents and source. */
 @Component
 public class RateChain {
 
@@ -32,19 +33,28 @@ public class RateChain {
         this.sheets = sheets;
     }
 
-    /** The ids of the sheet's ancestors, its parent first, up to {@link #LEVELS} levels up. */
+    /** The ids of the sheets the sheet takes rates from, nearest first: its parent, up to
+     *  {@link #LEVELS} levels up, then the sheet it was cloned from and that one's, in turn. */
     @Transactional(readOnly = true)
     public List<String> ancestors(String sheetId) {
         List<String> out = new ArrayList<>();
         Set<String> seen = new HashSet<>(Set.of(sheetId));
-        String at = sheetId;
-        while (out.size() < LEVELS) {
-            String parent = sheets.findById(at).map(Sheet::getParent).orElse(null);
-            if (parent == null || !seen.add(parent)) {
-                break;
+        String from = sheetId;
+        while (from != null) {
+            String at = from;
+            for (int level = 0; level < LEVELS; level++) {
+                String parent = sheets.findById(at).map(Sheet::getParent).orElse(null);
+                if (parent == null || !seen.add(parent)) {
+                    break;
+                }
+                out.add(parent);
+                at = parent;
             }
-            out.add(parent);
-            at = parent;
+            String source = sheets.findById(from).map(Sheet::getSource).orElse(null);
+            from = source != null && seen.add(source) ? source : null;
+            if (from != null) {
+                out.add(from);
+            }
         }
         return out;
     }

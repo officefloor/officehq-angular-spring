@@ -130,6 +130,12 @@ public class Sheet {
     @Column(name = "parent")
     private String parent;
 
+    /** The id of the sheet this one was cloned from: a grade with no rate in force on a date on the
+     *  sheet nor on its parents takes the source's (then its parents' and source's); null when it
+     *  was not cloned. Not a setting. */
+    @Column(name = "source")
+    private String source;
+
     /** The sheet's proof kinds, comma separated: while set, a claim whose due is above the proof
      *  threshold needs at least one proof of each to be settled or approved; null when blank (none).
      *  Not dated. */
@@ -151,7 +157,7 @@ public class Sheet {
 
     /** A clone of the sheet under another id, created by a user: its today and every setting (its
      *  dated settings, policy date, period numbering, entry date, grace days, escalation gap, fiscal start month, pot, alert threshold and parent). It is
-     *  not archived and has given no claim number yet. */
+     *  not archived and has given no claim number yet, and has this sheet as its source. */
     public Sheet clonedTo(String id, String createdBy) {
         Sheet copy = new Sheet(id, createdBy, today);
         settings.forEach(d -> copy.settings.add(new DatedSetting(d.getKey(), d.getFrom(), d.getValue())));
@@ -165,6 +171,7 @@ public class Sheet {
         copy.pot = pot;
         copy.alertThreshold = alertThreshold;
         copy.parent = parent;
+        copy.source = this.id;
         copy.proofKinds = proofKinds;
         return copy;
     }
@@ -370,6 +377,10 @@ public class Sheet {
 
     public void setProofKinds(String proofKinds) {
         this.proofKinds = proofKinds;
+    }
+
+    public String getSource() {
+        return source;
     }
 
     public String getParent() {
