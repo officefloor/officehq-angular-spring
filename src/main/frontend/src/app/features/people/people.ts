@@ -21,7 +21,8 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
   selector: 'app-people',
   imports: [ReactiveFormsModule, Header, PersonClaims, Periods, Pools, Rates, Summary],
   template: `
-    <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()" />
+    <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()"
+      [myDueTotal]="myFigures()?.dueTotal ?? null" [myOverdueTotal]="myFigures()?.overdueTotal ?? null" />
     <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
@@ -570,6 +571,14 @@ export class People {
   /** Everyone's due-total added up, skipping n/a, trimmed. */
   protected readonly dueTotal = computed(() =>
     money(trimmedSum([...this.dueByPerson().values()].filter((d): d is number => d !== null))));
+  /** The signed-in user's own figures: the due-total and overdue-total of the person on the sheet
+   *  who goes by the user's name (their name or an alias, ignoring case); null when there is none. */
+  protected readonly myFigures = computed(() => {
+    const user = this.session.user()?.toLowerCase();
+    if (!user) return null;
+    const me = this.people().find((p) => [p.name, ...p.aliases].some((n) => n.toLowerCase() === user));
+    return me ? { dueTotal: this.dueOf(me), overdueTotal: money(this.overdueOf(me.id).cents) } : null;
+  });
   /** The figures of the sheet's descendants added up, as last read from the store. */
   private readonly descendants = signal<DescendantFigures>({ people: 0, dueTotal: '0.00', overdueTotal: '0.00' });
   /** The sheet's own figures as it is now, read from the store while the screen shows it as of a
