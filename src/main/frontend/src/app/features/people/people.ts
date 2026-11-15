@@ -242,6 +242,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
             @if (shows('statement-count')) { <th scope="col">Statements</th> }
             @if (shows('stated-total')) { <th scope="col">Last stated</th> }
             @if (shows('statement-date')) { <th scope="col">Stated on</th> }
+            <th scope="col">Statement lines</th>
             <th scope="col">Take statement</th><th scope="col">Snapshots</th>
             @if (shows('retired')) { <th scope="col">Retired</th> }
             <th scope="col">Retirement</th><th scope="col">Active</th>
@@ -329,6 +330,13 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
               @if (shows('statement-date')) {
                 <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
               }
+              <td>
+                <ul aria-label="Statement lines">
+                  @for (st of p.statements; track $index) {
+                    <li data-testid="person-statement-line-line">{{ st.date }} {{ st.dueTotal ?? 'n/a' }}</li>
+                  }
+                </ul>
+              </td>
               <td>
                 <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Statement of {{ p.name }} as of</label>
                 <input [id]="'person-statement-asof-' + p.id" type="date" data-testid="person-statement-asof" #statementAsOf

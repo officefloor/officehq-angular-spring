@@ -39,7 +39,7 @@ public class PersonController {
 
     /** A person as the screen shows them, with their statement count and their last statement's
      *  due-total (two decimals; null when it was n/a or they have none) and date, and the date
-     *  they are retired from (null while not retired), their past retirements, their snapshot lines (oldest first), whether they have any hold, their holds, and the ids of
+     *  they are retired from (null while not retired), their past retirements, their snapshot lines (oldest first), their statement lines (by date, oldest first), whether they have any hold, their holds, and the ids of
      *  their patrons in the order they were named, and whether the signed-in user watches them. The grade is the one in force on the sheet's
      *  today; grades lists every grade they have been given, by from-date, the first one undated; terms
      *  are their own terms in days (null when they have none). Clashing: their name or an alias is
@@ -48,7 +48,8 @@ public class PersonController {
             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held, List<Person.Hold> holds,
             List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms,
             String contact, List<String> aliases, boolean clashing, String origin,
-            List<Person.Retirement> retirements, String tags, List<SnapshotLine> snapshots) {
+            List<Person.Retirement> retirements, String tags, List<SnapshotLine> snapshots,
+            List<StatementLine> statements) {
         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
                 boolean watched, boolean clashing) {
             return of(p.getId(), p, today, s, patronIds, watched, clashing);
@@ -61,7 +62,16 @@ public class PersonController {
                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
                     p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.getTerms(),
                     p.getContact(), p.getAliases(), clashing, p.getOriginSheetId(), p.getRetirements(),
-                    p.getTags(), p.getSnapshots().stream().map(SnapshotLine::of).toList());
+                    p.getTags(), p.getSnapshots().stream().map(SnapshotLine::of).toList(),
+                    s.lines().stream().map(StatementLine::of).toList());
+        }
+    }
+
+    /** A statement line as the screen shows it: the date the statement shows and its due-total
+     *  (two decimals; null when it was n/a). */
+    public record StatementLine(LocalDate date, String dueTotal) {
+        static StatementLine of(StatementSummary.Line l) {
+            return new StatementLine(l.date(), l.dueTotal() == null ? null : l.dueTotal().setScale(2).toPlainString());
         }
     }
 

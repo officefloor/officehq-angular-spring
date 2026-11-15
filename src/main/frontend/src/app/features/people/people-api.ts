@@ -43,6 +43,13 @@ export interface Snapshot {
   dueTotal: string | null;
 }
 
+/** A statement line: the date the statement shows (yyyy-mm-dd) and its due-total, with two
+ *  decimals; null when it was n/a. */
+export interface StatementLine {
+  date: string;
+  dueTotal: string | null;
+}
+
 /** Whether any of the holds covers a date (yyyy-mm-dd). */
 export function heldOn(holds: readonly Hold[], date: string): boolean {
   return holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
@@ -70,6 +77,8 @@ export interface Person {
   retirements: Retirement[];
   /** The person's snapshot lines, oldest first: one each time the sheet's today moved. */
   snapshots: Snapshot[];
+  /** One line per statement still standing, by date, oldest first (those a merge or transfer brought among them). */
+  statements: StatementLine[];
   /** Whether the person has any hold. */
   held: boolean;
   /** The person's holds, in the order they were added: their OPEN claims dated within one count in
