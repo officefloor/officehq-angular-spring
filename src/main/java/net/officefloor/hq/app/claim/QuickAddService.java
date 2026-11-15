@@ -28,12 +28,12 @@ public class QuickAddService {
     }
 
     /** Add a DRAFT claim dated the sheet's entry date (while set, else its today) with an empty note for the person with this name
-     *  (ignoring case and surrounding spaces), adding them with grade A first when the sheet has no
+     *  or alias (ignoring case and surrounding spaces), adding them with grade A first when the sheet has no
      *  such person. One change: when the claim is refused, the person is not added either. */
     @Transactional
     public QuickAdd add(String sheetId, String user, String name, BigDecimal amount) {
         String trimmed = name.trim();
-        Person person = people.findBySheetIdAndNameIgnoreCase(sheetId, trimmed).stream().findFirst().orElse(null);
+        Person person = people.findBySheetIdAndNameOrAlias(sheetId, trimmed).orElse(null);
         boolean added = person == null;
         if (added) {
             person = personService.add(sheetId, user, trimmed, NEW_PERSON_GRADE, null, null);

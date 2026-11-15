@@ -17,6 +17,16 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     /** The sheet's people with this name, ignoring case. */
     List<Person> findBySheetIdAndNameIgnoreCase(String sheetId, String name);
 
+    /** The sheet's people with this alias, ignoring case. */
+    @Query("select p from Person p join p.aliases a where p.sheetId = :sheetId and lower(a) = lower(:alias)")
+    List<Person> findBySheetIdAndAliasIgnoreCase(String sheetId, String alias);
+
+    /** The sheet's person with this name, else with this alias, ignoring case. */
+    default Optional<Person> findBySheetIdAndNameOrAlias(String sheetId, String name) {
+        return findBySheetIdAndNameIgnoreCase(sheetId, name).stream().findFirst()
+                .or(() -> findBySheetIdAndAliasIgnoreCase(sheetId, name).stream().findFirst());
+    }
+
     /** The sheet's people with this contact. */
     List<Person> findBySheetIdAndContact(String sheetId, String contact);
 

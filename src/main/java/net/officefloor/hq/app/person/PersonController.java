@@ -45,7 +45,7 @@ public class PersonController {
     public record PersonView(long id, String name, String grade, long version, int statementCount,
             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held, List<Person.Hold> holds,
             List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms,
-            String contact) {
+            String contact, List<String> aliases) {
         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
                 boolean watched) {
             return of(p.getId(), p, today, s, patronIds, watched);
@@ -57,7 +57,7 @@ public class PersonController {
             return new PersonView(id, p.getName(), p.gradeOn(today), p.getVersion(), s.count(),
                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
                     p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.getTerms(),
-                    p.getContact());
+                    p.getContact(), p.getAliases());
         }
     }
 
@@ -83,6 +83,10 @@ public class PersonController {
         public String contactValue() {
             return contact == null || contact.isBlank() ? null : contact.trim().toLowerCase(Locale.ROOT);
         }
+    }
+
+    /** An alias as the row submits it; stored trimmed. */
+    public record AliasForm(@Size(max = 200) String alias) {
     }
 
     /** A retirement as the row submits it; a missing date takes the sheet's today. */
@@ -214,6 +218,15 @@ public class PersonController {
             @RequestBody(required = false) HoldForm body) {
         return view(sheetId, user, service.hold(sheetId, user.trim(), id, body == null ? null : body.from(),
                 body == null ? null : body.to()));
+    }
+
+    @PostMapping("/{id}/aliases")
+    public PersonView addAlias(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody AliasForm body) {
+        return view(sheetId, user, service.addAlias(sheetId, user.trim(), id, body.alias()));
     }
 
     @PostMapping("/{id}/patrons")

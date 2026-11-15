@@ -9,7 +9,7 @@ import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
-import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
+import { GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons and backing (their patrons' recent settled figures); the sheet's claimed-total,
@@ -154,7 +154,7 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
       </form>
       <table data-testid="people-list">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shownPeople(); track p.id) {
@@ -164,6 +164,14 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
                   (change)="personToggled(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
               </td>
               <td data-testid="person-name">{{ p.name }}</td>
+              <td>
+                <span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>
+                <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias for {{ p.name }}</label>
+                <input [id]="'person-alias-input-' + p.id" data-testid="person-alias-input" #aliasInput autocomplete="off"
+                  (input)="clearRowError(p.id)" />
+                <button type="button" data-testid="person-alias-add" (click)="addAlias(p, aliasInput)"
+                  [attr.aria-label]="'Add alias for ' + p.name">Add alias</button>
+              </td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
@@ -810,6 +818,20 @@ export class People {
       if (this.session.sheetId() === sheetId) this.taken(saved);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [p.id]: holdError(e) }));
+    }
+  }
+
+  /** Give a person the alias entered, which is then cleared; the row then shows it among their aliases. */
+  protected async addAlias(p: Person, aliasInput: HTMLInputElement): Promise<void> {
+    this.clearRowError(p.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const saved = await this.api.addAlias(sheetId, p.id, aliasInput.value);
+      aliasInput.value = '';
+      if (this.session.sheetId() === sheetId) this.taken(saved);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: aliasError(e) }));
     }
   }
 

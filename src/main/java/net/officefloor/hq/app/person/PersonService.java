@@ -139,6 +139,33 @@ public class PersonService {
         return person;
     }
 
+    /** Give the person an alias (trimmed); refused when blank, or when it equals, ignoring case, any
+     *  name or alias on the sheet. */
+    @Transactional
+    public Person addAlias(String sheetId, String user, long id, String alias) {
+        if (sheets.archived(sheetId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The sheet is archived: nothing on it may change");
+        }
+        Person person = people.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        String trimmed = alias == null ? "" : alias.trim();
+        if (trimmed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "An alias may not be blank");
+        }
+        requireUnusedName(sheetId, null, trimmed);
+        person.addAlias(trimmed);
+        try {
+            people.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw nameInUse(); // given by another user at the same moment
+        } catch (ObjectOptimisticLockingFailureException e) {
+            throw savedByAnother(); // saved by another user at the same moment
+        }
+        audit.recordOnCommit("PERSON_ALIAS_ADDED sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " alias=" + trimmed);
+        return person;
+    }
+
     /** Add a person to the sheet (the sheet is created first if it was never loaded); {@code contact}
      *  (trimmed and lower-cased, null: none) is refused when another person on the sheet has it. */
     @Transactional
@@ -301,10 +328,12 @@ public class PersonService {
         return message.contains("PERSON_SHEET_CONTACT") ? contactInUse() : nameInUse();
     }
 
-    /** Refuse a name another person on the sheet already has (ignoring case). */
+    /** Refuse a name another person on the sheet already has as their name or an alias (ignoring
+     *  case); {@code exceptId} null checks against everyone, the person's own name and aliases too. */
     private void requireUnusedName(String sheetId, Long exceptId, String name) {
         boolean taken = people.findBySheetIdAndNameIgnoreCase(sheetId, name).stream()
-                .anyMatch(p -> !p.getId().equals(exceptId));
+                .anyMatch(p -> !p.getId().equals(exceptId))
+                || !people.findBySheetIdAndAliasIgnoreCase(sheetId, name).isEmpty();
         if (taken) {
             throw nameInUse();
         }

@@ -72,7 +72,7 @@ public class PasteClaimsService {
             } catch (DateTimeParseException e) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Line " + n + ": the date is not yyyy-mm-dd");
             }
-            Person person = people.findBySheetIdAndNameIgnoreCase(sheetId, name).stream().findFirst()
+            Person person = people.findBySheetIdAndNameOrAlias(sheetId, name)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                             "Line " + n + ": no person named " + name));
             added.add(claims.add(sheetId, user, person.getId(), new BigDecimal(amount), on, note, null, ref, null));

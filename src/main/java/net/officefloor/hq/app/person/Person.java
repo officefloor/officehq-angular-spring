@@ -17,9 +17,13 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import net.officefloor.hq.app.history.HistoryListener;
 
@@ -57,6 +61,12 @@ public class Person {
     /** The person's contact, trimmed and lower-cased; null when they have none. */
     @Column(name = "contact")
     private String contact;
+
+    /** The person's aliases, kept trimmed: other names the person is found by. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
+    @Column(name = "alias", nullable = false)
+    private Set<String> aliases = new HashSet<>();
 
     /** The date the person is retired from; null while not retired. Set, they count as retired
      *  at once, whatever the date. */
@@ -137,6 +147,22 @@ public class Person {
 
     public void setContact(String contact) {
         this.contact = contact;
+    }
+
+    /** The person's aliases, sorted as names are compared (ignoring case). */
+    public List<String> getAliases() {
+        return aliases.stream()
+                .sorted(Comparator.comparing((String a) -> a.toLowerCase(Locale.ROOT)).thenComparing(a -> a))
+                .toList();
+    }
+
+    public void addAlias(String alias) {
+        aliases.add(alias);
+    }
+
+    /** Whether the name or one of the aliases equals {@code name}, as names are compared. */
+    public boolean goesBy(String name) {
+        return this.name.equalsIgnoreCase(name) || aliases.stream().anyMatch(a -> a.equalsIgnoreCase(name));
     }
 
     public LocalDate getRetiredFrom() {

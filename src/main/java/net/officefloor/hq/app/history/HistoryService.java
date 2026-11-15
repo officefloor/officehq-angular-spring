@@ -67,7 +67,7 @@ public class HistoryService {
     }
 
     record PersonState(String name, String grade, List<GradeState> grades, Integer terms, LocalDate retiredFrom,
-            List<HoldState> holds, String contact) {
+            List<HoldState> holds, String contact, List<String> aliases) {
     }
 
     record RateState(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
@@ -141,7 +141,7 @@ public class HistoryService {
             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
                     all.stream().skip(1).map(g -> new GradeState(g.from(), g.grade())).toList(), p.getTerms(),
                     p.getRetiredFrom(), p.getHolds().stream().map(h -> new HoldState(h.from(), h.to())).toList(),
-                    p.getContact()));
+                    p.getContact(), p.getAliases()));
         } else if (entity instanceof Rate r) {
             write(r.getSheetId(), RATE, String.valueOf(r.getId()),
                     new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo()));
@@ -301,6 +301,9 @@ public class HistoryService {
         p.setContact(s.contact());
         p.setRetiredFrom(s.retiredFrom());
         s.holds().forEach(h -> p.addHold(h.from(), h.to()));
+        if (s.aliases() != null) { // a version written before people had aliases has none
+            s.aliases().forEach(p::addAlias);
+        }
         return p;
     }
 

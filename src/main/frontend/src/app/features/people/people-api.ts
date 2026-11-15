@@ -65,6 +65,8 @@ export interface Person {
   terms: number | null;
   /** The person's contact, trimmed and lower-cased; null when none. */
   contact: string | null;
+  /** The person's aliases, sorted as names are compared (ignoring case). */
+  aliases: string[];
 }
 
 /** A statement just taken: the person as they now show, and all their claims, newest first. */
@@ -155,6 +157,13 @@ export class PeopleApi {
     );
   }
 
+  /** Give a person an alias. */
+  addAlias(sheetId: string, id: number, alias: string): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/aliases`, { alias }, { headers: this.headers() }),
+    );
+  }
+
   /** Name another person on the sheet as the person's patron. */
   addPatron(sheetId: string, id: number, patronId: number): Promise<Person> {
     return firstValueFrom(
@@ -174,7 +183,7 @@ export class PeopleApi {
 export function personError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name, choose a grade, enter a from-date as yyyy-mm-dd or none and terms as whole days or none.';
   if (isStale(e)) return 'Someone else saved this person since you opened it; the form now shows their values.';
-  if (e instanceof HttpErrorResponse && e.status === 409) return 'That name or contact is already in use on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'That name, alias or contact is already in use on this sheet.';
   return otherError(e);
 }
 
@@ -213,6 +222,14 @@ export function holdError(e: unknown): string {
 
 export function watchError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  return otherError(e);
+}
+
+export function aliasError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an alias of at most 200 characters.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'That name or alias is already in use on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'Enter an alias.';
   return otherError(e);
 }
 

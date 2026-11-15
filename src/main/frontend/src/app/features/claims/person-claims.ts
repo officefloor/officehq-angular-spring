@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment, ClaimLogLine, ClaimsApi, cents, claimError, commentError, commentText, deferError, deferred, remindError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment, ClaimLogLine, ClaimsApi, cents, claimError, commentError, commentText, deferError, remindError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -259,9 +259,11 @@ export class PersonClaims {
     return this.session.graceOn(gradeOn(this.grades(), c.date), c.date);
   }
 
-  /** Whether the claim is deferred on the sheet's today. */
+  /** Whether the row shows the claim deferred: deferred until a date after the sheet's today, kept
+   *  so after it leaves OPEN (only an OPEN one is left out of the totals). */
   protected deferredOf(c: Claim): boolean {
-    return deferred(c, this.session.today());
+    const today = this.session.today();
+    return c.deferredUntil !== null && today !== null && today < c.deferredUntil;
   }
 
   /** The name of the period whose dates contain the claim's due-by; blank when none does. */
