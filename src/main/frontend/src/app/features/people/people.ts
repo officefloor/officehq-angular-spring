@@ -86,6 +86,16 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
           </tbody>
         </table>
       }
+      @if (monthTotals().length > 0) {
+        <table aria-label="Due total by month">
+          <thead><tr><th scope="col">Month</th><th scope="col">Due total</th></tr></thead>
+          <tbody>
+            @for (m of monthTotals(); track m.month) {
+              <tr><th scope="row">{{ m.month }}</th><td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ money(m.cents) }}</td></tr>
+            }
+          </tbody>
+        </table>
+      }
       <label>
         <input type="checkbox" data-testid="show-retired" [checked]="session.showRetired()"
           (change)="session.showRetired.set($any($event.target).checked)" />
@@ -504,6 +514,20 @@ export class People {
       }
     }
     return [...out].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([tag, cents]) => ({ tag, cents }));
+  });
+  /** Each calendar month (yyyy-mm) any claim on the sheet is dated in, in order, with the dues in
+   *  cents (n/a ones skipped) of the counting claims dated in it. */
+  protected readonly monthTotals = computed(() => {
+    const out = new Map<string, number>(this.claims().map((c) => [c.date.slice(0, 7), 0]));
+    const late = this.lateness();
+    const live = this.countsLive();
+    for (const p of this.people()) {
+      for (const c of this.claimsOf(p.id).filter(live)) {
+        const month = c.date.slice(0, 7);
+        out.set(month, (out.get(month) ?? 0) + (this.claimDueCents(p, c, late) ?? 0));
+      }
+    }
+    return [...out].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([month, cents]) => ({ month, cents }));
   });
   /** The ids of the claims selected for a bulk action. */
   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
