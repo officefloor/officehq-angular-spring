@@ -1,0 +1,64 @@
+{
+  "checkpoint": 145,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp145_bulk-redate",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected claims can be re-dated together: a date entry and a button beside the bulk buttons.\nEach selected claim is re-dated in list order exactly as the row's re-date does (who may, which\nstatuses, closed periods, renumbering on a period change, CLAIM_REDATED); show how many were re-dated\nand how many refused.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected claims can be re-dated together: a date entry and a button beside the bulk buttons.\nEach selected claim is re-dated in list order exactly as the row's re-date does (who may, which\nstatuses, closed periods, renumbering on a period change, CLAIM_REDATED); show how many were re-dated\nand how many refused.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "fe2c71900c7e45b6f40abac51933a5eeaffc8fe4",
+  "reset_sha": "",
+  "preagent_sha": "b7e2b24712a153526c3f0b46133696477e2dc794",
+  "prev_sha": "b7e2b24712a153526c3f0b46133696477e2dc794",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.593158,
+    "input_tokens": 26,
+    "output_tokens": 5816,
+    "cache_read_tokens": 469270,
+    "cache_creation_tokens": 47860,
+    "num_turns": 15,
+    "duration_ms": 230407,
+    "duration_api_ms": 54840,
+    "model": "claude-opus-5-5",
+    "session_id": "7cc2390a-3b1e-493f-a5cb-d8d826ce78a5",
+    "stop_reason": "success",
+    "result_text": "I've added a bulk re-date: a date entry and a \"Re-date selected claims\" button sit with the other bulk buttons. `bin/e2e` passes all 4 tests in the spec, including the new \"bulk redate\" test.\n\n**How it works:**\n- **Server:** a new endpoint, `POST /claims/bulk-redate` in `ClaimController.java`, built the same way as the existing bulk reassign. It puts the selected claims in list order and runs the existing single-claim re-date on each one. So the rules are exactly the row's rules: only a steward may re-date, only OPEN or PENDING claims, nothing in a closed period, no date after the person's retirement, and the same `CLAIM_REDATED` audit line for each claim. A claim that's refused is left unchanged and counted as refused. A viewer, or a user on an archived sheet, gets every selected claim counted as refused.\n- **Front end:** `people.ts` and `claims-api.ts`. After the action, the screen shows \"Re-dated N, refused M\", re-reads the claims from the store and clears the selection. The old counts disappear while a new run is in progress. If the date is blank or malformed, an error shows instead (`bulk-redate-error`) and nothing is sent. That error goes away when the date is edited or the button is pressed again.\n\n**Renumbering:** the request mentions \"renumbering on a period change\", but I didn't add any renumbering logic. The bulk action just calls the existing row re-date, and that code keeps the claim's number and period. The test's expectations match that: claim X-2 keeps its number after being moved into another period. If you expected the row re-date itself to renumber, that would be a separate change to `ClaimService.redate`.\n\nI didn't touch the test, `bin/*`, `e2e/support/*` or the instruction files. No database change was needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.593158,
+        "num_turns": 15,
+        "duration_ms": 230407,
+        "duration_api_ms": 54840,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp145.agent.jsonl",
+  "agent_diff_file": "cp145.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
