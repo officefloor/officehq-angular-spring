@@ -6,10 +6,9 @@ import { heldOn, type Person } from '../people/people-api';
 import { dueCents } from '../rates/rates-api';
 import { MEMBER_DATE_PATTERN, Pool, PoolMember, PoolsApi, SHARE_PATTERN, memberError, memberKey, memberOn, poolError } from './pools-api';
 
-/** A pool's members' shares in cents, a retired person's (any with a retirement date) counting 0,
- *  as does a member whose dates do not include the day. */
-function memberShares(pool: Pool, retired: (personId: number) => boolean, day: string | null): number[] {
-  return pool.members.map((m) => ((m.personId !== null && retired(m.personId)) || !memberOn(m, day) ? 0 : cents(m.share)));
+/** A pool's members' shares in cents, a member whose dates do not include the day counting 0. */
+function memberShares(pool: Pool, day: string | null): number[] {
+  return pool.members.map((m) => (!memberOn(m, day) ? 0 : cents(m.share)));
 }
 
 /** Whole cents times a share over the shares with a cut, in whole cents, rounded half to even
@@ -27,16 +26,20 @@ function shareOf(cents: number, share: number, total: number): number {
 /** Each member's cut of the pool's pot, by member key: the pot times their share divided by the
  *  shares of the members with a cut, rounded half to even, the remainder going to the member with
  *  the largest share among them (the earliest added on a tie) so the cuts total the pot. A retired
- *  member, and one held on the sheet's today, gets 0.00 (all 0.00 when none is left with a cut);
- *  none unless the pool is balanced (a hold leaves the balance as it is) and has a pot. A member
+ *  member, and one held on the sheet's today, gets 0.00, their share spread over the others (all
+ *  0.00 when none is left with a cut; no cuts at all when every member is retired); none unless the
+ *  pool is balanced (a retirement or hold leaves the balance as it is) and has a pot. A member
  *  whose dates do not include the day is left out entirely: no cut at all. */
 function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => boolean,
   held: (personId: number) => boolean, day: string | null): Map<string, string> {
   const cutsByKey = new Map<string, string>();
-  const shares = memberShares(pool, retired, day);
+  const shares = memberShares(pool, day);
   if (pot === null || shares.reduce((sum, c) => sum + c, 0) !== 10000) return cutsByKey;
+  const onDay = pool.members.filter((m) => memberOn(m, day));
+  if (onDay.every((m) => m.personId !== null && retired(m.personId))) return cutsByKey;
   const potCents = cents(pot);
-  const cutShares = pool.members.map((m, i) => (m.personId !== null && held(m.personId) ? 0 : shares[i]));
+  const cutShares = pool.members.map((m, i) =>
+    (m.personId !== null && (retired(m.personId) || held(m.personId)) ? 0 : shares[i]));
   const total = cutShares.reduce((sum, c) => sum + c, 0);
   const raw = cutShares.map((share) => (share === 0 ? 0 : shareOf(potCents, share, total)));
   if (total > 0) {
@@ -123,10 +126,10 @@ export class PoolRow {
   });
 
   private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
-  /** The members' shares added up, a retired member's counting 0.00, as does one whose dates do not
-   *  include the sheet's today. */
+  /** The members' shares added up (a retired member's too), one whose dates do not include the
+   *  sheet's today counting 0.00. */
   private readonly totalCents = computed(() =>
-    memberShares(this.pool(), (id) => this.retired(id), this.session.today()).reduce((sum, c) => sum + c, 0));
+    memberShares(this.pool(), this.session.today()).reduce((sum, c) => sum + c, 0));
   protected readonly totalShare = computed(() => money(this.totalCents()));
   /** Balanced when the shares total exactly 100.00. */
   protected readonly balanced = computed(() => this.totalCents() === 10000);
