@@ -15,6 +15,7 @@ import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -92,6 +93,14 @@ public class Person {
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     @OrderColumn(name = "position")
     private List<Hold> holds = new ArrayList<>();
+
+    /** The person's snapshot lines, oldest first: one written each time the sheet's today moves.
+     *  Taking one is no edit of the person, so it leaves their version as it is. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_snapshot", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderColumn(name = "position")
+    @OptimisticLock(excluded = true)
+    private List<Snapshot> snapshots = new ArrayList<>();
 
     /** The person's place in the sheet's list: people are listed by it, lowest first. Moving a
      *  person is no edit of them, so it leaves their version as it is. */
@@ -254,6 +263,20 @@ public class Person {
         public boolean covers(LocalDate date) {
             return date.isAfter(from) && date.isBefore(to);
         }
+    }
+
+    /** A snapshot line: the day being left and the person's due-total on it (null: n/a). */
+    @Embeddable
+    public record Snapshot(@Column(name = "snapshot_day", nullable = false) LocalDate day,
+            @Column(name = "due_total") BigDecimal dueTotal) {
+    }
+
+    public List<Snapshot> getSnapshots() {
+        return List.copyOf(snapshots);
+    }
+
+    public void addSnapshot(LocalDate day, BigDecimal dueTotal) {
+        snapshots.add(new Snapshot(day, dueTotal));
     }
 
     public List<Retirement> getRetirements() {

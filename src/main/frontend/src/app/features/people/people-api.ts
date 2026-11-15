@@ -36,6 +36,13 @@ export interface Retirement {
   to: string;
 }
 
+/** A snapshot line: the day being left (yyyy-mm-dd) and the person's due-total on it, with two
+ *  decimals; null when it was n/a. */
+export interface Snapshot {
+  day: string;
+  dueTotal: string | null;
+}
+
 /** Whether any of the holds covers a date (yyyy-mm-dd). */
 export function heldOn(holds: readonly Hold[], date: string): boolean {
   return holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
@@ -61,6 +68,8 @@ export interface Person {
   /** The person's past retirements, in the order they were unretired: from a date to the day
    *  they were unretired. No claim dated after the from and before the to can be added. */
   retirements: Retirement[];
+  /** The person's snapshot lines, oldest first: one each time the sheet's today moved. */
+  snapshots: Snapshot[];
   /** Whether the person has any hold. */
   held: boolean;
   /** The person's holds, in the order they were added: their OPEN claims dated within one count in

@@ -210,7 +210,7 @@ public class SheetService {
         lock(id);
         RollupService.Snapshot before = rollup.snapshot(id);
         if (!today.equals(sheet.getToday())) {
-            rollup.recordSnapshot(id, user, before);
+            rollup.recordSnapshot(id, user, sheet.getToday(), before);
         }
         sheet.setToday(today);
         sheets.flush();
