@@ -418,11 +418,12 @@ export function pasteError(e: unknown): string {
     return 'Paste lines of name,amount,date,note: an amount with up to two decimals and a date as yyyy-mm-dd or blank.';
   }
   if (e instanceof HttpErrorResponse && e.status === 422) {
-    return "Every name must be on the sheet, and every date by that person's retirement date; an amount below zero is a correction, which the paste does not take.";
+    return "Every name must be on the sheet, and every date by that person's retirement date; an amount below zero is a correction, which the paste does not take; a claim whose due is above the note threshold needs a note to be opened.";
   }
   if (e instanceof HttpErrorResponse && e.status === 409) {
-    return 'Every reference must be new to the sheet and given only once in the paste.';
+    return 'Every reference must be new to the sheet and given only once in the paste, a line matching a claim must match a DRAFT, and every claim must be openable within its period\'s cap.';
   }
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not open claims, which the paste does.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'A claim would be due in a closed period.';
   return otherError(e);
 }

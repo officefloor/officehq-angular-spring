@@ -80,9 +80,9 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
       <form [formGroup]="pasteForm" (ngSubmit)="paste()" aria-label="Paste claims">
         <label for="paste-claims">Paste claims (name,amount,date,note per line)</label>
         <textarea id="paste-claims" data-testid="paste-claims" formControlName="text" rows="4"></textarea>
-        <button type="submit" data-testid="paste-submit">Add pasted claims</button>
+        <button type="submit" data-testid="paste-submit">Add and open pasted claims</button>
         @if (pasted() !== null) {
-          <p role="status">Added <strong data-testid="paste-added">{{ pasted() }}</strong></p>
+          <p role="status">Lines taken <strong data-testid="paste-added">{{ pasted() }}</strong></p>
         }
         @if (pasteErr(); as err) {
           <p role="alert" data-testid="paste-error">{{ err }}</p>
@@ -760,11 +760,11 @@ export class People {
   protected readonly quickError = signal<string | null>(null);
   private quickAdding = false;
 
-  /** The paste box: lines of name,amount,date,note, each a DRAFT claim. */
+  /** The paste box: lines of name,amount,date,note, each an OPEN claim (a matching DRAFT is updated and opened). */
   protected readonly pasteForm = new FormGroup({
     text: new FormControl('', { nonNullable: true }),
   });
-  /** How many claims the last paste added; null while one runs or before the first. */
+  /** How many lines the last paste took; null while one runs or before the first. */
   protected readonly pasted = signal<number | null>(null);
   protected readonly pasteErr = signal<string | null>(null);
   private pasting = false;
@@ -1484,7 +1484,7 @@ export class People {
     }
   }
 
-  /** Add a DRAFT claim per pasted line, all or none; then show how many were added. */
+  /** Add or update and open a claim per pasted line, all or none; then show how many lines went through. */
   protected async paste(): Promise<void> {
     if (this.pasting) return;
     this.pasted.set(null);
