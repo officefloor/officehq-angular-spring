@@ -26,15 +26,16 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class PeriodController {
 
-    /** A period as the screen shows it: whether it is closed, the due-total fixed when it was
+    /** A period as the screen shows it: whether it is closed or soft-closed, the due-total fixed when it was
      *  closed (null while open), and each person's due-total for it fixed then, by person id
      *  (empty while open). */
-    public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, String closedTotal,
+    public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
+            String closedTotal,
             Map<Long, String> closedPersonTotals) {
         static PeriodView of(Period p) {
             Map<Long, String> personTotals = new LinkedHashMap<>();
             p.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, total.setScale(2).toPlainString()));
-            return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo(), p.isClosed(),
+            return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo(), p.isClosed(), p.isSoftClosed(),
                     p.getClosedTotal() == null ? null : p.getClosedTotal().setScale(2).toPlainString(), personTotals);
         }
     }
@@ -89,6 +90,14 @@ public class PeriodController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         return PeriodView.of(service.close(sheetId, user.trim(), id));
+    }
+
+    @PostMapping("/{id}/soft-close")
+    public PeriodView softClose(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return PeriodView.of(service.softClose(sheetId, user.trim(), id));
     }
 
     @PostMapping("/{id}/reopen")

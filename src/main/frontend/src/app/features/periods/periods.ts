@@ -50,10 +50,12 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueOf(p) }}</td>
-              <td data-testid="period-closed">{{ p.closed ? 'yes' : 'no' }}</td>
+              <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                   [attr.aria-label]="'Close period ' + p.name">Close</button>
+                <button type="button" data-testid="period-soft-close" (click)="softClose(p)"
+                  [attr.aria-label]="'Soft-close period ' + p.name">Soft-close</button>
                 <button type="button" data-testid="period-reopen" (click)="reopen(p)"
                   [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
                 @if (rowErrors()[p.id]; as err) {
@@ -162,7 +164,21 @@ export class Periods {
     }
   }
 
-  /** Reopen a closed period, its due-total live again; a refusal shows an error on the period. */
+  /** Soft-close a period, fixing its due-total while its claims can still be changed; a refusal
+   *  shows an error on the period. */
+  protected async softClose(p: Period): Promise<void> {
+    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const closed = await this.api.softClose(sheetId, p.id);
+      if (this.session.sheetId() === sheetId) this.saved.emit(closed);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: closeError(e) }));
+    }
+  }
+
+  /** Reopen a closed or soft-closed period, its due-total live again; a refusal shows an error on the period. */
   protected async reopen(p: Period): Promise<void> {
     this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
     const sheetId = this.session.sheetId();

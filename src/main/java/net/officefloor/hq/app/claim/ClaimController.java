@@ -40,16 +40,18 @@ public class ClaimController {
      *  claim a correction corrects (null for other claims); its status log, oldest first; the date
      *  it was deferred until (null when never deferred); how many proofs it has; the number of the
      *  claim it was split from (null when not made by a split); the user whose open editor locks
-     *  it (null while unlocked). */
+     *  it (null while unlocked); whether it was added while its period was soft-closed. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
-            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy) {
+            LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
+            boolean lateEntry) {
         static ClaimView of(Claim c, List<ClaimLog> log) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
                     c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
-                    log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLockedBy());
+                    log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLockedBy(),
+                    c.isLateEntry());
         }
 
         private static String money(BigDecimal value) {

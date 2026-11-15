@@ -17,7 +17,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** One of the sheet's periods: a name unique on the sheet and its from and to dates, inclusive;
- *  once closed, its due-total and each person's due-total for it are fixed at the figures they had then. */
+ *  once closed (or soft-closed), its due-total and each person's due-total for it are fixed at the
+ *  figures they had then; a soft-closed period still takes changes to the claims dated inside it. */
 @Entity
 @Table(name = "period")
 public class Period {
@@ -40,6 +41,9 @@ public class Period {
 
     @Column(name = "closed", nullable = false)
     private boolean closed;
+
+    @Column(name = "soft_closed", nullable = false)
+    private boolean softClosed;
 
     @Column(name = "closed_total")
     private BigDecimal closedTotal;
@@ -84,6 +88,10 @@ public class Period {
         return closed;
     }
 
+    public boolean isSoftClosed() {
+        return softClosed;
+    }
+
     /** The due-total fixed when the period was closed; null while open. */
     public BigDecimal getClosedTotal() {
         return closedTotal;
@@ -98,6 +106,19 @@ public class Period {
      *  id) and its due-total at their sum. */
     public void close(Map<Long, BigDecimal> personTotals) {
         this.closed = true;
+        this.softClosed = false;
+        fix(personTotals);
+    }
+
+    /** Soft-close the period: its figures are fixed as by {@link #close}, but claims dated inside
+     *  it can still be changed. */
+    public void softClose(Map<Long, BigDecimal> personTotals) {
+        this.softClosed = true;
+        this.closed = false;
+        fix(personTotals);
+    }
+
+    private void fix(Map<Long, BigDecimal> personTotals) {
         this.closedPersonTotals.clear();
         this.closedPersonTotals.putAll(personTotals);
         this.closedTotal = personTotals.values().stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
@@ -106,6 +127,7 @@ public class Period {
     /** Reopen the period, its due-totals live again. */
     public void reopen() {
         this.closed = false;
+        this.softClosed = false;
         this.closedTotal = null;
         this.closedPersonTotals.clear();
     }

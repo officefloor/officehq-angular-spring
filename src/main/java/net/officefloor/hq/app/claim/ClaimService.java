@@ -137,9 +137,13 @@ public class ClaimService {
         fresh.setCorrects(corrected);
         // the sheet is locked (refuseIfClosed), so two claims added at once are listed one after the other
         fresh.setListed(claims.findLastListed(sheetId) + 1);
+        fresh.setLateEntry(periods.softClosedOn(sheetId, on));
         Claim claim = claims.saveAndFlush(fresh);
         logStatus(user, person, claim);
         record("CLAIM_ADDED", user, person, claim);
+        if (claim.isLateEntry()) {
+            record("LATE_ENTRY", user, person, claim, null);
+        }
         rollup.recordChanges(sheetId, user, before);
         return claim;
     }

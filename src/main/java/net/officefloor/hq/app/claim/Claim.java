@@ -96,6 +96,10 @@ public class Claim {
     @Column(name = "locked_by")
     private String lockedBy;
 
+    /** Whether the claim was added while its period was soft-closed. */
+    @Column(name = "late_entry", nullable = false)
+    private boolean lateEntry;
+
     protected Claim() {
     }
 
@@ -236,6 +240,14 @@ public class Claim {
 
     public void setLockedBy(String lockedBy) {
         this.lockedBy = lockedBy;
+    }
+
+    public boolean isLateEntry() {
+        return lateEntry;
+    }
+
+    public void setLateEntry(boolean lateEntry) {
+        this.lateEntry = lateEntry;
     }
 
     /** Whether another user than this one holds the claim's editor open. */

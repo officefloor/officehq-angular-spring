@@ -57,6 +57,8 @@ export interface Claim {
   splitFrom: string | null;
   /** The user whose open editor locks the claim for everyone else; null while unlocked. */
   lockedBy: string | null;
+  /** Whether the claim was added while its period was soft-closed. */
+  lateEntry: boolean;
 }
 
 /** A line of a claim's status log: the status, who moved the claim there, the sheet's today then

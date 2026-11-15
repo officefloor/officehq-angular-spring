@@ -12,6 +12,8 @@ export interface Period {
   /** The last date (yyyy-mm-dd) of the period, inclusive. */
   to: string;
   closed: boolean;
+  /** Whether the period is soft-closed: its figures fixed, its claims still open to change. */
+  softClosed: boolean;
   /** The due-total fixed when the period was closed (two decimals); null while open. */
   closedTotal: string | null;
   /** Each person's due-total for the period fixed when it was closed (two decimals), by person
@@ -30,10 +32,10 @@ export function periodDueCents(p: Period, dueTotals: ReadonlyMap<number, number>
   return dueTotals.get(p.id) ?? 0;
 }
 
-/** The due-total a person shows for a period, in cents: the one fixed when it was closed (0 for a
- *  person added since), else the live one from dueTotals (by period id; 0 with none). */
+/** The due-total a person shows for a period, in cents: the one fixed when it was closed or
+ *  soft-closed (0 for a person added since), else the live one from dueTotals (by period id; 0 with none). */
 export function personPeriodDueCents(p: Period, personId: number, dueTotals: ReadonlyMap<number, number>): number {
-  if (p.closed) {
+  if (p.closed || p.softClosed) {
     const fixed = p.closedPersonTotals?.[personId];
     return fixed === undefined ? 0 : cents(fixed);
   }
@@ -62,6 +64,11 @@ export class PeriodsApi {
 
   close(sheetId: string, id: number): Promise<Period> {
     return firstValueFrom(this.http.post<Period>(`${this.url(sheetId)}/${id}/close`, null, { headers: this.headers() }));
+  }
+
+  /** Fix a period's figures while its claims can still be changed. */
+  softClose(sheetId: string, id: number): Promise<Period> {
+    return firstValueFrom(this.http.post<Period>(`${this.url(sheetId)}/${id}/soft-close`, null, { headers: this.headers() }));
   }
 
   reopen(sheetId: string, id: number): Promise<Period> {
@@ -97,7 +104,7 @@ export function closeError(e: unknown): string {
 
 export function reopenError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not reopen a period.';
-  if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is not closed.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is neither closed nor soft-closed.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That period is no longer on this sheet.';
   return otherError(e);
 }
