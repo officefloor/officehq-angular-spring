@@ -1,0 +1,163 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 20d25a116..ddd233276 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -69,6 +69,17 @@ export function logLineText(l: ClaimLogLine): string {
+   return `${l.status} by ${l.by} on ${l.on} due=${l.due ?? 'n/a'}`;
+ }
+ 
++/** The status a claim had at the end of a day (yyyy-mm-dd), as its status log records it; null
++ *  when it was not yet added then. A claim with no log at all is taken in its status now. */
++export function statusOn(c: Claim, day: string): ClaimStatus | null {
++  if (c.log.length === 0) return c.status;
++  let status: ClaimStatus | null = null;
++  for (const l of c.log) {
++    if (l.on <= day) status = l.status;
++  }
++  return status;
++}
++
+ /** Claims as they are listed: newest (or most recently reassigned) first. */
+ export function byListed(a: Claim, b: Claim): number {
+   return b.listed - a.listed;
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 22a45e743..add1f2bbd 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,7 +1,7 @@
+ import { DOCUMENT, Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { Session } from '../../core/session';
+-import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp } from '../claims/claims-api';
++import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, deferred, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp, statusOn } from '../claims/claims-api';
+ import { PersonClaims } from '../claims/person-claims';
+ import { Periods } from '../periods/periods';
+ import { Period, PeriodsApi, periodOn, personPeriodDueCents } from '../periods/periods-api';
+@@ -281,17 +281,32 @@ export class People {
+   protected readonly money = money;
+   /** The sheet's periods, by from-date. */
+   protected readonly periods = signal<Period[]>([]);
++  /** Whether a claim counts in a period's live due-total, taken in the status its log gives it at
++   *  the end of the period's last day: as the live totals count it in that status (one not yet
++   *  added then does not count). */
++  private readonly countsAtEnd = computed(() => {
++    const holds = this.holdsById();
++    const today = this.session.today();
++    return (c: Claim, end: string) => {
++      const status = statusOn(c, end);
++      if (status === null) return false;
++      if (status === 'SETTLED') return true;
++      if ((status !== 'OPEN' && status !== 'PENDING') || deferred(c, today)) return false;
++      return isBound(c) || !heldOn(holds.get(c.personId) ?? [], c.date);
++    };
++  });
+   /** Each person's live due-total for each period in cents, by person id then period id: the dues
+-   *  (n/a ones skipped) of their OPEN and SETTLED claims whose date falls in it (open ones within a
+-   *  hold, unbound, left out). */
++   *  (n/a ones skipped) of their claims whose date falls in it, each counted by its status at the
++   *  period's end (OPEN and SETTLED ones; open ones within a hold, unbound, or deferred, left out). */
+   private readonly liveDueByPersonPeriod = computed(() => {
+     const out = new Map<number, Map<number, number>>();
+     const late = this.lateness();
++    const countsAtEnd = this.countsAtEnd();
+     for (const p of this.people()) {
+       const theirs = new Map<number, number>();
+-      for (const c of this.claimsOf(p.id).filter(this.countsLive())) {
++      for (const c of this.claimsOf(p.id)) {
+         const period = periodOn(this.periods(), c.date);
+-        if (period === null) continue;
++        if (period === null || !countsAtEnd(c, period.to)) continue;
+         theirs.set(period.id, (theirs.get(period.id) ?? 0) + (this.claimDueCents(p, c, late) ?? 0));
+       }
+       out.set(p.id, theirs);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index c459f4af6..363deeb45 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -14,6 +14,8 @@ import java.util.function.Function;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimLog;
++import net.officefloor.hq.app.claim.ClaimLogRepository;
+ import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.claim.LateCharge;
+@@ -65,14 +67,16 @@ public class RollupService {
+ 
+     private final PersonRepository people;
+     private final ClaimRepository claims;
++    private final ClaimLogRepository log;
+     private final RateRepository rates;
+     private final SheetRepository sheets;
+     private final Audit audit;
+ 
+-    public RollupService(PersonRepository people, ClaimRepository claims, RateRepository rates,
++    public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository log, RateRepository rates,
+             SheetRepository sheets, Audit audit) {
+         this.people = people;
+         this.claims = claims;
++        this.log = log;
+         this.rates = rates;
+         this.sheets = sheets;
+         this.audit = audit;
+@@ -112,8 +116,10 @@ public class RollupService {
+     }
+ 
+     /** Each person's due-total for the period from {@code from} to {@code to}, inclusive, by person
+-     *  id, for everyone on the sheet: the dues (n/a ones skipped) their OPEN and SETTLED claims dated
+-     *  inside it show now (OPEN ones within a hold of their person, unbound, or deferred, left out). */
++     *  id, for everyone on the sheet: the dues (n/a ones skipped) their claims dated inside it show
++     *  now, counting each by the status its log gives it at the end of {@code to} (OPEN and SETTLED
++     *  ones count; one added after then does not; OPEN ones within a hold of their person, unbound,
++     *  or deferred, left out). */
+     public Map<Long, BigDecimal> dueByPersonBetween(String sheetId, LocalDate from, LocalDate to) {
+         Optional<Sheet> sheet = sheets.findById(sheetId);
+         LocalDate today = sheet.map(Sheet::getToday).orElseGet(LocalDate::now);
+@@ -129,8 +135,10 @@ public class RollupService {
+         for (Person p : sheetPeople) {
+             out.put(p.getId(), zero());
+         }
++        Map<Long, ClaimStatus> statusAtEnd = statusesOn(sheetId, to);
+         sheetClaims.stream()
+-                .filter(c -> counts(c, held, today))
++                .filter(c -> countsAt(c, statusAtEnd.containsKey(c.getId()) ? statusAtEnd.get(c.getId()) : c.getStatus(),
++                        held, today))
+                 .filter(c -> !c.getDate().isBefore(from) && !c.getDate().isAfter(to))
+                 .filter(c -> byId.containsKey(c.getPersonId()))
+                 .forEach(c -> {
+@@ -175,6 +183,34 @@ public class RollupService {
+         return c.isBound() || person == null || !person.heldOn(c.getDate());
+     }
+ 
++    /** Whether a claim counts toward a period's due-total, taken in {@code status} (the one it had
++     *  at the period's end; null when it was not yet added then): as {@link #counts} has it. */
++    private static boolean countsAt(Claim c, ClaimStatus status, Map<Long, Person> held, LocalDate today) {
++        if (status == null) {
++            return false;
++        }
++        if (status == ClaimStatus.SETTLED) {
++            return true;
++        }
++        if (!status.isOpen() || c.isDeferredOn(today)) {
++            return false;
++        }
++        Person person = held.get(c.getPersonId());
++        return c.isBound() || person == null || !person.heldOn(c.getDate());
++    }
++
++    /** The status each of the sheet's claims had at the end of {@code on}, by claim id, as their
++     *  status logs record it (null for a claim not yet added then); a claim with no log at all is
++     *  left out, taken in its status now. */
++    private Map<Long, ClaimStatus> statusesOn(String sheetId, LocalDate on) {
++        Map<Long, ClaimStatus> out = new LinkedHashMap<>();
++        for (ClaimLog line : log.findBySheetIdOrderByIdAsc(sheetId)) {
++            ClaimStatus before = out.get(line.getClaimId());
++            out.put(line.getClaimId(), line.getOn().isAfter(on) ? before : line.getStatus());
++        }
++        return out;
++    }
++
+     private static Map<Long, Person> heldPeople(List<Person> sheetPeople) {
+         return sheetPeople.stream().filter(Person::isHeld).collect(Collectors.toMap(Person::getId, p -> p));
+     }
