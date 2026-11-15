@@ -100,8 +100,8 @@ public class Person {
     @OrderColumn(name = "position")
     private List<Retirement> retirements = new ArrayList<>();
 
-    /** The person's holds, in the order they were added: their OPEN claims dated within one count
-     *  in no live total (unless bound by a statement). */
+    /** The person's holds, in the order they were added: while one covers a pool's date they get
+     *  no cut of it, their share spread over the others; their claims still count in every total. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     @OrderColumn(name = "position")

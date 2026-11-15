@@ -371,8 +371,8 @@ public class RollupService {
     }
 
     /** Whether a claim counts toward due totals: only OPEN (or PENDING) and SETTLED ones
-     *  do, but not an open one dated within a hold of its person (by id in {@code held}) unless bound
-     *  by a statement, nor (so unbound) any open one of a person whose retirement date the sheet's
+     *  do, but not (unless bound by a statement) any open one of a person (by id in {@code held})
+     *  whose retirement date the sheet's
      *  today has reached, nor one deferred on the sheet's today. */
     private static boolean counts(Claim c, Map<Long, Person> held, LocalDate today) {
         return countsFor(c, held.get(c.getPersonId()), today);
@@ -390,8 +390,7 @@ public class RollupService {
         return c.isBound() || !leftOut(person, c, today);
     }
 
-    /** Whether a claim counts toward claimed: as {@link #countsFor} has it, but a hold (the
-     *  claim's or its person's) does not leave it out; only the due figures leave a held claim out. */
+    /** Whether a claim counts toward claimed: as {@link #countsFor} has it. */
     private static boolean countsClaimed(Claim c, Person person, LocalDate today) {
         if (c.getStatus() == ClaimStatus.SETTLED) {
             return true;
@@ -414,7 +413,7 @@ public class RollupService {
         if (!status.isOpen() || c.isDeferredOn(today)) {
             return false;
         }
-        // a hold or a reached retirement leaves out a claim still open now, as the live due-total does
+        // a reached retirement leaves out a claim still open now, as the live due-total does
         return !c.getStatus().isOpen() || c.isBound() || !leftOut(held.get(c.getPersonId()), c, today);
     }
 
@@ -431,10 +430,10 @@ public class RollupService {
     }
 
     /** Whether an unbound open claim of the person (null: one with neither a hold nor a retirement)
-     *  is left out of the live totals: held itself, dated within a hold of theirs, or their
-     *  retirement date reached on the sheet's today. */
+     *  is left out of the live totals: their retirement date reached on the sheet's today. A hold
+     *  (the claim's or its person's) leaves nothing out; it only takes the person out of pool cuts. */
     private static boolean leftOut(Person person, Claim c, LocalDate today) {
-        return c.isHeld() || (person != null && (person.heldOn(c.getDate()) || person.retiredOn(today)));
+        return person != null && person.retiredOn(today);
     }
 
     /** The people with a hold or a retirement date, by id. */

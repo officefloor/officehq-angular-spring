@@ -16,7 +16,7 @@ import { Summary, SummaryPerson } from '../summary/summary';
 import { ClassicSummary } from '../summary/classic-summary';
 import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
 import { Dashboard, Header } from '../header/header';
-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
+import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -535,25 +535,21 @@ export class People {
   });
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
-  /** The holds of each person with any, by person id: their open (OPEN or PENDING) claims dated within one count in no live total. */
-  private readonly holdsById = computed(() => new Map(this.people().filter((p) => p.held).map((p) => [p.id, p.holds])));
   /** The retirement date of each person with one, by person id: from the sheet's today on or after it, their
    *  open (OPEN or PENDING) claims count in no live total unless bound by a statement. */
   private readonly retiredFromById = computed(() =>
     new Map(this.people().filter((p) => p.retiredFrom !== null).map((p) => [p.id, p.retiredFrom as string])));
-  /** Whether an unbound open claim is left out of the live totals: held itself, dated within a hold of its
-   *  person, or its person's retirement date reached on the sheet's today. */
+  /** Whether an unbound open claim is left out of the live totals: its person's retirement date reached on
+   *  the sheet's today. A hold leaves nothing out; it only takes the person out of pool cuts. */
   private readonly leftOut = computed(() => {
-    const holds = this.holdsById();
     const retired = this.retiredFromById();
     const today = this.session.today();
     return (c: Claim) => {
       const from = retired.get(c.personId);
-      return c.held || heldOn(holds.get(c.personId) ?? [], c.date) || (from !== undefined && today !== null && from <= today);
+      return (from !== undefined && today !== null && from <= today);
     };
   });
-  /** Whether a claim counts toward claimed: as it counts in the live totals, but a hold (the claim's or its
-   *  person's) does not leave it out; only the due figures leave a held claim out. */
+  /** Whether a claim counts toward claimed: as it counts in the live totals. */
   private readonly countsClaimed = computed(() => {
     const retired = this.retiredFromById();
     const today = this.session.today();

@@ -709,8 +709,8 @@ public class ClaimService {
         return claim;
     }
 
-    /** Hold an OPEN or PENDING claim, or release a held one: held, unless bound by a statement, it
-     *  counts in no live total, as a held person's claims do. CLAIM_HELD or CLAIM_RELEASED is
+    /** Hold an OPEN or PENDING claim, or release a held one: a hold no
+     *  longer leaves it out of any total. CLAIM_HELD or CLAIM_RELEASED is
      *  written. Refused (404) when missing and (409) unless OPEN or PENDING. */
     @Transactional
     public Claim toggleHold(String sheetId, String user, long id) {
@@ -1374,13 +1374,13 @@ public class ClaimService {
     }
 
     /** Whether a claim counts toward claimed and due totals: only OPEN (or PENDING) and SETTLED ones
-     *  do, but not a held open one, nor an open one dated within a hold of its person, nor one of a
+     *  do, but not an open one of a
      *  person whose retirement date the sheet's today has reached, unless bound by a statement, nor one deferred
      *  on the sheet's today. */
     private static boolean counts(Claim c, Person person, LocalDate today) {
         return c.getStatus() == ClaimStatus.SETTLED
                 || (c.getStatus().isOpen() && !c.isDeferredOn(today)
-                        && (c.isBound() || !(c.isHeld() || person.heldOn(c.getDate()) || person.retiredOn(today))));
+                        && (c.isBound() || !person.retiredOn(today)));
     }
 
     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it to
