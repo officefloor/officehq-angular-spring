@@ -61,6 +61,8 @@ export interface Person {
   patronIds: number[];
   /** Whether the signed-in user watches the person. */
   watched: boolean;
+  /** The person's own terms in days, ahead of their grade's and the sheet's; null when none. */
+  terms: number | null;
 }
 
 /** A statement just taken: the person as they now show, and all their claims, newest first. */
@@ -76,6 +78,8 @@ export interface PersonForm {
   version?: number;
   /** On an edit, the date the grade is in force from (yyyy-mm-dd); null takes the sheet's today. */
   gradeFrom?: string | null;
+  /** The person's own terms in whole days; blank for none. */
+  terms: string;
 }
 
 // The people kept on the active sheet, read and written through the server.
@@ -147,7 +151,7 @@ export class PeopleApi {
 }
 
 export function personError(e: unknown): string {
-  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name, choose a grade and enter a from-date as yyyy-mm-dd or none.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name, choose a grade, enter a from-date as yyyy-mm-dd or none and terms as whole days or none.';
   if (isStale(e)) return 'Someone else saved this person since you opened it; the form now shows their values.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That name is already in use on this sheet.';
   return otherError(e);

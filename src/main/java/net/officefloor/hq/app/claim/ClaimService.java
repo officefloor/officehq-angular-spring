@@ -127,7 +127,8 @@ public class ClaimService {
         refuseIfRetired(person, on);
         String corrected = correctedBy(sheetId, personId, amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        int terms = sheets.find(sheetId).map(s -> s.termsFor(person.gradeOn(on), on)).orElse(Sheet.DEFAULT_TERMS);
+        int terms = person.getTerms() != null ? person.getTerms()
+                : sheets.find(sheetId).map(s -> s.termsFor(person.gradeOn(on), on)).orElse(Sheet.DEFAULT_TERMS);
         Claim fresh = new Claim(sheetId, personId, amount, on, on.plusDays(terms), noteOf(note));
         fresh.setCorrects(corrected);
         // the sheet is locked (refuseIfClosed), so two claims added at once are listed one after the other
@@ -415,7 +416,7 @@ public class ClaimService {
     /** Split an amount off an OPEN claim: the claim keeps the rest of its amount and loses any
      *  figure a statement bound it to, and a new OPEN claim of the amount, with the same date and
      *  note, the next number, opened by the user, its due-by fixed now from the terms in force on
-     *  the date, and naming the original's number as split-from, is listed as the person's newest.
+     *  the date (the person's own, else their grade's, else the sheet's), and naming the original's number as split-from, is listed as the person's newest.
      *  Refused (404) when missing, (423) when dated in a closed period, (403) for a role the
      *  sheet's permission matrix does not let open a claim, (409) unless OPEN and not deferred on
      *  the sheet's today, and (422) unless the amount is more than 0.00 and less than the claim's. */
@@ -443,7 +444,8 @@ public class ClaimService {
         LocalDate on = claim.getDate();
         claim.setAmount(claim.getAmount().subtract(amount));
         claim.unbind();
-        int terms = sheets.find(sheetId).map(s -> s.termsFor(person.gradeOn(on), on)).orElse(Sheet.DEFAULT_TERMS);
+        int terms = person.getTerms() != null ? person.getTerms()
+                : sheets.find(sheetId).map(s -> s.termsFor(person.gradeOn(on), on)).orElse(Sheet.DEFAULT_TERMS);
         Claim fresh = new Claim(sheetId, person.getId(), amount, on, on.plusDays(terms), claim.getNote());
         fresh.setStatus(ClaimStatus.OPEN);
         fresh.setNumber(nextNumber(sheetId, on));

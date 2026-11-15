@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -140,28 +141,31 @@ public class PersonService {
 
     /** Add a person to the sheet (the sheet is created first if it was never loaded). */
     @Transactional
-    public Person add(String sheetId, String user, String name, String grade) {
+    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
         sheets.load(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String trimmed = name.trim();
         requireUnusedName(sheetId, null, trimmed);
         Person person;
         try {
-            person = people.saveAndFlush(new Person(sheetId, trimmed, grade));
+            Person fresh = new Person(sheetId, trimmed, grade);
+            fresh.setTerms(terms);
+            person = people.saveAndFlush(fresh);
         } catch (DataIntegrityViolationException e) {
             throw nameInUse(); // added by another user at the same moment
         }
-        record("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId));
+        record("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId), terms == null ? "" : termsField(terms));
         rollup.recordChanges(sheetId, user, before);
         return person;
     }
 
     /** Save a person; refused when {@code version} (the one the editor loaded) is no longer the stored one.
      *  The grade is recorded from {@code gradeFrom} (null: the sheet's today), keeping those already
-     *  recorded; with no from-date, a grade the same as the one in force on the sheet's today records nothing. */
+     *  recorded; with no from-date, a grade the same as the one in force on the sheet's today records nothing.
+     *  The person's own terms become {@code terms} (null: none). */
     @Transactional
     public Person update(String sheetId, String user, long id, Long version, String name, String grade,
-            LocalDate gradeFrom) {
+            LocalDate gradeFrom, Integer terms) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (version == null || version != person.getVersion()) {
@@ -171,6 +175,8 @@ public class PersonService {
         String trimmed = name.trim();
         requireUnusedName(sheetId, id, trimmed);
         person.setName(trimmed);
+        boolean termsChanged = !Objects.equals(terms, person.getTerms());
+        person.setTerms(terms);
         LocalDate today = sheets.today(sheetId);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.recordGrade(grade, gradeFrom != null ? gradeFrom : today);
@@ -182,7 +188,7 @@ public class PersonService {
         } catch (ObjectOptimisticLockingFailureException e) {
             throw savedByAnother(); // saved by another user at the same moment
         }
-        record("PERSON_EDITED", sheetId, user, person, today);
+        record("PERSON_EDITED", sheetId, user, person, today, termsChanged ? termsField(terms) : "");
         rollup.recordChanges(sheetId, user, before);
         return person;
     }
@@ -221,10 +227,15 @@ public class PersonService {
         return person;
     }
 
-    /** Written with the grade in force on {@code today}, the sheet's today. */
-    private void record(String event, String sheetId, String user, Person person, LocalDate today) {
+    /** Written with the grade in force on {@code today}, the sheet's today, then {@code extra}. */
+    private void record(String event, String sheetId, String user, Person person, LocalDate today, String extra) {
         audit.recordOnCommit(event + " sheet=" + sheetId + " by=" + user
-                + " name=" + person.getName() + " grade=" + person.gradeOn(today));
+                + " name=" + person.getName() + " grade=" + person.gradeOn(today) + extra);
+    }
+
+    /** The terms field of a person's record: the days, empty when none. */
+    private static String termsField(Integer terms) {
+        return " terms=" + (terms == null ? "" : terms);
     }
 
     /** Refuse a name another person on the sheet already has (ignoring case). */

@@ -47,6 +47,10 @@ public class Person {
     @Column(name = "grade", nullable = false)
     private Map<LocalDate, String> datedGrades = new HashMap<>();
 
+    /** The person's own terms in days, ahead of their grade's and the sheet's; null when they have none. */
+    @Column(name = "terms")
+    private Integer terms;
+
     /** The date the person is retired from; null while not retired. Set, they count as retired
      *  at once, whatever the date. */
     @Column(name = "retired_from")
@@ -110,6 +114,14 @@ public class Person {
         out.add(new DatedGrade(grade, null));
         new TreeMap<>(datedGrades).forEach((from, g) -> out.add(new DatedGrade(g, from)));
         return out;
+    }
+
+    public Integer getTerms() {
+        return terms;
+    }
+
+    public void setTerms(Integer terms) {
+        this.terms = terms;
     }
 
     public LocalDate getRetiredFrom() {
