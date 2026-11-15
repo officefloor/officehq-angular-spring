@@ -16,7 +16,7 @@ import { Summary, SummaryPerson } from '../summary/summary';
 import { ClassicSummary } from '../summary/classic-summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, retireError, statementError, transferError, unretireError, watchError } from './people-api';
+import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -34,7 +34,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
     <app-classic-summary [periods]="periods()" [dueTotals]="classicDueByPeriod()" [dueTotal]="classicDueTotal()" />
-    <app-pools [people]="people()" (cutTotals)="cutTotals.set($event)" />
+    <app-pools [people]="people()" [crews]="crews()" (cutTotals)="cutTotals.set($event)" />
     <app-crews [people]="people()" [dueTotals]="dueByPerson()" [(crews)]="crews" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -1783,26 +1783,6 @@ export class People {
 }
 
 /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
-/** The shares, in hundredths, of a person's patrons in the order they were named: 100.00 split
- *  equally, each rounded half to even, with the remainder given to the first-named patron. */
-function patronShares(count: number): number[] {
-  if (count === 0) return [];
-  const share = divideHalfEven(10000, count);
-  const shares = Array<number>(count).fill(share);
-  shares[0] += 10000 - share * count;
-  return shares;
-}
-
-/** The integer quotient of the integers, rounded half to even. */
-function divideHalfEven(n: number, d: number): number {
-  const sign = n < 0 ? -1 : 1;
-  const a = Math.abs(n);
-  const q = Math.floor(a / d);
-  const r = a - q * d;
-  const up = 2 * r > d || (2 * r === d && q % 2 === 1);
-  return sign * (up ? q + 1 : q);
-}
-
 function trimmedSum(figures: number[]): number {
   const sum = figures.reduce((a, b) => a + b, 0);
   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -25,14 +26,16 @@ public class PoolService {
     private final PoolRepository pools;
     private final PoolMemberRepository members;
     private final PersonRepository people;
+    private final CrewRepository crews;
     private final SheetService sheets;
     private final Audit audit;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
-            SheetService sheets, Audit audit) {
+            CrewRepository crews, SheetService sheets, Audit audit) {
         this.pools = pools;
         this.members = members;
         this.people = people;
+        this.crews = crews;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -47,13 +50,16 @@ public class PoolService {
     }
 
     /** Add a pool to the sheet, the sheet created first if it was never loaded; refused (409) when
-     *  the sheet has a pool of the name already. */
+     *  the sheet has a pool or a crew (a crew is a pool too) of the name already. */
     @Transactional
     public Pool add(String sheetId, String user, String name) {
         sheets.load(sheetId, user);
         sheets.lock(sheetId);
         if (pools.findBySheetIdAndNameIgnoreCase(sheetId, name).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet has a pool of that name");
+        }
+        if (crews.findBySheetIdAndNameIgnoreCase(sheetId, name).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet has a crew of that name");
         }
         Pool pool = pools.saveAndFlush(new Pool(sheetId, name));
         audit.recordOnCommit("POOL_ADDED sheet=" + sheetId + " by=" + user + " name=" + name);

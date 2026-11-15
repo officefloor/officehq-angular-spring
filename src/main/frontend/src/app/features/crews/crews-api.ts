@@ -44,7 +44,7 @@ export class CrewsApi {
 
 export function crewError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name for the crew and choose its lead.';
-  if (e instanceof HttpErrorResponse && e.status === 409) return 'The sheet has a crew of that name already.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'The sheet has a crew or a pool of that name already.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on the sheet; load the sheet again.';
   return otherError(e);
 }

@@ -2,6 +2,9 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session, otherError } from '../../core/session';
+import { money } from '../claims/claims-api';
+import { type Crew } from '../crews/crews-api';
+import { patronShares } from '../people/people-api';
 
 /** A share percent: up to two decimals (more than 0.00 and at most 100.00 is checked apart). */
 export const SHARE_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
@@ -32,10 +35,24 @@ export function memberKey(m: PoolMember): string {
   return m.pool !== null ? `pool-${m.pool}` : String(m.personId);
 }
 
-/** A pool on the sheet: its name and its members, in the order they were added. */
+/** A pool on the sheet: its name and its members, in the order they were added. A crew is a pool
+ *  too (crew set): its lead and its members at equal shares, kept by the crew itself. */
 export interface Pool {
   name: string;
   members: PoolMember[];
+  crew?: boolean;
+}
+
+/** A crew as a pool under its name: its lead, then its members, at equal shares (100.00 split as
+ *  patrons' shares are, the remainder on the lead). */
+export function crewPool(crew: Crew): Pool {
+  const ids = [crew.leadId, ...crew.memberIds];
+  const shares = patronShares(ids.length);
+  return {
+    name: crew.name,
+    members: ids.map((personId, i) => ({ personId, pool: null, share: money(shares[i]), from: null, to: null })),
+    crew: true,
+  };
 }
 
 @Injectable({ providedIn: 'root' })
@@ -72,7 +89,7 @@ export class PoolsApi {
 
 export function poolError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name for the pool.';
-  if (e instanceof HttpErrorResponse && e.status === 409) return 'The sheet has a pool of that name already.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'The sheet has a pool or a crew of that name already.';
   return otherError(e);
 }
 

@@ -419,3 +419,23 @@ export function isStale(e: unknown): boolean {
 export function csvLine(values: string[]): string {
   return values.map((v) => (/[",\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v)).join(',') + '\n';
 }
+
+/** The shares, in hundredths, of a person's patrons in the order they were named: 100.00 split
+ *  equally, each rounded half to even, with the remainder given to the first-named patron. */
+export function patronShares(count: number): number[] {
+  if (count === 0) return [];
+  const share = divideHalfEven(10000, count);
+  const shares = Array<number>(count).fill(share);
+  shares[0] += 10000 - share * count;
+  return shares;
+}
+
+/** The integer quotient of the integers, rounded half to even. */
+export function divideHalfEven(n: number, d: number): number {
+  const sign = n < 0 ? -1 : 1;
+  const a = Math.abs(n);
+  const q = Math.floor(a / d);
+  const r = a - q * d;
+  const up = 2 * r > d || (2 * r === d && q % 2 === 1);
+  return sign * (up ? q + 1 : q);
+}

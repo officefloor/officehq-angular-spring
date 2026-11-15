@@ -6,7 +6,8 @@ import { Session } from '../../core/session';
 import { cents, money } from '../claims/claims-api';
 import { csvLine, heldOn, type Person } from '../people/people-api';
 import { dueCents } from '../rates/rates-api';
-import { MEMBER_DATE_PATTERN, Pool, PoolMember, PoolsApi, SHARE_PATTERN, memberError, memberKey, memberOn, poolError } from './pools-api';
+import { type Crew } from '../crews/crews-api';
+import { MEMBER_DATE_PATTERN, Pool, PoolMember, PoolsApi, SHARE_PATTERN, crewPool, memberError, memberKey, memberOn, poolError } from './pools-api';
 
 /** A pool's members' shares in cents, a member whose dates do not include the day counting 0. */
 function memberShares(pool: Pool, day: string | null): number[] {
@@ -82,29 +83,31 @@ function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => b
           </li>
         }
       </ul>
-      <form [formGroup]="form" (ngSubmit)="add()" [attr.aria-label]="'Add a member to pool ' + pool().name">
-        <label [for]="'pool-member-select-' + pool().name">Person or pool</label>
-        <select [id]="'pool-member-select-' + pool().name" data-testid="pool-member-select" formControlName="member">
-          <option value="">Choose a person or pool</option>
-          @for (p of people(); track p.id) {
-            <option [value]="p.id">{{ p.name }}</option>
+      @if (!pool().crew) {
+        <form [formGroup]="form" (ngSubmit)="add()" [attr.aria-label]="'Add a member to pool ' + pool().name">
+          <label [for]="'pool-member-select-' + pool().name">Person or pool</label>
+          <select [id]="'pool-member-select-' + pool().name" data-testid="pool-member-select" formControlName="member">
+            <option value="">Choose a person or pool</option>
+            @for (p of people(); track p.id) {
+              <option [value]="p.id">{{ p.name }}</option>
+            }
+            @for (p of pools(); track p.name) {
+              <option [value]="'pool:' + p.name">pool:{{ p.name }}</option>
+            }
+          </select>
+          <label [for]="'pool-member-share-' + pool().name">Share %</label>
+          <input [id]="'pool-member-share-' + pool().name" data-testid="pool-member-share" formControlName="share"
+            inputmode="decimal" autocomplete="off" />
+          <label [for]="'pool-member-from-' + pool().name">From (blank: no start)</label>
+          <input [id]="'pool-member-from-' + pool().name" type="date" data-testid="pool-member-from" formControlName="from" />
+          <label [for]="'pool-member-to-' + pool().name">To (blank: no end)</label>
+          <input [id]="'pool-member-to-' + pool().name" type="date" data-testid="pool-member-to" formControlName="to" />
+          <button type="submit" data-testid="pool-member-add">Add member</button>
+          @if (error(); as err) {
+            <p role="alert" data-testid="pool-error">{{ err }}</p>
           }
-          @for (p of pools(); track p.name) {
-            <option [value]="'pool:' + p.name">pool:{{ p.name }}</option>
-          }
-        </select>
-        <label [for]="'pool-member-share-' + pool().name">Share %</label>
-        <input [id]="'pool-member-share-' + pool().name" data-testid="pool-member-share" formControlName="share"
-          inputmode="decimal" autocomplete="off" />
-        <label [for]="'pool-member-from-' + pool().name">From (blank: no start)</label>
-        <input [id]="'pool-member-from-' + pool().name" type="date" data-testid="pool-member-from" formControlName="from" />
-        <label [for]="'pool-member-to-' + pool().name">To (blank: no end)</label>
-        <input [id]="'pool-member-to-' + pool().name" type="date" data-testid="pool-member-to" formControlName="to" />
-        <button type="submit" data-testid="pool-member-add">Add member</button>
-        @if (error(); as err) {
-          <p role="alert" data-testid="pool-error">{{ err }}</p>
-        }
-      </form>
+        </form>
+      }
   `,
 })
 export class PoolRow {
@@ -114,7 +117,7 @@ export class PoolRow {
   readonly pool = input.required<Pool>();
   /** The people on the sheet (retired ones too). */
   readonly people = input.required<Person[]>();
-  /** The sheet's pools, any of which may be chosen as a member. */
+  /** The sheet's pools (not its crews), any of which may be chosen as a member. */
   readonly pools = input.required<Pool[]>();
   /** Each member's cut of this pool's pot, by member key. */
   readonly cuts = input.required<Map<string, string>>();
@@ -227,7 +230,7 @@ export class PoolRow {
       </form>
       <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools (CSV)</button>
       <ul aria-label="Pools" data-testid="pools-list">
-        @for (p of pools(); track p.name) {
+        @for (p of allPools(); track p.name) {
           <li appPoolRow [pool]="p" [people]="people()" [pools]="pools()" [cuts]="cuts().get(p.name) ?? noCuts"
             (saved)="taken($event)"></li>
         }
@@ -242,18 +245,22 @@ export class Pools {
 
   /** The people on the sheet (retired ones too). */
   readonly people = input.required<Person[]>();
+  /** The sheet's crews, each also a pool under its name. */
+  readonly crews = input.required<Crew[]>();
   /** Each person's cut total in cents, by person id: their cuts across every pool they are a
    *  member of, added up (a pool that shows no cuts adds nothing). */
   readonly cutTotals = output<Map<number, number>>();
 
   protected readonly pools = signal<Pool[]>([]);
+  /** The sheet's pools, then its crews as pools, each in the order they were added. */
+  protected readonly allPools = computed(() => [...this.pools(), ...this.crews().map(crewPool)]);
   protected readonly error = signal<string | null>(null);
   protected readonly noCuts = new Map<string, string>();
   /** Each pool's members' cuts, by pool name: a pool that is a member of none cuts the sheet's
    *  pot; a pool that is a member of another has no pot of its own but its cut in the pool above
    *  (none when that pool has no cuts). */
   protected readonly cuts = computed(() => {
-    const pools = this.pools();
+    const pools = this.allPools();
     const retiredIds = new Set(this.people().filter((p) => (p.retiredFrom ?? null) !== null).map((p) => p.id));
     const retired = (id: number) => retiredIds.has(id);
     const today = this.session.today();
@@ -294,7 +301,7 @@ export class Pools {
     effect(() => {
       const totals = new Map<number, number>();
       const cuts = this.cuts();
-      for (const p of this.pools()) {
+      for (const p of this.allPools()) {
         const poolCuts = cuts.get(p.name);
         for (const m of p.members) {
           const cut = poolCuts?.get(memberKey(m));
@@ -321,7 +328,7 @@ export class Pools {
     const byId = new Map(this.people().map((p) => [p.id, p.name]));
     const cuts = this.cuts();
     const lines = [csvLine(['pool', 'member', 'share', 'cut'])];
-    for (const p of this.pools()) {
+    for (const p of this.allPools()) {
       for (const m of p.members) {
         const member = m.pool !== null ? `pool:${m.pool}` : (byId.get(m.personId ?? -1) ?? '');
         lines.push(csvLine([p.name, member, m.share, cuts.get(p.name)?.get(memberKey(m)) ?? '']));
@@ -350,8 +357,8 @@ export class Pools {
       this.error.set('Enter a name for the pool.');
       return;
     }
-    if (this.pools().some((p) => p.name.toLowerCase() === name.toLowerCase())) {
-      this.error.set('The sheet has a pool of that name already.');
+    if (this.allPools().some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+      this.error.set('The sheet has a pool or a crew of that name already.');
       return;
     }
     this.saving = true;

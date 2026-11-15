@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.PoolRepository;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -22,14 +23,16 @@ public class CrewService {
     private final CrewRepository crews;
     private final CrewMemberRepository members;
     private final PersonRepository people;
+    private final PoolRepository pools;
     private final SheetService sheets;
     private final Audit audit;
 
     public CrewService(CrewRepository crews, CrewMemberRepository members, PersonRepository people,
-            SheetService sheets, Audit audit) {
+            PoolRepository pools, SheetService sheets, Audit audit) {
         this.crews = crews;
         this.members = members;
         this.people = people;
+        this.pools = pools;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -44,7 +47,7 @@ public class CrewService {
     }
 
     /** Add a crew led by a person of the sheet; refused (404) for a person not on the sheet, (409)
-     *  when the sheet has a crew of the name already. */
+     *  when the sheet has a crew or a pool (a crew is a pool too) of the name already. */
     @Transactional
     public Crew add(String sheetId, String user, String name, long leadId) {
         sheets.load(sheetId, user);
@@ -53,6 +56,9 @@ public class CrewService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (crews.findBySheetIdAndNameIgnoreCase(sheetId, name).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet has a crew of that name");
+        }
+        if (pools.findBySheetIdAndNameIgnoreCase(sheetId, name).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet has a pool of that name");
         }
         Crew crew = crews.saveAndFlush(new Crew(sheetId, name, lead.getId()));
         audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user + " name=" + name
