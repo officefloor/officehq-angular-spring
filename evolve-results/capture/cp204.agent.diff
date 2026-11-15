@@ -1,0 +1,234 @@
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index 9e409d984..9249a2117 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -148,10 +148,19 @@ export interface DescendantFigures {
+   overdueTotal: string;
+   gradeDueTotals: Record<string, string>;
+   statusCounts: Record<string, number>;
++  /** Each person's name and aliases, due-total (null: n/a) and overdue-total. */
++  members: FigureMember[];
++}
++
++/** A person as the consolidated figures take them. */
++export interface FigureMember {
++  names: string[];
++  dueTotal: string | null;
++  overdueTotal: string;
+ }
+ 
+ /** Figures with nothing in them. */
+-export const NO_FIGURES: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {} };
++export const NO_FIGURES: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {}, members: [] };
+ 
+ @Injectable({ providedIn: 'root' })
+ export class PeopleApi {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c84d5da6a..7e29d4680 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -16,7 +16,7 @@ import { STATUSES, Summary, SummaryPerson, statusCounts } from '../summary/summa
+ import { ClassicSummary } from '../summary/classic-summary';
+ import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
+ import { Dashboard, Header } from '../header/header';
+-import { DescendantFigures, GRADES, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
++import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
+ 
+ // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
+ // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
+@@ -902,28 +902,39 @@ export class People {
+    *  figures are then live). */
+   private readonly ownLive = signal<DescendantFigures | null>(null);
+   /** The sheet's own figures and its descendants' added up, each as the screen shows the sheet:
+-   *  as it is now, or as it stood at the end of the as-of date. */
++   *  as it is now, or as it stood at the end of the as-of date. The due-total and overdue-total are
++   *  everyone's over the whole tree, trimmed once; people whose names or aliases match count once. */
+   protected readonly consolidated = computed<DescendantFigures>(() => {
+     const d = this.descendants();
+     const own = this.ownLive() ?? this.ownFigures();
++    const members = [...own.members, ...d.members];
+     return {
+-      people: own.people + d.people,
+-      dueTotal: money(cents(own.dueTotal) + cents(d.dueTotal)),
+-      overdueTotal: money(cents(own.overdueTotal) + cents(d.overdueTotal)),
++      people: distinctPeople(members),
++      dueTotal: money(trimmedSum(members.flatMap((m) => (m.dueTotal === null ? [] : [cents(m.dueTotal)])))),
++      overdueTotal: money(trimmedSum(members.map((m) => cents(m.overdueTotal)))),
+       gradeDueTotals: Object.fromEntries(GRADES.map((g) =>
+         [g, money(cents(own.gradeDueTotals[g] ?? '0.00') + cents(d.gradeDueTotals[g] ?? '0.00'))])),
+       statusCounts: Object.fromEntries(STATUSES.map((s) =>
+         [s, (own.statusCounts[s] ?? 0) + (d.statusCounts[s] ?? 0)])),
++      members,
+     };
+   });
+   /** The sheet's own figures, live, as the consolidated figures add them up. */
+   private readonly ownFigures = computed<DescendantFigures>(() => {
+     const people = this.summaryPeople().filter((p) => !p.retired);
++    const dues = this.dueByPerson();
++    const overdues = this.overdueByPerson();
++    const members = this.people().map((p) => {
++      const due = dues.get(p.id) ?? null;
++      return { names: [p.name, ...p.aliases], dueTotal: due === null ? null : money(due),
++        overdueTotal: money(overdues.get(p.id)?.cents ?? 0) };
++    });
+     return {
+       people: this.people().length, dueTotal: this.dueTotal(), overdueTotal: this.overdueTotal(),
+       gradeDueTotals: Object.fromEntries(GRADES.map((g) =>
+         [g, money(people.filter((p) => p.grade === g).reduce((sum, p) => sum + (p.due ?? 0), 0))])),
+       statusCounts: Object.fromEntries(statusCounts(this.claims()).map((s) => [s.status, s.count])),
++      members,
+     };
+   });
+   protected readonly claimedTotal = computed(() =>
+@@ -2049,6 +2060,23 @@ function trimmedSum(figures: number[]): number {
+   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
+ }
+ 
++/** How many people these are, counting once those whose names or aliases match (ignoring case,
++ *  as names are compared), directly or through others. */
++function distinctPeople(members: FigureMember[]): number {
++  const parent = members.map((_, i) => i);
++  const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
++  const byName = new Map<string, number>();
++  members.forEach((m, i) => {
++    for (const n of m.names) {
++      const key = n.toLowerCase();
++      const other = byName.get(key);
++      if (other === undefined) byName.set(key, i);
++      else parent[root(i)] = root(other);
++    }
++  });
++  return members.filter((_, i) => root(i) === i).length;
++}
++
+ /** A person's own terms as the form shows them: the days, blank when none. */
+ function termsText(p: Person): string {
+   return p.terms === null ? '' : String(p.terms);
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+index 71468af75..cb6b1df6c 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
+ import java.time.LocalDate;
++import java.util.List;
+ import java.util.Map;
+ import java.util.TreeMap;
+ import java.util.stream.Collectors;
+@@ -24,9 +25,14 @@ public class RollupController {
+ 
+     /** Figures added up over a sheet's descendants (or the sheet's own), the totals with two
+      *  decimals: per grade the due-totals of the people on it (retired ones left out), and per
+-     *  status how many claims are in it (only grades and statuses with some). */
++     *  status how many claims are in it (only grades and statuses with some), and each person's
++     *  names and figures. */
+     public record ConsolidatedView(int people, String dueTotal, String overdueTotal,
+-            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts) {
++            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, List<MemberView> members) {
++    }
++
++    /** A person's name and aliases, due-total (null: n/a) and overdue-total, with two decimals. */
++    public record MemberView(List<String> names, String dueTotal, String overdueTotal) {
+     }
+ 
+     private final RollupService service;
+@@ -61,6 +67,9 @@ public class RollupController {
+                 c.gradeDueTotals().entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey,
+                         e -> e.getValue().setScale(2).toPlainString(), (a, b) -> a, TreeMap::new)),
+                 c.statusCounts().entrySet().stream().collect(Collectors.toMap(e -> e.getKey().name(),
+-                        Map.Entry::getValue, (a, b) -> a, TreeMap::new)));
++                        Map.Entry::getValue, (a, b) -> a, TreeMap::new)),
++                c.members().stream().map(m -> new MemberView(m.names(),
++                        m.dueTotal() == null ? null : m.dueTotal().setScale(2).toPlainString(),
++                        m.overdueTotal().setScale(2).toPlainString())).toList());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index a854ae7a9..1672c1553 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -46,9 +46,9 @@ public class RollupService {
+ 
+     /** A person's figures: claimed, due-total held to the sheet's cap (null: n/a), and
+      *  overdue-total (the dues their overdue counting claims show, n/a ones skipped, not capped);
+-     *  with their grade on the sheet's today and whether they have a retirement date. */
++     *  with their grade on the sheet's today, whether they have a retirement date, and their aliases. */
+     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
+-            String grade, boolean retired) {
++            String grade, boolean retired, List<String> aliases) {
+         boolean sameAs(Figures other) {
+             return other != null && claimed.compareTo(other.claimed) == 0
+                     && Objects.equals(text(dueTotal), text(other.dueTotal))
+@@ -84,6 +84,15 @@ public class RollupService {
+         BigDecimal overdueTotal() {
+             return trimmedSum(people.values().stream().map(Figures::overdueTotal).toList());
+         }
++
++        /** Each person's names and figures, in list order. */
++        List<Member> members() {
++            return people.values().stream().map(f -> {
++                List<String> names = new ArrayList<>(List.of(f.name()));
++                names.addAll(f.aliases());
++                return new Member(names, f.dueTotal(), f.overdueTotal());
++            }).toList();
++        }
+     }
+ 
+     /** The figures added up, leaving out the single highest and the single lowest when there are
+@@ -174,7 +183,7 @@ public class RollupService {
+                     .reduce(zero(), BigDecimal::add);
+             out.put(id, new Figures(p.getName(), claimed,
+                     Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding), cap), overdue,
+-                    p.gradeOn(today), p.isRetired()));
++                    p.gradeOn(today), p.isRetired(), List.copyOf(p.getAliases())));
+         });
+         Map<ClaimStatus, Integer> statuses = new LinkedHashMap<>();
+         sheetClaims.stream().map(Claim::getStatus).filter(Objects::nonNull)
+@@ -184,9 +193,15 @@ public class RollupService {
+ 
+     /** Figures added up over sheets: how many people (retired ones too), the due-totals and
+      *  overdue-totals each sheet shows, per grade the due-totals of the people on it (retired ones
+-     *  left out), and per status how many claims are in it. */
++     *  left out), per status how many claims are in it, and each person's names and figures (so a
++     *  tree's figures can be trimmed over all its people, and people matched by name counted once). */
+     public record Consolidated(int people, BigDecimal dueTotal, BigDecimal overdueTotal,
+-            Map<String, BigDecimal> gradeDueTotals, Map<ClaimStatus, Integer> statusCounts) {
++            Map<String, BigDecimal> gradeDueTotals, Map<ClaimStatus, Integer> statusCounts, List<Member> members) {
++    }
++
++    /** A person as the consolidated figures take them: their name and aliases, due-total held to
++     *  the cap (null: n/a) and overdue-total. */
++    public record Member(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal) {
+     }
+ 
+     /** The sheet's own figures as it is now, or as it stood at the end of {@code asOf} when given:
+@@ -194,7 +209,7 @@ public class RollupService {
+     public Consolidated own(String sheetId, LocalDate asOf) {
+         Snapshot figures = asOf == null ? snapshot(sheetId) : snapshotAsOf(sheetId, asOf);
+         return new Consolidated(figures.people().size(), figures.dueTotal(), figures.overdueTotal(),
+-                figures.dueByGrade(), figures.statuses());
++                figures.dueByGrade(), figures.statuses(), figures.members());
+     }
+ 
+     /** The figures of the sheet's descendants (its children, theirs, and so on), each sheet's as
+@@ -206,6 +221,7 @@ public class RollupService {
+         BigDecimal overdue = zero();
+         Map<String, BigDecimal> grades = new LinkedHashMap<>();
+         Map<ClaimStatus, Integer> statuses = new LinkedHashMap<>();
++        List<Member> members = new ArrayList<>();
+         Set<String> seen = new HashSet<>(Set.of(sheetId));
+         ArrayDeque<String> todo = new ArrayDeque<>(List.of(sheetId));
+         while (!todo.isEmpty()) {
+@@ -220,9 +236,10 @@ public class RollupService {
+                 overdue = overdue.add(figures.overdueTotal());
+                 figures.dueByGrade().forEach((g, d) -> grades.merge(g, d, BigDecimal::add));
+                 figures.statuses().forEach((st, n) -> statuses.merge(st, n, Integer::sum));
++                members.addAll(figures.members());
+             }
+         }
+-        return new Consolidated(count, due, overdue, grades, statuses);
++        return new Consolidated(count, due, overdue, grades, statuses, members);
+     }
+ 
+     /** Each person's due-total for the period from {@code from} to {@code to}, inclusive, by person
