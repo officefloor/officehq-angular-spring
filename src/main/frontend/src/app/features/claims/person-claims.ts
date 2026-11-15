@@ -500,8 +500,13 @@ export class PersonClaims {
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
       this.reset();
     } catch (e) {
-      this.error.set(claimError(e, correction, ref === '' ? 'none' : editing === null ? 'add' : 'edit',
-        editing !== null && this.claims().some((c) => c.id === editing && c.lines.length > 0)));
+      const lined = this.claims().find((c) => c.id === editing && c.lines.length > 0);
+      // a claim with lines takes their total as its amount, which no edit of the form can change:
+      // its editor closes, releasing the claim, so the form is back to adding
+      if (lined && e instanceof HttpErrorResponse && e.status === 422 && cents(lined.amount) !== cents(amount)) {
+        await this.cancel();
+      }
+      this.error.set(claimError(e, correction, ref === '' ? 'none' : editing === null ? 'add' : 'edit', !!lined));
     } finally {
       this.submitting = false;
     }

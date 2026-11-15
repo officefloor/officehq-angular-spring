@@ -22,6 +22,23 @@ export function gradeOn(grades: readonly DatedGrade[], date: string | null): str
   return best?.grade ?? grades[0]?.grade ?? '';
 }
 
+/** A person's timeline: one line per dated thing about them, by date, and within a date their grade
+ *  changes, then their claims (by their line, as text), then holds, then retirements, then unretirements:
+ *  "<date> grade <grade>", "<date> claim <amount> <status>", "<date> hold [to <date>]",
+ *  "<date> retired", "<date> unretired". Their first grade, undated, has no line. */
+export function timelineOf(p: Person, claims: readonly Claim[]): string[] {
+  const entries: { date: string; kind: number; seq: number; text: string }[] = [];
+  const push = (date: string, kind: number, seq: number, text: string) => entries.push({ date, kind, seq, text });
+  p.grades.forEach((g, i) => { if (g.from !== null) push(g.from, 0, i, `grade ${g.grade}`); });
+  for (const c of claims) if (c.personId === p.id) push(c.date, 1, 0, `claim ${c.amount} ${c.status}`);
+  p.holds.forEach((h, i) => push(h.from, 2, i, h.to === null ? 'hold' : `hold to ${h.to}`));
+  p.retirements.forEach((r, i) => push(r.from, 3, i, 'retired'));
+  if (p.retiredFrom !== null) push(p.retiredFrom, 3, p.retirements.length, 'retired');
+  p.retirements.forEach((r, i) => push(r.to, 4, i, 'unretired'));
+  entries.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.kind - b.kind || a.seq - b.seq || (a.text < b.text ? -1 : a.text > b.text ? 1 : 0));
+  return entries.map((e) => `${e.date} ${e.text}`);
+}
+
 /** A hold from a date (yyyy-mm-dd) to an optional one (null: open-ended), both inclusive. */
 export interface Hold {
   from: string;

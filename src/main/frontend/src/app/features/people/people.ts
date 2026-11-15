@@ -16,7 +16,7 @@ import { STATUSES, Summary, SummaryPerson, statusCounts } from '../summary/summa
 import { ClassicSummary } from '../summary/classic-summary';
 import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, holderPartCents, pctOn, plusDays } from '../rates/rates-api';
 import { Dashboard, Header } from '../header/header';
-import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkHoldError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, mergeUndoError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
+import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkHoldError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, mergeUndoError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, timelineOf, transferError, transferUndoError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap less their cut total), its excess over that and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -316,7 +316,7 @@ import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasEr
             <th scope="col">Hold from</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Watched</th>
             @if (shows('patrons')) { <th scope="col">Patrons</th> }
             @if (shows('backing')) { <th scope="col">Backing</th> }
-            <th scope="col">Add patron</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th>
+            <th scope="col">Add patron</th><th scope="col">Timeline</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -510,6 +510,13 @@ import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasEr
                 }
               </td>
               <td>
+                <ul [attr.aria-label]="'Timeline of ' + p.name">
+                  @for (line of timelineById().get(p.id) ?? []; track $index) {
+                    <li data-testid="person-timeline-line">{{ line }}</li>
+                  }
+                </ul>
+              </td>
+              <td>
                 <app-person-plans [personId]="p.id" [personName]="p.name" (claimSaved)="claimSaved($event)" />
                 <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rateLevels()" [grades]="p.grades" [others]="patronChoicesFor(p)" [periods]="periods()"
                   [selected]="selectedClaims()" (toggled)="claimToggled($event)" (saved)="claimSaved($event)" />
@@ -592,6 +599,11 @@ export class People {
   protected readonly claims = signal<Claim[]>([]);
   /** The retirement date of each person with one, by person id: from the sheet's today on or after it, their
    *  open (OPEN or PENDING) claims count in no live total unless bound by a statement. */
+  /** Each person's timeline lines, by person id. */
+  protected readonly timelineById = computed(() => {
+    const claims = this.claims();
+    return new Map(this.people().map((p) => [p.id, timelineOf(p, claims)]));
+  });
   private readonly retiredFromById = computed(() =>
     new Map(this.people().filter((p) => p.retiredFrom !== null).map((p) => [p.id, p.retiredFrom as string])));
   /** Whether an unbound open claim is left out of the live totals: its person's retirement date reached on
