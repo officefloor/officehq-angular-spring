@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import net.officefloor.hq.app.history.HistoryListener;
+import org.hibernate.annotations.OptimisticLock;
 
 /** A person on a sheet, with a name and a dated grade (A, B or C). */
 @Entity
@@ -79,6 +80,12 @@ public class Person {
     @CollectionTable(name = "person_hold", joinColumns = @JoinColumn(name = "person_id"))
     @OrderColumn(name = "position")
     private List<Hold> holds = new ArrayList<>();
+
+    /** The person's place in the sheet's list: people are listed by it, lowest first. Moving a
+     *  person is no edit of them, so it leaves their version as it is. */
+    @Column(name = "list_position", nullable = false)
+    @OptimisticLock(excluded = true)
+    private long position;
 
     /** Raised on every save, so an edit of a version someone else has since saved is refused. */
     @Version
@@ -224,6 +231,14 @@ public class Person {
     /** Whether a hold of the person covers the date. */
     public boolean heldOn(LocalDate date) {
         return holds.stream().anyMatch(h -> h.covers(date));
+    }
+
+    public long getPosition() {
+        return position;
+    }
+
+    public void setPosition(long position) {
+        this.position = position;
     }
 
     public long getVersion() {

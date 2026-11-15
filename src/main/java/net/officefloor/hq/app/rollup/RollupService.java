@@ -35,7 +35,7 @@ import org.springframework.stereotype.Service;
  * The sheet's figures as the screen shows them: each person's claimed, due-total and overdue-total,
  * and the sheet's claimed-total, due-total and overdue-total. A change takes a {@link #snapshot} before it and passes it
  * to {@link #recordChanges} after its own audit lines, which then records a ROLLUP line for each
- * person whose figures moved (people in the order they were added; a person new to the sheet
+ * person whose figures moved (people in list order; a person new to the sheet
  * counts as moved) and a TOTALS line when any of the sheet's totals moved.
  */
 @Service
@@ -51,7 +51,7 @@ public class RollupService {
         }
     }
 
-    /** The sheet's figures at one moment: each person's, by person id in the order they were added. */
+    /** The sheet's figures at one moment: each person's, by person id in list order. */
     public record Snapshot(Map<Long, Figures> people) {
         BigDecimal claimedTotal() {
             return people.values().stream().map(Figures::claimed).reduce(zero(), BigDecimal::add);
@@ -105,7 +105,7 @@ public class RollupService {
         BigDecimal cap = sheet.map(Sheet::getCap).orElse(null);
         LateCharge late = LateCharge.of(sheet);
         List<Rate> sheetRates = rateChain.effective(sheetId);
-        List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
+        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         Map<Long, Person> held = heldPeople(sheetPeople);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
         Function<Claim, RoundingMode> rounding = roundingOf(sheet, sheetClaims);
@@ -176,7 +176,7 @@ public class RollupService {
         Function<LocalDate, BigDecimal> floor = floorOf(sheet);
         LateCharge late = LateCharge.of(sheet);
         List<Rate> sheetRates = rateChain.effective(sheetId);
-        List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
+        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         Map<Long, Person> held = heldPeople(sheetPeople);
         Map<Long, Person> byId = sheetPeople.stream().collect(Collectors.toMap(Person::getId, p -> p));
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
@@ -225,8 +225,8 @@ public class RollupService {
         return new Stated(counted, Sheet.capped(dueTotal, sheet.getCap()));
     }
 
-    /** Record, once the transaction commits, a SNAPSHOT line for each person (in the order they
-     *  were added) with their due-total in {@code before}. */
+    /** Record, once the transaction commits, a SNAPSHOT line for each person (in list
+     *  order) with their due-total in {@code before}. */
     public void recordSnapshot(String sheetId, String user, Snapshot before) {
         before.people().values().forEach(p -> audit.recordOnCommit("SNAPSHOT sheet=" + sheetId + " by=" + user
                 + " name=" + p.name() + " due-total=" + text(p.dueTotal())));

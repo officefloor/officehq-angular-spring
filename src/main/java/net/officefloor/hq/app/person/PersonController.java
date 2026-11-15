@@ -99,6 +99,10 @@ public class PersonController {
     public record HoldForm(LocalDate from, LocalDate to) {
     }
 
+    /** A move as the row submits it: up (towards the top of the list) or down. */
+    public record MoveForm(@NotNull @Pattern(regexp = "up|down") String direction) {
+    }
+
     /** A watch as the row submits it: true to start watching, false to stop. */
     public record WatchForm(@NotNull Boolean on) {
     }
@@ -220,6 +224,17 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @RequestBody(required = false) RetireForm body) {
         return view(sheetId, user, service.retire(sheetId, user.trim(), id, body == null ? null : body.from()));
+    }
+
+    /** Move the person one place up or down the list; answers with the sheet's people in their new order. */
+    @PostMapping("/{id}/move")
+    public List<PersonView> move(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody MoveForm body) {
+        service.move(sheetId, user.trim(), id, body.direction().equals("up"));
+        return list(sheetId, user, null);
     }
 
     @PostMapping("/{id}/hold")

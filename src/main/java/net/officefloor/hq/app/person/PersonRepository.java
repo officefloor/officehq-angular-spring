@@ -9,8 +9,12 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface PersonRepository extends JpaRepository<Person, Long> {
 
-    /** The sheet's people in the order they were added. */
-    List<Person> findBySheetIdOrderByIdAsc(String sheetId);
+    /** The sheet's people in list order: by position (the order they were added, unless moved). */
+    List<Person> findBySheetIdOrderByPositionAscIdAsc(String sheetId);
+
+    /** The position after the last person's on the sheet: where a new person goes. */
+    @Query("select coalesce(max(p.position), 0) + 1 from Person p where p.sheetId = :sheetId")
+    long nextPosition(String sheetId);
 
     Optional<Person> findByIdAndSheetId(Long id, String sheetId);
 

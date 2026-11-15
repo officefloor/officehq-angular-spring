@@ -77,7 +77,7 @@ public class PersonService {
 
     @Transactional(readOnly = true)
     public List<Person> list(String sheetId) {
-        return people.findBySheetIdOrderByIdAsc(sheetId);
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
     /** The sheet's today: the date the grade a person shows is in force on. */
@@ -216,6 +216,7 @@ public class PersonService {
             Person fresh = new Person(sheetId, trimmed, grade);
             fresh.setTerms(terms);
             fresh.setContact(contact);
+            fresh.setPosition(people.nextPosition(sheetId));
             person = people.saveAndFlush(fresh);
         } catch (DataIntegrityViolationException e) {
             throw inUse(e); // added by another user at the same moment
@@ -276,7 +277,7 @@ public class PersonService {
     @Transactional
     public int grade(String sheetId, String user, List<Long> ids, String grade, LocalDate gradeFrom) {
         Set<Long> wanted = Set.copyOf(ids);
-        List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
                 .filter(p -> wanted.contains(p.getId())).toList();
         if (chosen.size() != wanted.size()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person");
@@ -296,6 +297,49 @@ public class PersonService {
             rollup.recordChanges(sheetId, user, before);
         }
         return chosen.size();
+    }
+
+    /** Move a person one place up (towards the top) or down the sheet's list, swapping places with
+     *  the person there. Refused (422) for the top person moving up or the bottom one moving down,
+     *  (404) for a person not on the sheet and (403) on an archived sheet. Answers with the sheet's
+     *  people in their new order. */
+    @Transactional
+    public List<Person> move(String sheetId, String user, long id, boolean up) {
+        if (sheets.archived(sheetId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The sheet is archived: nothing on it may change");
+        }
+        // held until the transaction ends, so two moves on the sheet are taken one after the other
+        sheets.lock(sheetId);
+        List<Person> listed = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        int at = -1;
+        for (int i = 0; i < listed.size(); i++) {
+            if (listed.get(i).getId() == id) {
+                at = i;
+            }
+        }
+        if (at < 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person");
+        }
+        int to = up ? at - 1 : at + 1;
+        if (to < 0 || to >= listed.size()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    up ? "The top person cannot move up" : "The bottom person cannot move down");
+        }
+        Person person = listed.get(at);
+        Person other = listed.get(to);
+        if (person.getPosition() == other.getPosition()) {
+            // two people added at the same moment share a place: number the list afresh first
+            for (int i = 0; i < listed.size(); i++) {
+                listed.get(i).setPosition(i + 1);
+            }
+        }
+        long was = person.getPosition();
+        person.setPosition(other.getPosition());
+        other.setPosition(was);
+        people.flush();
+        audit.recordOnCommit("PERSON_MOVED sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " position=" + (to + 1));
+        return people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
     }
 
     /** Retire a person from a date (a missing one takes the sheet's today); they count as retired
@@ -473,7 +517,9 @@ public class PersonService {
 
         Person arrived;
         try {
-            arrived = people.saveAndFlush(person.transferredTo(target));
+            Person copy = person.transferredTo(target);
+            copy.setPosition(people.nextPosition(target));
+            arrived = people.saveAndFlush(copy);
         } catch (DataIntegrityViolationException e) {
             throw inUse(e); // taken there by another user at the same moment
         }
@@ -627,7 +673,7 @@ public class PersonService {
     public Set<String> treeNames(String sheetId) {
         Set<String> names = new HashSet<>();
         for (String other : sheets.tree(sheetId)) {
-            for (Person p : people.findBySheetIdOrderByIdAsc(other)) {
+            for (Person p : people.findBySheetIdOrderByPositionAscIdAsc(other)) {
                 names.add(nameKey(p.getName()));
                 p.getAliases().forEach(a -> names.add(nameKey(a)));
             }

@@ -149,13 +149,13 @@ public class ClaimService {
         return claim;
     }
 
-    /** The claims of the ids on the sheet in list order: the people in the order they were added,
+    /** The claims of the ids on the sheet in list order: the people by their place in the list,
      *  each person's claims newest first; ids not on the sheet are left out. */
     @Transactional(readOnly = true)
     public List<Long> inListOrder(String sheetId, Collection<Long> ids) {
         Set<Long> wanted = new HashSet<>(ids);
         Map<Long, Integer> personOrder = new HashMap<>();
-        List<Person> theirs = people.findBySheetIdOrderByIdAsc(sheetId);
+        List<Person> theirs = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
         for (int i = 0; i < theirs.size(); i++) {
             personOrder.put(theirs.get(i).getId(), i);
         }

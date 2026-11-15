@@ -10,7 +10,7 @@ import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, effectiveRates, pctOn, plusDays } from '../rates/rates-api';
-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, importError, isStale, mergeError, patronError, personError, cancelStatementError, retireError, statementError, transferError, watchError } from './people-api';
+import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, cancelStatementError, retireError, statementError, transferError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -276,6 +276,10 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
                   [selected]="selectedClaims()" (toggled)="claimToggled($event)" (saved)="claimSaved($event)" />
               </td>
               <td>
+                <button type="button" data-testid="person-move-up" (click)="move(p, 'up')"
+                  [attr.aria-label]="'Move ' + p.name + ' up'">Up</button>
+                <button type="button" data-testid="person-move-down" (click)="move(p, 'down')"
+                  [attr.aria-label]="'Move ' + p.name + ' down'">Down</button>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
                 <label [for]="'person-merge-into-' + p.id" class="visually-hidden">Merge {{ p.name }} into</label>
@@ -934,6 +938,20 @@ export class People {
     }
   }
 
+  /** Move a person one place up or down the list, swapping with their neighbour; the list then
+   *  shows everyone in their new order. */
+  protected async move(p: Person, direction: 'up' | 'down'): Promise<void> {
+    this.clearRowError(p.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const people = await this.api.move(sheetId, p.id, direction);
+      if (this.session.sheetId() === sheetId) this.people.set(people);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: moveError(e) }));
+    }
+  }
+
   /** Add a hold to a person from a date (blank: the sheet's today) to an optional one; the row then shows it. */
   protected async hold(p: Person, from: string, to: string): Promise<void> {
     this.clearRowError(p.id);
@@ -990,8 +1008,10 @@ export class People {
   }
 
   /** Take in a claim just added (listed first, as the newest) or saved (in its place; a
-   *  reassigned one listed first under its new person). */
+   *  reassigned one listed first under its new person). An action on the person's row, it clears
+   *  the row's last error. */
   protected claimSaved(claim: Claim): void {
+    this.clearRowError(claim.personId);
     this.claims.update((cs) => [claim, ...cs.filter((c) => c.id !== claim.id)].sort(byListed));
   }
 
@@ -1086,6 +1106,7 @@ export class People {
   /** Select a person for a bulk grade, or take them out of the selection. */
   protected personToggled(id: number, on: boolean): void {
     this.bulkGradeErr.set(null);
+    this.clearRowError(id); // the next action on the row
     this.selectedPeople.update((ids) => {
       const next = new Set(ids);
       if (on) next.add(id);

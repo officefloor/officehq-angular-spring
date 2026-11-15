@@ -273,7 +273,7 @@ public class ClaimController {
         return view(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.OPEN));
     }
 
-    /** Open each selected claim in list order (people in the order added, newest claim first),
+    /** Open each selected claim in list order (people by their place in the list, newest claim first),
      *  each on its own, numbered in that order; a claim that cannot be opened is left as it is. */
     @PostMapping("/claims/bulk-open")
     @ViewerAllowed
@@ -306,7 +306,7 @@ public class ClaimController {
         return view(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED));
     }
 
-    /** Settle the selected claims in list order (people in the order added, newest claim first)
+    /** Settle the selected claims in list order (people by their place in the list, newest claim first)
      *  by the rules of settling one, all or nothing: a claim sent to PENDING counts as settled, and
      *  when any cannot be settled (or is missing) none is, and every one counts as refused. A bulk
      *  settle that settles them is the sheet's next batch, and each claim carries its number. */
@@ -410,7 +410,7 @@ public class ClaimController {
         return view(service.reassign(sheetId, user.trim(), id, body.personId()));
     }
 
-    /** Move each selected claim to the person in list order (people in the order added, newest
+    /** Move each selected claim to the person in list order (people by their place in the list, newest
      *  claim first), each on its own by the rules of reassigning one; a claim that cannot be moved
      *  is left as it is. */
     @PostMapping("/claims/bulk-reassign")

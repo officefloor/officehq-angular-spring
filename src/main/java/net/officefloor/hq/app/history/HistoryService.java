@@ -67,7 +67,7 @@ public class HistoryService {
     }
 
     record PersonState(String name, String grade, List<GradeState> grades, Integer terms, LocalDate retiredFrom,
-            List<HoldState> holds, String contact, List<String> aliases) {
+            List<HoldState> holds, String contact, List<String> aliases, Long position) {
     }
 
     record RateState(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
@@ -101,7 +101,7 @@ public class HistoryService {
     }
 
     /** The sheet as it stood at the end of a date: its settings (its today that date), its people
-     *  and claims by id, its rates, its periods by id, its statements by id (oldest first), its
+     *  by id in list order, its claims by id, its rates, its periods by id, its statements by id (oldest first), its
      *  patrons and watches, its roles (by user name), its delegations by id and its permission
      *  matrix; none of it is stored. */
     public record AsOf(Sheet sheet, Map<Long, Person> people, List<Rate> rates, Map<Long, Claim> claims,
@@ -142,7 +142,7 @@ public class HistoryService {
             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
                     all.stream().skip(1).map(g -> new GradeState(g.from(), g.grade())).toList(), p.getTerms(),
                     p.getRetiredFrom(), p.getHolds().stream().map(h -> new HoldState(h.from(), h.to())).toList(),
-                    p.getContact(), p.getAliases()));
+                    p.getContact(), p.getAliases(), p.getPosition()));
         } else if (entity instanceof Rate r) {
             write(r.getSheetId(), RATE, String.valueOf(r.getId()),
                     new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo()));
@@ -244,7 +244,7 @@ public class HistoryService {
                         sheet.archive();
                     }
                 }
-                case PERSON -> people.put(Long.valueOf(id), personOf(sheetId, json.readValue(state, PersonState.class)));
+                case PERSON -> people.put(Long.valueOf(id), personOf(sheetId, Long.parseLong(id), json.readValue(state, PersonState.class)));
                 case RATE -> {
                     RateState r = json.readValue(state, RateState.class);
                     rates.add(new Rate(sheetId, r.grade(), r.from(), r.to(), r.pct()));
@@ -292,17 +292,24 @@ public class HistoryService {
         claims.entrySet().stream()
                 .sorted(Comparator.comparing((Map.Entry<Long, Claim> e) -> e.getValue().getListed()).reversed())
                 .forEach(e -> claimsListed.put(e.getKey(), e.getValue()));
-        return new AsOf(sheet, people, rates, claimsListed, periods, statements, patrons, watches, roles,
+        Map<Long, Person> peopleListed = new LinkedHashMap<>();
+        people.entrySet().stream()
+                .sorted(Comparator.comparingLong((Map.Entry<Long, Person> e) -> e.getValue().getPosition())
+                        .thenComparing(Map.Entry::getKey))
+                .forEach(e -> peopleListed.put(e.getKey(), e.getValue()));
+        return new AsOf(sheet, peopleListed, rates, claimsListed, periods, statements, patrons, watches, roles,
                 delegations, permissions);
     }
 
-    private static Person personOf(String sheetId, PersonState s) {
+    private static Person personOf(String sheetId, long id, PersonState s) {
         Person p = new Person(sheetId, s.name(), s.grade());
         s.grades().forEach(g -> p.recordGrade(g.grade(), g.from()));
         p.setTerms(s.terms());
         p.setContact(s.contact());
         p.setRetiredFrom(s.retiredFrom());
         s.holds().forEach(h -> p.addHold(h.from(), h.to()));
+        // a version written before people had positions is placed by its id, as they then were
+        p.setPosition(s.position() != null ? s.position() : id);
         if (s.aliases() != null) { // a version written before people had aliases has none
             s.aliases().forEach(p::addAlias);
         }

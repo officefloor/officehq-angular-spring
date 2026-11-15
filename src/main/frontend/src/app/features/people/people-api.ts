@@ -158,6 +158,13 @@ export class PeopleApi {
     );
   }
 
+  /** Move a person one place up or down the list; the sheet's people in their new order. */
+  move(sheetId: string, id: number, direction: 'up' | 'down'): Promise<Person[]> {
+    return firstValueFrom(
+      this.http.post<Person[]>(`${this.url(sheetId)}/${id}/move`, { direction }, { headers: this.headers() }),
+    );
+  }
+
   /** Add a hold to a person from a date (blank: the sheet's today) to an optional one (blank: open-ended). */
   hold(sheetId: string, id: number, from: string, to: string): Promise<Person> {
     return firstValueFrom(
@@ -267,6 +274,12 @@ export function cancelStatementError(e: unknown): string {
 
 export function retireError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a date as yyyy-mm-dd.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  return otherError(e);
+}
+
+export function moveError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'The top person cannot move up, nor the bottom one down.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   return otherError(e);
 }
