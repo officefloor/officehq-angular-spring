@@ -364,6 +364,16 @@ public class ClaimService {
         return changeStatus(sheetId, user, id, to, null, false);
     }
 
+    /** Settle a claim as {@link #changeStatus} does, but as of a date ({@code on}; null: now): its
+     *  frozen figure is its due as it stood at the end of that date (every change made while the
+     *  sheet's today was on or before it counts, every later one does not), with that date standing
+     *  in for the sheet's today, and CLAIM_SETTLED ends with it. Refused (422) when the date is after
+     *  the sheet's today, or the claim was not yet added then. */
+    @Transactional
+    public Claim settle(String sheetId, String user, long id, LocalDate on) {
+        return changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, false, on);
+    }
+
     /** Settle the claims (in the order given) as {@link #changeStatus} does, all or nothing, as the
      *  sheet's next batch: each claim carries the batch's number, a claim sent to PENDING counts in
      *  it, and BATCH_SETTLED follows the claims' own records with the batch's count and the total of
@@ -400,6 +410,12 @@ public class ClaimService {
     /** {@code judged}: the four-eyes rules and the proof rule were already judged on another claim
      *  (the one a part-settle split this one off), so they are not judged on this one. */
     private Claim changeStatus(String sheetId, String user, long id, ClaimStatus to, String voidReason, boolean judged) {
+        return changeStatus(sheetId, user, id, to, voidReason, judged, null);
+    }
+
+    /** {@code on}: the date a settle is taken as of (null: now). */
+    private Claim changeStatus(String sheetId, String user, long id, ClaimStatus to, String voidReason, boolean judged,
+            LocalDate on) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         refuseIfClosed(sheetId, claim.getDueBy());
@@ -442,7 +458,8 @@ public class ClaimService {
             }
         }
         // a claim bound by a statement settles at its bound figure, late charge included
-        BigDecimal settling = to == ClaimStatus.SETTLED ? shownDueOf(claim, person) : null;
+        BigDecimal settling = to != ClaimStatus.SETTLED ? null
+                : on != null ? dueAsOf(sheetId, claim, on) : shownDueOf(claim, person);
         if (to == ClaimStatus.SETTLED && !judged) {
             // before the clerk limit: a claim needing a proof never goes to PENDING
             refuseIfUnproven(claim, person, settling);
@@ -481,7 +498,8 @@ public class ClaimService {
             case DRAFT, DELETED -> throw new IllegalArgumentException("A claim is deleted and restored on its own");
         };
         if (to == ClaimStatus.SETTLED) {
-            record(event, user, person, claim, number, " due=" + dueText(claim.getSettledDue()));
+            record(event, user, person, claim, number, " due=" + dueText(claim.getSettledDue())
+                    + (on != null ? " on=" + on : ""));
             notifyWatchers(user, person, number);
         } else if (to == ClaimStatus.VOID) {
             record(event, user, person, claim, number, (reversing ? " reversed=" + dueText(reversed) : "")
@@ -491,6 +509,26 @@ public class ClaimService {
         }
         rollup.recordChanges(sheetId, user, before);
         return claim;
+    }
+
+    /** The due a claim showed at the end of {@code on}, with that date as the sheet's today, as the
+     *  as-of view works it out. Refused (422) when the date is after the sheet's today, or the claim
+     *  (or its person) was not yet on the sheet then. */
+    private BigDecimal dueAsOf(String sheetId, Claim claim, LocalDate on) {
+        if (on.isAfter(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A claim is settled as of a date on or before the sheet's today");
+        }
+        HistoryService.AsOf then = history.asOf(sheetId, on);
+        Claim was = then.claims().get(claim.getId());
+        Person whose = was == null ? null : then.people().get(was.getPersonId());
+        if (was == null || whose == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "The claim was not yet on the sheet on " + on);
+        }
+        return RollupService.dueOn(then.sheet(), whose, was, List.copyOf(then.claims().values()),
+                new RateChain.Levels(sheetId, then.rates(),
+                        rateChain.ancestors(sheetId).stream().map(a -> history.asOf(a, on).rates()).toList()));
     }
 
     /** Delete a DRAFT claim: it becomes DELETED, counting nowhere, its log gains a DELETED line

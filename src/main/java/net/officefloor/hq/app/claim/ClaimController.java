@@ -117,6 +117,10 @@ public class ClaimController {
     public record CommentForm(@Size(max = 1000) String text) {
     }
 
+    /** A settle as the row submits it: the date it is taken as of; missing, it is taken now. */
+    public record SettleForm(LocalDate on) {
+    }
+
     /** A statement as the row submits it: the date it is taken as of; missing, it is taken now. */
     public record StatementForm(LocalDate asOf) {
     }
@@ -344,8 +348,9 @@ public class ClaimController {
     public ClaimView settle(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @PathVariable long id,
-            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return view(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED));
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) SettleForm body) {
+        return view(service.settle(sheetId, user.trim(), id, body == null ? null : body.on()));
     }
 
     /** Settle the selected claims in list order (people by their place in the list, newest claim first)

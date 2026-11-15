@@ -303,6 +303,13 @@ export class ClaimsApi {
     );
   }
 
+  /** Settle a claim, as of a date on or before the sheet's today (null: now). */
+  settle(sheetId: string, id: number, on: string | null): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/settle`, { on }, { headers: this.headers() }),
+    );
+  }
+
   /** Void a claim with a reason from the sheet's list (null: none). */
   voidClaim(sheetId: string, id: number, reason: string | null): Promise<Claim> {
     return firstValueFrom(
@@ -515,6 +522,15 @@ export function restoreError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
   return otherError(e);
+}
+
+/** Why a settle was refused: as {@link statusError} has it, but a date it is taken as of may be refused too. */
+export function settleError(e: unknown, opener: boolean): string {
+  if (e instanceof HttpErrorResponse && e.status === 422) {
+    return 'Settle the claim as of a date on or before the sheet\'s today when the claim was already on the sheet; '
+      + 'a claim whose due is above the proof threshold needs a proof (one of each proof kind, while the sheet has any) to be settled.';
+  }
+  return statusError(e, opener);
 }
 
 export function statusError(e: unknown, opener: boolean): string {

@@ -300,6 +300,15 @@ public class RollupService {
         return new Stated(counted, Sheet.capped(dueTotal, sheet.getCap()));
     }
 
+    /** The due a claim of a person shows on a sheet that is not stored (one rebuilt as it stood at
+     *  the end of a date, its today that date), among {@code sheetClaims}, by the rates, floor and
+     *  late charge of that sheet, as the live figures show it (null: n/a). */
+    public static BigDecimal dueOn(Sheet sheet, Person person, Claim claim, List<Claim> sheetClaims,
+            RateChain.Levels sheetRates) {
+        Optional<Sheet> held = Optional.of(sheet);
+        return shownDueOf(claim, person, sheetRates, floorOf(held), LateCharge.of(held), roundingOf(held, sheetClaims));
+    }
+
     /** Keep on each person a snapshot line for {@code day} (the day being left) with their
      *  due-total in {@code before}, and record, once the transaction commits, a SNAPSHOT line for
      *  each (in list order). */

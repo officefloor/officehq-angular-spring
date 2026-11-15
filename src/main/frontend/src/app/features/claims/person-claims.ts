@@ -6,7 +6,7 @@ import { Session, otherError } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { RateLevels, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, waiveError, holdClaimError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, reviewLate, roundsHalfUp, settlePartError, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, waiveError, holdClaimError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, reviewLate, roundsHalfUp, settleError, settlePartError, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -118,7 +118,10 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, 
               [attr.aria-label]="'Add a line to claim of ' + c.amount + ' on ' + c.date">Add line</button>
             <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'open')"
               [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
-            <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'settle')"
+            <label [for]="'claim-settle-date-' + c.id">Settle as of (blank: now)</label>
+            <input [id]="'claim-settle-date-' + c.id" type="date" data-testid="claim-settle-date"
+              [value]="settleDates()[c.id] ?? ''" (input)="settleDateChanged(c.id, $any($event.target).value)" />
+            <button type="button" data-testid="claim-settle" (click)="settle(c)"
               [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
             <label [for]="'claim-proof-kind-' + c.id">Proof kind (none chosen: receipt)</label>
             <select [id]="'claim-proof-kind-' + c.id" data-testid="claim-proof-kind"
@@ -248,6 +251,7 @@ export class PersonClaims {
   protected readonly voidChoices = signal<Record<number, string>>({});
   /** The date typed for deferring each OPEN claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  protected readonly settleDates = signal<Record<number, string>>({});
   /** The new date typed for re-dating each claim, by claim id. */
   protected readonly redates = signal<Record<number, string>>({});
   /** The comment typed on each claim, by claim id. */
@@ -747,6 +751,32 @@ export class PersonClaims {
       const err = action === 'resettle' ? resettleError(e) : action === 'delete' ? deleteError(e)
         : action === 'restore' ? restoreError(e) : statusError(e, this.isOpenerOrEditor(c));
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: err }));
+    }
+  }
+
+  protected settleDateChanged(id: number, date: string): void {
+    this.clearRowError(id);
+    this.settleDates.update((ds) => ({ ...ds, [id]: date }));
+  }
+
+  /** Settle a claim, as of the date typed for it (blank: now); a refusal shows an error on the
+   *  claim. The date is cleared once the settle is answered. */
+  protected async settle(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const on = (this.settleDates()[c.id] ?? '').trim();
+    if (on !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(on)) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Enter a date as yyyy-mm-dd to settle the claim as of.' }));
+      return;
+    }
+    try {
+      const claim = await this.api.settle(sheetId, c.id, on === '' ? null : on);
+      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: settleError(e, this.isOpenerOrEditor(c)) }));
+    } finally {
+      this.settleDates.update((ds) => ({ ...ds, [c.id]: '' }));
     }
   }
 
