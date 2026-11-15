@@ -8,7 +8,7 @@ import { Period, PeriodsApi, periodOn, personPeriodDueCents } from '../periods/p
 import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
-import { Lateness, Rate, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
+import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
 import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
@@ -21,7 +21,7 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
   imports: [ReactiveFormsModule, Header, PersonClaims, Periods, Rates, Summary],
   template: `
     <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
-    <app-rates [rates]="rates()" (saved)="rateSaved($event)" />
+    <app-rates [rates]="rates()" [preview]="previewRate" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
     <section aria-labelledby="people-heading">
@@ -632,9 +632,31 @@ export class People {
     return gradeOn(p.grades, this.session.today());
   }
 
-  /** A claim's due in cents, at the rate of the person's grade in force on the claim's date. */
-  private claimDueCents(p: Person, c: Claim, late: Lateness): number | null {
-    return claimDueCents(this.ratesOf(gradeOn(p.grades, c.date)), c, cents(this.session.floorOn(c.date)),
+  /** How many OPEN and PENDING claims of people on a grade (the one in force on each claim's date)
+   *  would show a different due were a percent that grade's rate on every date, and the differences
+   *  (new due minus current due) added up in cents; a claim bound by a statement does not change. */
+  protected readonly previewRate = (grade: string, pct: string): RatePreview => {
+    const late = this.lateness();
+    const candidate: Rate[] = [{ grade, from: null, to: null, pct }];
+    let count = 0;
+    let diff = 0;
+    for (const p of this.people()) {
+      for (const c of this.claimsOf(p.id)) {
+        if ((c.status !== 'OPEN' && c.status !== 'PENDING') || isBound(c) || gradeOn(p.grades, c.date) !== grade) continue;
+        const now = this.claimDueCents(p, c, late);
+        const next = this.claimDueCents(p, c, late, candidate);
+        if (now === next) continue;
+        count++;
+        diff += (next ?? 0) - (now ?? 0);
+      }
+    }
+    return { count, cents: diff };
+  };
+
+  /** A claim's due in cents, at the rate of the person's grade in force on the claim's date (or at
+   *  the given rates in its place). */
+  private claimDueCents(p: Person, c: Claim, late: Lateness, rates?: Rate[]): number | null {
+    return claimDueCents(rates ?? this.ratesOf(gradeOn(p.grades, c.date)), c, cents(this.session.floorOn(c.date)),
       { ...late, graceOf: (o) => this.graceOf(p, o) },
       roundsHalfUp(c, this.claimsOf(p.id), this.session.policyDate(), late.today));
   }

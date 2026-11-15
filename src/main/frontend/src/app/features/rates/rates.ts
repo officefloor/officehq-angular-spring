@@ -1,11 +1,13 @@
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
+import { money } from '../claims/claims-api';
 import { GRADES } from '../people/people-api';
-import { PCT_PATTERN, Rate, RatesApi, pctOn, rateError } from './rates-api';
+import { PCT_PATTERN, Rate, RatePreview, RatesApi, pctOn, rateError } from './rates-api';
 
 // The rate in force on the sheet's today for each grade, every rate the sheet has for each grade by
-// from-date, and the form that sets a grade's rate from a date, optionally through a date.
+// from-date, the form that sets a grade's rate from a date, optionally through a date, and a preview
+// of what a candidate rate for a grade would change (nothing is saved).
 @Component({
   selector: 'app-rates',
   imports: [ReactiveFormsModule],
@@ -28,6 +30,26 @@ import { PCT_PATTERN, Rate, RatesApi, pctOn, rateError } from './rates-api';
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as err) {
           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
+        }
+      </form>
+      <form [formGroup]="previewForm" (ngSubmit)="runPreview()" aria-label="Preview rate">
+        <label for="rate-preview-grade">Grade</label>
+        <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
+          @for (g of grades; track g) {
+            <option [value]="g">{{ g }}</option>
+          }
+        </select>
+        <label for="rate-preview-pct">Candidate rate (%)</label>
+        <input id="rate-preview-pct" data-testid="rate-preview-pct" formControlName="pct" inputmode="decimal" autocomplete="off" />
+        <button type="submit" data-testid="rate-preview">Preview</button>
+        @if (previewError(); as err) {
+          <p role="alert" data-testid="rate-preview-error">{{ err }}</p>
+        }
+        @if (previewed(); as r) {
+          <p aria-live="polite">
+            Claims changed: <span data-testid="rate-preview-count">{{ r.count }}</span>,
+            difference: <span data-testid="rate-preview-diff">{{ money(r.cents) }}</span>
+          </p>
         }
       </form>
       <table data-testid="rates-current">
@@ -87,8 +109,41 @@ export class Rates {
     to: new FormControl('', { nonNullable: true }),
   });
 
+  /** What a candidate percent for a grade would change on the sheet as it is shown. */
+  readonly preview = input.required<(grade: string, pct: string) => RatePreview>();
+  protected readonly previewed = signal<RatePreview | null>(null);
+  protected readonly previewError = signal<string | null>(null);
+  protected readonly money = money;
+
+  protected readonly previewForm = new FormGroup({
+    grade: new FormControl<string>('A', { nonNullable: true }),
+    pct: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(null));
+    this.previewForm.valueChanges.subscribe(() => this.previewError.set(null));
+    // a preview is of the sheet as it was; once its rates are (re)loaded or changed it is gone
+    effect(() => {
+      this.rates();
+      this.previewed.set(null);
+    });
+  }
+
+  protected runPreview(): void {
+    this.previewed.set(null);
+    this.previewError.set(null);
+    const { grade, pct } = this.previewForm.getRawValue();
+    if (!(GRADES as readonly string[]).includes(grade)) {
+      this.previewError.set('Choose a grade.');
+      return;
+    }
+    const value = pct.trim();
+    if (!PCT_PATTERN.test(value)) {
+      this.previewError.set('Enter a percent of 0.00 or more with up to two decimals.');
+      return;
+    }
+    this.previewed.set(this.preview()(grade, (Number(value)).toFixed(2)));
   }
 
   /** The grade's rate in force on the sheet's today, or null when it has none then. */

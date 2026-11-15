@@ -32,6 +32,13 @@ export function pctOn(rates: readonly Rate[], date: string | null): string | nul
   return best?.pct ?? null;
 }
 
+/** What a candidate rate for a grade would change: how many claims' dues, and by how much in cents
+ *  (new minus current). */
+export interface RatePreview {
+  count: number;
+  cents: number;
+}
+
 // The sheet's rate for each grade, read and written through the server.
 @Injectable({ providedIn: 'root' })
 export class RatesApi {
