@@ -181,7 +181,7 @@ public class PeriodService {
      *  year's last period (the dues of their counting claims due inside a period of the old year
      *  and still OPEN or PENDING at that period's end) to their opening balance for the new year's
      *  first period (unless the sheet's last rollover, not undone, was of the same year: its openings
-     *  are carried already). Kept as the sheet's last rollover, for {@link #undoRollover}. Refused
+     *  are carried already), and soft-close each old-year period still open, by from-date. Kept as the sheet's last rollover, for {@link #undoRollover}. Refused
      *  (403) unless the user is a steward, and (409) when the old year has no periods on the sheet. */
     @Transactional
     public Rollover rollover(String sheetId, String user, int year) {
@@ -231,6 +231,8 @@ public class PeriodService {
         last.remember(year, user, sheets.today(sheetId), madeIds, opened == null ? null : opened.getId(), added);
         rollovers.saveAndFlush(last);
         audit.recordOnCommit("ROLLOVER sheet=" + sheetId + " by=" + user + " fy=FY" + year + " periods=" + made.size());
+        // the old year's periods still open are soft-closed, by from-date
+        old.stream().filter(p -> !p.isClosed() && !p.isSoftClosed()).forEach(p -> softCloseNow(sheetId, user, p));
         return new Rollover(made, opened);
     }
 
@@ -363,12 +365,17 @@ public class PeriodService {
         if (period.isClosed() || period.isSoftClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed");
         }
+        softCloseNow(sheetId, user, period);
+        return period;
+    }
+
+    /** Soft-close the period, fixing its figures as they show now, and audit it. */
+    private void softCloseNow(String sheetId, String user, Period period) {
         period.softClose(rollup.dueByPersonBetween(sheetId, period.getFrom(), period.getTo()), carriedInto(sheetId, period));
         fixCuts(sheetId, period);
         periods.flush();
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user
                 + " period=" + period.getName() + " total=" + period.getClosedTotal().toPlainString());
-        return period;
     }
 
     /** Once the sheet's today changes, close every open period whose to-date plus the sheet's

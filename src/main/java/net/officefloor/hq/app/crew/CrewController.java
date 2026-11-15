@@ -5,8 +5,12 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.session.CurrentUser;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -39,15 +43,27 @@ public class CrewController {
     }
 
     private final CrewService service;
+    private final HistoryService history;
 
-    public CrewController(CrewService service) {
+    public CrewController(CrewService service, HistoryService history) {
         this.service = service;
+        this.history = history;
     }
 
+    /** The sheet's crews, as they stood at the end of the as-of date when one is given. */
     @GetMapping
     public List<CrewView> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            HistoryService.AsOf then = history.asOf(sheetId, asOf);
+            return then.crews().entrySet().stream()
+                    .map(e -> new CrewView(e.getValue().name(), e.getValue().leadId(),
+                            then.crewMembers().values().stream().filter(m -> m.crewId() == e.getKey())
+                                    .map(HistoryService.CrewMemberState::personId).toList()))
+                    .toList();
+        }
         return service.list(sheetId).stream().map(CrewView::of).toList();
     }
 
@@ -58,7 +74,7 @@ public class CrewController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody CrewForm body) {
         service.add(sheetId, user.trim(), body.name().trim(), body.leadId());
-        return list(sheetId, user);
+        return list(sheetId, user, null);
     }
 
     /** Add a member to a crew; resolves to the sheet's crews with it. */
@@ -68,6 +84,6 @@ public class CrewController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody MemberForm body) {
         service.addMember(sheetId, user.trim(), body.crew().trim(), body.personId());
-        return list(sheetId, user);
+        return list(sheetId, user, null);
     }
 }
