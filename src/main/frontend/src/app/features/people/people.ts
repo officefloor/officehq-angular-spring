@@ -438,14 +438,14 @@ export class People {
     }
     return out;
   });
-  /** Each person's claims (newest first) and claimed in cents (counting claims only), by person id. */
+  /** Each person's claims (newest first) and claimed in cents (counting claims only, corrections left out), by person id. */
   private readonly byPerson = computed(() => {
     const out = new Map<number, { claims: Claim[]; cents: number }>();
     const live = this.countsLive();
     for (const c of this.claims()) {
       const entry = out.get(c.personId) ?? { claims: [], cents: 0 };
       entry.claims.push(c);
-      if (live(c)) entry.cents += cents(c.amount);
+      if (live(c) && !c.corrects) entry.cents += cents(c.amount);
       out.set(c.personId, entry);
     }
     return out;

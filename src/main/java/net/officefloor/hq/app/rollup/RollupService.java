@@ -120,7 +120,8 @@ public class RollupService {
         Map<Long, Figures> out = new LinkedHashMap<>();
         for (Person p : sheetPeople) {
             List<Claim> theirs = counted.getOrDefault(p.getId(), List.of());
-            BigDecimal claimed = theirs.stream().map(Claim::getAmount).reduce(zero(), BigDecimal::add);
+            BigDecimal claimed = theirs.stream().filter(c -> !isCorrection(c))
+                    .map(Claim::getAmount).reduce(zero(), BigDecimal::add);
             BigDecimal overdue = theirs.stream()
                     .filter(c -> c.getStatus().isOpen() && late.isPast(c, p))
                     .map(c -> shownDueOf(c, p, sheetRates, floor, late, rounding))
@@ -424,5 +425,10 @@ public class RollupService {
     /** A figure as the screen shows it: two decimals, or n/a. */
     private static String text(BigDecimal value) {
         return value == null ? "n/a" : value.setScale(2).toPlainString();
+    }
+
+    /** Whether a claim corrects another: claimed leaves such claims out. */
+    private static boolean isCorrection(Claim c) {
+        return c.getCorrects() != null && !c.getCorrects().isBlank();
     }
 }
