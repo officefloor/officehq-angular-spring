@@ -212,15 +212,15 @@ export interface Lateness {
 /** A claim's due in cents: the due fixed when it was settled, else the due a statement bound it to
  *  (late charge included), else the greater of the sheet's floor in force on its date and its figure (its
  *  amount times its grade's rate in force on its date, rounded half up when `halfUp` (the claim's rounding
- *  policy) else half to even) with its late charge, rounded the same way, on top (a correction is neither
- *  raised to the floor nor charged late); null (n/a) with no figure. */
+ *  policy) else half to even), with the late charge worked out on that floored figure, rounded the same way,
+ *  on top (a correction is neither raised to the floor nor charged late); null (n/a) with no figure. */
 export function claimDueCents(rates: readonly Rate[], c: Claim, floorCents: number, late: Lateness, halfUp: boolean): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
   if (isBound(c)) return c.statedDue === null ? null : cents(c.statedDue);
   const figure = figureCents(rates, c, halfUp);
   if (figure === null) return null;
-  const charged = figure + lateChargeCents(c, figure, late, halfUp);
-  return isCorrection(c) ? charged : Math.max(charged, floorCents);
+  const floored = isCorrection(c) ? figure : Math.max(figure, floorCents);
+  return floored + lateChargeCents(c, floored, late, halfUp);
 }
 
 function figureCents(rates: readonly Rate[], c: Claim, halfUp: boolean): number | null {

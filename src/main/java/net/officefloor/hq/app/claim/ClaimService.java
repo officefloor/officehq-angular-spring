@@ -878,8 +878,8 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal old = claim.getSettledDue();
-        BigDecimal due = flooredOf(claim,
-                LateCharge.of(sheets.find(sheetId)).addToOpen(claim, person, rateFigureOf(claim, person), roundingOf(claim)));
+        BigDecimal due = LateCharge.of(sheets.find(sheetId))
+                .addToOpen(claim, person, flooredOf(claim, rateFigureOf(claim, person)), roundingOf(claim));
         claim.setSettledDue(due);
         claims.flush();
         logStatus(user, person, claim);
@@ -1377,8 +1377,8 @@ public class ClaimService {
     }
 
     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it to
-     *  (null: n/a), late charge included, else its rate figure with its late charge on top, raised to
-     *  the floor in force on its date. */
+     *  (null: n/a), late charge included, else its rate figure raised to the floor in force on its
+     *  date, with the late charge worked out on that floored figure on top. */
     private BigDecimal shownDueOf(Claim claim, Person person) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
@@ -1386,8 +1386,8 @@ public class ClaimService {
         if (claim.isBound()) {
             return claim.getStatedDue();
         }
-        return flooredOf(claim,
-                LateCharge.of(sheets.find(claim.getSheetId())).addTo(claim, person, rateFigureOf(claim, person), roundingOf(claim)));
+        return LateCharge.of(sheets.find(claim.getSheetId()))
+                .addTo(claim, person, flooredOf(claim, rateFigureOf(claim, person)), roundingOf(claim));
     }
 
     /** A due (null: n/a, which stays n/a) raised to the sheet's floor in force on the claim's date; a

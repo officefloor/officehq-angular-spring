@@ -459,8 +459,8 @@ public class RollupService {
 
     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it
      *  to (null: n/a), late charge included, else its amount times the rate in force on its date of its person's grade
-     *  then (as the claim applies the rates: not a forward-only one saved after it was added), rounded as its rounding policy has it; an unsettled one with its late charge on top, then raised to the
-     *  sheet's floor in force on its date (a correction's never is). */
+     *  then (as the claim applies the rates: not a forward-only one saved after it was added), rounded as its rounding policy has it, raised to the sheet's floor in force on its date (a
+     *  correction's never is), with the late charge worked out on that floored figure on top. */
     private static BigDecimal shownDueOf(Claim c, Person person, RateChain.Levels sheetRates, Function<LocalDate, BigDecimal> floor,
             LateCharge late, Function<Claim, RoundingMode> rounding) {
         if (c.getSettledDue() != null) {
@@ -470,8 +470,9 @@ public class RollupService {
             return c.getStatedDue();
         }
         RoundingMode mode = rounding.apply(c);
-        BigDecimal due = late.addTo(c, person, figureOf(c, person, sheetRates, mode), mode);
-        return due == null || c.isCorrection() ? due : due.max(floor.apply(c.getDate()));
+        BigDecimal figure = figureOf(c, person, sheetRates, mode);
+        BigDecimal floored = figure == null || c.isCorrection() ? figure : figure.max(floor.apply(c.getDate()));
+        return late.addTo(c, person, floored, mode);
     }
 
     /** A claim's rate figure before any late charge or floor. */
