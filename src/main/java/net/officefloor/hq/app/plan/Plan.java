@@ -52,6 +52,10 @@ public class Plan {
     @Column(name = "end_date", nullable = false)
     private LocalDate end;
 
+    /** The descendant sheet the plan makes its claims on; null: its own sheet. */
+    @Column(name = "target_sheet")
+    private String target;
+
     /** The sheet's today the plan was paused on; null while it runs. */
     @Column(name = "paused_on")
     private LocalDate pausedOn;
@@ -87,10 +91,12 @@ public class Plan {
     protected Plan() {
     }
 
-    /** A plan of either an interval in days or a day of the month; the other is null. */
+    /** A plan of either an interval in days or a day of the month; the other is null. The target is
+     *  the descendant sheet it makes its claims on; null: its own sheet. */
     public Plan(String sheetId, long personId, BigDecimal amount, LocalDate start, Integer every, Integer day,
-            LocalDate end) {
+            LocalDate end, String target) {
         this.sheetId = sheetId;
+        this.target = target;
         this.personId = personId;
         this.amount = amount;
         this.start = start;
@@ -131,6 +137,11 @@ public class Plan {
 
     public LocalDate getEnd() {
         return end;
+    }
+
+    /** The descendant sheet the plan makes its claims on; null: its own sheet. */
+    public String getTarget() {
+        return target;
     }
 
     public boolean isPaused() {

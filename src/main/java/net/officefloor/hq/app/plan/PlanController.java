@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimController;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.session.CurrentUser;
@@ -34,13 +35,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class PlanController {
 
     /** A plan as the screen shows it: its amount with two decimals, its dates, its interval in days
-     *  or its day of the month (the other null), how many claims it has made so far, the day it was
-     *  paused on (null while it runs), its past pauses and its amount changes, oldest first. */
+     *  or its day of the month (the other null), the descendant sheet it makes its claims on (null: its
+     *  own), how many claims it has made so far, the day it was paused on (null while it runs), its
+     *  past pauses and its amount changes, oldest first. */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, long generated, LocalDate pausedOn, List<PauseView> pauses, List<ChangeView> changes) {
+            LocalDate end, String sheet, long generated, LocalDate pausedOn, List<PauseView> pauses,
+            List<ChangeView> changes) {
         static PlanView of(Plan p, Map<Long, Long> made) {
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().setScale(2).toPlainString(), p.getStart(),
-                    p.getEvery(), p.getDay(), p.getEnd(), made.getOrDefault(p.getId(), 0L), p.getPausedOn(),
+                    p.getEvery(), p.getDay(), p.getEnd(), p.getTarget(), made.getOrDefault(p.getId(), 0L), p.getPausedOn(),
                     p.getPauses().stream().map(x -> new PauseView(x.from(), x.to())).toList(),
                     p.getChanges().stream().map(c -> new ChangeView(c.on(), c.amount().setScale(2).toPlainString())).toList());
         }
@@ -60,17 +63,20 @@ public class PlanController {
 
     /** A plan as the form submits it: an amount the claim form takes for a new claim (0.00 or
      *  more, up to two decimals), a start (null: the sheet's today), either an interval of whole
-     *  days (at least 1) or a day of the month (1 to 31), and an end. */
+     *  days (at least 1) or a day of the month (1 to 31), an end, and the id of one of the sheet's
+     *  descendants to make its claims on (null: the sheet itself). */
     public record PlanForm(
             @NotNull @Pattern(regexp = "\\d{1,13}(\\.\\d{1,2})?") String amount,
             LocalDate start,
             @Min(1) Integer every,
             @Min(1) @Max(31) Integer day,
-            @NotNull LocalDate end) {
+            @NotNull LocalDate end,
+            @Size(max = 100) @Pattern(regexp = "\\S+") String sheet) {
     }
 
-    /** A generate's result: the claims made, in the order they were made, and the sheet's plans now. */
-    public record GenerateView(List<ClaimView> claims, List<PlanView> plans) {
+    /** A generate's result: the claims made on the sheet, in the order they were made; how many were
+     *  made in all, counting those made on its descendants; and the sheet's plans now. */
+    public record GenerateView(List<ClaimView> claims, int made, List<PlanView> plans) {
     }
 
     private final PlanService service;
@@ -101,7 +107,7 @@ public class PlanController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PlanForm body) {
         Plan plan = service.add(sheetId, user.trim(), personId, new BigDecimal(body.amount()), body.start(), body.every(),
-                body.day(), body.end());
+                body.day(), body.end(), body.sheet());
         return PlanView.of(plan, Map.of());
     }
 
@@ -139,9 +145,10 @@ public class PlanController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         if (settings.isViewer(sheetId, user.trim()) || sheets.archived(sheetId)) {
-            return new GenerateView(List.of(), list(sheetId, user));
+            return new GenerateView(List.of(), 0, list(sheetId, user));
         }
-        List<ClaimView> made = service.generate(sheetId, user.trim()).stream().map(claims::view).toList();
-        return new GenerateView(made, list(sheetId, user));
+        List<Claim> made = service.generate(sheetId, user.trim());
+        List<ClaimView> here = made.stream().filter(c -> c.getSheetId().equals(sheetId)).map(claims::view).toList();
+        return new GenerateView(here, made.size(), list(sheetId, user));
     }
 }

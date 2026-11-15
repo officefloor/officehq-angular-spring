@@ -15,6 +15,8 @@ export interface Plan {
   every: number | null;
   day: number | null;
   end: string;
+  /** The descendant sheet it makes its claims on, for the person of the same name there; null: its own. */
+  sheet: string | null;
   generated: number;
   /** The sheet's today the plan was paused on; null while it runs. */
   pausedOn: string | null;
@@ -31,11 +33,15 @@ export interface PlanForm {
   every: number | null;
   day: number | null;
   end: string;
+  /** One of the sheet's descendants to make its claims on; null: the sheet itself. */
+  sheet: string | null;
 }
 
-/** A generate's result: the claims made, in the order they were made, and the sheet's plans now. */
+/** A generate's result: the claims made on the sheet, in the order they were made; how many were
+ *  made in all, counting those made on its descendants; and the sheet's plans now. */
 export interface Generated {
   claims: Claim[];
+  made: number;
   plans: Plan[];
 }
 
@@ -79,10 +85,10 @@ export class PlansApi {
 
 export function planError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) {
-    return 'Enter an amount of 0.00 or more with up to two decimals, a whole number of days of 1 or more or a day of the month of 1 to 31, and an end date.';
+    return 'Enter an amount of 0.00 or more with up to two decimals, a whole number of days of 1 or more or a day of the month of 1 to 31, an end date, and a sheet id without spaces.';
   }
   if (e instanceof HttpErrorResponse && e.status === 422) {
-    return 'Give an end on or after the start, and repeat either every 1 day or more or monthly on a day of 1 to 31.';
+    return 'Give an end on or after the start, repeat either every 1 day or more or monthly on a day of 1 to 31, and name only a sheet below this one.';
   }
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on the sheet.';
   return otherError(e);

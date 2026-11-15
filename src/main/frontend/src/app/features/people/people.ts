@@ -1999,11 +1999,11 @@ export class People {
     if (!sheetId) return;
     this.generating = true;
     try {
-      const { claims, plans } = await this.plansApi.generate(sheetId);
+      const { claims, made, plans } = await this.plansApi.generate(sheetId);
       if (this.session.sheetId() !== sheetId) return;
       for (const claim of claims) this.claimSaved(claim);
       this.session.plans.set(plans);
-      this.planGenerated.set(claims.length);
+      this.planGenerated.set(made);
     } catch (e) {
       this.planGenerateErr.set(otherError(e));
     } finally {

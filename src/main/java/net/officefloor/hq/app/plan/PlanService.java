@@ -59,10 +59,11 @@ public class PlanService {
 
     /** Add a plan for a person on the sheet; a missing start takes the sheet's today. Refused (404)
      *  when the sheet has no such person, and (422) when the end is before the start, or the plan
-     *  does not have exactly one of an interval of one day or more and a day of the month (1 to 31). */
+     *  does not have exactly one of an interval of one day or more and a day of the month (1 to 31),
+     *  or when it names a target sheet (null: none) that is not one of the sheet's descendants. */
     @Transactional
     public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, Integer every,
-            Integer day, LocalDate end) {
+            Integer day, LocalDate end, String target) {
         sheets.load(sheetId, user);
         sheets.lock(sheetId);
         Person person = people.findByIdAndSheetId(personId, sheetId)
@@ -81,10 +82,14 @@ public class PlanService {
         if (end.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A plan cannot end before it starts");
         }
-        Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, amount, from, every, day, end));
+        if (target != null && !sheets.descendants(sheetId).contains(target)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "The sheet " + target + " is not a descendant of this sheet");
+        }
+        Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, amount, from, every, day, end, target));
         audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
                 + " amount=" + amount.setScale(2).toPlainString() + " start=" + from + (day != null ? " day=" + day : " every=" + every)
-                + " end=" + end);
+                + " end=" + end + (target != null ? " sheet=" + target : ""));
         return plan;
     }
 
@@ -134,8 +139,10 @@ public class PlanService {
     /** For each of the sheet's plans in the order they were added, add a DRAFT claim of its amount
      *  with an empty note for each of its dates up to its end and the sheet's today that has none
      *  yet and that it does not skip for a pause, dated that day, by the claim form's rules. Each claim is its own change: a date the
-     *  claim form refuses is skipped (and tried again on the next generate). Resolves to the
-     *  claims made, in the order they were made. */
+     *  claim form refuses is skipped (and tried again on the next generate). A plan naming a
+     *  descendant sheet makes its claims there, by that sheet's rules and audited there, for the
+     *  person of the same name on it (none when it has no such person). Resolves to the claims
+     *  made, in the order they were made, on whichever sheet. */
     public List<Claim> generate(String sheetId, String user) {
         sheets.load(sheetId, user);
         LocalDate today = sheets.today(sheetId);
@@ -156,13 +163,27 @@ public class PlanService {
         return out;
     }
 
-    /** The plan's claim for a date, in the transaction under way; null when it has one already. */
+    /** The plan's claim for a date, in the transaction under way; null when it has one already, or
+     *  when its target sheet has no person of its person's name or is archived. */
     private Claim makeClaim(Plan plan, String user, LocalDate on) {
         sheets.lock(plan.getSheetId());
         if (made.existsByPlanIdAndOnDate(plan.getId(), on)) {
             return null;
         }
-        Claim claim = claims.add(plan.getSheetId(), user, plan.getPersonId(), plan.getAmount(), on, "", null, null, null);
+        String sheetId = plan.getSheetId();
+        long personId = plan.getPersonId();
+        if (plan.getTarget() != null) {
+            sheetId = plan.getTarget();
+            String name = people.findById(plan.getPersonId()).map(Person::getName).orElse(null);
+            Person there = name == null ? null
+                    : people.findBySheetIdAndNameIgnoreCase(sheetId, name).stream().findFirst().orElse(null);
+            if (there == null || sheets.archived(sheetId)) {
+                return null;
+            }
+            sheets.lock(sheetId);
+            personId = there.getId();
+        }
+        Claim claim = claims.add(sheetId, user, personId, plan.getAmount(), on, "", null, null, null);
         made.saveAndFlush(new PlanClaim(plan.getId(), on, claim.getId()));
         return claim;
     }

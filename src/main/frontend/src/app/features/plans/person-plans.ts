@@ -21,6 +21,8 @@ import { PlansApi, amountError, nextDates, pauseError, planError, type Plan } fr
       <input [id]="fieldId('day')" data-testid="plan-form-day" formControlName="day" inputmode="numeric" autocomplete="off" />
       <label [for]="fieldId('end')">End</label>
       <input [id]="fieldId('end')" type="date" data-testid="plan-form-end" formControlName="end" />
+      <label [for]="fieldId('sheet')">On sheet (blank: this one)</label>
+      <input [id]="fieldId('sheet')" data-testid="plan-form-sheet" formControlName="sheet" autocomplete="off" />
       <button type="submit" data-testid="plan-form-submit">Add plan</button>
       @if (error(); as err) {
         <p role="alert" data-testid="plan-error">{{ err }}</p>
@@ -38,6 +40,9 @@ import { PlansApi, amountError, nextDates, pauseError, planError, type Plan } fr
               every <span data-testid="plan-every">{{ pl.every }}</span> days
             }
             to <span data-testid="plan-end">{{ pl.end }}</span>;
+            @if (pl.sheet !== null) {
+              on sheet <span data-testid="plan-sheet">{{ pl.sheet }}</span>;
+            }
             made <span data-testid="plan-generated">{{ pl.generated }}</span>;
             next <span data-testid="plan-next-dates">{{ next(pl) }}</span>;
             paused <span data-testid="plan-paused">{{ pl.pausedOn !== null ? 'yes' : 'no' }}</span>
@@ -84,6 +89,7 @@ export class PersonPlans {
     every: new FormControl('', { nonNullable: true }),
     day: new FormControl('', { nonNullable: true }),
     end: new FormControl('', { nonNullable: true }),
+    sheet: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -95,7 +101,7 @@ export class PersonPlans {
         this.error.set(null);
         this.rowErrors.set({});
         this.amounts.set({});
-        this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
+        this.form.reset({ amount: '', start: '', every: '', day: '', end: '', sheet: '' }, { emitEvent: false });
       });
     });
   }
@@ -171,6 +177,7 @@ export class PersonPlans {
     const every = value.every.trim();
     const day = value.day.trim();
     const end = value.end.trim();
+    const sheet = value.sheet.trim();
     if (!AMOUNT_PATTERN.test(amount)) {
       this.error.set('Enter an amount of 0.00 or more with up to two decimals.');
       return;
@@ -191,6 +198,10 @@ export class PersonPlans {
       this.error.set('Enter an end date.');
       return;
     }
+    if (/\s/.test(sheet)) {
+      this.error.set('Enter a sheet id without spaces, or leave it blank.');
+      return;
+    }
     const from = start === '' ? this.session.today() : start;
     if (from !== null && end < from) {
       this.error.set('The end cannot be before the start.');
@@ -199,11 +210,11 @@ export class PersonPlans {
     this.submitting = true;
     try {
       const plan = await this.api.add(sheetId, this.personId(), { amount, start: start === '' ? null : start, every: every === '' ? null : Number(every),
-        day: day === '' ? null : Number(day), end });
+        day: day === '' ? null : Number(day), end, sheet: sheet === '' ? null : sheet });
       if (this.session.sheetId() === sheetId) {
         this.session.plans.update((ps) => [...ps.filter((p) => p.id !== plan.id), plan].sort((a, b) => a.id - b.id));
       }
-      this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
+      this.form.reset({ amount: '', start: '', every: '', day: '', end: '', sheet: '' }, { emitEvent: false });
     } catch (e) {
       this.error.set(planError(e));
     } finally {
