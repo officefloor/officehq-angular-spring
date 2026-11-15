@@ -1,0 +1,88 @@
+diff --git a/src/main/frontend/src/app/features/rates/rates-api.ts b/src/main/frontend/src/app/features/rates/rates-api.ts
+index d3ab3c3df..a4b9581c5 100644
+--- a/src/main/frontend/src/app/features/rates/rates-api.ts
++++ b/src/main/frontend/src/app/features/rates/rates-api.ts
+@@ -212,15 +212,15 @@ export interface Lateness {
+ /** A claim's due in cents: the due fixed when it was settled, else the due a statement bound it to
+  *  (late charge included), else the greater of the sheet's floor in force on its date and its figure (its
+  *  amount times its grade's rate in force on its date, rounded half up when `halfUp` (the claim's rounding
+- *  policy) else half to even) with its late charge, rounded the same way, on top (a correction is neither
+- *  raised to the floor nor charged late); null (n/a) with no figure. */
++ *  policy) else half to even), with the late charge worked out on that floored figure, rounded the same way,
++ *  on top (a correction is neither raised to the floor nor charged late); null (n/a) with no figure. */
+ export function claimDueCents(rates: readonly Rate[], c: Claim, floorCents: number, late: Lateness, halfUp: boolean): number | null {
+   if (c.settledDue !== null) return cents(c.settledDue);
+   if (isBound(c)) return c.statedDue === null ? null : cents(c.statedDue);
+   const figure = figureCents(rates, c, halfUp);
+   if (figure === null) return null;
+-  const charged = figure + lateChargeCents(c, figure, late, halfUp);
+-  return isCorrection(c) ? charged : Math.max(charged, floorCents);
++  const floored = isCorrection(c) ? figure : Math.max(figure, floorCents);
++  return floored + lateChargeCents(c, floored, late, halfUp);
+ }
+ 
+ function figureCents(rates: readonly Rate[], c: Claim, halfUp: boolean): number | null {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index b150cd87f..e93c0c7c5 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -878,8 +878,8 @@ public class ClaimService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         BigDecimal old = claim.getSettledDue();
+-        BigDecimal due = flooredOf(claim,
+-                LateCharge.of(sheets.find(sheetId)).addToOpen(claim, person, rateFigureOf(claim, person), roundingOf(claim)));
++        BigDecimal due = LateCharge.of(sheets.find(sheetId))
++                .addToOpen(claim, person, flooredOf(claim, rateFigureOf(claim, person)), roundingOf(claim));
+         claim.setSettledDue(due);
+         claims.flush();
+         logStatus(user, person, claim);
+@@ -1377,8 +1377,8 @@ public class ClaimService {
+     }
+ 
+     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it to
+-     *  (null: n/a), late charge included, else its rate figure with its late charge on top, raised to
+-     *  the floor in force on its date. */
++     *  (null: n/a), late charge included, else its rate figure raised to the floor in force on its
++     *  date, with the late charge worked out on that floored figure on top. */
+     private BigDecimal shownDueOf(Claim claim, Person person) {
+         if (claim.getSettledDue() != null) {
+             return claim.getSettledDue();
+@@ -1386,8 +1386,8 @@ public class ClaimService {
+         if (claim.isBound()) {
+             return claim.getStatedDue();
+         }
+-        return flooredOf(claim,
+-                LateCharge.of(sheets.find(claim.getSheetId())).addTo(claim, person, rateFigureOf(claim, person), roundingOf(claim)));
++        return LateCharge.of(sheets.find(claim.getSheetId()))
++                .addTo(claim, person, flooredOf(claim, rateFigureOf(claim, person)), roundingOf(claim));
+     }
+ 
+     /** A due (null: n/a, which stays n/a) raised to the sheet's floor in force on the claim's date; a
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 8d19a290d..7bcbd5ad0 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -459,8 +459,8 @@ public class RollupService {
+ 
+     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it
+      *  to (null: n/a), late charge included, else its amount times the rate in force on its date of its person's grade
+-     *  then (as the claim applies the rates: not a forward-only one saved after it was added), rounded as its rounding policy has it; an unsettled one with its late charge on top, then raised to the
+-     *  sheet's floor in force on its date (a correction's never is). */
++     *  then (as the claim applies the rates: not a forward-only one saved after it was added), rounded as its rounding policy has it, raised to the sheet's floor in force on its date (a
++     *  correction's never is), with the late charge worked out on that floored figure on top. */
+     private static BigDecimal shownDueOf(Claim c, Person person, RateChain.Levels sheetRates, Function<LocalDate, BigDecimal> floor,
+             LateCharge late, Function<Claim, RoundingMode> rounding) {
+         if (c.getSettledDue() != null) {
+@@ -470,8 +470,9 @@ public class RollupService {
+             return c.getStatedDue();
+         }
+         RoundingMode mode = rounding.apply(c);
+-        BigDecimal due = late.addTo(c, person, figureOf(c, person, sheetRates, mode), mode);
+-        return due == null || c.isCorrection() ? due : due.max(floor.apply(c.getDate()));
++        BigDecimal figure = figureOf(c, person, sheetRates, mode);
++        BigDecimal floored = figure == null || c.isCorrection() ? figure : figure.max(floor.apply(c.getDate()));
++        return late.addTo(c, person, floored, mode);
+     }
+ 
+     /** A claim's rate figure before any late charge or floor. */
