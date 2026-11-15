@@ -17,6 +17,8 @@ import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimComment;
 import net.officefloor.hq.app.claim.ClaimCommentRepository;
+import net.officefloor.hq.app.claim.ClaimLine;
+import net.officefloor.hq.app.claim.ClaimLineRepository;
 import net.officefloor.hq.app.claim.ClaimLog;
 import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -47,6 +49,7 @@ public class PersonService {
     private final ClaimRepository claims;
     private final ClaimLogRepository claimLog;
     private final ClaimCommentRepository claimComments;
+    private final ClaimLineRepository claimLines;
     private final RetiredNumberRepository retiredNumbers;
     private final ClaimService claimService;
     private final PoolMemberRepository poolMembers;
@@ -57,7 +60,7 @@ public class PersonService {
 
     public PersonService(PersonRepository people, PersonStatementRepository statements,
             PersonPatronRepository patrons, PersonWatchRepository watches, ClaimRepository claims,
-            ClaimLogRepository claimLog, ClaimCommentRepository claimComments, RetiredNumberRepository retiredNumbers,
+            ClaimLogRepository claimLog, ClaimCommentRepository claimComments, ClaimLineRepository claimLines, RetiredNumberRepository retiredNumbers,
             ClaimService claimService, PoolMemberRepository poolMembers, SettingsService settings, SheetService sheets,
             RollupService rollup, Audit audit) {
         this.people = people;
@@ -67,6 +70,7 @@ public class PersonService {
         this.claims = claims;
         this.claimLog = claimLog;
         this.claimComments = claimComments;
+        this.claimLines = claimLines;
         this.retiredNumbers = retiredNumbers;
         this.claimService = claimService;
         this.poolMembers = poolMembers;
@@ -533,7 +537,7 @@ public class PersonService {
      *  arrive with every grade they were given (and its from-date), their terms, contact and
      *  aliases, the id of this sheet as the one they came from, and their claims with their status,
      *  dates, notes, tags, frozen settled figures,
-     *  logs and comments, listed there in the order this sheet lists them; each claim that had a number
+     *  logs, comments and lines, listed there in the order this sheet lists them; each claim that had a number
      *  takes the other sheet's next one, in the order the claims were opened (by the sheet's today
      *  when each was opened, then by the order they were added), each keeping the figure a statement
      *  bound it to; batches and references are not carried. Their statements are carried with them.
@@ -652,9 +656,13 @@ public class PersonService {
             for (ClaimComment comment : claimComments.findByClaimIdOrderByIdAsc(claim.getId())) {
                 claimComments.save(new ClaimComment(target, copyId, comment.getBy(), comment.getOn(), comment.getText()));
             }
+            for (ClaimLine line : claimLines.findByClaimIdOrderByIdAsc(claim.getId())) {
+                claimLines.save(new ClaimLine(target, copyId, line.getLabel(), line.getQty(), line.getUnit()));
+            }
         }
         claimLog.flush();
         claimComments.flush();
+        claimLines.flush();
         carryStatements(target, statements.findByPersonIdOrderByIdAsc(person.getId()), arrived);
 
         // leaving this sheet entirely; the numbers their claims had are never given here again
@@ -664,10 +672,12 @@ public class PersonService {
             }
             claimLog.deleteAll(logs.get(claim.getId()));
             claimComments.deleteAll(claimComments.findByClaimIdOrderByIdAsc(claim.getId()));
+            claimLines.deleteAll(claimLines.findByClaimIdOrderByIdAsc(claim.getId()));
         }
         retiredNumbers.flush();
         claimLog.flush();
         claimComments.flush();
+        claimLines.flush();
         claims.deleteAll(theirs);
         claims.flush();
         patrons.deleteAll(patrons.findByPersonIdOrderByIdAsc(person.getId()));

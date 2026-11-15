@@ -43,6 +43,6 @@ public class PasteClaimsController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PasteForm body) {
         return service.paste(sheetId, user.trim(), body.text()).stream()
-                .map(c -> ClaimView.of(c, claims.logOf(c.getId()), claims.commentsOf(c.getId()))).toList();
+                .map(c -> ClaimView.of(c, claims.logOf(c.getId()), claims.commentsOf(c.getId()), claims.linesOf(c.getId()))).toList();
     }
 }

@@ -73,6 +73,8 @@ export interface Claim {
   voidReason: string | null;
   /** The comments on the claim, oldest first. */
   comments: ClaimComment[];
+  /** The claim's lines, in the order added; with lines its amount is their total. */
+  lines: ClaimLine[];
   /** The number of the bulk settle batch that settled the claim (or sent it to PENDING); null
    *  when it was settled one at a time or not at all. */
   batch: number | null;
@@ -88,6 +90,18 @@ export interface ClaimComment {
 /** A comment as the screen shows it: <user> on <date>: <text>. */
 export function commentText(c: ClaimComment): string {
   return `${c.by} on ${c.on}: ${c.text}`;
+}
+
+/** A line of a claim: a label, a whole quantity of at least 1 and a unit amount with two decimals. */
+export interface ClaimLine {
+  label: string;
+  qty: number;
+  unit: string;
+}
+
+/** A claim line as the screen shows it: <label> <qty> x <unit>. */
+export function lineText(l: ClaimLine): string {
+  return `${l.label} ${l.qty} x ${l.unit}`;
 }
 
 /** A line of a claim's status log: the status, who moved the claim there, the sheet's today then
@@ -290,6 +304,13 @@ export class ClaimsApi {
     );
   }
 
+  /** Add a line to a DRAFT claim. */
+  addLine(sheetId: string, id: number, line: { label: string; qty: string; unit: string }): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/lines`, line, { headers: this.headers() }),
+    );
+  }
+
   /** Re-date an OPEN or PENDING claim (a steward only). */
   redate(sheetId: string, id: number, date: string): Promise<Claim> {
     return firstValueFrom(
@@ -354,7 +375,7 @@ export class ClaimsApi {
 }
 
 /** Why a claim form was refused; `correction` says whether its amount was negative. */
-export function claimError(e: unknown, correction = false, ref: 'none' | 'add' | 'edit' = 'none'): string {
+export function claimError(e: unknown, correction = false, ref: 'none' | 'add' | 'edit' = 'none', lined = false): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount with up to two decimals.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 409 && ref === 'add') return 'That reference is already used on this sheet.';
@@ -363,6 +384,7 @@ export function claimError(e: unknown, correction = false, ref: 'none' | 'add' |
   }
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft claim can be edited; void it and add a new one.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'The claim would be due in a closed period.';
+  if (e instanceof HttpErrorResponse && e.status === 422 && lined) return 'A claim with lines takes their total as its amount.';
   if (e instanceof HttpErrorResponse && e.status === 422) {
     return correction
       ? "A correction must name the number of a settled claim of this person, and be dated by the person's retirement date."
@@ -460,6 +482,17 @@ export function remindError(e: unknown): string {
 /** Why a comment was refused. */
 export function commentError(e: unknown): string {
   if (e instanceof HttpErrorResponse && (e.status === 400 || e.status === 422)) return 'Enter some text to comment.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  return otherError(e);
+}
+
+/** Why a line was refused. */
+export function lineError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && (e.status === 400 || e.status === 422)) {
+    return 'Enter a label, a whole quantity of at least 1 and a unit amount with up to two decimals.';
+  }
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft claim that no one else is editing can have lines added.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   return otherError(e);
 }

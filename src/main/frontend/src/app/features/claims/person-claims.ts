@@ -5,7 +5,7 @@ import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, remindError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -87,6 +87,22 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment,
               [value]="commentTexts()[c.id] ?? ''" (input)="commentChanged(c.id, $any($event.target).value)" />
             <button type="button" data-testid="claim-comment-add" (click)="comment(c)"
               [attr.aria-label]="'Comment on claim of ' + c.amount + ' on ' + c.date">Add comment</button>
+            <ol [attr.aria-label]="'Lines of claim of ' + c.amount + ' on ' + c.date">
+              @for (l of c.lines; track $index) {
+                <li data-testid="claim-lines-line">{{ lineText(l) }}</li>
+              }
+            </ol>
+            <label [for]="'claim-line-label-' + c.id">Line label</label>
+            <input [id]="'claim-line-label-' + c.id" data-testid="claim-line-label" autocomplete="off"
+              [value]="lineDrafts()[c.id]?.label ?? ''" (input)="lineChanged(c.id, 'label', $any($event.target).value)" />
+            <label [for]="'claim-line-qty-' + c.id">Quantity</label>
+            <input [id]="'claim-line-qty-' + c.id" data-testid="claim-line-qty" inputmode="numeric" autocomplete="off"
+              [value]="lineDrafts()[c.id]?.qty ?? ''" (input)="lineChanged(c.id, 'qty', $any($event.target).value)" />
+            <label [for]="'claim-line-unit-' + c.id">Unit amount</label>
+            <input [id]="'claim-line-unit-' + c.id" data-testid="claim-line-unit" inputmode="decimal" autocomplete="off"
+              [value]="lineDrafts()[c.id]?.unit ?? ''" (input)="lineChanged(c.id, 'unit', $any($event.target).value)" />
+            <button type="button" data-testid="claim-line-add" (click)="addLine(c)"
+              [attr.aria-label]="'Add a line to claim of ' + c.amount + ' on ' + c.date">Add line</button>
             <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'open')"
               [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
             <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'settle')"
@@ -204,6 +220,8 @@ export class PersonClaims {
   protected readonly redates = signal<Record<number, string>>({});
   /** The comment typed on each claim, by claim id. */
   protected readonly commentTexts = signal<Record<number, string>>({});
+  /** The line typed for adding to each DRAFT claim, by claim id. */
+  protected readonly lineDrafts = signal<Record<number, { label: string; qty: string; unit: string }>>({});
   /** The amount typed for splitting off each OPEN claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The amount typed for changing each DRAFT claim's amount in its row, by claim id. */
@@ -404,7 +422,8 @@ export class PersonClaims {
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
       this.reset();
     } catch (e) {
-      this.error.set(claimError(e, correction, ref === '' ? 'none' : editing === null ? 'add' : 'edit'));
+      this.error.set(claimError(e, correction, ref === '' ? 'none' : editing === null ? 'add' : 'edit',
+        editing !== null && this.claims().some((c) => c.id === editing && c.lines.length > 0)));
     } finally {
       this.submitting = false;
     }
@@ -490,6 +509,40 @@ export class PersonClaims {
       }
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: commentError(e) }));
+    }
+  }
+
+  /** A claim line as the screen shows it. */
+  protected lineText(l: ClaimLine): string {
+    return lineText(l);
+  }
+
+  protected lineChanged(id: number, field: 'label' | 'qty' | 'unit', value: string): void {
+    this.clearRowError(id);
+    this.lineDrafts.update((ds) => ({ ...ds, [id]: { ...(ds[id] ?? { label: '', qty: '', unit: '' }), [field]: value } }));
+  }
+
+  /** Add the line typed for the claim; a refusal shows an error on the claim. */
+  protected async addLine(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const typed = this.lineDrafts()[c.id];
+    const line = { label: (typed?.label ?? '').trim(), qty: (typed?.qty ?? '').trim(), unit: (typed?.unit ?? '').trim() };
+    if (line.label === '' || !/^\d{1,9}$/.test(line.qty) || Number(line.qty) < 1 || !AMOUNT_PATTERN.test(line.unit)) {
+      this.rowErrors.update((errs) => ({
+        ...errs, [c.id]: 'Enter a label, a whole quantity of at least 1 and a unit amount with up to two decimals.',
+      }));
+      return;
+    }
+    try {
+      const claim = await this.api.addLine(sheetId, c.id, line);
+      if (this.session.sheetId() === sheetId) {
+        this.lineDrafts.update(({ [c.id]: _, ...rest }) => rest);
+        this.saved.emit(claim);
+      }
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: lineError(e) }));
     }
   }
 
@@ -662,7 +715,7 @@ export class PersonClaims {
       const claim = await this.api.update(sheetId, c.id, { amount, date: c.date, note: c.note, corrects: c.corrects, ref: c.ref, tags: c.tags });
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
-      this.rowErrors.update((errs) => ({ ...errs, [c.id]: claimError(e, amount.startsWith('-')) }));
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: claimError(e, amount.startsWith('-'), 'none', c.lines.length > 0) }));
     }
   }
 

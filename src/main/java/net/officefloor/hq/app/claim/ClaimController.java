@@ -49,25 +49,27 @@ public class ClaimController {
      *  day it was reminded (null when never reminded); its external reference (null when none); its
      *  tags, lower-case, sorted and comma separated (null when none); the reason it was voided with
      *  (null when none); its comments, oldest first; who last edited it (null when never edited);
-     *  the number of the bulk settle batch that settled it (null when settled one at a time). */
+     *  the number of the bulk settle batch that settled it (null when settled one at a time); its
+     *  lines, in the order added. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason,
-            List<CommentView> comments, String editedBy, Integer batch) {
-        static ClaimView of(Claim c, List<ClaimLog> log, List<ClaimComment> comments) {
-            return of(c.getId(), c, log, comments);
+            List<CommentView> comments, String editedBy, Integer batch, List<LineView> lines) {
+        static ClaimView of(Claim c, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines) {
+            return of(c.getId(), c, log, comments, lines);
         }
 
         /** The claim of the id, which a version rebuilt from the sheet's history does not carry. */
-        static ClaimView of(long id, Claim c, List<ClaimLog> log, List<ClaimComment> comments) {
+        static ClaimView of(long id, Claim c, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines) {
             return new ClaimView(id, c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
                     c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
                     log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLockedBy(),
                     c.isLateEntry(), c.getReminded(), c.getRef(), c.getTags(), c.getVoidReason(),
-                    comments.stream().map(CommentView::of).toList(), c.getEditedBy(), c.getBatch());
+                    comments.stream().map(CommentView::of).toList(), c.getEditedBy(), c.getBatch(),
+                    lines.stream().map(LineView::of).toList());
         }
 
         private static String money(BigDecimal value) {
@@ -88,6 +90,21 @@ public class ClaimController {
         static CommentView of(ClaimComment c) {
             return new CommentView(c.getBy(), c.getOn(), c.getText());
         }
+    }
+
+    /** A line of a claim: its label, quantity and unit amount with two decimals. */
+    public record LineView(String label, int qty, String unit) {
+        static LineView of(ClaimLine l) {
+            return new LineView(l.getLabel(), l.getQty(), l.getUnit().setScale(2).toPlainString());
+        }
+    }
+
+    /** A line as the claim submits it: a label that must not be blank, a whole quantity of at
+     *  least 1 and a unit amount with up to two decimals. */
+    public record LineForm(
+            @NotBlank @Size(max = 200) String label,
+            @NotNull @Pattern(regexp = "\\d{1,9}") String qty,
+            @NotNull @Pattern(regexp = "\\d{1,13}(\\.\\d{1,2})?") String unit) {
     }
 
     /** A comment as the claim submits it: its text, which must not be blank. */
@@ -170,7 +187,7 @@ public class ClaimController {
 
     /** The claim as the screen shows it, with its status log. */
     public ClaimView view(Claim c) {
-        return ClaimView.of(c, service.logOf(c.getId()), service.commentsOf(c.getId()));
+        return ClaimView.of(c, service.logOf(c.getId()), service.commentsOf(c.getId()), service.linesOf(c.getId()));
     }
 
     private final ClaimService service;
@@ -195,16 +212,18 @@ public class ClaimController {
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         Map<Long, List<ClaimLog>> logs = service.logs(sheetId);
         Map<Long, List<ClaimComment>> comments = service.comments(sheetId);
+        Map<Long, List<ClaimLine>> lines = service.lines(sheetId);
         if (asOf != null) {
             return history.asOf(sheetId, asOf).claims().entrySet().stream()
                     .map(e -> ClaimView.of(e.getKey(), e.getValue(), logs.getOrDefault(e.getKey(), List.of()).stream()
                             .filter(l -> !l.getOn().isAfter(asOf)).toList(),
                             comments.getOrDefault(e.getKey(), List.of()).stream()
-                                    .filter(c -> !c.getOn().isAfter(asOf)).toList()))
+                                    .filter(c -> !c.getOn().isAfter(asOf)).toList(),
+                            lines.getOrDefault(e.getKey(), List.of())))
                     .toList();
         }
         return service.list(sheetId).stream().map(c -> ClaimView.of(c, logs.getOrDefault(c.getId(), List.of()),
-                comments.getOrDefault(c.getId(), List.of()))).toList();
+                comments.getOrDefault(c.getId(), List.of()), lines.getOrDefault(c.getId(), List.of()))).toList();
     }
 
     /** Every tag ever used on the sheet, in order; as of a date, those its claims carried then. */
@@ -357,6 +376,16 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody CommentForm body) {
         return view(service.comment(sheetId, user.trim(), id, body.text()));
+    }
+
+    @PostMapping("/claims/{id}/lines")
+    public ClaimView addLine(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody LineForm body) {
+        return view(service.addLine(sheetId, user.trim(), id, body.label(), Integer.parseInt(body.qty()),
+                new BigDecimal(body.unit())));
     }
 
     @PostMapping("/claims/{id}/redate")

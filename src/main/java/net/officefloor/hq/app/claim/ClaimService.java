@@ -49,6 +49,7 @@ public class ClaimService {
     private final ClaimRepository claims;
     private final ClaimLogRepository log;
     private final ClaimCommentRepository comments;
+    private final ClaimLineRepository lines;
     private final SheetTagRepository tagsUsed;
     private final RetiredNumberRepository retired;
     private final PersonRepository people;
@@ -70,11 +71,12 @@ public class ClaimService {
     public record Split(Claim original, Claim split) {
     }
 
-    public ClaimService(ClaimRepository claims, ClaimLogRepository log, ClaimCommentRepository comments, SheetTagRepository tagsUsed, RetiredNumberRepository retired, PersonRepository people, PersonStatementRepository statements,
+    public ClaimService(ClaimRepository claims, ClaimLogRepository log, ClaimCommentRepository comments, ClaimLineRepository lines, SheetTagRepository tagsUsed, RetiredNumberRepository retired, PersonRepository people, PersonStatementRepository statements,
             PersonWatchRepository watches, RateChain rateChain, SheetService sheets, RollupService rollup, PeriodService periods, SettingsService settings, HistoryService history, Audit audit) {
         this.claims = claims;
         this.log = log;
         this.comments = comments;
+        this.lines = lines;
         this.tagsUsed = tagsUsed;
         this.retired = retired;
         this.people = people;
@@ -149,6 +151,63 @@ public class ClaimService {
         return claim;
     }
 
+    /** The lines of the sheet's claims, each in the order added, by claim id. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<ClaimLine>> lines(String sheetId) {
+        Map<Long, List<ClaimLine>> byClaim = new HashMap<>();
+        for (ClaimLine l : lines.findBySheetIdOrderByIdAsc(sheetId)) {
+            byClaim.computeIfAbsent(l.getClaimId(), k -> new ArrayList<>()).add(l);
+        }
+        return byClaim;
+    }
+
+    /** A claim's lines, in the order added. */
+    @Transactional(readOnly = true)
+    public List<ClaimLine> linesOf(long claimId) {
+        return lines.findByClaimIdOrderByIdAsc(claimId);
+    }
+
+    /** Add a line to a DRAFT claim: the claim's amount becomes its lines' quantities times their
+     *  unit amounts, added up, it counts as edited by the user, and CLAIM_LINE_ADDED is written
+     *  with the new amount. Refused (404) when missing, (422) when the label is blank, the
+     *  quantity is below 1 or the unit amount is negative, (423) when due in a closed period,
+     *  (409) unless a DRAFT, and (409) while another user holds its editor open. */
+    @Transactional
+    public Claim addLine(String sheetId, String user, long id, String label, int qty, BigDecimal unit) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        if (label == null || label.isBlank() || qty < 1 || unit.signum() < 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A line needs a label, a quantity of at least 1 and a unit amount");
+        }
+        refuseIfClosed(sheetId, claim.getDueBy());
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be edited");
+        }
+        refuseIfLocked(claim, user);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        ClaimLine line = lines.saveAndFlush(new ClaimLine(sheetId, claim.getId(), label.trim(), qty, unit.setScale(2)));
+        claim.setAmount(linesTotal(claim.getId()));
+        claim.setEditedBy(user);
+        claims.flush();
+        record("CLAIM_LINE_ADDED", user, person, claim, claim.getNumber(), " label=" + line.getLabel()
+                + " qty=" + line.getQty() + " unit=" + line.getUnit().toPlainString());
+        rollup.recordChanges(sheetId, user, before);
+        return claim;
+    }
+
+    /** The quantities times the unit amounts of a claim's lines, added up; null when it has none. */
+    private BigDecimal linesTotal(long claimId) {
+        return lines.findByClaimIdOrderByIdAsc(claimId).stream()
+                .map(ClaimLine::amount)
+                .reduce(BigDecimal::add)
+                .map(total -> total.setScale(2))
+                .orElse(null);
+    }
+
     /** The claims of the ids on the sheet in list order: the people by their place in the list,
      *  each person's claims newest first; ids not on the sheet are left out. */
     @Transactional(readOnly = true)
@@ -212,7 +271,8 @@ public class ClaimService {
      *  Refused (409) once the claim is no longer a DRAFT (an open claim is voided and a new one
      *  added instead), and (423) when its due-by (which the edit leaves) is in a closed period, and (422) when the new
      *  date is after the person's retirement date, or when it is a correction that does not name
-     *  the number of a SETTLED claim of the same person, and (409) when its reference (blank: none) is
+     *  the number of a SETTLED claim of the same person, and (422) when it has lines and the amount is
+     *  not their total, and (409) when its reference (blank: none) is
      *  used by another claim on the sheet, comparing without regard to case. Its tags are
      *  replaced as {@link #tagsOf} has them. */
     @Transactional
@@ -227,6 +287,11 @@ public class ClaimService {
                     "A " + claim.getStatus() + " claim cannot be edited");
         }
         refuseIfLocked(claim, user);
+        BigDecimal lined = linesTotal(claim.getId());
+        if (lined != null && lined.compareTo(amount) != 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A claim with lines has their total as its amount");
+        }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         refuseIfRetired(person, on);

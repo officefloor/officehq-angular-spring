@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimLine;
+import net.officefloor.hq.app.claim.ClaimLineRepository;
 import net.officefloor.hq.app.claim.ClaimLog;
 import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
@@ -66,6 +68,7 @@ public class SheetCloneService {
     private final PeriodRepository periods;
     private final ClaimRepository claims;
     private final ClaimLogRepository claimLog;
+    private final ClaimLineRepository claimLines;
     private final SheetTagRepository tags;
     private final ClaimService claimService;
     private final RollupService rollup;
@@ -75,7 +78,7 @@ public class SheetCloneService {
             SheetPermissionRepository permissions, RateRepository rates, SheetHolidayRepository holidays,
             SheetVoidReasonRepository voidReasons, ClaimTemplateRepository templates, PersonRepository people,
             PersonPatronRepository patrons, PoolRepository pools, PoolMemberRepository poolMembers,
-            PeriodRepository periods, ClaimRepository claims, ClaimLogRepository claimLog, SheetTagRepository tags,
+            PeriodRepository periods, ClaimRepository claims, ClaimLogRepository claimLog, ClaimLineRepository claimLines, SheetTagRepository tags,
             ClaimService claimService, RollupService rollup, Audit audit) {
         this.sheets = sheets;
         this.settings = settings;
@@ -92,6 +95,7 @@ public class SheetCloneService {
         this.periods = periods;
         this.claims = claims;
         this.claimLog = claimLog;
+        this.claimLines = claimLines;
         this.tags = tags;
         this.claimService = claimService;
         this.rollup = rollup;
@@ -101,7 +105,7 @@ public class SheetCloneService {
     /** Clone the sheet to another id, as a steward: the clone gets this sheet's today, settings,
      *  roles, permissions, rates, holidays, void reasons, templates and tags; its people (with their
      *  grades, terms, contacts, aliases, holds, retirements and patrons), pools and periods (all
-     *  open); and its claims with their status, frozen figures, dates, notes and logs. Each claim
+     *  open); and its claims with their status, frozen figures, dates, notes, logs and lines. Each claim
      *  that had a number takes the clone's next one, in the order the claims were opened (by the
      *  sheet's today when each was opened, then by the order they were added to the clone, people
      *  in list order and each one's claims in the order they are listed). Statements (and the
@@ -170,7 +174,7 @@ public class SheetCloneService {
         }
         sheets.flush();
 
-        // claims: each person's (in list order) oldest listed first, with their logs
+        // claims: each person's (in list order) oldest listed first, with their logs and lines
         Map<Long, List<Claim>> byPerson = new LinkedHashMap<>();
         claims.findBySheetIdOrderByIdDesc(sheetId)
                 .forEach(c -> byPerson.computeIfAbsent(c.getPersonId(), k -> new ArrayList<>()).add(c));
@@ -188,9 +192,13 @@ public class SheetCloneService {
                     claimLog.save(new ClaimLog(target, copy.getId(), line.getStatus(), line.getBy(), line.getOn(),
                             line.getDue()));
                 }
+                for (ClaimLine line : claimLines.findByClaimIdOrderByIdAsc(claim.getId())) {
+                    claimLines.save(new ClaimLine(target, copy.getId(), line.getLabel(), line.getQty(), line.getUnit()));
+                }
             }
         }
         claimLog.flush();
+        claimLines.flush();
 
         // numbers: the clone's next, in the order the claims were opened
         Map<String, String> renumbered = new HashMap<>();
