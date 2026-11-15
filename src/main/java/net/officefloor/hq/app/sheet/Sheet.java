@@ -106,6 +106,11 @@ public class Sheet {
     @Column(name = "pot")
     private BigDecimal pot;
 
+    /** A change that takes a person's due-total from at or below it (or n/a) to above it alerts;
+     *  null when blank (off). Not dated. */
+    @Column(name = "alert_threshold")
+    private BigDecimal alertThreshold;
+
     /** The id of the sheet's parent: a grade with no rate of its own in force on a date takes its
      *  parent's (then its parent's parent's, up to three levels up); null when blank (none). Not dated. */
     @Column(name = "parent")
@@ -125,7 +130,7 @@ public class Sheet {
     }
 
     /** A clone of the sheet under another id, created by a user: its today and every setting (its
-     *  dated settings, policy date, period numbering, entry date, grace days, fiscal start month, pot and parent). It is
+     *  dated settings, policy date, period numbering, entry date, grace days, fiscal start month, pot, alert threshold and parent). It is
      *  not archived and has given no claim number yet. */
     public Sheet clonedTo(String id, String createdBy) {
         Sheet copy = new Sheet(id, createdBy, today);
@@ -136,6 +141,7 @@ public class Sheet {
         copy.graceDays = graceDays;
         copy.fiscalStartMonth = fiscalStartMonth;
         copy.pot = pot;
+        copy.alertThreshold = alertThreshold;
         copy.parent = parent;
         return copy;
     }
@@ -309,6 +315,14 @@ public class Sheet {
 
     public void setPot(BigDecimal pot) {
         this.pot = pot;
+    }
+
+    public BigDecimal getAlertThreshold() {
+        return alertThreshold;
+    }
+
+    public void setAlertThreshold(BigDecimal alertThreshold) {
+        this.alertThreshold = alertThreshold;
     }
 
     public String getParent() {

@@ -50,6 +50,9 @@ public class SettingsService {
 
     /** The key the pot is audited under. */
     public static final String POT = "pot";
+
+    /** The key the alert threshold is audited under. */
+    public static final String ALERT_THRESHOLD = "alert-threshold";
     /** The key the fiscal year's start month is audited under. */
     public static final String FISCAL_START_MONTH = "fiscal-start-month";
 
@@ -331,6 +334,26 @@ public class SettingsService {
         sheets.flush();
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + POT + " value=" + (scaled == null ? "" : scaled.toPlainString()));
+        return scaled;
+    }
+
+    /** The sheet's alert threshold; null when blank (off). */
+    @Transactional(readOnly = true)
+    public BigDecimal alertThreshold(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getAlertThreshold).orElse(null);
+    }
+
+    /** Set the sheet's alert threshold (null: off), the sheet created first if it was never
+     *  loaded; not dated. */
+    @Transactional
+    public BigDecimal setAlertThreshold(String sheetId, String user, BigDecimal threshold) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        BigDecimal scaled = threshold == null ? null : threshold.setScale(2);
+        sheet.setAlertThreshold(scaled);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + ALERT_THRESHOLD + " value=" + (scaled == null ? "" : scaled.toPlainString()));
         return scaled;
     }
 

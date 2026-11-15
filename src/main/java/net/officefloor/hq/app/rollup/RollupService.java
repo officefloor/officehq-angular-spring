@@ -36,7 +36,9 @@ import org.springframework.stereotype.Service;
  * and the sheet's claimed-total, due-total and overdue-total. A change takes a {@link #snapshot} before it and passes it
  * to {@link #recordChanges} after its own audit lines, which then records a ROLLUP line for each
  * person whose figures moved (people in list order; a person new to the sheet
- * counts as moved) and a TOTALS line when any of the sheet's totals moved.
+ * counts as moved) and a TOTALS line when any of the sheet's totals moved, then an ALERT line for
+ * each person whose due-total went from at or below the sheet's alert threshold (or n/a, or new) to
+ * above it.
  */
 @Service
 public class RollupService {
@@ -253,6 +255,21 @@ public class RollupService {
                     + text(after.claimedTotal()) + " due-total=" + text(after.dueTotal())
                     + " overdue-total=" + text(after.overdueTotal()));
         }
+        BigDecimal threshold = sheets.findById(sheetId).map(Sheet::getAlertThreshold).orElse(null);
+        if (threshold != null) {
+            after.people().forEach((id, now) -> {
+                Figures was = before.people().get(id);
+                if (above(now.dueTotal(), threshold) && (was == null || !above(was.dueTotal(), threshold))) {
+                    audit.recordOnCommit("ALERT sheet=" + sheetId + " by=" + user + " name=" + now.name()
+                            + " due-total=" + text(now.dueTotal()));
+                }
+            });
+        }
+    }
+
+    /** Whether a due-total (null: n/a) is above the alert threshold. */
+    private static boolean above(BigDecimal dueTotal, BigDecimal threshold) {
+        return dueTotal != null && dueTotal.compareTo(threshold) > 0;
     }
 
     /** Record, once the transaction commits, a ROLLUP line for every person (in list order), then

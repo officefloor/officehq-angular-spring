@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { FISCAL_START_MONTH_PATTERN, GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTERN, POLICY_DATE_PATTERN, PermissionAction, ROLES, TERMS_PATTERN, Delegation, RoleGrant, SETTINGS_INVALID, SettingsApi, delegateError, holidayError, roleError, settingsError, voidReasonError } from './settings-api';
 
 // The sheet's settings (its permission matrix: the roles that may open, settle, void, reassign, close or reopen, each blank for its standing rule; its clerk limit: a clerk settles only claims whose due is at or below it;
-// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period; its entry date: while set, a new claim left undated takes it; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed; its fiscal start month: each period shows the fiscal year its from-date falls in; its pot: each balanced pool's members cut it by their shares) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one, and the sheet's holidays (a claim's due-by, as it is created, is moved past them) with the form that adds one, and the sheet's void reasons (while there are any, a claim is voided only with one of them) with the form that adds one.
+// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period; its entry date: while set, a new claim left undated takes it; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed; its fiscal start month: each period shows the fiscal year its from-date falls in; its pot: each balanced pool's members cut it by their shares; its alert threshold: a change that takes a person's due-total above it alerts) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one, and the sheet's holidays (a claim's due-by, as it is created, is moved past them) with the form that adds one, and the sheet's void reasons (while there are any, a claim is voided only with one of them) with the form that adds one.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -32,6 +32,7 @@ import { FISCAL_START_MONTH_PATTERN, GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PE
       <p>Note threshold in force (blank: none) <strong data-testid="setting-note-threshold-current">{{ session.noteThreshold() ?? '' }}</strong></p>
       <p>Grace days (blank: off) <strong data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</strong></p>
       <p>Pot (blank: none) <strong data-testid="setting-pot-current">{{ session.pot() ?? '' }}</strong></p>
+      <p>Alert threshold (blank: off) <strong data-testid="setting-alert-threshold-current">{{ alertThreshold() ?? '' }}</strong></p>
       <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</strong></p>
       <p>Parent sheet (blank: none) <strong data-testid="setting-parent-current">{{ session.parent() ?? '' }}</strong></p>
       @for (p of permissionList; track p.action) {
@@ -94,6 +95,8 @@ import { FISCAL_START_MONTH_PATTERN, GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PE
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric" autocomplete="off" />
         <label for="setting-pot">Pot: each balanced pool's members cut it by their shares (blank: none)</label>
         <input id="setting-pot" data-testid="setting-pot" formControlName="pot" inputmode="decimal" autocomplete="off" />
+        <label for="setting-alert-threshold">Alert threshold: a change that takes a person's due-total above it alerts (blank: off)</label>
+        <input id="setting-alert-threshold" data-testid="setting-alert-threshold" formControlName="alertThreshold" inputmode="decimal" autocomplete="off" />
         <label for="setting-fiscal-start-month">Fiscal year start month: 1 to 12</label>
         <input id="setting-fiscal-start-month" data-testid="setting-fiscal-start-month" formControlName="fiscalStartMonth" inputmode="numeric" autocomplete="off" />
         <label for="setting-parent">Parent sheet id: a grade with no rate of its own takes the parent's (blank: none)</label>
@@ -194,6 +197,8 @@ export class Settings {
   protected readonly entryDate = signal<string | null>(null);
   /** The sheet's grace days; null when blank (off). */
   protected readonly graceDays = signal<number | null>(null);
+  /** The sheet's alert threshold (two decimals); null when blank (off). */
+  protected readonly alertThreshold = signal<string | null>(null);
   protected readonly grades = GRADES;
   protected readonly permissionList = PERMISSIONS;
   /** The roles set for each action, as saved; an action not here keeps its standing rule. */
@@ -241,6 +246,7 @@ export class Settings {
     noteThresholdFrom: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
+    alertThreshold: new FormControl('', { nonNullable: true }),
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
     parent: new FormControl('', { nonNullable: true }),
   });
@@ -328,6 +334,7 @@ export class Settings {
         this.periodNumberingFrom.set(null);
         this.entryDate.set(null);
         this.graceDays.set(null);
+        this.alertThreshold.set(null);
         this.session.pot.set(null);
         this.session.fiscalStartMonth.set(1);
         this.grants.set([]);
@@ -345,7 +352,7 @@ export class Settings {
         this.voidReasonForm.reset({ reason: '' }, { emitEvent: false });
         this.settingsForm.reset({
           clerkLimit: '', clerkLimitFrom: '', floor: '', floorFrom: '', terms: '', termsFrom: '', latePct: '', latePctFrom: '',
-          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', noteThreshold: '', noteThresholdFrom: '', graceDays: '', pot: '', fiscalStartMonth: '', parent: '',
+          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', noteThreshold: '', noteThresholdFrom: '', graceDays: '', pot: '', alertThreshold: '', fiscalStartMonth: '', parent: '',
         }, { emitEvent: false });
         this.gradeTermsForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.gradeTermsFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
@@ -373,7 +380,7 @@ export class Settings {
     this.settingsErr.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, noteThreshold, noteThresholdFrom, graceDays, pot, fiscalStartMonth, parent } = this.settingsForm.controls;
+    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, noteThreshold, noteThresholdFrom, graceDays, pot, alertThreshold, fiscalStartMonth, parent } = this.settingsForm.controls;
     // only the settings typed into (or entered and left, as when one already blank is cleared),
     // or whose from-date was, since the last save are saved (the clerk limit when none is)
     const typed = (c: AbstractControl) => c.dirty || c.touched;
@@ -388,6 +395,7 @@ export class Settings {
     const saveNoteThreshold = typed(noteThreshold) || typed(noteThresholdFrom);
     const saveGraceDays = typed(graceDays);
     const savePot = typed(pot);
+    const saveAlertThreshold = typed(alertThreshold);
     const saveFiscalStartMonth = typed(fiscalStartMonth);
     const saveParent = typed(parent);
     const gradeTermsToSave = GRADES
@@ -416,7 +424,7 @@ export class Settings {
         typed: this.permissionsForm.controls[p.action].value.trim(),
       }));
     const saveLimit = typed(clerkLimit) || typed(clerkLimitFrom)
-      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveNoteThreshold || saveGraceDays || savePot || saveFiscalStartMonth || saveParent);
+      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveNoteThreshold || saveGraceDays || savePot || saveAlertThreshold || saveFiscalStartMonth || saveParent);
     const limitFrom = clerkLimitFrom.value.trim();
     const floorFromValue = floorFrom.value.trim();
     const termsFromValue = termsFrom.value.trim();
@@ -437,6 +445,7 @@ export class Settings {
     const noteThresholdValue = noteThreshold.value.trim();
     const graceDaysValue = graceDays.value.trim();
     const potValue = pot.value.trim();
+    const alertThresholdValue = alertThreshold.value.trim();
     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
     const parentValue = parent.value.trim();
     if ((saveLimit && limitValue !== '' && !LIMIT_PATTERN.test(limitValue))
@@ -454,6 +463,7 @@ export class Settings {
         || (saveNoteThreshold && noteThresholdValue !== '' && !LIMIT_PATTERN.test(noteThresholdValue))
         || (saveGraceDays && graceDaysValue !== '' && !TERMS_PATTERN.test(graceDaysValue))
         || (savePot && potValue !== '' && !LIMIT_PATTERN.test(potValue))
+        || (saveAlertThreshold && alertThresholdValue !== '' && !LIMIT_PATTERN.test(alertThresholdValue))
         || (saveFiscalStartMonth && !FISCAL_START_MONTH_PATTERN.test(fiscalStartMonthValue))
         || (saveParent && !/^\S*$/.test(parentValue))
         || badFrom(saveLimit, limitFrom) || badFrom(saveFloor, floorFromValue) || badFrom(saveTerms, termsFromValue)
@@ -552,6 +562,11 @@ export class Settings {
         const saved = await this.api.setPot(sheetId, potValue);
         if (pot.value.trim() === potValue) { pot.markAsPristine(); pot.markAsUntouched(); }
         if (this.session.sheetId() === sheetId) this.session.pot.set(saved.pot);
+      }
+      if (saveAlertThreshold) {
+        const saved = await this.api.setAlertThreshold(sheetId, alertThresholdValue);
+        if (alertThreshold.value.trim() === alertThresholdValue) { alertThreshold.markAsPristine(); alertThreshold.markAsUntouched(); }
+        if (this.session.sheetId() === sheetId) this.alertThreshold.set(saved.alertThreshold);
       }
       if (saveFiscalStartMonth) {
         const saved = await this.api.setFiscalStartMonth(sheetId, fiscalStartMonthValue);
@@ -696,6 +711,7 @@ export class Settings {
         this.entryDate.set(settings.entryDate);
         this.graceDays.set(settings.graceDays);
         this.session.pot.set(settings.pot);
+        this.alertThreshold.set(settings.alertThreshold);
         this.session.fiscalStartMonth.set(settings.fiscalStartMonth);
         // the fiscal start month's field starts at the month in force
         const fiscalStartMonth = this.settingsForm.controls.fiscalStartMonth;
@@ -703,6 +719,9 @@ export class Settings {
         // the pot's field starts at the pot, so clearing it is a change that saves "none"
         const pot = this.settingsForm.controls.pot;
         if (!pot.dirty) pot.setValue(settings.pot ?? '', { emitEvent: false });
+        // and the alert threshold's
+        const alertThreshold = this.settingsForm.controls.alertThreshold;
+        if (!alertThreshold.dirty) alertThreshold.setValue(settings.alertThreshold ?? '', { emitEvent: false });
         // the cap's field starts at the cap in force, so clearing it is a change that saves "none"
         const cap = this.settingsForm.controls.cap;
         if (!cap.dirty) cap.setValue(settings.cap ?? '', { emitEvent: false });
