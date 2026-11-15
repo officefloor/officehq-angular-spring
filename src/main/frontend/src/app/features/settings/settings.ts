@@ -22,6 +22,7 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
       <p>Period numbering from (blank: off) <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
       <p>Cap in force (blank: none) <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
       <p>Proof threshold in force (blank: none) <strong data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' }}</strong></p>
+      <p>Note threshold in force (blank: none) <strong data-testid="setting-note-threshold-current">{{ session.noteThreshold() ?? '' }}</strong></p>
       <p>Grace days (blank: off) <strong data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</strong></p>
       @for (p of permissionList; track p.action) {
         <p>Roles that may {{ p.action }} (blank: {{ p.standing }}) <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ permissions()[p.action] ?? '' }}</strong></p>
@@ -61,6 +62,10 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
         <input id="setting-proof-threshold" data-testid="setting-proof-threshold" formControlName="proofThreshold" inputmode="decimal" autocomplete="off" />
         <label for="setting-proof-threshold-from">Proof threshold from (blank: the sheet's today)</label>
         <input id="setting-proof-threshold-from" type="date" data-testid="setting-proof-threshold-from" formControlName="proofThresholdFrom" />
+        <label for="setting-note-threshold">Note threshold: a claim whose due is above it needs a note to be opened (blank: none)</label>
+        <input id="setting-note-threshold" data-testid="setting-note-threshold" formControlName="noteThreshold" inputmode="decimal" autocomplete="off" />
+        <label for="setting-note-threshold-from">Note threshold from (blank: the sheet's today)</label>
+        <input id="setting-note-threshold-from" type="date" data-testid="setting-note-threshold-from" formControlName="noteThresholdFrom" />
         <label for="setting-grace-days">Grace days: when the sheet's today changes, open periods ended more than this many days before it are closed (blank: off)</label>
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric" autocomplete="off" />
         @for (p of permissionList; track p.action) {
@@ -167,6 +172,8 @@ export class Settings {
     capFrom: new FormControl('', { nonNullable: true }),
     proofThreshold: new FormControl('', { nonNullable: true }),
     proofThresholdFrom: new FormControl('', { nonNullable: true }),
+    noteThreshold: new FormControl('', { nonNullable: true }),
+    noteThresholdFrom: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
   });
   /** A grade's own terms, typed in beside the other settings and saved with them. */
@@ -223,7 +230,7 @@ export class Settings {
         this.delegateForm.reset({ user: '', from: '', to: '' }, { emitEvent: false });
         this.settingsForm.reset({
           clerkLimit: '', clerkLimitFrom: '', floor: '', floorFrom: '', terms: '', termsFrom: '', latePct: '', latePctFrom: '',
-          policyDate: '', periodNumberingFrom: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', graceDays: '',
+          policyDate: '', periodNumberingFrom: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', noteThreshold: '', noteThresholdFrom: '', graceDays: '',
         }, { emitEvent: false });
         this.gradeTermsForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.gradeTermsFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
@@ -247,7 +254,7 @@ export class Settings {
     this.settingsErr.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom, graceDays } = this.settingsForm.controls;
+    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom, noteThreshold, noteThresholdFrom, graceDays } = this.settingsForm.controls;
     // only the settings typed into (or entered and left, as when one already blank is cleared),
     // or whose from-date was, since the last save are saved (the clerk limit when none is)
     const typed = (c: AbstractControl) => c.dirty || c.touched;
@@ -258,6 +265,7 @@ export class Settings {
     const savePeriodNumberingFrom = typed(periodNumberingFrom);
     const saveCap = typed(cap) || typed(capFrom);
     const saveProofThreshold = typed(proofThreshold) || typed(proofThresholdFrom);
+    const saveNoteThreshold = typed(noteThreshold) || typed(noteThresholdFrom);
     const saveGraceDays = typed(graceDays);
     const gradeTermsToSave = GRADES
       .filter((g) => typed(this.gradeTermsForm.controls[g]) || typed(this.gradeTermsFromForm.controls[g]))
@@ -273,13 +281,14 @@ export class Settings {
         typed: this.permissionsForm.controls[p.action].value.trim(),
       }));
     const saveLimit = typed(clerkLimit) || typed(clerkLimitFrom)
-      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveCap || saveProofThreshold || saveGraceDays);
+      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveCap || saveProofThreshold || saveNoteThreshold || saveGraceDays);
     const limitFrom = clerkLimitFrom.value.trim();
     const floorFromValue = floorFrom.value.trim();
     const termsFromValue = termsFrom.value.trim();
     const latePctFromValue = latePctFrom.value.trim();
     const capFromValue = capFrom.value.trim();
     const proofThresholdFromValue = proofThresholdFrom.value.trim();
+    const noteThresholdFromValue = noteThresholdFrom.value.trim();
     const badFrom = (save: boolean, from: string) => save && from !== '' && !POLICY_DATE_PATTERN.test(from);
     const limitValue = clerkLimit.value.trim();
     const floorValue = floor.value.trim();
@@ -289,6 +298,7 @@ export class Settings {
     const periodNumberingFromValue = periodNumberingFrom.value.trim();
     const capValue = cap.value.trim();
     const proofThresholdValue = proofThreshold.value.trim();
+    const noteThresholdValue = noteThreshold.value.trim();
     const graceDaysValue = graceDays.value.trim();
     if ((saveLimit && limitValue !== '' && !LIMIT_PATTERN.test(limitValue))
         || (saveFloor && floorValue !== '' && !LIMIT_PATTERN.test(floorValue))
@@ -299,10 +309,11 @@ export class Settings {
         || (savePeriodNumberingFrom && periodNumberingFromValue !== '' && !POLICY_DATE_PATTERN.test(periodNumberingFromValue))
         || (saveCap && capValue !== '' && !LIMIT_PATTERN.test(capValue))
         || (saveProofThreshold && proofThresholdValue !== '' && !LIMIT_PATTERN.test(proofThresholdValue))
+        || (saveNoteThreshold && noteThresholdValue !== '' && !LIMIT_PATTERN.test(noteThresholdValue))
         || (saveGraceDays && graceDaysValue !== '' && !TERMS_PATTERN.test(graceDaysValue))
         || badFrom(saveLimit, limitFrom) || badFrom(saveFloor, floorFromValue) || badFrom(saveTerms, termsFromValue)
         || badFrom(saveLatePct, latePctFromValue) || badFrom(saveCap, capFromValue)
-        || badFrom(saveProofThreshold, proofThresholdFromValue)
+        || badFrom(saveProofThreshold, proofThresholdFromValue) || badFrom(saveNoteThreshold, noteThresholdFromValue)
         || gradeTermsToSave.some((t) => badFrom(true, t.from))
         || permissionsToSave.some((p) => p.typed !== '' && !PERMISSION_PATTERN.test(p.typed))) {
       this.settingsErr.set(SETTINGS_INVALID);
@@ -360,6 +371,12 @@ export class Settings {
         const saved = await this.api.setProofThreshold(sheetId, proofThresholdValue, proofThresholdFromValue);
         settled(proofThreshold, proofThresholdValue);
         settled(proofThresholdFrom, proofThresholdFromValue);
+        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+      }
+      if (saveNoteThreshold) {
+        const saved = await this.api.setNoteThreshold(sheetId, noteThresholdValue, noteThresholdFromValue);
+        settled(noteThreshold, noteThresholdValue);
+        settled(noteThresholdFrom, noteThresholdFromValue);
         if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
       }
       if (saveGraceDays) {
@@ -453,6 +470,9 @@ export class Settings {
         // so does the proof threshold's
         const proofThreshold = this.settingsForm.controls.proofThreshold;
         if (!proofThreshold.dirty) proofThreshold.setValue(settings.proofThreshold ?? '', { emitEvent: false });
+        // and the note threshold's
+        const noteThreshold = this.settingsForm.controls.noteThreshold;
+        if (!noteThreshold.dirty) noteThreshold.setValue(this.session.noteThreshold() ?? '', { emitEvent: false });
         this.permissions.set(settings.permissions);
         // each action's roles start at those set, so clearing them is a change that saves the standing rule
         for (const p of PERMISSIONS) {

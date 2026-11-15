@@ -260,6 +260,9 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (to == ClaimStatus.OPEN) {
+            refuseIfNoteless(claim, shownDueOf(claim, person));
+        }
         // a claim bound by a statement settles at its bound figure, its late charge frozen in
         BigDecimal settling = to == ClaimStatus.SETTLED ? shownDueOf(claim, person) : null;
         if (to == ClaimStatus.SETTLED) {
@@ -451,6 +454,19 @@ public class ClaimService {
         if (threshold != null && due.compareTo(threshold) > 0) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "A claim whose due is above the proof threshold needs a proof first");
+        }
+    }
+
+    /** Refuse (422) opening a claim at a due (null: n/a) above the note threshold in force on its
+     *  date while its note is empty. */
+    private void refuseIfNoteless(Claim claim, BigDecimal due) {
+        if (due == null || (claim.getNote() != null && !claim.getNote().isBlank())) {
+            return;
+        }
+        BigDecimal threshold = sheets.noteThresholdOn(claim.getSheetId(), claim.getDate());
+        if (threshold != null && due.compareTo(threshold) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A claim whose due is above the note threshold needs a note first");
         }
     }
 

@@ -31,6 +31,9 @@ export class Session {
   /** The active sheet's proof threshold (two decimals) in force on its today, null when there is
    *  none: a claim whose due is above the one in force on its date is settled only with a proof. */
   readonly proofThreshold = computed(() => valueOn(this.dated(), 'proof-threshold', this.today())?.value ?? null);
+  /** The active sheet's note threshold (two decimals) in force on its today, null when there is
+   *  none: a claim whose due is above the one in force on its date is opened only with a note. */
+  readonly noteThreshold = computed(() => valueOn(this.dated(), 'note-threshold', this.today())?.value ?? null);
   /** Whether the active sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
   /** Whether the people list shows retired people too: off at first, and kept as it is when a

@@ -108,6 +108,12 @@ public class SettingsController {
             @Pattern(regexp = FROM) String from) {
     }
 
+    /** The note threshold as the form submits it: 0.00 or more with up to two decimals, blank
+     *  for none, from a date (blank: the sheet's today). */
+    public record NoteThresholdForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value,
+            @Pattern(regexp = FROM) String from) {
+    }
+
     /** The policy date as the form submits it: a date as yyyy-mm-dd, blank for none (the sheet's today). */
     public record PolicyDateForm(@NotNull @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String value) {
     }
@@ -245,6 +251,16 @@ public class SettingsController {
             @Valid @RequestBody ProofThresholdForm body) {
         BigDecimal threshold = body.value().isEmpty() ? null : new BigDecimal(body.value());
         service.setProofThreshold(sheetId, user.trim(), threshold, fromOf(body.from()));
+        return view(sheetId);
+    }
+
+    @PutMapping("/settings/note-threshold")
+    public SettingsView setNoteThreshold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody NoteThresholdForm body) {
+        BigDecimal threshold = body.value().isEmpty() ? null : new BigDecimal(body.value());
+        service.setNoteThreshold(sheetId, user.trim(), threshold, fromOf(body.from()));
         return view(sheetId);
     }
 

@@ -89,6 +89,12 @@ public class SheetService {
         return sheets.findById(id).map(s -> s.proofThresholdOn(on)).orElse(null);
     }
 
+    /** The sheet's note threshold in force on a date; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal noteThresholdOn(String id, LocalDate on) {
+        return sheets.findById(id).map(s -> s.noteThresholdOn(on)).orElse(null);
+    }
+
     /** Whether the sheet is archived: every change on it is refused. */
     @Transactional(readOnly = true)
     public boolean archived(String id) {

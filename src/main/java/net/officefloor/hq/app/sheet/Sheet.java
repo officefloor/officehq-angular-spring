@@ -50,6 +50,8 @@ public class Sheet {
     public static final String CAP = "cap";
     /** The key of the proof threshold's dated values. */
     public static final String PROOF_THRESHOLD = "proof-threshold";
+    /** The key of the note threshold's dated values. */
+    public static final String NOTE_THRESHOLD = "note-threshold";
 
     @Id
     private String id;
@@ -253,6 +255,17 @@ public class Sheet {
      *  settled or approved without a proof; null when there is none. */
     public BigDecimal proofThresholdOn(LocalDate on) {
         return amountOn(PROOF_THRESHOLD, on, null);
+    }
+
+    /** The note threshold in force on the sheet's today; null when there is none. */
+    public BigDecimal getNoteThreshold() {
+        return noteThresholdOn(today);
+    }
+
+    /** The note threshold in force on a date: a claim dated then whose due is above it cannot be
+     *  opened with an empty note; null when there is none. */
+    public BigDecimal noteThresholdOn(LocalDate on) {
+        return amountOn(NOTE_THRESHOLD, on, null);
     }
 
     /** A due-total held to the cap (null, n/a, is not capped): the cap when the sum is above it. */

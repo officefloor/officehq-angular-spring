@@ -46,6 +46,9 @@ public class SettingsService {
     /** The key the proof threshold is audited under. */
     public static final String PROOF_THRESHOLD = Sheet.PROOF_THRESHOLD;
 
+    /** The key the note threshold is audited under. */
+    public static final String NOTE_THRESHOLD = Sheet.NOTE_THRESHOLD;
+
     /** The key an action's roles in the permission matrix are audited under, followed by the action. */
     public static final String PERMISSION = "perm-";
 
@@ -267,6 +270,18 @@ public class SettingsService {
         sheets.lock(sheetId);
         BigDecimal scaled = threshold == null ? null : threshold.setScale(2);
         record(sheet, user, PROOF_THRESHOLD, scaled == null ? "" : scaled.toPlainString(), from);
+        return scaled;
+    }
+
+    /** Set the sheet's note threshold (null: none) from a date (null: the sheet's today), the
+     *  sheet created first if it was never loaded; a claim dated from then on to the next from-date
+     *  whose due is above it cannot be opened while its note is empty. */
+    @Transactional
+    public BigDecimal setNoteThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        BigDecimal scaled = threshold == null ? null : threshold.setScale(2);
+        record(sheet, user, NOTE_THRESHOLD, scaled == null ? "" : scaled.toPlainString(), from);
         return scaled;
     }
 

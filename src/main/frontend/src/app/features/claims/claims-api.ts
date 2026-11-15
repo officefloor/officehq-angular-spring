@@ -323,7 +323,9 @@ export function statusError(e: unknown, opener: boolean): string {
   }
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
-  if (e instanceof HttpErrorResponse && e.status === 422) return 'This claim\'s due is above the proof threshold; add a proof first.';
+  if (e instanceof HttpErrorResponse && e.status === 422) {
+    return 'This claim\'s due is above a threshold: it needs a note to be opened, or a proof to be settled or approved.';
+  }
   return otherError(e);
 }
 
