@@ -1,0 +1,39 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index edb0b75b8..39fb56313 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -651,7 +651,7 @@ public class ClaimService {
+     }
+ 
+     /** A steward (or a role the permission matrix lets reassign) moves a DRAFT, OPEN or PENDING claim to another person on the sheet: it keeps its
+-     *  number and date, is listed as the new person's newest claim, and loses any figure a
++     *  date and takes the next number in its sequence (its old one never given again; a draft has none), is listed as the new person's newest claim, and loses any figure a
+      *  statement bound it to (live again until the new person's next statement). Refused (404)
+      *  when the claim or person is missing, (423) when it is due in a closed period, (403) for a
+      *  role the sheet's permission matrix does not let reassign, (409) when SETTLED or VOID or already the person's, and (422) when it is dated after
+@@ -682,6 +682,12 @@ public class ClaimService {
+         Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
++        if (claim.getNumber() != null && claim.getPersonId() != toPersonId) {
++            // moved to another person: the next number in its sequence, the old one never given again
++            retired.save(new RetiredNumber(sheetId, claim.getNumber()));
++            claims.flush();
++            claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
++        }
+         claim.setPersonId(to.getId());
+         claim.unbind();
+         claim.setListed(claims.findLastListed(sheetId) + 1);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/RetiredNumber.java b/src/main/java/net/officefloor/hq/app/claim/RetiredNumber.java
+index 3a1f30771..1f908968e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/RetiredNumber.java
++++ b/src/main/java/net/officefloor/hq/app/claim/RetiredNumber.java
+@@ -7,7 +7,7 @@ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ 
+-/** A claim number a re-dated claim left behind as it moved to another period: never given again. */
++/** A claim number a re-dated or reassigned claim left behind: never given again. */
+ @Entity
+ @Table(name = "retired_number")
+ public class RetiredNumber {
