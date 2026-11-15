@@ -51,6 +51,8 @@ export interface Claim {
   log: ClaimLogLine[];
   /** yyyy-mm-dd: the date the claim was deferred until; null when it was never deferred. */
   deferredUntil: string | null;
+  /** How many proofs the claim has. */
+  proofs: number;
 }
 
 /** A line of a claim's status log: the status, who moved the claim there, the sheet's today then
@@ -184,6 +186,13 @@ export class ClaimsApi {
     );
   }
 
+  /** Add a proof to a claim that is neither SETTLED nor VOID. */
+  addProof(sheetId: string, id: number): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/proofs`, null, { headers: this.headers() }),
+    );
+  }
+
   /** Reject a PENDING claim with a reason: it goes back to OPEN. */
   reject(sheetId: string, id: number, reason: string): Promise<Claim> {
     return firstValueFrom(
@@ -260,6 +269,15 @@ export function statusError(e: unknown, opener: boolean): string {
   if (e instanceof HttpErrorResponse && e.status === 403) {
     return opener ? 'The user who opened this claim cannot settle or approve it.' : 'Only a steward can approve or reject a pending claim.';
   }
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'This claim\'s due is above the proof threshold; add a proof first.';
+  return 'Something went wrong; try again.';
+}
+
+/** Why adding a proof was refused. */
+export function proofError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'A settled or void claim takes no more proofs.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
   return 'Something went wrong; try again.';

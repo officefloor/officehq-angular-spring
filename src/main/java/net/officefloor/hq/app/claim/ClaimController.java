@@ -35,16 +35,16 @@ public class ClaimController {
      *  and for other claims); who opened it (null while DRAFT); whether the person's last statement
      *  bound it, and the due it was bound to (null when unbound or n/a then); the number of the
      *  claim a correction corrects (null for other claims); its status log, oldest first; the date
-     *  it was deferred until (null when never deferred). */
+     *  it was deferred until (null when never deferred); how many proofs it has. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
-            LocalDate deferredUntil) {
+            LocalDate deferredUntil, int proofs) {
         static ClaimView of(Claim c, List<ClaimLog> log) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
                     c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
-                    log.stream().map(LogLineView::of).toList(), c.getDeferredUntil());
+                    log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs());
         }
 
         private static String money(BigDecimal value) {
@@ -207,6 +207,14 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody DeferForm body) {
         return view(service.defer(sheetId, user.trim(), id, body.until()));
+    }
+
+    @PostMapping("/claims/{id}/proofs")
+    public ClaimView addProof(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return view(service.addProof(sheetId, user.trim(), id));
     }
 
     @PostMapping("/claims/{id}/approve")

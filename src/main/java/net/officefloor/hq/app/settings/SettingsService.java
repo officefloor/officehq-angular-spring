@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The sheet's settings (its clerk limit, floor, terms, terms per grade, late percent, policy date, period numbering from-date and cap) and the role each user name holds on it. */
+/** The sheet's settings (its clerk limit, floor, terms, terms per grade, late percent, policy date, period numbering from-date, cap and proof threshold) and the role each user name holds on it. */
 @Service
 public class SettingsService {
 
@@ -37,6 +37,9 @@ public class SettingsService {
 
     /** The key the cap is audited under. */
     public static final String CAP = Sheet.CAP;
+
+    /** The key the proof threshold is audited under. */
+    public static final String PROOF_THRESHOLD = Sheet.PROOF_THRESHOLD;
 
     private final SheetRoleRepository roles;
     private final SheetService sheets;
@@ -210,6 +213,24 @@ public class SettingsService {
         BigDecimal scaled = cap == null ? null : cap.setScale(2);
         record(sheet, user, CAP, scaled == null ? "" : scaled.toPlainString(), from);
         rollup.recordChanges(sheetId, user, before);
+        return scaled;
+    }
+
+    /** The sheet's proof threshold in force on its today; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThreshold(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getProofThreshold).orElse(null);
+    }
+
+    /** Set the sheet's proof threshold (null: none) from a date (null: the sheet's today), the
+     *  sheet created first if it was never loaded; a claim dated from then on to the next from-date
+     *  whose due is above it cannot be settled or approved while it has no proof. */
+    @Transactional
+    public BigDecimal setProofThreshold(String sheetId, String user, BigDecimal threshold, LocalDate from) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        BigDecimal scaled = threshold == null ? null : threshold.setScale(2);
+        record(sheet, user, PROOF_THRESHOLD, scaled == null ? "" : scaled.toPlainString(), from);
         return scaled;
     }
 

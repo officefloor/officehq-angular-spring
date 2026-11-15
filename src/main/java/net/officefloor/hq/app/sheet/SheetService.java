@@ -80,6 +80,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getCap).orElse(null);
     }
 
+    /** The sheet's proof threshold in force on a date; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThresholdOn(String id, LocalDate on) {
+        return sheets.findById(id).map(s -> s.proofThresholdOn(on)).orElse(null);
+    }
+
     /** Whether a claim opened now is numbered within its period. */
     @Transactional(readOnly = true)
     public boolean periodNumberingOn(String id) {

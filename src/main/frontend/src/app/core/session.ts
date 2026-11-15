@@ -12,7 +12,7 @@ export class Session {
   /** The active sheet's today (yyyy-mm-dd): every date decision and default date uses it. */
   readonly today = signal<string | null>(null);
   /** Every value recorded for the active sheet's dated settings (its clerk limit, floor, terms,
-   *  terms per grade, late percent and cap), by key, each key's by from-date. */
+   *  terms per grade, late percent, cap and proof threshold), by key, each key's by from-date. */
   readonly dated = signal<DatedSettings>({});
   /** The active sheet's floor (two decimals) in force on its today. */
   readonly floor = computed(() => this.floorOn(this.today()));
@@ -28,6 +28,9 @@ export class Session {
   readonly policyDate = signal<string | null>(null);
   /** The active sheet's cap (two decimals) in force on its today, null when there is none: a person's due-total is at most it. */
   readonly cap = computed(() => valueOn(this.dated(), 'cap', this.today())?.value ?? null);
+  /** The active sheet's proof threshold (two decimals) in force on its today, null when there is
+   *  none: a claim whose due is above the one in force on its date is settled only with a proof. */
+  readonly proofThreshold = computed(() => valueOn(this.dated(), 'proof-threshold', this.today())?.value ?? null);
   /** Whether the people list shows retired people too: off at first, and kept as it is when a
    *  sheet is loaded. */
   readonly showRetired = signal(false);

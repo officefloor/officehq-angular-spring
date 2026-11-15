@@ -165,7 +165,9 @@ public class ClaimService {
     /** Move a claim to a new status; a move its status does not allow is refused (409), as is
      *  settling by the user who opened the claim (403), settling a deferred claim (409), settling a PENDING claim (409: it is
      *  approved or rejected instead), and any move of a claim dated in a closed period (423). A
-     *  clerk settling a claim whose due is above the sheet's clerk limit sends it to PENDING. */
+     *  clerk settling a claim whose due is above the sheet's clerk limit sends it to PENDING. Settling
+     *  a claim whose due is above the proof threshold in force on its date while it has no proof is
+     *  refused (422) before the clerk limit is considered. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus to) {
         Claim claim = claims.findForUpdate(id, sheetId)
@@ -188,6 +190,10 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         // a claim bound by a statement settles at its bound figure, its late charge frozen in
         BigDecimal settling = to == ClaimStatus.SETTLED ? shownDueOf(claim, person) : null;
+        if (to == ClaimStatus.SETTLED) {
+            // before the clerk limit: a claim needing a proof never goes to PENDING
+            refuseIfUnproven(claim, settling);
+        }
         if (to == ClaimStatus.SETTLED && !settings.maySettle(sheetId, user, settling)) {
             // above the clerk limit: a steward approves or rejects it
             to = ClaimStatus.PENDING;
@@ -250,7 +256,8 @@ public class ClaimService {
 
     /** A steward approves a PENDING claim: it becomes SETTLED, its due (its live figure, with its
      *  late charge) frozen now. Refused (409) unless PENDING, (403) for a clerk or the user who
-     *  opened it, and (423) when it is dated in a closed period. */
+     *  opened it, (423) when it is dated in a closed period, and (422) when its due is above the
+     *  proof threshold in force on its date while it has no proof. */
     @Transactional
     public Claim approve(String sheetId, String user, long id) {
         Claim claim = pendingForSteward(sheetId, user, id);
@@ -260,8 +267,9 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal due = shownDueOf(claim, person);
+        refuseIfUnproven(claim, due);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.SETTLED);
         claim.setSettledDue(due);
         claims.flush();
@@ -269,6 +277,38 @@ public class ClaimService {
         record("CLAIM_APPROVED", user, person, claim, claim.getNumber(), " due=" + dueText(due));
         rollup.recordChanges(sheetId, user, before);
         return claim;
+    }
+
+    /** Add a proof to a claim, raising its proofs count by one. Refused (404) when missing, (423)
+     *  when dated in a closed period, and (409) when SETTLED or VOID. */
+    @Transactional
+    public Claim addProof(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim takes no more proofs");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        claim.addProof();
+        claims.flush();
+        record("CLAIM_PROOF_ADDED", user, person, claim, claim.getNumber(), " proofs=" + claim.getProofs());
+        return claim;
+    }
+
+    /** Refuse (422) settling or approving a claim at a due (null: n/a) above the proof threshold in
+     *  force on its date while it has no proof. */
+    private void refuseIfUnproven(Claim claim, BigDecimal due) {
+        if (claim.getProofs() > 0 || due == null) {
+            return;
+        }
+        BigDecimal threshold = sheets.proofThresholdOn(claim.getSheetId(), claim.getDate());
+        if (threshold != null && due.compareTo(threshold) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A claim whose due is above the proof threshold needs a proof first");
+        }
     }
 
     /** A steward re-settles a SETTLED claim: its due is frozen again at the figure it would show

@@ -83,6 +83,10 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** How many proofs the claim has; 0 until the first is added. */
+    @Column(name = "proofs", nullable = false)
+    private int proofs;
+
     protected Claim() {
     }
 
@@ -207,6 +211,15 @@ public class Claim {
 
     public void setDeferredUntil(LocalDate deferredUntil) {
         this.deferredUntil = deferredUntil;
+    }
+
+    public int getProofs() {
+        return proofs;
+    }
+
+    /** Add a proof to the claim. */
+    public void addProof() {
+        proofs++;
     }
 
     /** Whether the claim is deferred on a date: OPEN, deferred until a date after it. Until then it

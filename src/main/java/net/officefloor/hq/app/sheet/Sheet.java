@@ -45,6 +45,8 @@ public class Sheet {
     public static final String LATE_PCT = "late-pct";
     /** The key of the cap's dated values. */
     public static final String CAP = "cap";
+    /** The key of the proof threshold's dated values. */
+    public static final String PROOF_THRESHOLD = "proof-threshold";
 
     @Id
     private String id;
@@ -212,6 +214,17 @@ public class Sheet {
     /** The cap in force on the sheet's today; null when there is none. */
     public BigDecimal getCap() {
         return amountOn(CAP, today, null);
+    }
+
+    /** The proof threshold in force on the sheet's today; null when there is none. */
+    public BigDecimal getProofThreshold() {
+        return proofThresholdOn(today);
+    }
+
+    /** The proof threshold in force on a date: a claim dated then whose due is above it cannot be
+     *  settled or approved without a proof; null when there is none. */
+    public BigDecimal proofThresholdOn(LocalDate on) {
+        return amountOn(PROOF_THRESHOLD, on, null);
     }
 
     /** A due-total held to the cap (null, n/a, is not capped): the cap when the sum is above it. */

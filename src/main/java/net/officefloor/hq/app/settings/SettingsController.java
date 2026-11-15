@@ -33,18 +33,19 @@ public class SettingsController {
     /** The sheet's settings as the screen shows them: the clerk limit with two decimals, null for
      *  none, the floor with two decimals, the terms in days, the late percent with two decimals,
      *  the policy date, null when blank, the period numbering from-date, null when blank (off),
-     *  the terms each grade has of its own, a grade without them left out, and the cap with two
-     *  decimals, null for none, each of the dated ones as in force on the sheet's today; and every
+     *  the terms each grade has of its own, a grade without them left out, the cap with two
+     *  decimals, null for none, and the proof threshold with two decimals, null for none, each of the dated ones as in force on the sheet's today; and every
      *  value recorded for the dated settings, by key, each key's by from-date. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
+            LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
             Map<String, List<DatedValue>> dated) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct, LocalDate policyDate,
-                LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, BigDecimal cap,
+                LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, BigDecimal cap, BigDecimal proofThreshold,
                 Map<String, List<DatedSetting>> dated) {
             return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms,
                     latePct.setScale(2).toPlainString(), policyDate, periodNumberingFrom, gradeTerms,
-                    cap == null ? null : cap.setScale(2).toPlainString(), DatedValue.of(dated));
+                    cap == null ? null : cap.setScale(2).toPlainString(),
+                    proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), DatedValue.of(dated));
         }
     }
 
@@ -90,6 +91,12 @@ public class SettingsController {
     /** The cap as the form submits it: 0.00 or more with up to two decimals, blank for none, from
      *  a date (blank: the sheet's today). */
     public record CapForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value,
+            @Pattern(regexp = FROM) String from) {
+    }
+
+    /** The proof threshold as the form submits it: 0.00 or more with up to two decimals, blank
+     *  for none, from a date (blank: the sheet's today). */
+    public record ProofThresholdForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value,
             @Pattern(regexp = FROM) String from) {
     }
 
@@ -191,6 +198,16 @@ public class SettingsController {
         return view(sheetId);
     }
 
+    @PutMapping("/settings/proof-threshold")
+    public SettingsView setProofThreshold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ProofThresholdForm body) {
+        BigDecimal threshold = body.value().isEmpty() ? null : new BigDecimal(body.value());
+        service.setProofThreshold(sheetId, user.trim(), threshold, fromOf(body.from()));
+        return view(sheetId);
+    }
+
     @PutMapping("/settings/policy-date")
     public SettingsView setPolicyDate(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
@@ -224,7 +241,7 @@ public class SettingsController {
     private SettingsView view(String sheetId) {
         return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId),
                 service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId),
-                gradeTerms(sheetId), service.cap(sheetId), service.datedSettings(sheetId));
+                gradeTerms(sheetId), service.cap(sheetId), service.proofThreshold(sheetId), service.datedSettings(sheetId));
     }
 
     /** A from-date as the form submits it; null when blank or left out (the sheet's today). */
