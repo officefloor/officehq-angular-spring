@@ -298,7 +298,7 @@ public class PersonService {
         } else if (Objects.equals(terms, person.termsOn(today))) {
             termsChanged = false;
         } else {
-            termsChanged = !Objects.equals(terms, person.getTerms());
+            termsChanged = true; // differ from those in force on the sheet's today
             person.setTerms(terms);
         }
         boolean contactChanged = !Objects.equals(contact, person.getContact());
