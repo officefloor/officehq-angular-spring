@@ -1,7 +1,7 @@
 import { DOCUMENT, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
-import { Session, otherError } from '../../core/session';
+import { PEOPLE_COLUMNS, PeopleColumn, Session, otherError } from '../../core/session';
 import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, deferred, dueBy, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp, statusOn, tagsOf } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { PersonPlans } from '../plans/person-plans';
@@ -143,6 +143,16 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
         <option value="grade">Grade</option>
         <option value="due-total">Due total</option>
       </select>
+      <fieldset>
+        <legend>Columns shown</legend>
+        @for (c of columns; track c) {
+          <label>
+            <input type="checkbox" [attr.data-testid]="'column-' + c" [checked]="shows(c)"
+              (change)="session.showColumn(c, $any($event.target).checked)" />
+            {{ c }}
+          </label>
+        }
+      </fieldset>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
@@ -216,7 +226,31 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
       </form>
       <table data-testid="people-list">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">From sheet</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Tags</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Cut</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Statements</th><th scope="col">Snapshots</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr>
+            <th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">From sheet</th>
+            @if (shows('aliases')) { <th scope="col">Aliases</th> }
+            <th scope="col">Add alias</th><th scope="col">Clashing</th><th scope="col">Grade</th>
+            @if (shows('terms')) { <th scope="col">Terms</th> }
+            @if (shows('contact')) { <th scope="col">Contact</th> }
+            <th scope="col">Tags</th>
+            @if (shows('claimed')) { <th scope="col">Claimed</th> }
+            @if (shows('due-total')) { <th scope="col">Due</th> }
+            <th scope="col">Cut</th><th scope="col">By period</th>
+            @if (shows('overdue-count')) { <th scope="col">Overdue</th> }
+            @if (shows('overdue-total')) { <th scope="col">Overdue total</th> }
+            <th scope="col">Aged</th>
+            @if (shows('statement-count')) { <th scope="col">Statements</th> }
+            @if (shows('stated-total')) { <th scope="col">Last stated</th> }
+            @if (shows('statement-date')) { <th scope="col">Stated on</th> }
+            <th scope="col">Take statement</th><th scope="col">Snapshots</th>
+            @if (shows('retired')) { <th scope="col">Retired</th> }
+            <th scope="col">Retirement</th><th scope="col">Active</th>
+            @if (shows('hold')) { <th scope="col">Hold</th> }
+            <th scope="col">Hold from</th><th scope="col">Watched</th>
+            @if (shows('patrons')) { <th scope="col">Patrons</th> }
+            @if (shows('backing')) { <th scope="col">Backing</th> }
+            <th scope="col">Add patron</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th>
+          </tr>
         </thead>
         <tbody>
           @for (p of shownPeople(); track p.id) {
@@ -227,8 +261,10 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
               </td>
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+              @if (shows('aliases')) {
+                <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
+              }
               <td>
-                <span data-testid="person-aliases">{{ p.aliases.join(', ') }}</span>
                 <label [for]="'person-alias-input-' + p.id" class="visually-hidden">Alias for {{ p.name }}</label>
                 <input [id]="'person-alias-input-' + p.id" data-testid="person-alias-input" #aliasInput autocomplete="off"
                   (input)="clearRowError(p.id)" />
@@ -248,35 +284,51 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
                 <button type="button" data-testid="person-inline-grade-save" (click)="saveGrade(p, inlineGrade.value)"
                   [attr.aria-label]="'Save grade of ' + p.name">Save grade</button>
               </td>
-              <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
-              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              @if (shows('terms')) {
+                <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+              }
+              @if (shows('contact')) {
+                <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+              }
               <td data-testid="person-tags">{{ personTags(p).join(', ') }}</td>
-              <td data-testid="person-claimed">{{ claimedBy(p.id) | figure }}</td>
-              <td>
-                <span data-testid="person-due-total">{{ dueOf(p) | figure }}</span>
-                <span>excess <span data-testid="person-excess">{{ money(excessOf(p.id)) | figure }}</span></span>
-                <span>settled <span data-testid="person-settled-total">{{ money(settledOpenOf(p.id).settled) | figure }}</span></span>
-                <span>open <span data-testid="person-open-total">{{ money(settledOpenOf(p.id).open) | figure }}</span></span>
-              </td>
+              @if (shows('claimed')) {
+                <td data-testid="person-claimed">{{ claimedBy(p.id) | figure }}</td>
+              }
+              @if (shows('due-total')) {
+                <td>
+                  <span data-testid="person-due-total">{{ dueOf(p) | figure }}</span>
+                  <span>excess <span data-testid="person-excess">{{ money(excessOf(p.id)) | figure }}</span></span>
+                  <span>settled <span data-testid="person-settled-total">{{ money(settledOpenOf(p.id).settled) | figure }}</span></span>
+                  <span>open <span data-testid="person-open-total">{{ money(settledOpenOf(p.id).open) | figure }}</span></span>
+                </td>
+              }
               <td data-testid="person-cut-total">{{ (money(cutTotals().get(p.id) ?? 0)) | figure }}</td>
               <td>
                 @for (period of periods(); track period.id) {
                   <span>{{ period.name }} <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ money(periodDueOf(p.id, period)) | figure }}</span></span>
                 }
               </td>
-              <td>
-                <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
-                <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) | figure }}</span></span>
-              </td>
+              @if (shows('overdue-count')) {
+                <td data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</td>
+              }
+              @if (shows('overdue-total')) {
+                <td data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) | figure }}</td>
+              }
               <td>
                 <span>0–30 <span data-testid="person-aged-0-30">{{ money(agedOf(p.id).upTo30) | figure }}</span></span>
                 <span>31–60 <span data-testid="person-aged-31-60">{{ money(agedOf(p.id).upTo60) | figure }}</span></span>
                 <span>61+ <span data-testid="person-aged-61">{{ money(agedOf(p.id).over60) | figure }}</span></span>
               </td>
+              @if (shows('statement-count')) {
+                <td data-testid="person-statement-count">{{ p.statementCount }}</td>
+              }
+              @if (shows('stated-total')) {
+                <td data-testid="person-stated-total">{{ statedTotalOf(p) | figure }}</td>
+              }
+              @if (shows('statement-date')) {
+                <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+              }
               <td>
-                <span data-testid="person-statement-count">{{ p.statementCount }}</span>
-                <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) | figure }}</span></span>
-                <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
                 <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Statement of {{ p.name }} as of</label>
                 <input [id]="'person-statement-asof-' + p.id" type="date" data-testid="person-statement-asof" #statementAsOf
                   (input)="clearRowError(p.id)" />
@@ -292,9 +344,13 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
                   }
                 </ul>
               </td>
+              @if (shows('retired')) {
+                <td>
+                  <span data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</span>
+                  <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
+                </td>
+              }
               <td>
-                <span data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</span>
-                <span>from <span data-testid="person-retired-from">{{ p.retiredFrom ?? '' }}</span></span>
                 <label [for]="'person-retire-date-' + p.id" class="visually-hidden">Retire {{ p.name }} from</label>
                 <input [id]="'person-retire-date-' + p.id" type="date" data-testid="person-retire-date" #retireDate
                   (input)="clearRowError(p.id)" />
@@ -309,13 +365,17 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
                 </ul>
               </td>
               <td data-testid="person-active">{{ activeIds().has(p.id) ? 'yes' : 'no' }}</td>
+              @if (shows('hold')) {
+                <td>
+                  <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                  <ul aria-label="Holds">
+                    @for (h of p.holds; track $index) {
+                      <li data-testid="person-hold-line">{{ h.from }} to {{ h.to ?? 'open' }}</li>
+                    }
+                  </ul>
+                </td>
+              }
               <td>
-                <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
-                <ul>
-                  @for (h of p.holds; track $index) {
-                    <li data-testid="person-hold-line">{{ h.from }} to {{ h.to ?? 'open' }}</li>
-                  }
-                </ul>
                 <label [for]="'person-hold-from-' + p.id" class="visually-hidden">Hold {{ p.name }} from</label>
                 <input [id]="'person-hold-from-' + p.id" type="date" data-testid="person-hold-from" #holdFrom
                   (input)="clearRowError(p.id)" />
@@ -330,9 +390,13 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
                 <button type="button" data-testid="person-watch" (click)="watch(p)" [attr.aria-pressed]="p.watched"
                   [attr.aria-label]="'Watch ' + p.name">{{ p.watched ? 'Unwatch' : 'Watch' }}</button>
               </td>
+              @if (shows('patrons')) {
+                <td data-testid="person-patrons">{{ patronNamesOf(p) }}</td>
+              }
+              @if (shows('backing')) {
+                <td data-testid="person-backing">{{ backingOf(p) | figure }}</td>
+              }
               <td>
-                <span data-testid="person-patrons">{{ patronNamesOf(p) }}</span>
-                <span>backing <span data-testid="person-backing">{{ backingOf(p) | figure }}</span></span>
                 <label [for]="'person-patron-select-' + p.id" class="visually-hidden">Patron for {{ p.name }}</label>
                 <select [id]="'person-patron-select-' + p.id" data-testid="person-patron-select" #patronSelect
                   (change)="clearRowError(p.id)">
@@ -395,6 +459,7 @@ export class People {
   private readonly document = inject(DOCUMENT);
 
   protected readonly grades = GRADES;
+  protected readonly columns = PEOPLE_COLUMNS;
   protected readonly people = signal<Person[]>([]);
   /** The people the list shows: retired ones (any with a retirement date) only with "show retired" on. */
   protected readonly shownPeople = computed(() => {
@@ -573,6 +638,10 @@ export class People {
     money(trimmedSum([...this.overdueByPerson().values()].map((o) => o.cents))));
   protected readonly money = money;
   protected readonly personTags = personTags;
+  /** Whether the signed-in user's screen shows a people-list column. */
+  protected shows(column: PeopleColumn): boolean {
+    return !this.session.hiddenColumns().has(column);
+  }
   /** The sheet's periods, by from-date. */
   protected readonly periods = signal<Period[]>([]);
   /** Whether a claim counts in a period's live due-total, taken in the status its log gives it at

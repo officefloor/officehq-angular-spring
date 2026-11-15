@@ -7,6 +7,10 @@ import type { ClaimTemplate } from '../features/templates/templates-api';
 // Who is signed in and which sheet is active. Everything else in the app is kept per sheet.
 /** The keys the people list can be sorted by on the screen. */
 export type PeopleSort = 'added' | 'name' | 'grade' | 'due-total';
+/** The columns of the people list a user may switch off on their screen. */
+export const PEOPLE_COLUMNS = ['claimed', 'due-total', 'statement-count', 'stated-total', 'statement-date', 'overdue-count',
+  'overdue-total', 'patrons', 'backing', 'hold', 'retired', 'terms', 'contact', 'aliases'] as const;
+export type PeopleColumn = (typeof PEOPLE_COLUMNS)[number];
 
 @Injectable({ providedIn: 'root' })
 export class Session {
@@ -70,6 +74,11 @@ export class Session {
   /** What this user's screen sorts the people list by: the order they were added at first, and
    *  kept as it is when a sheet is loaded. Only what the screen shows changes. */
   readonly sortBy = signal<PeopleSort>('added');
+  /** The people-list columns each user has switched off on this screen, by user name: every column
+   *  shows at first, and the choice is kept as it is when a sheet is loaded. Only what the screen shows changes. */
+  private readonly hiddenByUser = signal<ReadonlyMap<string, ReadonlySet<PeopleColumn>>>(new Map());
+  /** The people-list columns the signed-in user has switched off. */
+  readonly hiddenColumns = computed(() => this.hiddenByUser().get(this.user() ?? '') ?? new Set<PeopleColumn>());
   /** The date (yyyy-mm-dd) this user's screen shows the sheet as of, null when it shows the sheet
    *  as it stands: while set, every figure is as it stood at the end of that date (its today that
    *  date) and every change is refused. Kept as it is when a sheet is loaded. */
@@ -132,6 +141,16 @@ export class Session {
    *  due-by plus them is before the sheet's today; 0 when the grade has none then. */
   graceOn(grade: string, date: string | null): number {
     return this.gradeGraceOn(grade, date) ?? 0;
+  }
+
+  /** Show or switch off a people-list column on the signed-in user's screen. */
+  showColumn(column: PeopleColumn, shown: boolean): void {
+    const user = this.user() ?? '';
+    this.hiddenByUser.update((all) => {
+      const hidden = new Set(all.get(user) ?? []);
+      if (shown) hidden.delete(column); else hidden.add(column);
+      return new Map(all).set(user, hidden);
+    });
   }
 
   /** Sign in by name; resolves to an error message, or null on success. */
