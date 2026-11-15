@@ -53,6 +53,9 @@ export class Session {
   /** The active sheet's pot (two decimals), null when blank (none): each balanced pool's members
    *  cut it by their shares. Not dated. */
   readonly pot = signal<string | null>(null);
+  /** The active sheet's review SLA in days, null when blank (none): a REVIEW claim whose review
+   *  day plus them is before its today is late. Not dated. */
+  readonly reviewSla = signal<number | null>(null);
   /** The month (1 to 12) the active sheet's fiscal year starts in; 1 unless set. Not dated. A
    *  fiscal year is named FY<yyyy> by the calendar year its first day falls in. */
   readonly fiscalStartMonth = signal(1);

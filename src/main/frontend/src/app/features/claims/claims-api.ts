@@ -70,6 +70,8 @@ export interface Claim {
   lateEntry: boolean;
   /** yyyy-mm-dd: the last day (the sheet's today then) the claim was reminded; null when never reminded. */
   reminded: string | null;
+  /** yyyy-mm-dd: the claim's review day (the sheet's today when it went to REVIEW); null when it never did. */
+  reviewOn: string | null;
   /** The claim's external reference, unique on its sheet without regard to case; null when none. */
   ref: string | null;
   /** The claim's tags: lower-case, sorted and comma separated; null when none. */
@@ -181,6 +183,13 @@ export function lateFrom(c: Claim, grace = 0): string {
  *  grace days before the sheet's today. */
 export function overdue(c: Claim, today: string | null, grace = 0): boolean {
   return isOpen(c) && today !== null && lateFrom(c, grace) < today && !deferred(c, today);
+}
+
+/** Whether a claim is late for review: it is REVIEW and its review day plus the sheet's review
+ *  SLA in days (null: none, never late) is before the sheet's today. */
+export function reviewLate(c: Claim, today: string | null, sla: number | null): boolean {
+  return c.status === 'REVIEW' && sla !== null && today !== null && c.reviewOn !== null
+    && plusDays(c.reviewOn, sla) < today;
 }
 
 /** A date (yyyy-mm-dd) moved on by whole days. */

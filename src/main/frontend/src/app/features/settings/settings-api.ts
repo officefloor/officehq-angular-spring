@@ -66,6 +66,9 @@ export interface Settings {
   /** Days: reminding a claim whose previous reminder was at least this many days before the
    *  sheet's today escalates it; null when blank (off). Not dated. */
   escalateAfter: number | null;
+  /** Days: a REVIEW claim whose review day plus them is before the sheet's today is late; null
+   *  when blank (none). Not dated. */
+  reviewSla: number | null;
   /** Two decimals, as the server formats it: each balanced pool's members cut it by their shares;
    *  null when blank (none). Not dated. */
   pot: string | null;
@@ -211,6 +214,12 @@ export class SettingsApi {
   setGraceDays(sheetId: string, value: string): Promise<Settings> {
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/grace-days`, { value }, { headers: this.headers() }),
+    );
+  }
+
+  setReviewSla(sheetId: string, value: string): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/review-sla`, { value }, { headers: this.headers() }),
     );
   }
 

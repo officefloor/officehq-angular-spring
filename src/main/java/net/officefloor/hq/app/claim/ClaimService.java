@@ -466,6 +466,7 @@ public class ClaimService {
             claim.setOpenedBy(user);
         } else if (to == ClaimStatus.REVIEW) {
             claim.setOpenedBy(user);
+            claim.setReviewOn(sheets.today(sheetId));
         } else if (to == ClaimStatus.SETTLED) {
             claim.setSettledDue(settling);
         } else if (to == ClaimStatus.VOID) {

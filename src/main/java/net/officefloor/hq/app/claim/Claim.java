@@ -127,6 +127,10 @@ public class Claim {
     @Column(name = "escalated", nullable = false)
     private boolean escalated;
 
+    /** The claim's review day: the sheet's today when it went to REVIEW; none when it never did. */
+    @Column(name = "review_on")
+    private LocalDate reviewOn;
+
     /** The claim's external reference, unique on its sheet without regard to case; none when not
      *  given. */
     @Column(name = "ref")
@@ -352,6 +356,14 @@ public class Claim {
         this.escalated = escalated;
     }
 
+    public LocalDate getReviewOn() {
+        return reviewOn;
+    }
+
+    public void setReviewOn(LocalDate reviewOn) {
+        this.reviewOn = reviewOn;
+    }
+
     public String getRef() {
         return ref;
     }
@@ -395,6 +407,7 @@ public class Claim {
         copy.lateEntry = lateEntry;
         copy.reminded = reminded;
         copy.escalated = escalated;
+        copy.reviewOn = reviewOn;
         copy.tags = tags;
         copy.voidReason = voidReason;
         return copy;

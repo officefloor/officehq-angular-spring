@@ -1,7 +1,7 @@
 import { Component, computed, inject, input } from '@angular/core';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
-import { Claim, money } from '../claims/claims-api';
+import { Claim, money, reviewLate } from '../claims/claims-api';
 import { GRADES } from '../people/people-api';
 import { Period, periodDueCents } from '../periods/periods-api';
 
@@ -76,6 +76,7 @@ export interface SummaryPerson {
           }
         </tbody>
       </table>
+      <p>Review claims late <span data-testid="summary-review-late-count">{{ reviewLateCount() }}</span></p>
       <table data-testid="summary-void-reasons">
         <caption>Voided by reason</caption>
         <thead>
@@ -111,6 +112,10 @@ export class Summary {
   private readonly session = inject(Session);
 
   protected readonly byStatus = computed(() => statusCounts(this.claims()));
+
+  /** How many REVIEW claims are late: their review day plus the review SLA is before the sheet's today. */
+  protected readonly reviewLateCount = computed(() =>
+    this.claims().filter((c) => reviewLate(c, this.session.today(), this.session.reviewSla())).length);
 
   protected readonly byVoidReason = computed(() => this.session.voidReasons().map((reason) => ({
     reason, count: this.claims().filter((c) => c.status === 'VOID' && c.voidReason === reason).length,

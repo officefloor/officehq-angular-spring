@@ -35,6 +35,7 @@ import { FISCAL_START_MONTH_PATTERN, GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PE
       <p>Review threshold in force (blank: none) <strong data-testid="setting-review-threshold-current">{{ (session.reviewThreshold() ?? '') | figure }}</strong></p>
       <p>Grace days (blank: off) <strong data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</strong></p>
       <p>Escalation gap in days (blank: off) <strong data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</strong></p>
+      <p>Review SLA in days (blank: none) <strong data-testid="setting-review-sla-current">{{ session.reviewSla() ?? '' }}</strong></p>
       <p>Pot (blank: none) <strong data-testid="setting-pot-current">{{ (session.pot() ?? '') | figure }}</strong></p>
       <p>Alert threshold (blank: off) <strong data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</strong></p>
       <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</strong></p>
@@ -107,6 +108,8 @@ import { FISCAL_START_MONTH_PATTERN, GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PE
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric" autocomplete="off" />
         <label for="setting-escalate-after">Escalation gap: reminding a claim whose previous reminder was at least this many days before the sheet's today escalates it (blank: off)</label>
         <input id="setting-escalate-after" data-testid="setting-escalate-after" formControlName="escalateAfter" inputmode="numeric" autocomplete="off" />
+        <label for="setting-review-sla">Review SLA: a review claim whose review day plus this many days is before the sheet's today is late (blank: none)</label>
+        <input id="setting-review-sla" data-testid="setting-review-sla" formControlName="reviewSla" inputmode="numeric" autocomplete="off" />
         <label for="setting-pot">Pot: each balanced pool's members cut it by their shares (blank: none)</label>
         <input id="setting-pot" data-testid="setting-pot" formControlName="pot" inputmode="decimal" autocomplete="off" />
         <label for="setting-alert-threshold">Alert threshold: a change that takes a person's due-total above it alerts (blank: off)</label>
@@ -266,6 +269,7 @@ export class Settings {
     reviewThresholdFrom: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
     escalateAfter: new FormControl('', { nonNullable: true }),
+    reviewSla: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
     alertThreshold: new FormControl('', { nonNullable: true }),
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
@@ -357,6 +361,7 @@ export class Settings {
         this.graceDays.set(null);
         this.escalateAfter.set(null);
         this.alertThreshold.set(null);
+        this.session.reviewSla.set(null);
         this.session.pot.set(null);
         this.session.fiscalStartMonth.set(1);
         this.grants.set([]);
@@ -374,7 +379,7 @@ export class Settings {
         this.voidReasonForm.reset({ reason: '' }, { emitEvent: false });
         this.settingsForm.reset({
           clerkLimit: '', clerkLimitFrom: '', floor: '', floorFrom: '', terms: '', termsFrom: '', latePct: '', latePctFrom: '',
-          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', rounding: '', roundingFrom: '', noteThreshold: '', noteThresholdFrom: '', reviewThreshold: '', reviewThresholdFrom: '', graceDays: '', escalateAfter: '', pot: '', alertThreshold: '', fiscalStartMonth: '', parent: '',
+          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', rounding: '', roundingFrom: '', noteThreshold: '', noteThresholdFrom: '', reviewThreshold: '', reviewThresholdFrom: '', graceDays: '', escalateAfter: '', reviewSla: '', pot: '', alertThreshold: '', fiscalStartMonth: '', parent: '',
         }, { emitEvent: false });
         this.gradeTermsForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.gradeTermsFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
@@ -402,7 +407,7 @@ export class Settings {
     this.settingsErr.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, rounding, roundingFrom, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, escalateAfter, pot, alertThreshold, fiscalStartMonth, parent } = this.settingsForm.controls;
+    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, rounding, roundingFrom, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, escalateAfter, reviewSla, pot, alertThreshold, fiscalStartMonth, parent } = this.settingsForm.controls;
     // only the settings typed into (or entered and left, as when one already blank is cleared),
     // or whose from-date was, since the last save are saved (the clerk limit when none is)
     const typed = (c: AbstractControl) => c.dirty || c.touched;
@@ -419,6 +424,7 @@ export class Settings {
     const saveReviewThreshold = typed(reviewThreshold) || typed(reviewThresholdFrom);
     const saveGraceDays = typed(graceDays);
     const saveEscalateAfter = typed(escalateAfter);
+    const saveReviewSla = typed(reviewSla);
     const savePot = typed(pot);
     const saveAlertThreshold = typed(alertThreshold);
     const saveFiscalStartMonth = typed(fiscalStartMonth);
@@ -449,7 +455,7 @@ export class Settings {
         typed: this.permissionsForm.controls[p.action].value.trim(),
       }));
     const saveLimit = typed(clerkLimit) || typed(clerkLimitFrom)
-      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveRounding || saveNoteThreshold || saveReviewThreshold || saveGraceDays || saveEscalateAfter || savePot || saveAlertThreshold || saveFiscalStartMonth || saveParent);
+      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveRounding || saveNoteThreshold || saveReviewThreshold || saveGraceDays || saveEscalateAfter || saveReviewSla || savePot || saveAlertThreshold || saveFiscalStartMonth || saveParent);
     const limitFrom = clerkLimitFrom.value.trim();
     const floorFromValue = floorFrom.value.trim();
     const termsFromValue = termsFrom.value.trim();
@@ -474,6 +480,7 @@ export class Settings {
     const reviewThresholdValue = reviewThreshold.value.trim();
     const graceDaysValue = graceDays.value.trim();
     const escalateAfterValue = escalateAfter.value.trim();
+    const reviewSlaValue = reviewSla.value.trim();
     const potValue = pot.value.trim();
     const alertThresholdValue = alertThreshold.value.trim();
     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
@@ -495,6 +502,7 @@ export class Settings {
         || (saveReviewThreshold && reviewThresholdValue !== '' && !LIMIT_PATTERN.test(reviewThresholdValue))
         || (saveGraceDays && graceDaysValue !== '' && !TERMS_PATTERN.test(graceDaysValue))
         || (saveEscalateAfter && escalateAfterValue !== '' && !TERMS_PATTERN.test(escalateAfterValue))
+        || (saveReviewSla && reviewSlaValue !== '' && !TERMS_PATTERN.test(reviewSlaValue))
         || (savePot && potValue !== '' && !LIMIT_PATTERN.test(potValue))
         || (saveAlertThreshold && alertThresholdValue !== '' && !LIMIT_PATTERN.test(alertThresholdValue))
         || (saveFiscalStartMonth && !FISCAL_START_MONTH_PATTERN.test(fiscalStartMonthValue))
@@ -609,6 +617,11 @@ export class Settings {
         const saved = await this.api.setEscalateAfter(sheetId, escalateAfterValue);
         settled(escalateAfter, escalateAfterValue);
         if (this.session.sheetId() === sheetId) this.escalateAfter.set(saved.escalateAfter);
+      }
+      if (saveReviewSla) {
+        const saved = await this.api.setReviewSla(sheetId, reviewSlaValue);
+        if (reviewSla.value.trim() === reviewSlaValue) { reviewSla.markAsPristine(); reviewSla.markAsUntouched(); }
+        if (this.session.sheetId() === sheetId) this.session.reviewSla.set(saved.reviewSla);
       }
       if (savePot) {
         const saved = await this.api.setPot(sheetId, potValue);
@@ -763,12 +776,16 @@ export class Settings {
         this.entryDate.set(settings.entryDate);
         this.graceDays.set(settings.graceDays);
         this.escalateAfter.set(settings.escalateAfter);
+        this.session.reviewSla.set(settings.reviewSla);
         this.session.pot.set(settings.pot);
         this.alertThreshold.set(settings.alertThreshold);
         this.session.fiscalStartMonth.set(settings.fiscalStartMonth);
         // the fiscal start month's field starts at the month in force
         const fiscalStartMonth = this.settingsForm.controls.fiscalStartMonth;
         if (!fiscalStartMonth.dirty) fiscalStartMonth.setValue(String(settings.fiscalStartMonth), { emitEvent: false });
+        // the review SLA's field starts at the SLA, so clearing it is a change that saves "none"
+        const reviewSla = this.settingsForm.controls.reviewSla;
+        if (!reviewSla.dirty) reviewSla.setValue(settings.reviewSla === null ? '' : String(settings.reviewSla), { emitEvent: false });
         // the pot's field starts at the pot, so clearing it is a change that saves "none"
         const pot = this.settingsForm.controls.pot;
         if (!pot.dirty) pot.setValue(settings.pot ?? '', { emitEvent: false });

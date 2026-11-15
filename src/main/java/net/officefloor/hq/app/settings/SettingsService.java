@@ -51,6 +51,9 @@ public class SettingsService {
     public static final String GRACE_DAYS = "grace-days";
     public static final String ESCALATE_AFTER = "escalate-after";
 
+    /** The key the review SLA is audited under. */
+    public static final String REVIEW_SLA = "review-sla";
+
     /** The key the pot is audited under. */
     public static final String POT = "pot";
 
@@ -342,6 +345,25 @@ public class SettingsService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + ESCALATE_AFTER + " value=" + (escalateAfter == null ? "" : escalateAfter));
         return escalateAfter;
+    }
+
+    /** The sheet's review SLA in days; null when blank (none). */
+    @Transactional(readOnly = true)
+    public Integer reviewSla(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getReviewSla).orElse(null);
+    }
+
+    /** Set the sheet's review SLA (null: none), the sheet created first if it was never loaded;
+     *  not dated, it applies to every REVIEW claim at once. */
+    @Transactional
+    public Integer setReviewSla(String sheetId, String user, Integer reviewSla) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        sheet.setReviewSla(reviewSla);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + REVIEW_SLA + " value=" + (reviewSla == null ? "" : reviewSla));
+        return reviewSla;
     }
 
     /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. */
