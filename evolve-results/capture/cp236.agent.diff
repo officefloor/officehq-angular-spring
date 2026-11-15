@@ -1,0 +1,354 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index a9e0529be..a556bd321 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -60,6 +60,9 @@ export interface Claim {
+   log: ClaimLogLine[];
+   /** yyyy-mm-dd: the date the claim was deferred until; null when it was never deferred. */
+   deferredUntil: string | null;
++  /** Whether the claim was deferred while a statement bound it: its deferral takes effect only
++   *  once the binding ends, and then whatever status it has reached meanwhile. */
++  deferredBound: boolean;
+   /** How many proofs the claim has. */
+   proofs: number;
+   /** Of the claim's proofs, how many are receipts. */
+@@ -175,10 +178,12 @@ export function isBound(c: Claim): boolean {
+   return c.stated;
+ }
+ 
+-/** Whether a claim is deferred on the sheet's today: OPEN, deferred until a date after it. Until
+- *  then it counts in no total, is not overdue and cannot be settled. */
++/** Whether a claim is deferred on the sheet's today: OPEN (or, deferred while bound, PENDING or
++ *  SETTLED), deferred until a date after it, and not bound by a statement (a deferral takes effect
++ *  only once the binding ends). Until then it counts in no total, is not overdue and cannot be settled. */
+ export function deferred(c: Claim, today: string | null): boolean {
+-  return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
++  if (c.stated || c.deferredUntil === null || today === null || today >= c.deferredUntil) return false;
++  return c.status === 'OPEN' || (c.deferredBound && (c.status === 'PENDING' || c.status === 'SETTLED'));
+ }
+ 
+ /** Whether a claim counts toward claimed and due totals on the sheet's today: only open (OPEN or
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 4263392a6..1e202c4de 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -371,11 +371,12 @@ export class PersonClaims {
+     return this.session.graceOn(gradeOn(this.grades(), c.date), c.date);
+   }
+ 
+-  /** Whether the row shows the claim deferred: deferred until a date after the sheet's today, kept
+-   *  so after it leaves OPEN (only an OPEN one is left out of the totals). */
++  /** Whether the row shows the claim deferred: deferred until a date after the sheet's today and
++   *  not bound by a statement (the deferral takes effect once the binding ends), kept so after it
++   *  leaves OPEN. */
+   protected deferredOf(c: Claim): boolean {
+     const today = this.session.today();
+-    return c.deferredUntil !== null && today !== null && today < c.deferredUntil;
++    return !c.stated && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+   }
+ 
+   /** The name of the period whose dates contain the claim's due-by; blank when none does. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 456a7be77..5bdef0031 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -857,7 +857,7 @@ export class People {
+     const today = this.session.today();
+     return (c: Claim, end: string) => {
+       const status = statusOn(c, end);
+-      if (status === null) return false;
++      if (status === null || deferred(c, today)) return false;
+       if (status === 'SETTLED') return true;
+       if ((status !== 'OPEN' && status !== 'PENDING') || deferred(c, today)) return false;
+       // a hold or a reached retirement leaves out a claim still open now, as the live due-total does
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 5d3c1189a..2795eec5c 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -112,6 +112,11 @@ public class Claim {
+     @Column(name = "deferred_until")
+     private LocalDate deferredUntil;
+ 
++    /** Whether the claim was deferred while a statement bound it: its deferral takes effect only
++     *  once the binding ends, and then whatever the status it has reached meanwhile. */
++    @Column(name = "deferred_bound", nullable = false)
++    private boolean deferredBound;
++
+     /** How many proofs the claim has; 0 until the first is added. */
+     @Column(name = "proofs", nullable = false)
+     private int proofs;
+@@ -359,6 +364,14 @@ public class Claim {
+         this.deferredUntil = deferredUntil;
+     }
+ 
++    public boolean isDeferredBound() {
++        return deferredBound;
++    }
++
++    public void setDeferredBound(boolean deferredBound) {
++        this.deferredBound = deferredBound;
++    }
++
+     public String getSplitFrom() {
+         return splitFrom;
+     }
+@@ -485,6 +498,7 @@ public class Claim {
+         copy.editedBy = editedBy;
+         copy.corrects = corrects;
+         copy.deferredUntil = deferredUntil;
++        copy.deferredBound = deferredBound;
+         copy.proofs = proofs;
+         copy.photoProofs = photoProofs;
+         copy.splitFrom = splitFrom;
+@@ -556,10 +570,16 @@ public class Claim {
+         }
+     }
+ 
+-    /** Whether the claim is deferred on a date: OPEN, deferred until a date after it. Until then it
+-     *  counts in no total, is not overdue, cannot be settled and is left unbound by a statement. */
++    /** Whether the claim is deferred on a date: OPEN (or, deferred while bound, PENDING or
++     *  SETTLED), deferred until a date after it, and not bound by a statement (a deferral takes
++     *  effect only once the binding ends). Until then it counts in no total, is not overdue,
++     *  cannot be settled and is left unbound by a statement. */
+     public boolean isDeferredOn(LocalDate today) {
+-        return status == ClaimStatus.OPEN && deferredUntil != null && deferredUntil.isAfter(today);
++        if (stated || deferredUntil == null || !deferredUntil.isAfter(today)) {
++            return false;
++        }
++        return status == ClaimStatus.OPEN
++                || (deferredBound && (status == ClaimStatus.PENDING || status == ClaimStatus.SETTLED));
+     }
+ 
+     /** Whether the claim's due is bound to {@link #statedDue}: it is stated (a PENDING claim too,
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 282228de1..3b2d6f085 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -56,7 +56,8 @@ public class ClaimController {
+      *  its late charge; and of its proofs, how many are receipts and how many photos; and whether it
+      *  is held; and the people it is shared with, in the order added, each with their share; and the
+      *  user its review is assigned to (null when never assigned); and its pending day, the sheet's
+-     *  today when it last went to PENDING (null when it never did). */
++     *  today when it last went to PENDING (null when it never did); and whether it was deferred while
++     *  a statement bound it (its deferral then takes effect once the binding ends). */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
+             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
+             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
+@@ -64,7 +65,7 @@ public class ClaimController {
+             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason,
+             List<CommentView> comments, String editedBy, Integer batch, List<LineView> lines, long added,
+             LocalDate reviewOn, boolean waived, int receiptProofs, int photoProofs, boolean held,
+-            List<ShareView> shares, String reviewAssignee, LocalDate pendingOn) {
++            List<ShareView> shares, String reviewAssignee, LocalDate pendingOn, boolean deferredBound) {
+         static ClaimView of(Claim c, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines) {
+             return of(c.getId(), c, log, comments, lines);
+         }
+@@ -79,7 +80,8 @@ public class ClaimController {
+                     comments.stream().map(CommentView::of).toList(), c.getEditedBy(), c.getBatch(),
+                     lines.stream().map(LineView::of).toList(), c.getAdded() != null ? c.getAdded() : id,
+                     c.getReviewOn(), c.isWaived(), c.getReceiptProofs(), c.getPhotoProofs(), c.isHeld(),
+-                    c.getShares().stream().map(ShareView::of).toList(), c.getReviewAssignee(), c.getPendingOn());
++                    c.getShares().stream().map(ShareView::of).toList(), c.getReviewAssignee(), c.getPendingOn(),
++                    c.isDeferredBound());
+         }
+ 
+         private static String money(BigDecimal value) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 1ac4d5df4..9d0152dfb 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -631,8 +631,11 @@ public class ClaimService {
+ 
+     /** Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches
+      *  it, the claim counts in no total, is not overdue, cannot be settled and is left unbound by a
+-     *  statement. Refused (404) when missing, (423) when due in a closed period, (409) unless
+-     *  OPEN, and (422) when the date is not after the sheet's today. */
++     *  statement. A claim a statement binds stays in every total, counts and can be settled while
++     *  bound: its deferral takes effect only once the binding ends (the statement is cancelled, or
++     *  the next leaves it unbound), whatever its status then. Refused (404) when missing, (423)
++     *  when due in a closed period, (409) unless OPEN, and (422) when the date is not after the
++     *  sheet's today. */
+     @Transactional
+     public Claim defer(String sheetId, String user, long id, LocalDate until) {
+         Claim claim = claims.findForUpdate(id, sheetId)
+@@ -650,6 +653,8 @@ public class ClaimService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         claim.setDeferredUntil(until);
++        // a claim a statement binds stays in every total until the binding ends
++        claim.setDeferredBound(claim.isBound());
+         claims.flush();
+         record("CLAIM_DEFERRED", user, person, claim, claim.getNumber(), " until=" + until);
+         rollup.recordChanges(sheetId, user, before);
+@@ -1515,9 +1520,9 @@ public class ClaimService {
+      *  person whose retirement date the sheet's today has reached, unless bound by a statement, nor one deferred
+      *  on the sheet's today. */
+     private static boolean counts(Claim c, Person person, LocalDate today) {
+-        return c.getStatus() == ClaimStatus.SETTLED
+-                || (c.getStatus().isOpen() && !c.isDeferredOn(today)
+-                        && (c.isBound() || !person.retiredOn(today)));
++        return !c.isDeferredOn(today) && (c.getStatus() == ClaimStatus.SETTLED
++                || (c.getStatus().isOpen()
++                        && (c.isBound() || !person.retiredOn(today))));
+     }
+ 
+     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it to
+diff --git a/src/main/java/net/officefloor/hq/app/history/HistoryService.java b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+index 7cbc6f384..57b9b7024 100644
+--- a/src/main/java/net/officefloor/hq/app/history/HistoryService.java
++++ b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+@@ -99,7 +99,7 @@ public class HistoryService {
+             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason, String editedBy,
+             Integer batch, Long added, Boolean escalated, LocalDate reviewOn,
+             Boolean waived, Integer photoProofs, Boolean held, String reviewAssignee,
+-            LocalDate pendingOn, List<ShareState> shares, Boolean dueBySet) {
++            LocalDate pendingOn, List<ShareState> shares, Boolean dueBySet, Boolean deferredBound) {
+     }
+ 
+     /** A share of a claim; none in versions written before claims' shares were kept. */
+@@ -196,7 +196,7 @@ public class HistoryService {
+                     c.isEscalated(), c.getReviewOn(), c.isWaived(), c.getPhotoProofs(), c.isHeld(),
+                     c.getReviewAssignee(), c.getPendingOn(),
+                     c.getShares().stream().map(sh -> new ShareState(sh.getPersonId(), sh.getShare())).toList(),
+-                    c.isDueBySet()));
++                    c.isDueBySet(), c.isDeferredBound()));
+         } else if (entity instanceof Person p) {
+             List<Person.DatedGrade> all = p.getGrades();
+             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
+@@ -469,6 +469,7 @@ public class HistoryService {
+         c.setSettledDue(s.settledDue());
+         c.setCorrects(s.corrects());
+         c.setDeferredUntil(s.deferredUntil());
++        c.setDeferredBound(Boolean.TRUE.equals(s.deferredBound()));
+         c.setNote(s.note() == null ? "" : s.note());
+         c.setOpenedBy(s.openedBy());
+         c.setListed(s.listed());
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index 519343a33..54f5f1957 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -172,6 +172,23 @@ public class Period {
+         openings.merge(personId, amount, BigDecimal::add);
+     }
+ 
++    /** Carry a person merged into another to them: the figures fixed for the merged person and
++     *  their opening balance are added to the other's. */
++    public void mergePerson(Long fromId, Long intoId) {
++        BigDecimal total = closedPersonTotals.remove(fromId);
++        if (total != null) {
++            closedPersonTotals.merge(intoId, total, BigDecimal::add);
++        }
++        BigDecimal carried = closedPersonCarried.remove(fromId);
++        if (carried != null) {
++            closedPersonCarried.merge(intoId, carried, BigDecimal::add);
++        }
++        BigDecimal opening = openings.remove(fromId);
++        if (opening != null) {
++            openings.merge(intoId, opening, BigDecimal::add);
++        }
++    }
++
+     /** Close the period, fixing each person's due-total for it at {@code personTotals} and their
+      *  carried figure at {@code personCarried} (null: none fixed), by person id, and its due-total
+      *  at their due-totals' sum. */
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 394a42a4f..8b38a4b49 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -27,6 +27,7 @@ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.claim.RetiredNumber;
+ import net.officefloor.hq.app.claim.RetiredNumberRepository;
+ import net.officefloor.hq.app.pool.PoolMember;
++import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.pool.PoolMemberRepository;
+ import net.officefloor.hq.app.crew.CrewService;
+ import net.officefloor.hq.app.rollup.RollupService;
+@@ -58,13 +59,14 @@ public class PersonService {
+     private final SettingsService settings;
+     private final SheetService sheets;
+     private final RollupService rollup;
++    private final PeriodRepository periods;
+     private final Audit audit;
+ 
+     public PersonService(PersonRepository people, PersonStatementRepository statements,
+             PersonPatronRepository patrons, PersonWatchRepository watches, ClaimRepository claims,
+             ClaimLogRepository claimLog, ClaimCommentRepository claimComments, ClaimLineRepository claimLines, RetiredNumberRepository retiredNumbers,
+             ClaimService claimService, PoolMemberRepository poolMembers, CrewService crews, SettingsService settings, SheetService sheets,
+-            RollupService rollup, Audit audit) {
++            RollupService rollup, PeriodRepository periods, Audit audit) {
+         this.people = people;
+         this.statements = statements;
+         this.patrons = patrons;
+@@ -80,6 +82,7 @@ public class PersonService {
+         this.settings = settings;
+         this.sheets = sheets;
+         this.rollup = rollup;
++        this.periods = periods;
+         this.audit = audit;
+     }
+ 
+@@ -560,7 +563,9 @@ public class PersonService {
+      *  them as patron names the other instead (no repeats), and their pool memberships move to the
+      *  other (shares added where the other is a member already). Their statements are carried to
+      *  the other, whose statement count becomes their own plus the merged person's, the other's
+-     *  last statement staying theirs (or, having none, becoming the merged person's). Their holds,
++     *  last statement staying theirs (or, having none, becoming the merged person's). The figures
++     *  closed and soft-closed periods fixed for them, and their opening balances, are added to the
++     *  other's. Their holds,
+      *  watchers and contact go with them. Refused (404) for a person not on the sheet, (403) unless the user
+      *  acts as a steward, (422) for the same person, either of them retired, or a pool share added
+      *  past 100.00. */
+@@ -629,6 +634,10 @@ public class PersonService {
+         patrons.deleteAll(namingThem);
+         patrons.flush();
+ 
++        // the figures closed and soft-closed periods fixed for them, and their opening balances, carried to the other
++        periods.findBySheetIdOrderByFromAsc(sheetId).forEach(p -> p.mergePerson(from.getId(), into.getId()));
++        periods.flush();
++
+         // statements carried to the other; watchers go with them
+         carryStatements(sheetId, statements.findByPersonIdOrderByIdAsc(from.getId()), into);
+         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index d96593a39..88946accf 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -553,6 +553,10 @@ public class RollupService {
+     /** Whether a claim of the person (null: one with neither a hold nor a retirement) counts, as
+      *  {@link #counts} has it. */
+     private static boolean countsFor(Claim c, Person person, LocalDate today) {
++        // a SETTLED one too, when deferred while bound and the binding has ended
++        if (c.isDeferredOn(today)) {
++            return false;
++        }
+         if (c.getStatus() == ClaimStatus.SETTLED) {
+             return true;
+         }
+@@ -564,6 +568,9 @@ public class RollupService {
+ 
+     /** Whether a claim counts toward claimed: as {@link #countsFor} has it. */
+     private static boolean countsClaimed(Claim c, Person person, LocalDate today) {
++        if (c.isDeferredOn(today)) {
++            return false;
++        }
+         if (c.getStatus() == ClaimStatus.SETTLED) {
+             return true;
+         }
+@@ -576,7 +583,7 @@ public class RollupService {
+     /** Whether a claim counts toward a period's due-total, taken in {@code status} (the one it had
+      *  at the period's end; null when it was not yet added then): as {@link #counts} has it. */
+     private static boolean countsAt(Claim c, ClaimStatus status, Map<Long, Person> held, LocalDate today) {
+-        if (status == null) {
++        if (status == null || c.isDeferredOn(today)) {
+             return false;
+         }
+         if (status == ClaimStatus.SETTLED) {
+diff --git a/src/main/resources/db/migration/V120__claim_deferred_bound.sql b/src/main/resources/db/migration/V120__claim_deferred_bound.sql
+new file mode 100644
+index 000000000..a7176612f
+--- /dev/null
++++ b/src/main/resources/db/migration/V120__claim_deferred_bound.sql
+@@ -0,0 +1,3 @@
++-- Whether the claim was deferred while a statement bound it: the deferral takes effect only once
++-- the binding ends, and then whatever the claim's status (it may have been settled while bound).
++ALTER TABLE claim ADD COLUMN deferred_bound BOOLEAN NOT NULL DEFAULT FALSE;
