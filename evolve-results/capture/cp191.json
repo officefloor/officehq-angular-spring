@@ -1,0 +1,64 @@
+{
+  "checkpoint": 191,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp191_clerk-limit-per-grade",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The clerk limit can be set per grade (settings, SETTING_CHANGED key=clerk-limit-<grade>\nvalue=<amount>, dated like the floor; blank means none): for a claim, the limit in force is its\nperson's grade's limit on the sheet's today when one is set, else the sheet's.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe clerk limit can be set per grade (settings, SETTING_CHANGED key=clerk-limit-<grade>\nvalue=<amount>, dated like the floor; blank means none): for a claim, the limit in force is its\nperson's grade's limit on the sheet's today when one is set, else the sheet's.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e7bb618e9168d05a1c774c1bae213ee4fb893906",
+  "reset_sha": "",
+  "preagent_sha": "037e5e6acab70bf174915496b6701328c2de4ab3",
+  "prev_sha": "037e5e6acab70bf174915496b6701328c2de4ab3",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.115248,
+    "input_tokens": 48,
+    "output_tokens": 10349,
+    "cache_read_tokens": 1400780,
+    "cache_creation_tokens": 78490,
+    "num_turns": 24,
+    "duration_ms": 442374,
+    "duration_api_ms": 104772,
+    "model": "claude-opus-5-5",
+    "session_id": "37d3b5ca-193e-4222-be81-e5d645fa862e",
+    "stop_reason": "success",
+    "result_text": "You can now set a clerk limit for each grade, and `bin/e2e` passes all 4 acceptance tests.\n\n**How it works:** when a clerk settles a claim, the limit used is the one set for the person's grade on the sheet's today. If that grade has no limit set, the sheet's clerk limit applies, as before. Over the limit, the claim still goes to PENDING for a steward.\n\n**Settings screen:** each grade (A, B, C) gets its own clerk limit field with a from-date, and a \"current\" value showing what's in force today. The fields check their values the same way the sheet's clerk limit does. Saving writes `SETTING_CHANGED \u2026 key=clerk-limit-<grade> value=<amount>`, with `from=<date>` added when a date is given; a blank value means the grade has no limit of its own.\n\n**Changes:**\n- **Data:** no migration was needed. The grade limits are stored as dated settings under the key `clerk-limit-<grade>`, the same way the per-grade proof threshold is stored.\n- **Server:**\n  - `Sheet.clerkLimitFor(grade)` works out the limit in force.\n  - `SettingsService.setGradeClerkLimit` saves a grade's limit.\n  - `maySettle` now takes the person's grade, and `ClaimService` passes it in.\n  - A new endpoint, `PUT /settings/clerk-limit/{grade}`, accepts the save.\n- **Front end:** a new `setGradeClerkLimit` call in `settings-api.ts`, `gradeClerkLimitOn` in `session.ts`, and the per-grade fields in `settings.ts`. I also added the grade limits to the settings error message.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.115248,
+        "num_turns": 24,
+        "duration_ms": 442374,
+        "duration_api_ms": 104772,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp191.agent.jsonl",
+  "agent_diff_file": "cp191.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
