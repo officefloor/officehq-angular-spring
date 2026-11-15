@@ -1,0 +1,64 @@
+{
+  "checkpoint": 110,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp110_consolidated-figures",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A sheet's children are the sheets naming it as their parent. The screen gains consolidated figures\nover the sheet and all its descendants: the number of people, the due-total (each sheet's due-total\nas that sheet shows it, added up) and the overdue-total (likewise). A sheet with no children shows\nits own figures there.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA sheet's children are the sheets naming it as their parent. The screen gains consolidated figures\nover the sheet and all its descendants: the number of people, the due-total (each sheet's due-total\nas that sheet shows it, added up) and the overdue-total (likewise). A sheet with no children shows\nits own figures there.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d8c9139b578916b06c1cae269eeceb87c0df973b",
+  "reset_sha": "",
+  "preagent_sha": "8aec47797c509b30aeb433190a5076f41d484140",
+  "prev_sha": "8aec47797c509b30aeb433190a5076f41d484140",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.9240264000000002,
+    "input_tokens": 40,
+    "output_tokens": 9582,
+    "cache_read_tokens": 983412,
+    "cache_creation_tokens": 66943,
+    "num_turns": 20,
+    "duration_ms": 314902,
+    "duration_api_ms": 95909,
+    "model": "claude-opus-5-5",
+    "session_id": "4ff7876a-074b-40bb-884a-dd74acc84091",
+    "stop_reason": "success",
+    "result_text": "The screen now shows consolidated figures for the loaded sheet together with all its descendants. `bin/e2e` passes all 4 tests in the spec.\n\n**What it shows:** next to the header counters, a line with the people count (`consolidated-people-count`), the due-total (`consolidated-due-total`) and the overdue-total (`consolidated-overdue-total`). A sheet with no children shows its own figures.\n\n**How it works:**\n- **Database:** no change. The existing `parent` column already says which sheets are a sheet's children; I added a repository query that finds them (`SheetRepository.findByParentOrderByIdAsc`).\n- **Server:** a new endpoint, `GET /api/sheets/{id}/descendants/figures` (in a new `RollupController`), walks the children, their children and so on. For each one it reuses the existing `RollupService.snapshot`, the server's copy of each sheet's figures (already used for the audit file's totals). It adds up each sheet's due-total and overdue-total, each worked out separately as that sheet would show them. People who have retired are counted too, as the existing people counter does.\n- **Front end:** the people screen fetches the descendants' figures when the sheet loads. It adds them to the sheet's own figures, taken from the totals already on screen, so the consolidated line agrees exactly with what this sheet shows.\n\n**Two behaviours to know about:**\n- The descendants' part is read only when the sheet loads. If someone changes a child sheet, the parent's consolidated figures update when it is re-loaded, which is how the test checks them.\n- When a sheet is shown as of a past date, its own part follows that date but the descendants' part shows them as they are now.\n\nNothing new is written to the audit file, since the request didn't ask for any records.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.9240264000000002,
+        "num_turns": 20,
+        "duration_ms": 314902,
+        "duration_api_ms": 95909,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp110.agent.jsonl",
+  "agent_diff_file": "cp110.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
