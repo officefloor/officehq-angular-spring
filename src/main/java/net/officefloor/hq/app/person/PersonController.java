@@ -195,6 +195,18 @@ public class PersonController {
     public record BulkRetireView(int retired) {
     }
 
+    /** A bulk hold as the screen submits it: the selected people by id, the date the hold is from
+     *  (null: the sheet's today) and the optional date it is to. */
+    public record BulkHoldForm(
+            @NotNull @Size(min = 1, max = 10000) List<@NotNull Long> ids,
+            LocalDate from,
+            LocalDate to) {
+    }
+
+    /** A bulk hold's result: how many people were held. */
+    public record BulkHoldView(int held) {
+    }
+
     private final PersonService service;
     private final HistoryService history;
     private final SettingsService settings;
@@ -343,6 +355,22 @@ public class PersonController {
             @Valid @RequestBody MoveForm body) {
         service.move(sheetId, user.trim(), id, body.direction().equals("up"));
         return list(sheetId, user, null);
+    }
+
+    /** Hold the selected people; a viewer, who may change nothing, holds no one. */
+    @PostMapping("/bulk-hold")
+    @ViewerAllowed
+    public BulkHoldView bulkHold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkHoldForm body) {
+        if (sheets.archived(sheetId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The sheet is archived: nothing on it may change");
+        }
+        if (settings.isViewer(sheetId, user.trim())) {
+            return new BulkHoldView(0);
+        }
+        return new BulkHoldView(service.hold(sheetId, user.trim(), body.ids(), body.from(), body.to()));
     }
 
     @PostMapping("/{id}/hold")

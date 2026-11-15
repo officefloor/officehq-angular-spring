@@ -512,6 +512,24 @@ public class PersonService {
         return person;
     }
 
+    /** Hold each of the people of {@code ids}, in list order, from {@code from} (null: the sheet's
+     *  today) to the optional {@code to} as the row's hold would, each written with its PERSON_HELD
+     *  and rollup lines; all or none. Refused (404) when any is not on the sheet, and (422) for a
+     *  to-date before the from-date. */
+    @Transactional
+    public int hold(String sheetId, String user, List<Long> ids, LocalDate from, LocalDate to) {
+        Set<Long> wanted = Set.copyOf(ids);
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> wanted.contains(p.getId())).toList();
+        if (chosen.size() != wanted.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person");
+        }
+        for (Person person : chosen) {
+            hold(sheetId, user, person.getId(), from, to);
+        }
+        return chosen.size();
+    }
+
     /** Flag the person, as a steward, with a reason (stored trimmed) until a date (a missing one
      *  takes the sheet's today): while the sheet's today is on or before it the row shows the reason
      *  and only a steward may open the person's claims. Refused (403) unless the user acts as a

@@ -236,6 +236,14 @@ export class PeopleApi {
     );
   }
 
+  /** Hold the people of the ids, in list order, from a date (blank: the sheet's today) to an optional one; how many were held. */
+  bulkHold(sheetId: string, ids: number[], from: string, to: string): Promise<{ held: number }> {
+    return firstValueFrom(
+      this.http.post<{ held: number }>(`${this.url(sheetId)}/bulk-hold`, { ids, from: from || null, to: to || null },
+        { headers: this.headers() }),
+    );
+  }
+
   /** Retire the people of the ids, in list order, from a date (blank: the sheet's today); how many were retired. */
   bulkRetire(sheetId: string, ids: number[], from: string): Promise<{ retired: number }> {
     return firstValueFrom(
@@ -416,6 +424,14 @@ export function mergeGradeError(e: unknown): string {
 
 export function bulkRetireError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Select people and enter a from-date as yyyy-mm-dd or none.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'A selected person is no longer on this sheet; reload it.';
+  if (isStale(e)) return 'Someone else saved a selected person at the same moment; try again.';
+  return otherError(e);
+}
+
+export function bulkHoldError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Select people and enter the dates as yyyy-mm-dd or none.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'The to-date must not be before the from-date.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'A selected person is no longer on this sheet; reload it.';
   if (isStale(e)) return 'Someone else saved a selected person at the same moment; try again.';
   return otherError(e);

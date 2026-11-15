@@ -16,7 +16,7 @@ import { STATUSES, Summary, SummaryPerson, statusCounts } from '../summary/summa
 import { ClassicSummary } from '../summary/classic-summary';
 import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
 import { Dashboard, Header } from '../header/header';
-import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
+import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkHoldError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap less their cut total), its excess over that and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -272,6 +272,19 @@ import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasEr
           <p role="status">Retired <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong></p>
         }
         @if (bulkRetireErr(); as err) {
+          <p role="alert" data-testid="person-error">{{ err }}</p>
+        }
+      </form>
+      <form [formGroup]="bulkHoldForm" (ngSubmit)="bulkHold()" aria-label="Hold selected people">
+        <label for="bulk-hold-from">Hold selected people from</label>
+        <input id="bulk-hold-from" type="date" data-testid="bulk-hold-from" formControlName="from" />
+        <label for="bulk-hold-to">To</label>
+        <input id="bulk-hold-to" type="date" data-testid="bulk-hold-to" formControlName="to" />
+        <button type="submit" data-testid="bulk-hold">Hold selected</button>
+        @if (bulkHeld() !== null) {
+          <p role="status">Held <strong data-testid="bulk-held">{{ bulkHeld() }}</strong></p>
+        }
+        @if (bulkHoldErr(); as err) {
           <p role="alert" data-testid="person-error">{{ err }}</p>
         }
       </form>
@@ -1157,6 +1170,16 @@ export class People {
   protected readonly bulkRetired = signal<number | null>(null);
   protected readonly bulkRetireErr = signal<string | null>(null);
   private bulkRetiring = false;
+  /** The bulk hold bar: the date the selected people are held from (blank: the sheet's today) and
+   *  the optional date they are held to. */
+  protected readonly bulkHoldForm = new FormGroup({
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
+  });
+  /** How many people the last bulk hold held; null while one runs or before the first. */
+  protected readonly bulkHeld = signal<number | null>(null);
+  protected readonly bulkHoldErr = signal<string | null>(null);
+  private bulkHolding = false;
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the open editor loaded. */
   private editingVersion = 0;
@@ -1224,6 +1247,7 @@ export class People {
     this.importForm.valueChanges.subscribe(() => this.importErr.set(null));
     this.bulkGradeForm.valueChanges.subscribe(() => this.bulkGradeErr.set(null));
     this.bulkRetireForm.valueChanges.subscribe(() => this.bulkRetireErr.set(null));
+    this.bulkHoldForm.valueChanges.subscribe(() => this.bulkHoldErr.set(null));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
@@ -1261,6 +1285,9 @@ export class People {
         this.bulkRetireForm.reset({ from: '' }, { emitEvent: false });
         this.bulkRetired.set(null);
         this.bulkRetireErr.set(null);
+        this.bulkHoldForm.reset({ from: '', to: '' }, { emitEvent: false });
+        this.bulkHeld.set(null);
+        this.bulkHoldErr.set(null);
         this.people.set([]);
         this.claims.set([]);
         this.tagsUsed.set([]);
@@ -1808,10 +1835,11 @@ export class People {
     }
   }
 
-  /** Select a person for a bulk grade or retire, or take them out of the selection. */
+  /** Select a person for a bulk grade, retire or hold, or take them out of the selection. */
   protected personToggled(id: number, on: boolean): void {
     this.bulkGradeErr.set(null);
     this.bulkRetireErr.set(null);
+    this.bulkHoldErr.set(null);
     this.clearRowError(id); // the next action on the row
     this.selectedPeople.update((ids) => {
       const next = new Set(ids);
@@ -1849,6 +1877,37 @@ export class People {
       this.bulkGradeErr.set(bulkGradeError(e));
     } finally {
       this.bulkGrading = false;
+    }
+  }
+
+  /** Hold every selected person from the date entered (blank: the sheet's today) to the optional
+   *  to-date, in list order, as the row's hold would; then show how many were held and the people
+   *  as the store now holds them. */
+  protected async bulkHold(): Promise<void> {
+    if (this.bulkHolding) return;
+    this.bulkHeld.set(null);
+    this.bulkHoldErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const ids = [...this.selectedPeople()];
+    if (ids.length === 0) {
+      this.bulkHoldErr.set('Select at least one person.');
+      return;
+    }
+    const value = this.bulkHoldForm.getRawValue();
+    this.bulkHolding = true;
+    try {
+      const result = await this.api.bulkHold(sheetId, ids, value.from.trim(), value.to.trim());
+      const people = await this.api.list(sheetId);
+      if (this.session.sheetId() !== sheetId) return;
+      this.people.set(people);
+      this.selectedPeople.set(new Set());
+      this.bulkHoldForm.reset({ from: '', to: '' }, { emitEvent: false });
+      this.bulkHeld.set(result.held);
+    } catch (e) {
+      this.bulkHoldErr.set(bulkHoldError(e));
+    } finally {
+      this.bulkHolding = false;
     }
   }
 
