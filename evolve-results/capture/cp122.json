@@ -1,0 +1,64 @@
+{
+  "checkpoint": 122,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp122_pool-membership-dated",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A pool membership may carry a from-date and a to-date (optional; a to-date before the from-date\nis refused; POOL_MEMBER_ADDED gains from=<date> and to=<date> at the end when given). A member whose\ndates do not include the sheet's today is left out entirely: not in the total share, not in the\nbalance, no cut.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA pool membership may carry a from-date and a to-date (optional; a to-date before the from-date\nis refused; POOL_MEMBER_ADDED gains from=<date> and to=<date> at the end when given). A member whose\ndates do not include the sheet's today is left out entirely: not in the total share, not in the\nbalance, no cut.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7e90cc5d80362d3ec3c1ac2d2b81852edfa52eba",
+  "reset_sha": "",
+  "preagent_sha": "a134e6c78bec7cc0d5c38f3dd05bb610b3400a06",
+  "prev_sha": "a134e6c78bec7cc0d5c38f3dd05bb610b3400a06",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8295625999999999,
+    "input_tokens": 36,
+    "output_tokens": 11714,
+    "cache_read_tokens": 750693,
+    "cache_creation_tokens": 55625,
+    "num_turns": 18,
+    "duration_ms": 529772,
+    "duration_api_ms": 105758,
+    "model": "claude-opus-5-5",
+    "session_id": "9980aa40-c2ba-4480-a203-c746d386a6cf",
+    "stop_reason": "success",
+    "result_text": "Pool memberships can now have an optional from-date and to-date, and a member whose dates don't include the sheet's today is left out completely. All 4 tests pass with `bin/e2e`.\n\n**What it does**\n- **Storage:** migration `V71__pool_member_dated.sql` adds nullable `from_date` and `to_date` columns to `pool_member`, with a check that the to-date isn't before the from-date.\n- **Server:** the add-member form takes `from` and `to` (yyyy-mm-dd, blank for none). A to-date before the from-date is refused and nothing is saved or written to the audit file. `POOL_MEMBER_ADDED` ends with ` from=<date>` and ` to=<date>`, each only when given. This works for person members and for pools added to other pools.\n- **Screen:** each pool row's add form has `pool-member-from` and `pool-member-to` date fields, and the screen checks the dates before sending them. A member whose dates leave out today:\n  - adds nothing to the pool's total share or to whether it balances;\n  - gets no cut: the cell is blank, not `0.00`, as the test expects;\n  - still shows their share.\n  \n  If a pool that is itself a member falls outside its dates, it gets no cut, so the pools under it get nothing either.\n\n**Decisions to check**\n- **Dates include both ends:** a member is in when from \u2264 today \u2264 to.\n- **A blank from-date means \"no start\", not \"starts today\".** AGENTS.md says a blank from-date takes the sheet's today, but the test expects Cam (to-date only) to be counted and his audit line to have no `from=`. I followed the test.\n- **Dates shown on rows:** each member row now shows its dates under a new `pool-member-dates` id. Nothing tests it, but once added, an id is permanent.\n\n**One fix outside pools:** scenario 1 failed in the rate preview, not in pools. The test runs the preview twice with the same result, and because the preview finishes instantly, the old count never disappeared. Changing the preview's grade or rate now clears the old result (it no longer matches the inputs anyway). This is in `src/main/frontend/src/app/features/rates/rates.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8295625999999999,
+        "num_turns": 18,
+        "duration_ms": 529772,
+        "duration_api_ms": 105758,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp122.agent.jsonl",
+  "agent_diff_file": "cp122.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
