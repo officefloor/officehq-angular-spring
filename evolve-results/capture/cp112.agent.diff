@@ -1,0 +1,295 @@
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 0f257e5f4..0f1b45e85 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -313,6 +313,8 @@ export class PersonClaims {
+       return true;
+     }, (e: unknown) => {
+       this.rowErrors.update((errs) => ({ ...errs, [c.id]: editError(e) }));
++      // the editor never opened: the form is back to adding, so the next add is not swallowed
++      if (this.editingId() === c.id && this.locking?.result === result) this.reset();
+       return false;
+     });
+     this.locking = { id: c.id, result };
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index cda68844a..b8da03468 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -67,6 +67,8 @@ export interface Person {
+   contact: string | null;
+   /** The person's aliases, sorted as names are compared (ignoring case). */
+   aliases: string[];
++  /** Whether their name or an alias is also a name or alias on another sheet of the sheet's tree. */
++  clashing: boolean;
+ }
+ 
+ /** A statement just taken: the person as they now show, and all their claims, newest first. */
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index def00db2b..a91447eb2 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -156,7 +156,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+       </form>
+       <table data-testid="people-list">
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shownPeople(); track p.id) {
+@@ -174,6 +174,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+                 <button type="button" data-testid="person-alias-add" (click)="addAlias(p, aliasInput)"
+                   [attr.aria-label]="'Add alias for ' + p.name">Add alias</button>
+               </td>
++              <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
+               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 7a33dd6c6..f7e998e47 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -476,7 +476,7 @@ public class ClaimController {
+ 
+     private StatementView statementView(String sheetId, ClaimService.Statement s, String user) {
+         return new StatementView(PersonView.of(s.person(), people.today(sheetId), s.summary(), people.patronIds(s.person().getId()),
+-                people.isWatching(s.person().getId(), user)),
++                people.isWatching(s.person().getId(), user), people.clashing(s.person())),
+                 s.claims().stream().map(this::view).toList());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/QuickAddController.java b/src/main/java/net/officefloor/hq/app/claim/QuickAddController.java
+index a016715c1..f43f84b05 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/QuickAddController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/QuickAddController.java
+@@ -54,7 +54,7 @@ public class QuickAddController {
+             @Valid @RequestBody QuickAddForm body) {
+         QuickAddService.QuickAdd q = service.add(sheetId, user.trim(), body.name(), new BigDecimal(body.amount()));
+         return new QuickAddView(PersonView.of(q.person(), people.today(sheetId), people.statementSummary(q.person().getId()),
+-                people.patronIds(q.person().getId()), people.isWatching(q.person().getId(), user.trim())),
++                people.patronIds(q.person().getId()), people.isWatching(q.person().getId(), user.trim()), people.clashing(q.person())),
+                 q.personAdded(), ClaimView.of(q.claim(), claims.logOf(q.claim().getId()), claims.commentsOf(q.claim().getId())));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index e5d788b10..94b89ecd5 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -41,23 +41,24 @@ public class PersonController {
+      *  they are retired from (null while not retired), whether they have any hold, their holds, and the ids of
+      *  their patrons in the order they were named, and whether the signed-in user watches them. The grade is the one in force on the sheet's
+      *  today; grades lists every grade they have been given, by from-date, the first one undated; terms
+-     *  are their own terms in days (null when they have none). */
++     *  are their own terms in days (null when they have none). Clashing: their name or an alias is
++     *  also a name or alias on another sheet of the sheet's tree. */
+     public record PersonView(long id, String name, String grade, long version, int statementCount,
+             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held, List<Person.Hold> holds,
+             List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms,
+-            String contact, List<String> aliases) {
++            String contact, List<String> aliases, boolean clashing) {
+         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
+-                boolean watched) {
+-            return of(p.getId(), p, today, s, patronIds, watched);
++                boolean watched, boolean clashing) {
++            return of(p.getId(), p, today, s, patronIds, watched, clashing);
+         }
+ 
+         /** The person of the id, which a version rebuilt from the sheet's history does not carry. */
+         static PersonView of(long id, Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
+-                boolean watched) {
++                boolean watched, boolean clashing) {
+             return new PersonView(id, p.getName(), p.gradeOn(today), p.getVersion(), s.count(),
+                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
+                     p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.getTerms(),
+-                    p.getContact(), p.getAliases());
++                    p.getContact(), p.getAliases(), clashing);
+         }
+     }
+ 
+@@ -145,15 +146,18 @@ public class PersonController {
+             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+         if (asOf != null) {
+             HistoryService.AsOf then = history.asOf(sheetId, asOf);
+-            return then.people().keySet().stream().map(id -> viewAsOf(then, asOf, user, id)).toList();
++            Set<String> treeNames = service.treeNames(sheetId);
++            return then.people().keySet().stream().map(id -> viewAsOf(then, asOf, user, id, treeNames)).toList();
+         }
+         Map<Long, StatementSummary> summaries = service.statementSummaries(sheetId);
+         Map<Long, List<Long>> patrons = service.patronIds(sheetId);
+         LocalDate today = service.today(sheetId);
+         Set<Long> watched = service.watchedIds(sheetId, user.trim());
++        Set<String> treeNames = service.treeNames(sheetId);
+         return service.list(sheetId).stream()
+                 .map(p -> PersonView.of(p, today, summaries.getOrDefault(p.getId(), StatementSummary.NONE),
+-                        patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId())))
++                        patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId()),
++                        PersonService.clashes(p, treeNames)))
+                 .toList();
+     }
+ 
+@@ -168,7 +172,7 @@ public class PersonController {
+             if (!then.people().containsKey(id)) {
+                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person");
+             }
+-            return viewAsOf(then, asOf, user, id);
++            return viewAsOf(then, asOf, user, id, service.treeNames(sheetId));
+         }
+         return view(sheetId, user, service.get(sheetId, id));
+     }
+@@ -264,7 +268,8 @@ public class PersonController {
+             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody TransferForm body) {
+         Person arrived = service.transfer(sheetId, user.trim(), id, body.toSheetId());
+-        return PersonView.of(arrived, service.today(arrived.getSheetId()), StatementSummary.NONE, List.of(), false);
++        return PersonView.of(arrived, service.today(arrived.getSheetId()), StatementSummary.NONE, List.of(), false,
++                service.clashing(arrived));
+     }
+ 
+     /** Start or stop watching the person as the signed-in user; refused for a viewer, who may change nothing. */
+@@ -278,19 +283,22 @@ public class PersonController {
+     }
+ 
+     /** The person of the id as they stood at the end of {@code asOf}, with the statements, patrons
+-     *  and watches there were then. */
+-    private static PersonView viewAsOf(HistoryService.AsOf then, LocalDate asOf, String user, long id) {
++     *  and watches there were then; clashing against the names the sheet's tree has now. */
++    private static PersonView viewAsOf(HistoryService.AsOf then, LocalDate asOf, String user, long id,
++            Set<String> treeNames) {
+         List<PersonStatement> theirs = then.statements().values().stream()
+                 .filter(s -> s.getPersonId() == id).toList();
+         List<Long> patronIds = then.patrons().stream().filter(p -> p.getPersonId() == id)
+                 .map(PersonPatron::getPatronId).collect(Collectors.toList());
+         boolean watched = then.watches().stream()
+                 .anyMatch(w -> w.getPersonId() == id && w.getUserName().equals(user.trim()));
+-        return PersonView.of(id, then.people().get(id), asOf, StatementSummary.of(theirs), patronIds, watched);
++        Person p = then.people().get(id);
++        return PersonView.of(id, p, asOf, StatementSummary.of(theirs), patronIds, watched,
++                PersonService.clashes(p, treeNames));
+     }
+ 
+     private PersonView view(String sheetId, String user, Person p) {
+         return PersonView.of(p, service.today(sheetId), service.statementSummary(p.getId()), service.patronIds(p.getId()),
+-                service.isWatching(p.getId(), user.trim()));
++                service.isWatching(p.getId(), user.trim()), service.clashing(p));
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index e12c6f956..316d9b09b 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -4,6 +4,7 @@ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.Comparator;
+ import java.util.HashMap;
++import java.util.HashSet;
+ import java.util.LinkedHashMap;
+ import java.util.LinkedHashSet;
+ import java.util.List;
+@@ -241,6 +242,11 @@ public class PersonService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         String trimmed = name.trim();
+         requireUnusedName(sheetId, id, trimmed);
++        // a person who clashes with the sheet's tree is saved only once renamed clear of it
++        Set<String> treeNames = treeNames(sheetId);
++        if (person.getAliases().stream().anyMatch(a -> treeNames.contains(nameKey(a)))) {
++            throw nameInUse();
++        }
+         requireUnusedContact(sheetId, id, contact);
+         person.setName(trimmed);
+         boolean termsChanged = !Objects.equals(terms, person.getTerms());
+@@ -603,16 +609,49 @@ public class PersonService {
+     }
+ 
+     /** Refuse a name another person on the sheet already has as their name or an alias (ignoring
+-     *  case); {@code exceptId} null checks against everyone, the person's own name and aliases too. */
++     *  case), or anyone on another sheet of its tree has; {@code exceptId} null checks against
++     *  everyone, the person's own name and aliases too. */
+     private void requireUnusedName(String sheetId, Long exceptId, String name) {
+         boolean taken = people.findBySheetIdAndNameIgnoreCase(sheetId, name).stream()
+                 .anyMatch(p -> !p.getId().equals(exceptId))
+-                || !people.findBySheetIdAndAliasIgnoreCase(sheetId, name).isEmpty();
++                || !people.findBySheetIdAndAliasIgnoreCase(sheetId, name).isEmpty()
++                || treeNames(sheetId).contains(nameKey(name));
+         if (taken) {
+             throw nameInUse();
+         }
+     }
+ 
++    /** Every name and alias of the people on the other sheets of the sheet's tree (its ancestors
++     *  and descendants), as names are compared. */
++    @Transactional(readOnly = true)
++    public Set<String> treeNames(String sheetId) {
++        Set<String> names = new HashSet<>();
++        for (String other : sheets.tree(sheetId)) {
++            for (Person p : people.findBySheetIdOrderByIdAsc(other)) {
++                names.add(nameKey(p.getName()));
++                p.getAliases().forEach(a -> names.add(nameKey(a)));
++            }
++        }
++        return names;
++    }
++
++    /** Whether the person's name or an alias is also a name or alias on another sheet of their tree. */
++    @Transactional(readOnly = true)
++    public boolean clashing(Person person) {
++        return clashes(person, treeNames(person.getSheetId()));
++    }
++
++    /** Whether the person's name or an alias is among {@code treeNames} (from {@link #treeNames}). */
++    public static boolean clashes(Person person, Set<String> treeNames) {
++        return !treeNames.isEmpty() && (treeNames.contains(nameKey(person.getName()))
++                || person.getAliases().stream().anyMatch(a -> treeNames.contains(nameKey(a))));
++    }
++
++    /** A name or alias as names are compared: ignoring case. */
++    private static String nameKey(String name) {
++        return name.toLowerCase(java.util.Locale.ROOT);
++    }
++
+     private static ResponseStatusException savedByAnother() {
+         return new ResponseStatusException(HttpStatus.PRECONDITION_FAILED, "Saved by someone else since it was loaded");
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 355cefcf5..d9cfca80f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -2,7 +2,11 @@ package net.officefloor.hq.app.sheet;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayDeque;
++import java.util.LinkedHashSet;
++import java.util.List;
+ import java.util.Optional;
++import java.util.Set;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import org.springframework.context.ApplicationEventPublisher;
+ import org.springframework.dao.DataIntegrityViolationException;
+@@ -108,6 +112,27 @@ public class SheetService {
+         return sheets.findById(id).map(s -> s.noteThresholdOn(on)).orElse(null);
+     }
+ 
++    /** The ids of the other sheets of the sheet's tree, among those that exist: its ancestors (its
++     *  parent, theirs, and so on) and its descendants (its children, theirs, and so on). */
++    @Transactional(readOnly = true)
++    public Set<String> tree(String id) {
++        Set<String> seen = new LinkedHashSet<>(Set.of(id));
++        for (String at = sheets.findById(id).map(Sheet::getParent).orElse(null);
++                at != null && sheets.existsById(at) && seen.add(at);
++                at = sheets.findById(at).map(Sheet::getParent).orElse(null)) {
++        }
++        ArrayDeque<String> todo = new ArrayDeque<>(List.of(id));
++        while (!todo.isEmpty()) {
++            for (Sheet child : sheets.findByParentOrderByIdAsc(todo.poll())) {
++                if (seen.add(child.getId())) {
++                    todo.add(child.getId());
++                }
++            }
++        }
++        seen.remove(id);
++        return seen;
++    }
++
+     /** Whether the sheet is archived: every change on it is refused. */
+     @Transactional(readOnly = true)
+     public boolean archived(String id) {

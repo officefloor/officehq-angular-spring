@@ -1,0 +1,73 @@
+{
+  "checkpoint": 112,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp112_uniqueness-across-tree",
+  "phase": "mid",
+  "type": "mutative",
+  "mutates": [
+    109,
+    110,
+    111
+  ],
+  "replaced_tests": [
+    "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 3",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 1",
+    "cp110_consolidated-figures.spec.ts::consolidated figures scenario 2",
+    "cp111_transfer-person.spec.ts::transfer person scenario 3"
+  ],
+  "request": {
+    "spec": "A name or alias may no longer be used on a sheet when any sheet of its tree (its ancestors, its\ndescendants and their descendants, among the sheets that exist) already uses it as a name or alias:\nadding, renaming, an alias, the quick-add bar, the paste box (and any later import) are refused as a\nduplicate would be. People who already clash are not changed: each shows clashing yes, and every\nedit of them through the person form is refused until the edit renames them to a name that does not\nclash (and leaves no clashing alias).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA name or alias may no longer be used on a sheet when any sheet of its tree (its ancestors, its\ndescendants and their descendants, among the sheets that exist) already uses it as a name or alias:\nadding, renaming, an alias, the quick-add bar, the paste box (and any later import) are refused as a\nduplicate would be. People who already clash are not changed: each shows clashing yes, and every\nedit of them through the person form is refused until the edit renames them to a name that does not\nclash (and leaves no clashing alias).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "6ff27f0e916b22d677cca439c5bb1e55d3e3971b",
+  "reset_sha": "",
+  "preagent_sha": "12c7d487b4f1db4a3fd514b6d5961f7343460c95",
+  "prev_sha": "12c7d487b4f1db4a3fd514b6d5961f7343460c95",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.5984957999999998,
+    "input_tokens": 76,
+    "output_tokens": 16529,
+    "cache_read_tokens": 2652659,
+    "cache_creation_tokens": 92135,
+    "num_turns": 40,
+    "duration_ms": 757733,
+    "duration_api_ms": 166555,
+    "model": "claude-opus-5-5",
+    "session_id": "4f92c6ef-7ff3-4942-8029-c15d7a656ff1",
+    "stop_reason": "success",
+    "result_text": "A name or alias can no longer be used on a sheet if any sheet in its tree already uses it. All 4 tests in `bin/e2e` pass, and the app is stopped.\n\n**The new rule (server):**\n- A sheet's tree is its ancestors plus its descendants and theirs, among sheets that exist. A new method, `SheetService.tree(id)`, works this out.\n- `PersonService.requireUnusedName` now also checks every name and alias on those sheets, ignoring case. Every path that already used it gets the new check:\n  - adding a person\n  - renaming\n  - adding an alias\n  - the quick-add bar (it creates people through the same add)\n  - transferring a person to another sheet\n- The paste box already refused names that aren't on the sheet, so a name used elsewhere in the tree is refused there too.\n\n**People who already clash:**\n- Each person now carries a `clashing` value, shown in a new \"Clashing\" column (`person-clashing`, yes/no).\n- Any save through the person form is refused while the name clashes. It is also refused while any of their aliases clashes, so the edit must leave them with no clashing alias.\n- Bulk grading isn't blocked, since the request only covers the person form.\n\n**A separate bug I fixed to get scenario 1 passing:** a viewer opens a claim's editor and the server refuses the lock. The editor stayed open, so their next \"Add claim\" quietly closed it and sent nothing, with no error shown. Now a refused lock closes the editor, in `person-claims.ts`. This isn't part of the requested change, but the test hit it.\n\nNo database change was needed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.5984957999999998,
+        "num_turns": 40,
+        "duration_ms": 757733,
+        "duration_api_ms": 166555,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp112.agent.jsonl",
+  "agent_diff_file": "cp112.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
