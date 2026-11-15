@@ -153,6 +153,14 @@ export class PeopleApi {
     );
   }
 
+  /** Retire the people of the ids, in list order, from a date (blank: the sheet's today); how many were retired. */
+  bulkRetire(sheetId: string, ids: number[], from: string): Promise<{ retired: number }> {
+    return firstValueFrom(
+      this.http.post<{ retired: number }>(`${this.url(sheetId)}/bulk-retire`, { ids, from: from || null },
+        { headers: this.headers() }),
+    );
+  }
+
   /** Retire a person from a date; a blank one takes the sheet's today. */
   retire(sheetId: string, id: number, from: string): Promise<Person> {
     return firstValueFrom(
@@ -256,6 +264,13 @@ export function importError(e: unknown): string {
 
 export function bulkGradeError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Select people, choose a grade and enter a from-date as yyyy-mm-dd or none.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'A selected person is no longer on this sheet; reload it.';
+  if (isStale(e)) return 'Someone else saved a selected person at the same moment; try again.';
+  return otherError(e);
+}
+
+export function bulkRetireError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Select people and enter a from-date as yyyy-mm-dd or none.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'A selected person is no longer on this sheet; reload it.';
   if (isStale(e)) return 'Someone else saved a selected person at the same moment; try again.';
   return otherError(e);

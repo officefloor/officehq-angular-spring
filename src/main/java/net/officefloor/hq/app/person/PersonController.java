@@ -131,6 +131,17 @@ public class PersonController {
     public record BulkGradeView(int changed) {
     }
 
+    /** A bulk retire as the screen submits it: the selected people by id, and the date they are
+     *  retired from (null: the sheet's today). */
+    public record BulkRetireForm(
+            @NotNull @Size(min = 1, max = 10000) List<@NotNull Long> ids,
+            LocalDate from) {
+    }
+
+    /** A bulk retire's result: how many people were retired. */
+    public record BulkRetireView(int retired) {
+    }
+
     private final PersonService service;
     private final HistoryService history;
     private final SettingsService settings;
@@ -215,6 +226,22 @@ public class PersonController {
             return new BulkGradeView(0);
         }
         return new BulkGradeView(service.grade(sheetId, user.trim(), body.ids(), body.grade(), body.from()));
+    }
+
+    /** Retire the selected people from the date; a viewer, who may change nothing, retires no one. */
+    @PostMapping("/bulk-retire")
+    @ViewerAllowed
+    public BulkRetireView bulkRetire(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkRetireForm body) {
+        if (sheets.archived(sheetId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The sheet is archived: nothing on it may change");
+        }
+        if (settings.isViewer(sheetId, user.trim())) {
+            return new BulkRetireView(0);
+        }
+        return new BulkRetireView(service.retire(sheetId, user.trim(), body.ids(), body.from()));
     }
 
     @PostMapping("/{id}/retire")

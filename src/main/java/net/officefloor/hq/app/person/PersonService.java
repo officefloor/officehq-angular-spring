@@ -359,6 +359,33 @@ public class PersonService {
         return person;
     }
 
+    /** Retire each of the people of {@code ids}, in list order, from {@code from} (null: the
+     *  sheet's today) as the row's retire would, each written with its PERSON_RETIRED and rollup
+     *  lines; all or none. Refused (404) when any is not on the sheet. */
+    @Transactional
+    public int retire(String sheetId, String user, List<Long> ids, LocalDate from) {
+        Set<Long> wanted = Set.copyOf(ids);
+        List<Person> chosen = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .filter(p -> wanted.contains(p.getId())).toList();
+        if (chosen.size() != wanted.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person");
+        }
+        LocalDate on = from != null ? from : sheets.today(sheetId);
+        for (Person person : chosen) {
+            RollupService.Snapshot before = rollup.snapshot(sheetId);
+            person.setRetiredFrom(on);
+            try {
+                people.flush();
+            } catch (ObjectOptimisticLockingFailureException e) {
+                throw savedByAnother(); // saved by another user at the same moment
+            }
+            audit.recordOnCommit("PERSON_RETIRED sheet=" + sheetId + " by=" + user
+                    + " name=" + person.getName() + " from=" + on);
+            rollup.recordChanges(sheetId, user, before);
+        }
+        return chosen.size();
+    }
+
     /** Add a hold to a person from a date (a missing one takes the sheet's today) to an optional
      *  one; their OPEN claims dated within it then count in no live total, unless bound by a
      *  statement. A to-date before the from-date is refused (422). */

@@ -10,7 +10,7 @@ import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, effectiveRates, pctOn, plusDays } from '../rates/rates-api';
-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, cancelStatementError, retireError, statementError, transferError, watchError } from './people-api';
+import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, cancelStatementError, retireError, statementError, transferError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -164,6 +164,17 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
           <p role="status">Changed <strong data-testid="bulk-graded">{{ bulkGraded() }}</strong></p>
         }
         @if (bulkGradeErr(); as err) {
+          <p role="alert" data-testid="person-error">{{ err }}</p>
+        }
+      </form>
+      <form [formGroup]="bulkRetireForm" (ngSubmit)="bulkRetire()" aria-label="Retire selected people">
+        <label for="bulk-retire-date">Retire selected people from</label>
+        <input id="bulk-retire-date" type="date" data-testid="bulk-retire-date" formControlName="from" />
+        <button type="submit" data-testid="bulk-retire">Retire selected</button>
+        @if (bulkRetired() !== null) {
+          <p role="status">Retired <strong data-testid="bulk-retired">{{ bulkRetired() }}</strong></p>
+        }
+        @if (bulkRetireErr(); as err) {
           <p role="alert" data-testid="person-error">{{ err }}</p>
         }
       </form>
@@ -631,6 +642,14 @@ export class People {
   protected readonly bulkGraded = signal<number | null>(null);
   protected readonly bulkGradeErr = signal<string | null>(null);
   private bulkGrading = false;
+  /** The bulk retire bar: the date the selected people are retired from (blank: the sheet's today). */
+  protected readonly bulkRetireForm = new FormGroup({
+    from: new FormControl('', { nonNullable: true }),
+  });
+  /** How many people the last bulk retire retired; null while one runs or before the first. */
+  protected readonly bulkRetired = signal<number | null>(null);
+  protected readonly bulkRetireErr = signal<string | null>(null);
+  private bulkRetiring = false;
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the open editor loaded. */
   private editingVersion = 0;
@@ -688,6 +707,7 @@ export class People {
     this.pasteForm.valueChanges.subscribe(() => this.pasteErr.set(null));
     this.importForm.valueChanges.subscribe(() => this.importErr.set(null));
     this.bulkGradeForm.valueChanges.subscribe(() => this.bulkGradeErr.set(null));
+    this.bulkRetireForm.valueChanges.subscribe(() => this.bulkRetireErr.set(null));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
@@ -714,6 +734,9 @@ export class People {
         this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
         this.bulkGraded.set(null);
         this.bulkGradeErr.set(null);
+        this.bulkRetireForm.reset({ from: '' }, { emitEvent: false });
+        this.bulkRetired.set(null);
+        this.bulkRetireErr.set(null);
         this.people.set([]);
         this.claims.set([]);
         this.tagsUsed.set([]);
@@ -1110,9 +1133,10 @@ export class People {
     }
   }
 
-  /** Select a person for a bulk grade, or take them out of the selection. */
+  /** Select a person for a bulk grade or retire, or take them out of the selection. */
   protected personToggled(id: number, on: boolean): void {
     this.bulkGradeErr.set(null);
+    this.bulkRetireErr.set(null);
     this.clearRowError(id); // the next action on the row
     this.selectedPeople.update((ids) => {
       const next = new Set(ids);
@@ -1150,6 +1174,37 @@ export class People {
       this.bulkGradeErr.set(bulkGradeError(e));
     } finally {
       this.bulkGrading = false;
+    }
+  }
+
+  /** Retire every selected person from the date entered (blank: the sheet's today), in list
+   *  order, as the row's retire would; then show how many were retired and the people as the
+   *  store now holds them. */
+  protected async bulkRetire(): Promise<void> {
+    if (this.bulkRetiring) return;
+    this.bulkRetired.set(null);
+    this.bulkRetireErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const ids = [...this.selectedPeople()];
+    if (ids.length === 0) {
+      this.bulkRetireErr.set('Select at least one person.');
+      return;
+    }
+    const value = this.bulkRetireForm.getRawValue();
+    this.bulkRetiring = true;
+    try {
+      const result = await this.api.bulkRetire(sheetId, ids, value.from.trim());
+      const people = await this.api.list(sheetId);
+      if (this.session.sheetId() !== sheetId) return;
+      this.people.set(people);
+      this.selectedPeople.set(new Set());
+      this.bulkRetireForm.reset({ from: '' }, { emitEvent: false });
+      this.bulkRetired.set(result.retired);
+    } catch (e) {
+      this.bulkRetireErr.set(bulkRetireError(e));
+    } finally {
+      this.bulkRetiring = false;
     }
   }
 
