@@ -12,7 +12,7 @@ export class Session {
   /** The active sheet's today (yyyy-mm-dd): every date decision and default date uses it. */
   readonly today = signal<string | null>(null);
   /** Every value recorded for the active sheet's dated settings (its clerk limit, floor, terms,
-   *  terms per grade, late percent, cap and proof threshold), by key, each key's by from-date. */
+   *  terms per grade, late percent, cap, proof threshold and proof threshold per grade), by key, each key's by from-date. */
   readonly dated = signal<DatedSettings>({});
   /** The active sheet's floor (two decimals) in force on its today. */
   readonly floor = computed(() => this.floorOn(this.today()));
@@ -78,6 +78,12 @@ export class Session {
   gradeGraceOn(grade: string, date: string | null): number | null {
     const own = valueOn(this.dated(), `grace-${grade}`, date)?.value ?? null;
     return own === null ? null : Number(own);
+  }
+
+  /** A grade's own proof threshold (two decimals) in force on a date; null when it has none then
+   *  (a claim in it uses the sheet's). */
+  gradeProofThresholdOn(grade: string, date: string | null): string | null {
+    return valueOn(this.dated(), `proof-threshold-${grade}`, date)?.value ?? null;
   }
 
   /** The grace days a claim dated on a date in a grade has: a claim is overdue only once its

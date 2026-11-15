@@ -26,6 +26,9 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
       <p>Entry date: new claims left undated take it (blank: off, the sheet's today) <strong data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</strong></p>
       <p>Cap in force (blank: none) <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
       <p>Proof threshold in force (blank: none) <strong data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' }}</strong></p>
+      @for (g of grades; track g) {
+        <p>Proof threshold in force for grade {{ g }} (blank: none, the sheet's) <strong [attr.data-testid]="'setting-proof-threshold-' + g + '-current'">{{ session.gradeProofThresholdOn(g, session.today()) ?? '' }}</strong></p>
+      }
       <p>Note threshold in force (blank: none) <strong data-testid="setting-note-threshold-current">{{ session.noteThreshold() ?? '' }}</strong></p>
       <p>Grace days (blank: off) <strong data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</strong></p>
       @for (p of permissionList; track p.action) {
@@ -74,6 +77,12 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
         <input id="setting-proof-threshold" data-testid="setting-proof-threshold" formControlName="proofThreshold" inputmode="decimal" autocomplete="off" />
         <label for="setting-proof-threshold-from">Proof threshold from (blank: the sheet's today)</label>
         <input id="setting-proof-threshold-from" type="date" data-testid="setting-proof-threshold-from" formControlName="proofThresholdFrom" />
+        @for (g of grades; track g) {
+          <label [for]="'setting-proof-threshold-' + g">Proof threshold for grade {{ g }} (blank: none, the sheet's)</label>
+          <input [id]="'setting-proof-threshold-' + g" [attr.data-testid]="'setting-proof-threshold-' + g" [formControl]="gradeProofThresholdForm.controls[g]" inputmode="decimal" autocomplete="off" />
+          <label [for]="'setting-proof-threshold-' + g + '-from'">Proof threshold for grade {{ g }} from (blank: the sheet's today)</label>
+          <input [id]="'setting-proof-threshold-' + g + '-from'" type="date" [attr.data-testid]="'setting-proof-threshold-' + g + '-from'" [formControl]="gradeProofThresholdFromForm.controls[g]" />
+        }
         <label for="setting-note-threshold">Note threshold: a claim whose due is above it needs a note to be opened (blank: none)</label>
         <input id="setting-note-threshold" data-testid="setting-note-threshold" formControlName="noteThreshold" inputmode="decimal" autocomplete="off" />
         <label for="setting-note-threshold-from">Note threshold from (blank: the sheet's today)</label>
@@ -247,6 +256,18 @@ export class Settings {
     B: new FormControl('', { nonNullable: true }),
     C: new FormControl('', { nonNullable: true }),
   });
+  /** A grade's proof threshold, typed in beside the other settings and saved with them. */
+  protected readonly gradeProofThresholdForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  });
+  /** The from-date of a grade's proof threshold, typed in beside it. */
+  protected readonly gradeProofThresholdFromForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  });
   /** The roles that may take each action, typed in beside the other settings and saved with them. */
   protected readonly permissionsForm = new FormGroup({
     open: new FormControl('', { nonNullable: true }),
@@ -281,6 +302,8 @@ export class Settings {
     this.gradeTermsFromForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.gradeGraceForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.gradeGraceFromForm.valueChanges.subscribe(() => this.settingsErr.set(null));
+    this.gradeProofThresholdForm.valueChanges.subscribe(() => this.settingsErr.set(null));
+    this.gradeProofThresholdFromForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.permissionsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.roleForm.valueChanges.subscribe(() => this.roleErr.set(null));
     this.delegateForm.valueChanges.subscribe(() => this.delegateErr.set(null));
@@ -314,6 +337,8 @@ export class Settings {
         this.gradeTermsFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.gradeGraceForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.gradeGraceFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
+        this.gradeProofThresholdForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
+        this.gradeProofThresholdFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.permissionsForm.reset({ open: '', settle: '', void: '', reassign: '', close: '', reopen: '' }, { emitEvent: false });
         this.roleForm.reset({ user: '', role: '' }, { emitEvent: false });
         if (id) void this.read(id);
@@ -360,6 +385,12 @@ export class Settings {
         grade: g, control: this.gradeGraceForm.controls[g], value: this.gradeGraceForm.controls[g].value.trim(),
         fromControl: this.gradeGraceFromForm.controls[g], from: this.gradeGraceFromForm.controls[g].value.trim(),
       }));
+    const gradeProofThresholdToSave = GRADES
+      .filter((g) => typed(this.gradeProofThresholdForm.controls[g]) || typed(this.gradeProofThresholdFromForm.controls[g]))
+      .map((g) => ({
+        grade: g, control: this.gradeProofThresholdForm.controls[g], value: this.gradeProofThresholdForm.controls[g].value.trim(),
+        fromControl: this.gradeProofThresholdFromForm.controls[g], from: this.gradeProofThresholdFromForm.controls[g].value.trim(),
+      }));
     const permissionsToSave = PERMISSIONS
       .filter((p) => typed(this.permissionsForm.controls[p.action]))
       .map((p) => ({
@@ -368,7 +399,7 @@ export class Settings {
         typed: this.permissionsForm.controls[p.action].value.trim(),
       }));
     const saveLimit = typed(clerkLimit) || typed(clerkLimitFrom)
-      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveNoteThreshold || saveGraceDays);
+      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveNoteThreshold || saveGraceDays);
     const limitFrom = clerkLimitFrom.value.trim();
     const floorFromValue = floorFrom.value.trim();
     const termsFromValue = termsFrom.value.trim();
@@ -393,6 +424,7 @@ export class Settings {
         || (saveTerms && termsValue !== '' && !TERMS_PATTERN.test(termsValue))
         || gradeTermsToSave.some((t) => t.value !== '' && !TERMS_PATTERN.test(t.value))
         || gradeGraceToSave.some((t) => t.value !== '' && !TERMS_PATTERN.test(t.value))
+        || gradeProofThresholdToSave.some((t) => t.value !== '' && !LIMIT_PATTERN.test(t.value))
         || (saveLatePct && latePctValue !== '' && !LATE_PCT_PATTERN.test(latePctValue))
         || (savePolicyDate && policyDateValue !== '' && !POLICY_DATE_PATTERN.test(policyDateValue))
         || (savePeriodNumberingFrom && periodNumberingFromValue !== '' && !POLICY_DATE_PATTERN.test(periodNumberingFromValue))
@@ -406,6 +438,7 @@ export class Settings {
         || badFrom(saveProofThreshold, proofThresholdFromValue) || badFrom(saveNoteThreshold, noteThresholdFromValue)
         || gradeTermsToSave.some((t) => badFrom(true, t.from))
         || gradeGraceToSave.some((t) => badFrom(true, t.from))
+        || gradeProofThresholdToSave.some((t) => badFrom(true, t.from))
         || permissionsToSave.some((p) => p.typed !== '' && !PERMISSION_PATTERN.test(p.typed))) {
       this.settingsErr.set(SETTINGS_INVALID);
       return;
@@ -475,6 +508,12 @@ export class Settings {
         settled(proofThresholdFrom, proofThresholdFromValue);
         if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
       }
+      for (const t of gradeProofThresholdToSave) {
+        const saved = await this.api.setGradeProofThreshold(sheetId, t.grade, t.value, t.from);
+        settled(t.control, t.value);
+        settled(t.fromControl, t.from);
+        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+      }
       if (saveNoteThreshold) {
         const saved = await this.api.setNoteThreshold(sheetId, noteThresholdValue, noteThresholdFromValue);
         settled(noteThreshold, noteThresholdValue);
@@ -498,7 +537,7 @@ export class Settings {
     }
     if (this.resaveSettings) {
       this.resaveSettings = false;
-      if (this.settingsForm.dirty || this.gradeTermsForm.dirty || this.gradeTermsFromForm.dirty || this.gradeGraceForm.dirty || this.gradeGraceFromForm.dirty || this.permissionsForm.dirty) await this.saveSettings();
+      if (this.settingsForm.dirty || this.gradeTermsForm.dirty || this.gradeTermsFromForm.dirty || this.gradeGraceForm.dirty || this.gradeGraceFromForm.dirty || this.gradeProofThresholdForm.dirty || this.gradeProofThresholdFromForm.dirty || this.permissionsForm.dirty) await this.saveSettings();
     }
   }
 

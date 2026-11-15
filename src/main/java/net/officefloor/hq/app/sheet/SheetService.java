@@ -95,6 +95,13 @@ public class SheetService {
         return sheets.findById(id).map(s -> s.proofThresholdOn(on)).orElse(null);
     }
 
+    /** The proof threshold in force on a date for a grade: the grade's own when one is set, else
+     *  the sheet's; null when there is none. */
+    @Transactional(readOnly = true)
+    public BigDecimal proofThresholdFor(String id, String grade, LocalDate on) {
+        return sheets.findById(id).map(s -> s.proofThresholdFor(grade, on)).orElse(null);
+    }
+
     /** The sheet's note threshold in force on a date; null when there is none. */
     @Transactional(readOnly = true)
     public BigDecimal noteThresholdOn(String id, LocalDate on) {

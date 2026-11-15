@@ -51,6 +51,9 @@ public class SettingsService {
     /** The key the proof threshold is audited under. */
     public static final String PROOF_THRESHOLD = Sheet.PROOF_THRESHOLD;
 
+    /** The key a grade's proof threshold is audited under, followed by the grade. */
+    public static final String PROOF_THRESHOLD_OF_GRADE = Sheet.PROOF_THRESHOLD_OF_GRADE;
+
     /** The key the note threshold is audited under. */
     public static final String NOTE_THRESHOLD = Sheet.NOTE_THRESHOLD;
 
@@ -314,6 +317,19 @@ public class SettingsService {
         sheets.lock(sheetId);
         BigDecimal scaled = threshold == null ? null : threshold.setScale(2);
         record(sheet, user, PROOF_THRESHOLD, scaled == null ? "" : scaled.toPlainString(), from);
+        return scaled;
+    }
+
+    /** Set a grade's proof threshold (null: none, the grade uses the sheet's) from a date (null:
+     *  the sheet's today), the sheet created first if it was never loaded; a claim dated from then
+     *  on to the next from-date whose person's grade then is this one and whose due is above it
+     *  cannot be settled or approved while it has no proof. */
+    @Transactional
+    public BigDecimal setGradeProofThreshold(String sheetId, String user, String grade, BigDecimal threshold, LocalDate from) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        BigDecimal scaled = threshold == null ? null : threshold.setScale(2);
+        record(sheet, user, PROOF_THRESHOLD_OF_GRADE + grade, scaled == null ? "" : scaled.toPlainString(), from);
         return scaled;
     }
 

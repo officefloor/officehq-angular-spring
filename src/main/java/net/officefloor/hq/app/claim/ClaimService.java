@@ -346,7 +346,7 @@ public class ClaimService {
         BigDecimal settling = to == ClaimStatus.SETTLED ? shownDueOf(claim, person) : null;
         if (to == ClaimStatus.SETTLED) {
             // before the clerk limit: a claim needing a proof never goes to PENDING
-            refuseIfUnproven(claim, settling);
+            refuseIfUnproven(claim, person, settling);
         }
         if (to == ClaimStatus.SETTLED && !settings.maySettle(sheetId, user, settling)) {
             // above the clerk limit: a steward approves or rejects it
@@ -515,7 +515,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         BigDecimal due = shownDueOf(claim, person);
-        refuseIfUnproven(claim, due);
+        refuseIfUnproven(claim, person, due);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setStatus(ClaimStatus.SETTLED);
         claim.setSettledDue(due);
@@ -547,12 +547,13 @@ public class ClaimService {
     }
 
     /** Refuse (422) settling or approving a claim at a due (null: n/a) above the proof threshold in
-     *  force on its date while it has no proof. */
-    private void refuseIfUnproven(Claim claim, BigDecimal due) {
+     *  force on its date (its person's grade's then when one is set, else the sheet's) while it has
+     *  no proof. */
+    private void refuseIfUnproven(Claim claim, Person person, BigDecimal due) {
         if (claim.getProofs() > 0 || due == null) {
             return;
         }
-        BigDecimal threshold = sheets.proofThresholdOn(claim.getSheetId(), claim.getDate());
+        BigDecimal threshold = sheets.proofThresholdFor(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate());
         if (threshold != null && due.compareTo(threshold) > 0) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "A claim whose due is above the proof threshold needs a proof first");

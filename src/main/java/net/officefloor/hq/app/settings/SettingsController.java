@@ -277,6 +277,17 @@ public class SettingsController {
         return view(sheetId);
     }
 
+    @PutMapping("/settings/proof-threshold/{grade}")
+    public SettingsView setGradeProofThreshold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ProofThresholdForm body) {
+        BigDecimal threshold = body.value().isEmpty() ? null : new BigDecimal(body.value());
+        service.setGradeProofThreshold(sheetId, user.trim(), grade, threshold, fromOf(body.from()));
+        return view(sheetId);
+    }
+
     @PutMapping("/settings/note-threshold")
     public SettingsView setNoteThreshold(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,

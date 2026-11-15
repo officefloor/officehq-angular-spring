@@ -116,6 +116,13 @@ export class SettingsApi {
     );
   }
 
+  /** Save the grade's proof threshold (blank: none, the sheet's applies) from a date (blank: the sheet's today). */
+  setGradeProofThreshold(sheetId: string, grade: string, value: string, from = ''): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/proof-threshold/${encodeURIComponent(grade)}`, { value, from }, { headers: this.headers() }),
+    );
+  }
+
   /** Save the value from a date (blank: the sheet's today). */
   setTerms(sheetId: string, value: string, from = ''): Promise<Settings> {
     return firstValueFrom(

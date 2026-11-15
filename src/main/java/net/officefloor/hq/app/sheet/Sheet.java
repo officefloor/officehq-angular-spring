@@ -52,6 +52,8 @@ public class Sheet {
     public static final String CAP = "cap";
     /** The key of the proof threshold's dated values. */
     public static final String PROOF_THRESHOLD = "proof-threshold";
+    /** The key of a grade's own proof threshold's dated values, followed by the grade. */
+    public static final String PROOF_THRESHOLD_OF_GRADE = "proof-threshold-";
     /** The key of the note threshold's dated values. */
     public static final String NOTE_THRESHOLD = "note-threshold";
 
@@ -291,6 +293,13 @@ public class Sheet {
      *  settled or approved without a proof; null when there is none. */
     public BigDecimal proofThresholdOn(LocalDate on) {
         return amountOn(PROOF_THRESHOLD, on, null);
+    }
+
+    /** The proof threshold in force on a date for a grade: its own then when one is set, else the
+     *  sheet's then; null when there is none. */
+    public BigDecimal proofThresholdFor(String grade, LocalDate on) {
+        BigDecimal own = grade == null ? null : amountOn(PROOF_THRESHOLD_OF_GRADE + grade, on, null);
+        return own != null ? own : proofThresholdOn(on);
     }
 
     /** The note threshold in force on the sheet's today; null when there is none. */
