@@ -1,0 +1,134 @@
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index eacc38521..da597b5b2 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -43,6 +43,13 @@ export interface Snapshot {
+   dueTotal: string | null;
+ }
+ 
++/** A statement line: the date the statement shows (yyyy-mm-dd) and its due-total, with two
++ *  decimals; null when it was n/a. */
++export interface StatementLine {
++  date: string;
++  dueTotal: string | null;
++}
++
+ /** Whether any of the holds covers a date (yyyy-mm-dd). */
+ export function heldOn(holds: readonly Hold[], date: string): boolean {
+   return holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
+@@ -70,6 +77,8 @@ export interface Person {
+   retirements: Retirement[];
+   /** The person's snapshot lines, oldest first: one each time the sheet's today moved. */
+   snapshots: Snapshot[];
++  /** One line per statement still standing, by date, oldest first (those a merge or transfer brought among them). */
++  statements: StatementLine[];
+   /** Whether the person has any hold. */
+   held: boolean;
+   /** The person's holds, in the order they were added: their OPEN claims dated within one count in
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ebbdda1e5..81c1b2d61 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -242,6 +242,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+             @if (shows('statement-count')) { <th scope="col">Statements</th> }
+             @if (shows('stated-total')) { <th scope="col">Last stated</th> }
+             @if (shows('statement-date')) { <th scope="col">Stated on</th> }
++            <th scope="col">Statement lines</th>
+             <th scope="col">Take statement</th><th scope="col">Snapshots</th>
+             @if (shows('retired')) { <th scope="col">Retired</th> }
+             <th scope="col">Retirement</th><th scope="col">Active</th>
+@@ -329,6 +330,13 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+               @if (shows('statement-date')) {
+                 <td data-testid="person-statement-date">{{ p.statementDate ?? '' }}</td>
+               }
++              <td>
++                <ul aria-label="Statement lines">
++                  @for (st of p.statements; track $index) {
++                    <li data-testid="person-statement-line-line">{{ st.date }} {{ st.dueTotal ?? 'n/a' }}</li>
++                  }
++                </ul>
++              </td>
+               <td>
+                 <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Statement of {{ p.name }} as of</label>
+                 <input [id]="'person-statement-asof-' + p.id" type="date" data-testid="person-statement-asof" #statementAsOf
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 2aacbca20..95856528f 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -39,7 +39,7 @@ public class PersonController {
+ 
+     /** A person as the screen shows them, with their statement count and their last statement's
+      *  due-total (two decimals; null when it was n/a or they have none) and date, and the date
+-     *  they are retired from (null while not retired), their past retirements, their snapshot lines (oldest first), whether they have any hold, their holds, and the ids of
++     *  they are retired from (null while not retired), their past retirements, their snapshot lines (oldest first), their statement lines (by date, oldest first), whether they have any hold, their holds, and the ids of
+      *  their patrons in the order they were named, and whether the signed-in user watches them. The grade is the one in force on the sheet's
+      *  today; grades lists every grade they have been given, by from-date, the first one undated; terms
+      *  are their own terms in days (null when they have none). Clashing: their name or an alias is
+@@ -48,7 +48,8 @@ public class PersonController {
+             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held, List<Person.Hold> holds,
+             List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms,
+             String contact, List<String> aliases, boolean clashing, String origin,
+-            List<Person.Retirement> retirements, String tags, List<SnapshotLine> snapshots) {
++            List<Person.Retirement> retirements, String tags, List<SnapshotLine> snapshots,
++            List<StatementLine> statements) {
+         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
+                 boolean watched, boolean clashing) {
+             return of(p.getId(), p, today, s, patronIds, watched, clashing);
+@@ -61,7 +62,16 @@ public class PersonController {
+                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
+                     p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.getTerms(),
+                     p.getContact(), p.getAliases(), clashing, p.getOriginSheetId(), p.getRetirements(),
+-                    p.getTags(), p.getSnapshots().stream().map(SnapshotLine::of).toList());
++                    p.getTags(), p.getSnapshots().stream().map(SnapshotLine::of).toList(),
++                    s.lines().stream().map(StatementLine::of).toList());
++        }
++    }
++
++    /** A statement line as the screen shows it: the date the statement shows and its due-total
++     *  (two decimals; null when it was n/a). */
++    public record StatementLine(LocalDate date, String dueTotal) {
++        static StatementLine of(StatementSummary.Line l) {
++            return new StatementLine(l.date(), l.dueTotal() == null ? null : l.dueTotal().setScale(2).toPlainString());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/StatementSummary.java b/src/main/java/net/officefloor/hq/app/person/StatementSummary.java
+index bc28c78c5..e21fdd6ca 100644
+--- a/src/main/java/net/officefloor/hq/app/person/StatementSummary.java
++++ b/src/main/java/net/officefloor/hq/app/person/StatementSummary.java
+@@ -2,13 +2,20 @@ package net.officefloor.hq.app.person;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.Comparator;
+ import java.util.List;
+ 
+ /** What a person shows of their statements: how many they have had, and the last one's due-total
+- *  (null when it was n/a) and date, the one it was taken as of if any (both null with none). */
+-public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate lastDate) {
++ *  (null when it was n/a) and date, the one it was taken as of if any (both null with none), and a
++ *  line for each statement still standing, by the date it shows (oldest first; taken order on a tie),
++ *  so those a merge or a transfer brings over fall in among their own by date. */
++public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate lastDate, List<Line> lines) {
+ 
+-    public static final StatementSummary NONE = new StatementSummary(0, null, null);
++    public static final StatementSummary NONE = new StatementSummary(0, null, null, List.of());
++
++    /** A statement line: the date the statement shows and its due-total (null when it was n/a). */
++    public record Line(LocalDate date, BigDecimal dueTotal) {
++    }
+ 
+     /** The summary of one person's statements, oldest first. */
+     public static StatementSummary of(List<PersonStatement> statements) {
+@@ -16,6 +23,10 @@ public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate las
+             return NONE;
+         }
+         PersonStatement last = statements.get(statements.size() - 1);
+-        return new StatementSummary(statements.size(), last.getDueTotal(), last.getStatedOn());
++        List<Line> lines = statements.stream()
++                .sorted(Comparator.comparing(PersonStatement::getStatedOn))
++                .map(s -> new Line(s.getStatedOn(), s.getDueTotal()))
++                .toList();
++        return new StatementSummary(statements.size(), last.getDueTotal(), last.getStatedOn(), lines);
+     }
+ }
