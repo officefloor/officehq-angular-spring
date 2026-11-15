@@ -10,7 +10,7 @@ import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, effectiveRates, pctOn, plusDays } from '../rates/rates-api';
-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, mergeError, patronError, personError, cancelStatementError, retireError, statementError, transferError, watchError } from './people-api';
+import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, importError, isStale, mergeError, patronError, personError, cancelStatementError, retireError, statementError, transferError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -72,6 +72,17 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
         }
         @if (pasteErr(); as err) {
           <p role="alert" data-testid="paste-error">{{ err }}</p>
+        }
+      </form>
+      <form [formGroup]="importForm" (ngSubmit)="importPeople()" aria-label="Import people">
+        <label for="import-people">Import people (name,grade,terms,contact per line)</label>
+        <textarea id="import-people" data-testid="import-people" formControlName="text" rows="4"></textarea>
+        <button type="submit" data-testid="import-submit">Import people</button>
+        @if (imported() !== null) {
+          <p role="status">Added <strong data-testid="import-added">{{ imported() }}</strong></p>
+        }
+        @if (importErr(); as err) {
+          <p role="alert" data-testid="import-error">{{ err }}</p>
         }
       </form>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
@@ -647,6 +658,15 @@ export class People {
   protected readonly pasteErr = signal<string | null>(null);
   private pasting = false;
 
+  /** The import box: lines of name,grade,terms,contact, each a person as the form adds them. */
+  protected readonly importForm = new FormGroup({
+    text: new FormControl('', { nonNullable: true }),
+  });
+  /** How many people the last import added; null while one runs or before the first. */
+  protected readonly imported = signal<number | null>(null);
+  protected readonly importErr = signal<string | null>(null);
+  private importing = false;
+
   /** Guards against a slower, older read landing over a newer one. */
   private readSeq = 0;
 
@@ -654,6 +674,7 @@ export class People {
     this.form.valueChanges.subscribe(() => this.error.set(null));
     this.quickForm.valueChanges.subscribe(() => this.quickError.set(null));
     this.pasteForm.valueChanges.subscribe(() => this.pasteErr.set(null));
+    this.importForm.valueChanges.subscribe(() => this.importErr.set(null));
     this.bulkGradeForm.valueChanges.subscribe(() => this.bulkGradeErr.set(null));
     effect(() => {
       const id = this.session.sheetId();
@@ -667,6 +688,9 @@ export class People {
         this.pasteForm.reset({ text: '' });
         this.pasted.set(null);
         this.pasteErr.set(null);
+        this.importForm.reset({ text: '' });
+        this.imported.set(null);
+        this.importErr.set(null);
         this.selectedClaims.set(new Set());
         this.bulkResult.set(null);
         this.bulkError.set(null);
@@ -1212,6 +1236,32 @@ export class People {
       this.pasteErr.set(pasteError(e));
     } finally {
       this.pasting = false;
+    }
+  }
+
+  /** Add a person per imported line, all or none; then show how many were added. */
+  protected async importPeople(): Promise<void> {
+    if (this.importing) return;
+    this.imported.set(null);
+    this.importErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const text = this.importForm.getRawValue().text;
+    if (!text.trim()) {
+      this.importErr.set('Paste at least one line of name,grade,terms,contact.');
+      return;
+    }
+    this.importing = true;
+    try {
+      const added = await this.api.importPeople(sheetId, text);
+      if (this.session.sheetId() !== sheetId) return;
+      this.people.update((ps) => [...ps, ...added]);
+      this.importForm.reset({ text: '' }, { emitEvent: false });
+      this.imported.set(added.length);
+    } catch (e) {
+      this.importErr.set(importError(e));
+    } finally {
+      this.importing = false;
     }
   }
 
