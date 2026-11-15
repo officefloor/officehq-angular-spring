@@ -1,0 +1,55 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 4e066f6db..5503d2166 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -116,6 +116,9 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+       <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong>
+         open total <strong data-testid="rollup-open-total">{{ openTotal() | figure }}</strong></p>
+       <p>Cut total <strong data-testid="rollup-cut-total">{{ money(cutTotal()) | figure }}</strong></p>
++      <p>Aged due 0–30 <strong data-testid="rollup-aged-0-30">{{ money(agedTotal().upTo30) | figure }}</strong>
++        31–60 <strong data-testid="rollup-aged-31-60">{{ money(agedTotal().upTo60) | figure }}</strong>
++        61+ <strong data-testid="rollup-aged-61">{{ money(agedTotal().over60) | figure }}</strong></p>
+       @if (tagTotals().length > 0) {
+         <table aria-label="Due total by tag">
+           <thead><tr><th scope="col">Tag</th><th scope="col">Due total</th></tr></thead>
+@@ -686,6 +689,16 @@ export class People {
+     }
+     return out;
+   });
++  /** Everyone's age buckets added up (not trimmed), in cents. */
++  protected readonly agedTotal = computed<Aged>(() => {
++    const total: Aged = { upTo30: 0, upTo60: 0, over60: 0 };
++    for (const a of this.agedByPerson().values()) {
++      total.upTo30 += a.upTo30;
++      total.upTo60 += a.upTo60;
++      total.over60 += a.over60;
++    }
++    return total;
++  });
+   protected agedOf(personId: number): Aged {
+     return this.agedByPerson().get(personId) ?? { upTo30: 0, upTo60: 0, over60: 0 };
+   }
+diff --git a/src/main/java/net/officefloor/hq/app/person/StatementSummary.java b/src/main/java/net/officefloor/hq/app/person/StatementSummary.java
+index e21fdd6ca..1ecdde403 100644
+--- a/src/main/java/net/officefloor/hq/app/person/StatementSummary.java
++++ b/src/main/java/net/officefloor/hq/app/person/StatementSummary.java
+@@ -7,8 +7,8 @@ import java.util.List;
+ 
+ /** What a person shows of their statements: how many they have had, and the last one's due-total
+  *  (null when it was n/a) and date, the one it was taken as of if any (both null with none), and a
+- *  line for each statement still standing, by the date it shows (oldest first; taken order on a tie),
+- *  so those a merge or a transfer brings over fall in among their own by date. */
++ *  line for each statement still standing (the date it shows), by the date it was taken (oldest first;
++ *  taken order on a tie), so those a merge or a transfer brings over fall in among their own by date. */
+ public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate lastDate, List<Line> lines) {
+ 
+     public static final StatementSummary NONE = new StatementSummary(0, null, null, List.of());
+@@ -24,7 +24,7 @@ public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate las
+         }
+         PersonStatement last = statements.get(statements.size() - 1);
+         List<Line> lines = statements.stream()
+-                .sorted(Comparator.comparing(PersonStatement::getStatedOn))
++                .sorted(Comparator.comparing(PersonStatement::getTakenOn))
+                 .map(s -> new Line(s.getStatedOn(), s.getDueTotal()))
+                 .toList();
+         return new StatementSummary(statements.size(), last.getDueTotal(), last.getStatedOn(), lines);
