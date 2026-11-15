@@ -1,0 +1,82 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index dc4f143b3..17b6aacb8 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -43,8 +43,8 @@ export interface Claim {
+   /** The user who last edited the claim, who like its opener cannot settle or approve it; null
+    *  when never edited. */
+   editedBy: string | null;
+-  /** Whether the person's last statement bound the claim: it then shows and totals statedDue,
+-   *  except while PENDING, when it shows and totals its live figure. */
++  /** Whether the person's last statement bound the claim: it then shows and totals statedDue
++   *  (a PENDING one too). */
+   stated: boolean;
+   /** The due the claim was bound to, with two decimals; null when unbound or n/a then. */
+   statedDue: string | null;
+@@ -151,9 +151,9 @@ export function isOpen(c: Claim): boolean {
+   return c.status === 'OPEN' || c.status === 'PENDING';
+ }
+ 
+-/** Whether a claim's due is bound to statedDue: stated and not PENDING. */
++/** Whether a claim's due is bound to statedDue: stated (a PENDING claim too). */
+ export function isBound(c: Claim): boolean {
+-  return c.stated && c.status !== 'PENDING';
++  return c.stated;
+ }
+ 
+ /** Whether a claim is deferred on the sheet's today: OPEN, deferred until a date after it. Until
+diff --git a/src/main/frontend/src/app/features/rates/rates-api.ts b/src/main/frontend/src/app/features/rates/rates-api.ts
+index a8a987da8..bd5c1e447 100644
+--- a/src/main/frontend/src/app/features/rates/rates-api.ts
++++ b/src/main/frontend/src/app/features/rates/rates-api.ts
+@@ -210,7 +210,7 @@ export interface Lateness {
+ }
+ 
+ /** A claim's due in cents: the due fixed when it was settled, else the greater of the sheet's floor in
+- *  force on its date and its figure (the rate figure a statement bound it to (unless PENDING), else its
++ *  force on its date and its figure (the rate figure a statement bound it to, else its
+  *  amount times its grade's rate in force on its date, rounded half up when `halfUp` (the claim's rounding
+  *  policy) else half to even) with its late charge, rounded the same way, on top (a correction is neither
+  *  raised to the floor nor charged late); null (n/a) with no figure. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 63793363d..370770341 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -450,10 +450,10 @@ public class Claim {
+         return status == ClaimStatus.OPEN && deferredUntil != null && deferredUntil.isAfter(today);
+     }
+ 
+-    /** Whether the claim's due is bound to {@link #statedDue}: it is stated and not PENDING (a
+-     *  PENDING claim shows its live figure, and is bound again if rejected back to OPEN). */
++    /** Whether the claim's due is bound to {@link #statedDue}: it is stated (a PENDING claim too,
++     *  like any other claim that counts). */
+     public boolean isBound() {
+-        return stated && status != ClaimStatus.PENDING;
++        return stated;
+     }
+ 
+     /** Bind the claim to a due (null: n/a) until the person's next statement. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 657eee3c9..2954a96fe 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -667,8 +667,8 @@ public class ClaimService {
+         return claim;
+     }
+ 
+-    /** A steward approves a PENDING claim: it becomes SETTLED, its due (its live figure, with its
+-     *  late charge) frozen now. Refused (409) unless PENDING, (403) for a clerk or the user who
++    /** A steward approves a PENDING claim: it becomes SETTLED, its due (the figure it shows, bound
++     *  by a statement or live, with its late charge) frozen now. Refused (409) unless PENDING, (403) for a clerk or the user who
+      *  opened or last edited it, (423) when it is due in a closed period, and (422) when its due is above the
+      *  proof threshold in force on its date while it has no proof. */
+     @Transactional
+@@ -1262,7 +1262,7 @@ public class ClaimService {
+     }
+ 
+     /** A claim's figure before any late charge or floor: the one a statement bound it to (null: n/a),
+-     *  else (unbound, or PENDING) its rate figure. */
++     *  else (unbound) its rate figure. */
+     private BigDecimal figureOf(Claim claim, Person person) {
+         return claim.isBound() ? claim.getStatedDue() : rateFigureOf(claim, person);
+     }

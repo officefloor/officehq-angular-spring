@@ -1,0 +1,68 @@
+{
+  "checkpoint": 172,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp172_pending-bound",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    36
+  ],
+  "replaced_tests": [
+    "cp36_approvals.spec.ts::approvals"
+  ],
+  "request": {
+    "spec": "A PENDING claim is now bound by a statement like any other claim that counts: while a statement\nbinds it, it shows and totals the bound figure.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA PENDING claim is now bound by a statement like any other claim that counts: while a statement\nbinds it, it shows and totals the bound figure.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d21711c2c73e0734fca0a06961ba252f6229cd88",
+  "reset_sha": "",
+  "preagent_sha": "2ca7a228b043925f563d6e7e63dd0ed1c1dbc79f",
+  "prev_sha": "2ca7a228b043925f563d6e7e63dd0ed1c1dbc79f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2836829999999995,
+    "input_tokens": 54,
+    "output_tokens": 9557,
+    "cache_read_tokens": 1782410,
+    "cache_creation_tokens": 32821,
+    "num_turns": 26,
+    "duration_ms": 759405,
+    "duration_api_ms": 159305,
+    "model": "claude-opus-5-5",
+    "session_id": "572b7370-6ccb-4089-9598-de469c4463e8",
+    "stop_reason": "success",
+    "result_text": "A PENDING claim that a statement has bound now shows and totals its bound figure, like any other claim that counts. In the final `bin/e2e` run, 3 of the 4 tests pass. Scenario 1 fails at line 322 because of today's date, not because of this change.\n\n**What changed**\n- **Server**: `Claim.isBound()` in `Claim.java` used to return false for any PENDING claim. Now it is true whenever a statement bound the claim. Every figure goes through that check: the claim's due, person and sheet totals, rollups, the history view and approving. Approving a bound PENDING claim therefore settles it at the bound figure.\n- **Front end**: the matching `isBound()` in `claims-api.ts` got the same change, so the screen and the server agree.\n- I updated the comments that described the old rule in `Claim.java`, `ClaimService.java`, `claims-api.ts` and `rates-api.ts`.\n- No database change was needed. Statements already marked PENDING claims as bound and stored the bound figure; it just wasn't being used.\n\n**Why scenario 1 fails**\n- It expects `rate-current-C` to show `5.00`, inherited from a parent sheet and viewed as of 2026-04-02. The parent sheet never sets its own date, so it starts on the real date (`SheetService.java:36` uses `LocalDate.now()`, documented as \"its today the real date\"). Today is 2026-11-15, so the parent's rates are dated after 2026-04-02 and the view finds none. It shows `n/a`.\n- To confirm, I briefly changed new sheets to start on 2026-03-01, rebuilt and ran scenario 1 alone. It passed all the way through, including its PENDING checks.\n- That edit is reverted: the source matches the original apart from my change, and the final run used the real code.\n\nThe test's expected values look like they were recorded when the real date was 2026-04-02 or earlier. To make scenario 1 pass now, the test would need to set the parent sheet's date, or the app would need a different default date for new sheets. Either one goes beyond this change request, and I'm not allowed to edit the test, so I left it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2836829999999995,
+        "num_turns": 26,
+        "duration_ms": 759405,
+        "duration_api_ms": 159305,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp172.agent.jsonl",
+  "agent_diff_file": "cp172.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
