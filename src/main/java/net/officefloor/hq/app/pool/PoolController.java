@@ -6,6 +6,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -27,12 +29,14 @@ import org.springframework.web.server.ResponseStatusException;
 public class PoolController {
 
     /** A member as the screen shows it: the person's id, or the member pool's name, and the share
-     *  with two decimals. */
-    public record MemberView(Long personId, String pool, String share) {
+     *  with two decimals, and the membership's from- and to-date (yyyy-mm-dd, null when not given). */
+    public record MemberView(Long personId, String pool, String share, String from, String to) {
         static MemberView of(PoolMember m, Map<Long, String> poolNames) {
             return new MemberView(m.getPersonId(),
                     m.getMemberPoolId() == null ? null : poolNames.get(m.getMemberPoolId()),
-                    m.getShare().setScale(2).toPlainString());
+                    m.getShare().setScale(2).toPlainString(),
+                    m.getFromDate() == null ? null : m.getFromDate().toString(),
+                    m.getToDate() == null ? null : m.getToDate().toString());
         }
     }
 
@@ -50,12 +54,14 @@ public class PoolController {
 
     /** A member as the pool's row submits it: the pool, a person or another pool of the sheet
      *  (exactly one), and a share percent with up to two decimals, more than 0.00 and at most
-     *  100.00. */
+     *  100.00, and an optional from- and to-date (yyyy-mm-dd, blank for none). */
     public record MemberForm(
             @NotBlank @Size(max = 200) String pool,
             Long personId,
             @Size(max = 200) String memberPool,
-            @NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String share) {
+            @NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String share,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String from,
+            @Pattern(regexp = "\\s*(\\d{4}-\\d{2}-\\d{2})?\\s*") String to) {
     }
 
     private final PoolService service;
@@ -94,12 +100,28 @@ public class PoolController {
         if (isPool == (body.personId() != null)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a person or a pool");
         }
+        BigDecimal share = share(body.share());
+        LocalDate from = date(body.from());
+        LocalDate to = date(body.to());
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "The to-date is before the from-date");
+        }
         if (isPool) {
-            service.addPoolMember(sheetId, user.trim(), body.pool().trim(), body.memberPool().trim(), share(body.share()));
+            service.addPoolMember(sheetId, user.trim(), body.pool().trim(), body.memberPool().trim(), share, from, to);
         } else {
-            service.addMember(sheetId, user.trim(), body.pool().trim(), body.personId(), share(body.share()));
+            service.addMember(sheetId, user.trim(), body.pool().trim(), body.personId(), share, from, to);
         }
         return list(sheetId, user);
+    }
+
+    /** A date, null when blank; refused (400) when not a real date. */
+    private static LocalDate date(String text) {
+        if (text == null || text.isBlank()) return null;
+        try {
+            return LocalDate.parse(text.trim());
+        } catch (DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date");
+        }
     }
 
     /** The share, refused (400) unless more than 0.00 and at most 100.00. */

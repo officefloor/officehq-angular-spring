@@ -6,12 +6,25 @@ import { Session, otherError } from '../../core/session';
 /** A share percent: up to two decimals (more than 0.00 and at most 100.00 is checked apart). */
 export const SHARE_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 
+/** A from- or to-date of a membership: yyyy-mm-dd. */
+export const MEMBER_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 /** A person, or another pool of the sheet, in a pool with their share percent (two decimals):
- *  exactly one of personId and pool is set. */
+ *  exactly one of personId and pool is set. The membership may carry a from- and a to-date
+ *  (yyyy-mm-dd, both inclusive, null when not given). */
 export interface PoolMember {
   personId: number | null;
   pool: string | null;
   share: string;
+  from: string | null;
+  to: string | null;
+}
+
+/** Whether the membership's dates include the day (yyyy-mm-dd): a member outside them is left out
+ *  of the pool entirely. With no day known, every member is in. */
+export function memberOn(m: PoolMember, day: string | null): boolean {
+  if (day === null) return true;
+  return (m.from === null || m.from <= day) && (m.to === null || day <= m.to);
 }
 
 /** A member's key in its row's data-testid: the person's id, or pool-<name>. */
@@ -41,9 +54,10 @@ export class PoolsApi {
   }
 
   /** Add a person, or another pool, to a pool with a share; resolves to the sheet's pools with them. */
-  addMember(sheetId: string, pool: string, member: { personId: number } | { memberPool: string }, share: string): Promise<Pool[]> {
+  addMember(sheetId: string, pool: string, member: { personId: number } | { memberPool: string }, share: string,
+    from: string, to: string): Promise<Pool[]> {
     return firstValueFrom(
-      this.http.post<Pool[]>(`${this.url(sheetId)}/members`, { pool, ...member, share }, { headers: this.headers() }),
+      this.http.post<Pool[]>(`${this.url(sheetId)}/members`, { pool, ...member, share, from, to }, { headers: this.headers() }),
     );
   }
 
@@ -63,9 +77,9 @@ export function poolError(e: unknown): string {
 }
 
 export function memberError(e: unknown): string {
-  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a share more than 0.00 and at most 100.00, with up to two decimals.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a share more than 0.00 and at most 100.00, with up to two decimals, and dates as yyyy-mm-dd.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That person is in the pool already, or that pool is a member of a pool already.';
-  if (e instanceof HttpErrorResponse && e.status === 422) return 'A pool cannot contain itself, and a chain of pools is at most three deep.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'A pool cannot contain itself, a chain of pools is at most three deep, and a to-date is not before the from-date.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That pool or person is no longer on the sheet; load the sheet again.';
   return otherError(e);
 }

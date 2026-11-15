@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.pool;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -59,10 +60,11 @@ public class PoolService {
         return pool;
     }
 
-    /** Add a person of the sheet to a pool with a share; refused (404) for a pool or person not on
-     *  the sheet, (409) when the person is in the pool already. */
+    /** Add a person of the sheet to a pool with a share and optional dates; refused (404) for a pool
+     *  or person not on the sheet, (409) when the person is in the pool already. */
     @Transactional
-    public PoolMember addMember(String sheetId, String user, String poolName, long personId, BigDecimal share) {
+    public PoolMember addMember(String sheetId, String user, String poolName, long personId, BigDecimal share,
+            LocalDate from, LocalDate to) {
         sheets.lock(sheetId);
         Pool pool = pools.findBySheetIdAndNameIgnoreCase(sheetId, poolName)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
@@ -71,10 +73,17 @@ public class PoolService {
         if (members.existsByPoolIdAndPersonId(pool.getId(), person.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The person is in the pool already");
         }
-        PoolMember member = members.saveAndFlush(new PoolMember(pool.getId(), person.getId(), share));
+        PoolMember member = new PoolMember(pool.getId(), person.getId(), share);
+        member.setDates(from, to);
+        member = members.saveAndFlush(member);
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
-                + " name=" + person.getName() + " share=" + share.setScale(2).toPlainString());
+                + " name=" + person.getName() + " share=" + share.setScale(2).toPlainString() + dates(from, to));
         return member;
+    }
+
+    /** The membership's dates as the audit records them: from=<date> and to=<date>, each when given. */
+    private static String dates(LocalDate from, LocalDate to) {
+        return (from == null ? "" : " from=" + from) + (to == null ? "" : " to=" + to);
     }
 
     /** The deepest a chain of pools may be, counting the pool at its top. */
@@ -84,7 +93,8 @@ public class PoolService {
      *  sheet, (409) when the member pool is a member of a pool already, (422) when the pool would
      *  contain itself through any chain or the chain of pools would be more than three deep. */
     @Transactional
-    public PoolMember addPoolMember(String sheetId, String user, String poolName, String memberName, BigDecimal share) {
+    public PoolMember addPoolMember(String sheetId, String user, String poolName, String memberName, BigDecimal share,
+            LocalDate from, LocalDate to) {
         sheets.lock(sheetId);
         Pool pool = pools.findBySheetIdAndNameIgnoreCase(sheetId, poolName)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
@@ -106,9 +116,11 @@ public class PoolService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "A chain of pools is at most " + MAX_DEPTH + " deep");
         }
-        PoolMember member = members.saveAndFlush(PoolMember.ofPool(pool.getId(), memberPool.getId(), share));
+        PoolMember member = PoolMember.ofPool(pool.getId(), memberPool.getId(), share);
+        member.setDates(from, to);
+        member = members.saveAndFlush(member);
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
-                + " name=" + memberPool.getName() + " share=" + share.setScale(2).toPlainString());
+                + " name=" + memberPool.getName() + " share=" + share.setScale(2).toPlainString() + dates(from, to));
         return member;
     }
 

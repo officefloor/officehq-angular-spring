@@ -145,7 +145,11 @@ export class Rates {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(null));
-    this.previewForm.valueChanges.subscribe(() => this.previewError.set(null));
+    // a preview is of the candidate it was run for; once the form changes it is gone
+    this.previewForm.valueChanges.subscribe(() => {
+      this.previewError.set(null);
+      this.previewed.set(null);
+    });
     this.importForm.valueChanges.subscribe(() => this.importErr.set(null));
     // a sheet (re)loaded starts with an empty import box
     effect(() => {

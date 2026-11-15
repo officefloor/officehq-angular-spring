@@ -4,11 +4,12 @@ import { Session } from '../../core/session';
 import { cents, money } from '../claims/claims-api';
 import { heldOn, type Person } from '../people/people-api';
 import { dueCents } from '../rates/rates-api';
-import { Pool, PoolMember, PoolsApi, SHARE_PATTERN, memberError, memberKey, poolError } from './pools-api';
+import { MEMBER_DATE_PATTERN, Pool, PoolMember, PoolsApi, SHARE_PATTERN, memberError, memberKey, memberOn, poolError } from './pools-api';
 
-/** A pool's members' shares in cents, a retired person's (any with a retirement date) counting 0. */
-function memberShares(pool: Pool, retired: (personId: number) => boolean): number[] {
-  return pool.members.map((m) => (m.personId !== null && retired(m.personId) ? 0 : cents(m.share)));
+/** A pool's members' shares in cents, a retired person's (any with a retirement date) counting 0,
+ *  as does a member whose dates do not include the day. */
+function memberShares(pool: Pool, retired: (personId: number) => boolean, day: string | null): number[] {
+  return pool.members.map((m) => ((m.personId !== null && retired(m.personId)) || !memberOn(m, day) ? 0 : cents(m.share)));
 }
 
 /** Whole cents times a share over the shares with a cut, in whole cents, rounded half to even
@@ -27,11 +28,12 @@ function shareOf(cents: number, share: number, total: number): number {
  *  shares of the members with a cut, rounded half to even, the remainder going to the member with
  *  the largest share among them (the earliest added on a tie) so the cuts total the pot. A retired
  *  member, and one held on the sheet's today, gets 0.00 (all 0.00 when none is left with a cut);
- *  none unless the pool is balanced (a hold leaves the balance as it is) and has a pot. */
+ *  none unless the pool is balanced (a hold leaves the balance as it is) and has a pot. A member
+ *  whose dates do not include the day is left out entirely: no cut at all. */
 function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => boolean,
-  held: (personId: number) => boolean): Map<string, string> {
+  held: (personId: number) => boolean, day: string | null): Map<string, string> {
   const cutsByKey = new Map<string, string>();
-  const shares = memberShares(pool, retired);
+  const shares = memberShares(pool, retired, day);
   if (pot === null || shares.reduce((sum, c) => sum + c, 0) !== 10000) return cutsByKey;
   const potCents = cents(pot);
   const cutShares = pool.members.map((m, i) => (m.personId !== null && held(m.personId) ? 0 : shares[i]));
@@ -42,7 +44,7 @@ function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => b
     cutShares.forEach((share, i) => { if (share > cutShares[largest]) largest = i; });
     raw[largest] += potCents - raw.reduce((sum, c) => sum + c, 0);
   }
-  pool.members.forEach((m, i) => cutsByKey.set(memberKey(m), money(raw[i])));
+  pool.members.forEach((m, i) => { if (memberOn(m, day)) cutsByKey.set(memberKey(m), money(raw[i])); });
   return cutsByKey;
 }
 
@@ -61,6 +63,9 @@ function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => b
           <li [attr.data-testid]="'pool-member-' + pool().name + '-' + key(m)">
             <span data-testid="pool-member-name">{{ nameOf(m) }}</span>
             <span data-testid="pool-share">{{ m.share }}</span>
+            @if (m.from !== null || m.to !== null) {
+              <span data-testid="pool-member-dates">{{ m.from ?? '' }} – {{ m.to ?? '' }}</span>
+            }
             <span data-testid="pool-cut">{{ cuts().get(key(m)) ?? '' }}</span>
             @if (m.personId !== null && retired(m.personId)) {
               <span>(retired)</span>
@@ -82,6 +87,10 @@ function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => b
         <label [for]="'pool-member-share-' + pool().name">Share %</label>
         <input [id]="'pool-member-share-' + pool().name" data-testid="pool-member-share" formControlName="share"
           inputmode="decimal" autocomplete="off" />
+        <label [for]="'pool-member-from-' + pool().name">From (blank: no start)</label>
+        <input [id]="'pool-member-from-' + pool().name" type="date" data-testid="pool-member-from" formControlName="from" />
+        <label [for]="'pool-member-to-' + pool().name">To (blank: no end)</label>
+        <input [id]="'pool-member-to-' + pool().name" type="date" data-testid="pool-member-to" formControlName="to" />
         <button type="submit" data-testid="pool-member-add">Add member</button>
         @if (error(); as err) {
           <p role="alert" data-testid="pool-error">{{ err }}</p>
@@ -109,12 +118,15 @@ export class PoolRow {
   protected readonly form = new FormGroup({
     member: new FormControl('', { nonNullable: true }),
     share: new FormControl('', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
   });
 
   private readonly byId = computed(() => new Map(this.people().map((p) => [p.id, p])));
-  /** The members' shares added up, a retired member's counting 0.00. */
+  /** The members' shares added up, a retired member's counting 0.00, as does one whose dates do not
+   *  include the sheet's today. */
   private readonly totalCents = computed(() =>
-    memberShares(this.pool(), (id) => this.retired(id)).reduce((sum, c) => sum + c, 0));
+    memberShares(this.pool(), (id) => this.retired(id), this.session.today()).reduce((sum, c) => sum + c, 0));
   protected readonly totalShare = computed(() => money(this.totalCents()));
   /** Balanced when the shares total exactly 100.00. */
   protected readonly balanced = computed(() => this.totalCents() === 10000);
@@ -166,11 +178,21 @@ export class PoolRow {
       this.error.set('Enter a share more than 0.00 and at most 100.00, with up to two decimals.');
       return;
     }
+    const from = value.from.trim();
+    const to = value.to.trim();
+    if ((from !== '' && !MEMBER_DATE_PATTERN.test(from)) || (to !== '' && !MEMBER_DATE_PATTERN.test(to))) {
+      this.error.set('Enter the from- and to-date as yyyy-mm-dd, or leave them blank.');
+      return;
+    }
+    if (from !== '' && to !== '' && to < from) {
+      this.error.set('The to-date cannot be before the from-date.');
+      return;
+    }
     this.saving = true;
     try {
-      const pools = await this.api.addMember(sheetId, this.pool().name, member, share);
+      const pools = await this.api.addMember(sheetId, this.pool().name, member, share, from, to);
       if (this.session.sheetId() === sheetId) this.saved.emit(pools);
-      this.form.reset({ member: '', share: '' }, { emitEvent: false });
+      this.form.reset({ member: '', share: '', from: '', to: '' }, { emitEvent: false });
     } catch (e) {
       this.error.set(memberError(e));
     } finally {
@@ -241,7 +263,7 @@ export class Pools {
           ? (cutsFor(above, new Set([...seen, pool.name])).get(`pool-${pool.name}`) ?? null)
           : null;
       }
-      const cuts = cutsOf(pool, pot, retired, held);
+      const cuts = cutsOf(pool, pot, retired, held, today);
       all.set(pool.name, cuts);
       return cuts;
     };
