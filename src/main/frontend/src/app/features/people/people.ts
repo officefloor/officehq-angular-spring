@@ -16,7 +16,7 @@ import { Summary, SummaryPerson } from '../summary/summary';
 import { ClassicSummary } from '../summary/classic-summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, unretireError, watchError } from './people-api';
+import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -453,6 +453,8 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
                   placeholder="Sheet id" (input)="clearRowError(p.id)" />
                 <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo.value)"
                   [attr.aria-label]="'Transfer ' + p.name">Transfer</button>
+                <button type="button" data-testid="person-transfer-undo" (click)="undoTransfer(p)"
+                  [attr.aria-label]="'Undo the transfer of ' + p.name">Undo transfer</button>
                 @if (rowErrors()[p.id]; as err) {
                   <p role="alert" data-testid="person-error">{{ err }}</p>
                 }
@@ -1194,6 +1196,22 @@ export class People {
       await this.read(sheetId);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [p.id]: transferError(e) }));
+    }
+  }
+
+  /** Undo the transfer that brought a person here; the row then leaves the list, and the sheet's
+   *  people and claims are read again. */
+  protected async undoTransfer(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      await this.api.undoTransfer(sheetId, p.id);
+      if (this.session.sheetId() !== sheetId) return;
+      this.people.update((ps) => ps.filter((o) => o.id !== p.id));
+      await this.read(sheetId);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: transferUndoError(e) }));
     }
   }
 

@@ -367,6 +367,17 @@ public class PersonController {
                 service.clashing(arrived));
     }
 
+    /** Undo the transfer that brought the person here; answers with the person as they arrived back. */
+    @PostMapping("/{id}/transfer-undo")
+    public PersonView undoTransfer(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        Person back = service.undoTransfer(sheetId, user.trim(), id);
+        return PersonView.of(back, service.today(back.getSheetId()), service.statementSummary(back.getId()), List.of(), false,
+                service.clashing(back));
+    }
+
     /** Start or stop watching the person as the signed-in user; refused for a viewer, who may change nothing. */
     @PostMapping("/{id}/watch")
     public PersonView watch(

@@ -614,6 +614,7 @@ public class PersonService {
         } else {
             try {
                 Person copy = person.transferredTo(target);
+                copy.setArrivedOn(sheets.today(target));
                 copy.setPosition(people.nextPosition(target));
                 arrived = people.saveAndFlush(copy);
             } catch (DataIntegrityViolationException e) {
@@ -728,6 +729,36 @@ public class PersonService {
         }
         rollup.recordChanges(target, user, beforeThere);
         return arrived;
+    }
+
+    /** Undo the transfer that brought a person to this sheet, as a steward, on the sheet's today
+     *  they arrived: they are transferred back to the sheet they came from exactly as
+     *  {@link #transfer} transfers them, and PERSON_TRANSFER_UNDONE is recorded here. Refused (404)
+     *  for a person not on the sheet, (403) unless the user acts as a steward, and (422) for a
+     *  person who did not arrive by transfer or on a later day than they arrived; answers with the
+     *  person as they arrived back. */
+    @Transactional
+    public Person undoTransfer(String sheetId, String user, long id) {
+        Person person = people.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may undo a transfer");
+        }
+        if (person.getOriginSheetId() == null || person.getArrivedOn() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "The person did not arrive by transfer");
+        }
+        if (!person.getArrivedOn().equals(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A transfer may be undone only on the day the person arrived");
+        }
+        String name = person.getName();
+        String origin = person.getOriginSheetId();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Person back = transfer(sheetId, user, id, origin);
+        audit.recordOnCommit("PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + user
+                + " name=" + name + " to=" + origin);
+        rollup.recordChanges(sheetId, user, before);
+        return back;
     }
 
     /** Carry a person's statements to {@code into} on {@code sheetId}: they are taken again for

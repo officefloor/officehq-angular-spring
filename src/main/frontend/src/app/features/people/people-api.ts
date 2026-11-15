@@ -279,6 +279,13 @@ export class PeopleApi {
     );
   }
 
+  /** Undo the transfer that brought the person here; resolves to the person as they arrived back. */
+  undoTransfer(sheetId: string, id: number): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/transfer-undo`, {}, { headers: this.headers() }),
+    );
+  }
+
   /** The figures of the sheet's descendants (its children, theirs, and so on), each as it is now
    *  (or, while the screen shows the sheet as of a date, as it stood then), added up. */
   descendantFigures(sheetId: string): Promise<DescendantFigures> {
@@ -403,6 +410,14 @@ export function transferError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Their name or an alias is used by more than one person there or elsewhere in its tree, or their contact is already on that sheet.';
   if (e instanceof HttpErrorResponse && e.status === 422) return 'A person is transferred only to another sheet, not once retired, and not into a retired person there.';
+  return otherError(e);
+}
+
+export function transferUndoError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may undo a transfer, and neither sheet may be archived.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Their name, an alias or their contact is already in use on the sheet they came from.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'Only a transfer that brought the person here can be undone, and only on the day they arrived.';
   return otherError(e);
 }
 

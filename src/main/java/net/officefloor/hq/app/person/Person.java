@@ -120,6 +120,11 @@ public class Person {
     @Column(name = "origin_sheet_id")
     private String originSheetId;
 
+    /** The sheet's today on which a transfer brought the person here; null for anyone not
+     *  transferred here. */
+    @Column(name = "arrived_on")
+    private LocalDate arrivedOn;
+
     /** Raised on every save, so an edit of a version someone else has since saved is refused. */
     @Version
     @Column(name = "version", nullable = false)
@@ -366,6 +371,14 @@ public class Person {
     /** Whether a hold of the person covers the date. */
     public boolean heldOn(LocalDate date) {
         return holds.stream().anyMatch(h -> h.covers(date));
+    }
+
+    public LocalDate getArrivedOn() {
+        return arrivedOn;
+    }
+
+    public void setArrivedOn(LocalDate arrivedOn) {
+        this.arrivedOn = arrivedOn;
     }
 
     public String getOriginSheetId() {
