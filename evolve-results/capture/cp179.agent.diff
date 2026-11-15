@@ -1,0 +1,319 @@
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index 9885c9b12..feeb560da 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -79,6 +79,8 @@ export interface Person {
+   snapshots: Snapshot[];
+   /** One line per statement still standing, by date, oldest first (those a merge or transfer brought among them). */
+   statements: StatementLine[];
++  /** The reason a steward flagged the person, while the flag is in force on the sheet's today; else null. */
++  flag: string | null;
+   /** Whether the person has any hold. */
+   held: boolean;
+   /** The person's holds, in the order they were added: their OPEN claims dated within one count in
+@@ -238,6 +240,14 @@ export class PeopleApi {
+     );
+   }
+ 
++  /** Flag a person, as a steward, with a reason until a date (blank: the sheet's today). */
++  flag(sheetId: string, id: number, reason: string, until: string): Promise<Person> {
++    return firstValueFrom(
++      this.http.post<Person>(`${this.url(sheetId)}/${id}/flag`, { reason, until: until || null },
++        { headers: this.headers() }),
++    );
++  }
++
+   /** Start (on) or stop watching a person as the signed-in user. */
+   watch(sheetId: string, id: number, on: boolean): Promise<Person> {
+     return firstValueFrom(
+@@ -390,6 +400,14 @@ export function holdError(e: unknown): string {
+   return otherError(e);
+ }
+ 
++export function flagError(e: unknown): string {
++  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter the until-date as yyyy-mm-dd.';
++  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may flag a person.';
++  if (e instanceof HttpErrorResponse && e.status === 422) return 'Give a reason for the flag.';
++  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
++  return otherError(e);
++}
++
+ export function watchError(e: unknown): string {
+   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+   return otherError(e);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d385c7f07..be0d6220d 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -16,7 +16,7 @@ import { Summary, SummaryPerson } from '../summary/summary';
+ import { ClassicSummary } from '../summary/classic-summary';
+ import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
+ import { Dashboard, Header } from '../header/header';
+-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
++import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
+ 
+ // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
+ // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
+@@ -253,7 +253,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+             @if (shows('retired')) { <th scope="col">Retired</th> }
+             <th scope="col">Retirement</th><th scope="col">Active</th>
+             @if (shows('hold')) { <th scope="col">Hold</th> }
+-            <th scope="col">Hold from</th><th scope="col">Watched</th>
++            <th scope="col">Hold from</th><th scope="col">Flag</th><th scope="col">Watched</th>
+             @if (shows('patrons')) { <th scope="col">Patrons</th> }
+             @if (shows('backing')) { <th scope="col">Backing</th> }
+             <th scope="col">Add patron</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th>
+@@ -400,6 +400,17 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+                 <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom.value, holdTo.value)"
+                   [attr.aria-label]="'Hold ' + p.name">Hold</button>
+               </td>
++              <td>
++                <span data-testid="person-flag-shown">{{ p.flag ?? '' }}</span>
++                <label [for]="'person-flag-reason-' + p.id" class="visually-hidden">Flag {{ p.name }} for</label>
++                <input [id]="'person-flag-reason-' + p.id" type="text" data-testid="person-flag-reason" #flagReason
++                  maxlength="200" (input)="clearRowError(p.id)" />
++                <label [for]="'person-flag-until-' + p.id" class="visually-hidden">Flag {{ p.name }} until</label>
++                <input [id]="'person-flag-until-' + p.id" type="date" data-testid="person-flag-until" #flagUntil
++                  (input)="clearRowError(p.id)" />
++                <button type="button" data-testid="person-flag" (click)="flag(p, flagReason.value, flagUntil.value)"
++                  [attr.aria-label]="'Flag ' + p.name">Flag</button>
++              </td>
+               <td>
+                 <span data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</span>
+                 <button type="button" data-testid="person-watch" (click)="watch(p)" [attr.aria-pressed]="p.watched"
+@@ -1349,6 +1360,20 @@ export class People {
+     }
+   }
+ 
++  /** Flag a person, as a steward, with a reason until a date (blank: the sheet's today); the row
++   *  then shows the reason while the flag is in force. */
++  protected async flag(p: Person, reason: string, until: string): Promise<void> {
++    this.clearRowError(p.id);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    try {
++      const saved = await this.api.flag(sheetId, p.id, reason, until.trim());
++      if (this.session.sheetId() === sheetId) this.taken(saved);
++    } catch (e) {
++      this.rowErrors.update((errs) => ({ ...errs, [p.id]: flagError(e) }));
++    }
++  }
++
+   /** Start or stop watching a person as the signed-in user; the row then shows whether they are watched. */
+   protected async watch(p: Person): Promise<void> {
+     this.clearRowError(p.id);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 13b50f8ba..0a3685751 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -436,6 +436,7 @@ public class ClaimService {
+         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         if (to == ClaimStatus.OPEN) {
++            refuseIfFlagged(sheetId, user, person);
+             refuseIfNoteless(claim, shownDueOf(claim, person));
+             refuseIfOverCap(sheetId, claim);
+             if (needsReview(claim, person)) {
+@@ -557,6 +558,14 @@ public class ClaimService {
+         }
+     }
+ 
++    /** Refuse opening a claim (403) of a person flagged on the sheet's today by anyone but a steward. */
++    private void refuseIfFlagged(String sheetId, String user, Person person) {
++        if (person.flagOn(sheets.today(sheetId)) != null && settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
++                    "Only a steward opens a claim of a flagged person: " + person.getFlagReason());
++        }
++    }
++
+     /** Refuse voiding a SETTLED claim (403) by anyone but a steward, and (409) once the sheet's
+      *  today is more than {@link ClaimStatus#SETTLED_VOID_DAYS} days after its settlement (the
+      *  first SETTLED line of its status log). */
+diff --git a/src/main/java/net/officefloor/hq/app/history/HistoryService.java b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+index 221c7cfc3..f9c3a3248 100644
+--- a/src/main/java/net/officefloor/hq/app/history/HistoryService.java
++++ b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+@@ -69,7 +69,8 @@ public class HistoryService {
+ 
+     record PersonState(String name, String grade, List<GradeState> grades, Integer terms, LocalDate retiredFrom,
+             List<HoldState> holds, String contact, List<String> aliases, Long position,
+-            String originSheetId, List<HoldState> retirements, String tags, List<TermsState> datedTerms) {
++            String originSheetId, List<HoldState> retirements, String tags, List<TermsState> datedTerms,
++            String flagReason, LocalDate flagUntil) {
+     }
+ 
+     record TermsState(LocalDate from, Integer terms) {
+@@ -156,7 +157,8 @@ public class HistoryService {
+                     p.getRetiredFrom(), p.getHolds().stream().map(h -> new HoldState(h.from(), h.to())).toList(),
+                     p.getContact(), p.getAliases(), p.getPosition(), p.getOriginSheetId(),
+                     p.getRetirements().stream().map(r -> new HoldState(r.from(), r.to())).toList(), p.getTags(),
+-                    p.getDatedTerms().stream().map(t -> new TermsState(t.from(), t.terms())).toList()));
++                    p.getDatedTerms().stream().map(t -> new TermsState(t.from(), t.terms())).toList(),
++                    p.getFlagReason(), p.getFlagUntil()));
+         } else if (entity instanceof Rate r) {
+             write(r.getSheetId(), RATE, String.valueOf(r.getId()),
+                     new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo(), r.getVersion(),
+@@ -351,6 +353,7 @@ public class HistoryService {
+         if (s.retirements() != null) { // a version written before people could be unretired has none
+             s.retirements().forEach(r -> p.addRetirement(r.from(), r.to()));
+         }
++        p.flag(s.flagReason(), s.flagUntil()); // a version written before people were flagged has none
+         return p;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index d73121b55..44ad4a9d6 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -125,6 +125,14 @@ public class Person {
+     @Column(name = "arrived_on")
+     private LocalDate arrivedOn;
+ 
++    /** The reason a steward flagged the person; null when never flagged. */
++    @Column(name = "flag_reason")
++    private String flagReason;
++
++    /** The last day the flag is in force; null when never flagged. */
++    @Column(name = "flag_until")
++    private LocalDate flagUntil;
++
+     /** Raised on every save, so an edit of a version someone else has since saved is refused. */
+     @Version
+     @Column(name = "version", nullable = false)
+@@ -154,7 +162,7 @@ public class Person {
+     }
+ 
+     /** A copy of the person for a clone of the sheet: their name, every grade they were given (and
+-     *  its from-date), their terms, contact, tags, aliases, holds, retirement (and past ones), place in the
++     *  its from-date), their terms, contact, tags, aliases, holds, retirement (and past ones), flag, place in the
+      *  list and the sheet they came from. */
+     public Person clonedTo(String sheetId) {
+         Person copy = new Person(sheetId, name, grade);
+@@ -169,6 +177,8 @@ public class Person {
+         copy.holds.addAll(holds);
+         copy.position = position;
+         copy.originSheetId = originSheetId;
++        copy.flagReason = flagReason;
++        copy.flagUntil = flagUntil;
+         return copy;
+     }
+ 
+@@ -373,6 +383,24 @@ public class Person {
+         return holds.stream().anyMatch(h -> h.covers(date));
+     }
+ 
++    /** The flag's reason while it is in force on the date (on or before its until-date); else null. */
++    public String flagOn(LocalDate date) {
++        return flagReason != null && flagUntil != null && !date.isAfter(flagUntil) ? flagReason : null;
++    }
++
++    public String getFlagReason() {
++        return flagReason;
++    }
++
++    public LocalDate getFlagUntil() {
++        return flagUntil;
++    }
++
++    public void flag(String reason, LocalDate until) {
++        this.flagReason = reason;
++        this.flagUntil = until;
++    }
++
+     public LocalDate getArrivedOn() {
+         return arrivedOn;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index d932ced42..773e8fd12 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -49,7 +49,7 @@ public class PersonController {
+             List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms,
+             String contact, List<String> aliases, boolean clashing, String origin,
+             List<Person.Retirement> retirements, String tags, List<SnapshotLine> snapshots,
+-            List<StatementLine> statements) {
++            List<StatementLine> statements, String flag) {
+         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
+                 boolean watched, boolean clashing) {
+             return of(p.getId(), p, today, s, patronIds, watched, clashing);
+@@ -63,7 +63,7 @@ public class PersonController {
+                     p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.termsOn(today),
+                     p.getContact(), p.getAliases(), clashing, p.getOriginSheetId(), p.getRetirements(),
+                     p.getTags(), p.getSnapshots().stream().map(SnapshotLine::of).toList(),
+-                    s.lines().stream().map(StatementLine::of).toList());
++                    s.lines().stream().map(StatementLine::of).toList(), p.flagOn(today));
+         }
+     }
+ 
+@@ -129,6 +129,11 @@ public class PersonController {
+     public record HoldForm(LocalDate from, LocalDate to) {
+     }
+ 
++    /** A flag as the row submits it: its reason and the last day it is in force (missing: the
++     *  sheet's today). */
++    public record FlagForm(@Size(max = 200) String reason, LocalDate until) {
++    }
++
+     /** A move as the row submits it: up (towards the top of the list) or down. */
+     public record MoveForm(@NotNull @Pattern(regexp = "up|down") String direction) {
+     }
+@@ -327,6 +332,15 @@ public class PersonController {
+                 body == null ? null : body.to()));
+     }
+ 
++    @PostMapping("/{id}/flag")
++    public PersonView flag(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @PathVariable long id,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody FlagForm body) {
++        return view(sheetId, user, service.flag(sheetId, user.trim(), id, body.reason(), body.until()));
++    }
++
+     @PostMapping("/{id}/aliases")
+     public PersonView addAlias(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 233f5632e..c2f458fd1 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -447,6 +447,29 @@ public class PersonService {
+         return person;
+     }
+ 
++    /** Flag the person, as a steward, with a reason (stored trimmed) until a date (a missing one
++     *  takes the sheet's today): while the sheet's today is on or before it the row shows the reason
++     *  and only a steward may open the person's claims. Refused (403) unless the user acts as a
++     *  steward, and (422) for a blank reason. */
++    @Transactional
++    public Person flag(String sheetId, String user, long id, String reason, LocalDate until) {
++        Person person = people.findForUpdate(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward flags a person");
++        }
++        if (reason == null || reason.isBlank()) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Give a reason for the flag");
++        }
++        String why = reason.trim();
++        LocalDate to = until != null ? until : sheets.today(sheetId);
++        person.flag(why, to);
++        people.flush();
++        audit.recordOnCommit("PERSON_FLAGGED sheet=" + sheetId + " by=" + user
++                + " name=" + person.getName() + " reason=" + why + " until=" + to);
++        return person;
++    }
++
+     /** Merge a person into another person on the sheet, as a steward: the merged person's claims
+      *  move to the other (numbers and dates kept, listed after the other's in the order they were
+      *  added, each keeping the figure a statement bound it to), their name and aliases become the other's aliases,
+diff --git a/src/main/resources/db/migration/V98__person_flag.sql b/src/main/resources/db/migration/V98__person_flag.sql
+new file mode 100644
+index 000000000..511df0e72
+--- /dev/null
++++ b/src/main/resources/db/migration/V98__person_flag.sql
+@@ -0,0 +1,4 @@
++-- A steward's flag on a person: its reason and the last day it is in force. While the sheet's
++-- today is on or before that day only a steward may open the person's claims. Null when unflagged.
++ALTER TABLE person ADD COLUMN flag_reason VARCHAR(200);
++ALTER TABLE person ADD COLUMN flag_until DATE;
