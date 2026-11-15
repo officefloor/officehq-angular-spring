@@ -513,6 +513,17 @@ export class People {
       return c.held || heldOn(holds.get(c.personId) ?? [], c.date) || (from !== undefined && today !== null && from <= today);
     };
   });
+  /** Whether a claim counts toward claimed: as it counts in the live totals, but a hold (the claim's or its
+   *  person's) does not leave it out; only the due figures leave a held claim out. */
+  private readonly countsClaimed = computed(() => {
+    const retired = this.retiredFromById();
+    const today = this.session.today();
+    return (c: Claim) => {
+      const from = retired.get(c.personId);
+      const retiredNow = from !== undefined && today !== null && from <= today;
+      return counts(c, today) && !(isOpen(c) && !isBound(c) && retiredNow);
+    };
+  });
   /** Whether a claim counts in the live totals: open (OPEN or PENDING) and SETTLED ones, but not a deferred one,
    *  nor an open one dated within a hold of its person, or of a person whose retirement date is reached,
    *  unless bound by a statement. */
@@ -537,7 +548,7 @@ export class People {
   /** Each person's claims (newest first) and claimed in cents (counting claims only, corrections left out), by person id. */
   private readonly byPerson = computed(() => {
     const out = new Map<number, { claims: Claim[]; cents: number }>();
-    const live = this.countsLive();
+    const live = this.countsClaimed();
     for (const c of this.claims()) {
       const entry = out.get(c.personId) ?? { claims: [], cents: 0 };
       entry.claims.push(c);

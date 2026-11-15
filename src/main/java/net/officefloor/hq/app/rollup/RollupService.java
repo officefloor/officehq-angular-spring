@@ -139,16 +139,19 @@ public class RollupService {
         });
         Function<Claim, RoundingMode> rounding = roundingOf(sheet, sheetClaims);
         Map<Long, List<Claim>> counted = new LinkedHashMap<>();
+        Map<Long, BigDecimal> claimedBy = new LinkedHashMap<>();
         for (Claim c : sheetClaims) {
             if (counts(c, held, today)) {
                 counted.computeIfAbsent(c.getPersonId(), id -> new ArrayList<>()).add(c);
+            }
+            if (countsClaimed(c, held.get(c.getPersonId()), today) && !isCorrection(c)) {
+                claimedBy.merge(c.getPersonId(), c.getAmount(), BigDecimal::add);
             }
         }
         Map<Long, Figures> out = new LinkedHashMap<>();
         sheetPeople.forEach((id, p) -> {
             List<Claim> theirs = counted.getOrDefault(id, List.of());
-            BigDecimal claimed = theirs.stream().filter(c -> !isCorrection(c))
-                    .map(Claim::getAmount).reduce(zero(), BigDecimal::add);
+            BigDecimal claimed = zero().add(claimedBy.getOrDefault(id, zero()));
             BigDecimal overdue = theirs.stream()
                     .filter(c -> c.getStatus().isOpen() && late.isPast(c, p))
                     .map(c -> shownDueOf(c, p, sheetRates, floor, late, rounding))
@@ -358,7 +361,7 @@ public class RollupService {
         recordChanges(sheetId, user, new Snapshot(Map.of()), true);
     }
 
-    /** Whether a claim counts toward claimed and due totals: only OPEN (or PENDING) and SETTLED ones
+    /** Whether a claim counts toward due totals: only OPEN (or PENDING) and SETTLED ones
      *  do, but not an open one dated within a hold of its person (by id in {@code held}) unless bound
      *  by a statement, nor (so unbound) any open one of a person whose retirement date the sheet's
      *  today has reached, nor one deferred on the sheet's today. */
@@ -376,6 +379,18 @@ public class RollupService {
             return false;
         }
         return c.isBound() || !leftOut(person, c, today);
+    }
+
+    /** Whether a claim counts toward claimed: as {@link #countsFor} has it, but a hold (the
+     *  claim's or its person's) does not leave it out; only the due figures leave a held claim out. */
+    private static boolean countsClaimed(Claim c, Person person, LocalDate today) {
+        if (c.getStatus() == ClaimStatus.SETTLED) {
+            return true;
+        }
+        if (!c.getStatus().isOpen() || c.isDeferredOn(today)) {
+            return false;
+        }
+        return c.isBound() || person == null || !person.retiredOn(today);
     }
 
     /** Whether a claim counts toward a period's due-total, taken in {@code status} (the one it had
