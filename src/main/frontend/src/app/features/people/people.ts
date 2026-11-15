@@ -13,7 +13,7 @@ import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, pctOn, plusDays }
 import { GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, mergeError, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
-// claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons and backing (their patrons' recent settled figures); the sheet's claimed-total,
+// claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
 // due-total and overdue claims; a header of counters repeating them; a summary of them by grade, period and status; and
 // the one form that adds a person or, with a
 // person's editor open, saves that person.
@@ -729,22 +729,35 @@ export class People {
     return due === null || due === undefined ? 'n/a' : money(due);
   }
 
-  /** The person's patrons' names, sorted, comma and space separated. */
+  /** The person's patrons as <name> <share>, sorted by name, comma and space separated. */
   protected patronNamesOf(p: Person): string {
     const names = this.namesById();
-    return p.patronIds.map((id) => names.get(id) ?? '').filter((n) => n).sort().join(', ');
+    const shares = patronShares(p.patronIds.length);
+    return p.patronIds
+      .map((id, i) => ({ name: names.get(id) ?? '', share: shares[i] }))
+      .filter((o) => o.name)
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+      .map((o) => `${o.name} ${money(o.share)}`)
+      .join(', ');
   }
 
-  /** The person's patrons' settled figures added up over their SETTLED claims dated within the 90 days
-   *  up to and including the sheet's today, each at the due fixed when it was settled; 0.00 with none. */
+  /** The sum over the person's patrons of the patron's settled figures over their SETTLED claims dated
+   *  within the 90 days up to and including the sheet's today (each at the due fixed when it was settled)
+   *  times their share divided by 100, rounded half to even; 0.00 with none. */
   protected backingOf(p: Person): string {
     const today = this.session.today();
     if (today === null) return money(0);
     const since = plusDays(today, -89);
-    const patrons = new Set(p.patronIds);
-    return money(this.claims()
-      .filter((c) => patrons.has(c.personId) && c.status === 'SETTLED' && c.settledDue !== null && since <= c.date && c.date <= today)
-      .reduce((sum, c) => sum + cents(c.settledDue as string), 0));
+    const figures = new Map<number, number>();
+    for (const c of this.claims()) {
+      if (c.status === 'SETTLED' && c.settledDue !== null && since <= c.date && c.date <= today) {
+        figures.set(c.personId, (figures.get(c.personId) ?? 0) + cents(c.settledDue as string));
+      }
+    }
+    const shares = patronShares(p.patronIds.length);
+    // cents times hundredths of a percent: divided by 10000 for cents
+    const scaled = p.patronIds.reduce((sum, id, i) => sum + (figures.get(id) ?? 0) * shares[i], 0);
+    return money(divideHalfEven(scaled, 10000));
   }
 
   /** The people the person may name as a patron: everyone else on the sheet. */
@@ -1193,6 +1206,26 @@ export class People {
 }
 
 /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
+/** The shares, in hundredths, of a person's patrons in the order they were named: 100.00 split
+ *  equally, each rounded half to even, with the remainder given to the first-named patron. */
+function patronShares(count: number): number[] {
+  if (count === 0) return [];
+  const share = divideHalfEven(10000, count);
+  const shares = Array<number>(count).fill(share);
+  shares[0] += 10000 - share * count;
+  return shares;
+}
+
+/** The integer quotient of the integers, rounded half to even. */
+function divideHalfEven(n: number, d: number): number {
+  const sign = n < 0 ? -1 : 1;
+  const a = Math.abs(n);
+  const q = Math.floor(a / d);
+  const r = a - q * d;
+  const up = 2 * r > d || (2 * r === d && q % 2 === 1);
+  return sign * (up ? q + 1 : q);
+}
+
 function trimmedSum(figures: number[]): number {
   const sum = figures.reduce((a, b) => a + b, 0);
   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
