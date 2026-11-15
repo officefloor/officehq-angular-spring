@@ -1,0 +1,82 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ec70f9ff5..582f416e5 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -25,7 +25,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+     <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
+     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
+-    <app-pools [people]="people()" />
++    <app-pools [people]="people()" (cutTotals)="cutTotals.set($event)" />
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+       <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
+@@ -92,6 +92,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+         totalling <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+       <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong>
+         open total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
++      <p>Cut total <strong data-testid="rollup-cut-total">{{ money(cutTotal()) }}</strong></p>
+       @if (tagTotals().length > 0) {
+         <table aria-label="Due total by tag">
+           <thead><tr><th scope="col">Tag</th><th scope="col">Due total</th></tr></thead>
+@@ -168,7 +169,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+       </form>
+       <table data-testid="people-list">
+         <thead>
+-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Aliases</th><th scope="col">Clashing</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">Cut</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shownPeople(); track p.id) {
+@@ -197,6 +198,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+                 <span>settled <span data-testid="person-settled-total">{{ money(settledOpenOf(p.id).settled) }}</span></span>
+                 <span>open <span data-testid="person-open-total">{{ money(settledOpenOf(p.id).open) }}</span></span>
+               </td>
++              <td data-testid="person-cut-total">{{ money(cutTotals().get(p.id) ?? 0) }}</td>
+               <td>
+                 @for (period of periods(); track period.id) {
+                   <span>{{ period.name }} <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ money(periodDueOf(p.id, period)) }}</span></span>
+@@ -439,6 +441,10 @@ export class People {
+   /** Everyone's open-total added up (not trimmed). */
+   protected readonly openTotal = computed(() =>
+     money([...this.settledOpenByPerson().values()].reduce((sum, s) => sum + s.open, 0)));
++  /** Each person's cut total in cents, by person id, as the pools show their cuts. */
++  protected readonly cutTotals = signal<Map<number, number>>(new Map());
++  /** Everyone's cut total added up. */
++  protected readonly cutTotal = computed(() => [...this.cutTotals().values()].reduce((sum, c) => sum + c, 0));
+   /** The person's excess in cents: how far their uncapped due-total is above their capped one (0 otherwise). */
+   protected excessOf(personId: number): number {
+     return (this.uncappedDueByPerson().get(personId) ?? 0) - (this.dueByPerson().get(personId) ?? 0);
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 77636a94b..9c32b4616 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -191,6 +191,9 @@ export class Pools {
+ 
+   /** The people on the sheet (retired ones too). */
+   readonly people = input.required<Person[]>();
++  /** Each person's cut total in cents, by person id: their cuts across every pool they are a
++   *  member of, added up (a pool that shows no cuts adds nothing). */
++  readonly cutTotals = output<Map<number, number>>();
+ 
+   protected readonly pools = signal<Pool[]>([]);
+   protected readonly error = signal<string | null>(null);
+@@ -234,6 +237,18 @@ export class Pools {
+ 
+   constructor() {
+     this.form.valueChanges.subscribe(() => this.error.set(null));
++    effect(() => {
++      const totals = new Map<number, number>();
++      const cuts = this.cuts();
++      for (const p of this.pools()) {
++        const poolCuts = cuts.get(p.name);
++        for (const m of p.members) {
++          const cut = poolCuts?.get(memberKey(m));
++          if (m.personId !== null && cut !== undefined) totals.set(m.personId, (totals.get(m.personId) ?? 0) + cents(cut));
++        }
++      }
++      untracked(() => this.cutTotals.emit(totals));
++    });
+     effect(() => {
+       const id = this.session.sheetId();
+       this.session.loads();

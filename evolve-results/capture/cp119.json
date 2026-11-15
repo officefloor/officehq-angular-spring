@@ -1,0 +1,64 @@
+{
+  "checkpoint": 119,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp119_cut-totals",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their cut total: their cuts across every pool they are a member of, added\nup (a pool that shows no cuts adds nothing). Show the sheet's cut total: everyone's added up.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their cut total: their cuts across every pool they are a member of, added\nup (a pool that shows no cuts adds nothing). Show the sheet's cut total: everyone's added up.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "37eb1caebd98cccd35c56928b3cc2b19172dd230",
+  "reset_sha": "",
+  "preagent_sha": "45aeaf8be2aabfd944d6393230a83b945c9a0e73",
+  "prev_sha": "45aeaf8be2aabfd944d6393230a83b945c9a0e73",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.5787658,
+    "input_tokens": 22,
+    "output_tokens": 3643,
+    "cache_read_tokens": 433369,
+    "cache_creation_tokens": 52393,
+    "num_turns": 12,
+    "duration_ms": 268387,
+    "duration_api_ms": 40292,
+    "model": "claude-opus-5-5",
+    "session_id": "67fb7711-a654-4036-9ede-40908c3314be",
+    "stop_reason": "success",
+    "result_text": "Each person now shows their cut total, and the sheet shows everyone's added up. All 4 acceptance tests pass in `bin/e2e`.\n\nThe pools section already worked out each member's cut in the browser, using rules the app already had: retired members get 0.00, and a pool that isn't balanced or has no pot shows no cuts. The new totals are built from those same figures, so they always match what the pools show. The server, stored data and audit file are unchanged, since the test expects no audit records for this.\n\n- **`pools/pools.ts`**: the pools section now adds up each person's cuts across every pool they belong to, including pools nested inside other pools. A pool showing no cuts adds nothing. It passes these totals to the people list.\n- **`people/people.ts`**:\n  - Each person's row has a new \"Cut\" column showing their cut total, or 0.00 if they have none (`person-cut-total`).\n  - A \"Cut total\" line next to the other sheet totals adds up everyone's (`rollup-cut-total`). Unlike the due and overdue totals, it doesn't leave out the highest and lowest figures.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.5787658,
+        "num_turns": 12,
+        "duration_ms": 268387,
+        "duration_api_ms": 40292,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp119.agent.jsonl",
+  "agent_diff_file": "cp119.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
