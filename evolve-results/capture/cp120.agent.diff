@@ -1,0 +1,79 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 9c32b4616..276cab9b3 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -2,7 +2,7 @@ import { Component, computed, effect, inject, input, output, signal, untracked }
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Session } from '../../core/session';
+ import { cents, money } from '../claims/claims-api';
+-import type { Person } from '../people/people-api';
++import { heldOn, type Person } from '../people/people-api';
+ import { dueCents } from '../rates/rates-api';
+ import { Pool, PoolMember, PoolsApi, SHARE_PATTERN, memberError, memberKey, poolError } from './pools-api';
+ 
+@@ -11,19 +11,37 @@ function memberShares(pool: Pool, retired: (personId: number) => boolean): numbe
+   return pool.members.map((m) => (m.personId !== null && retired(m.personId) ? 0 : cents(m.share)));
+ }
+ 
+-/** Each member's cut of the pool's pot, by member key: the pot times their share divided by 100,
+- *  rounded half to even (a retired member's 0.00), the remainder going to the member with the
+- *  largest share (the earliest added on a tie) so the cuts total the pot; none unless the pool
+- *  is balanced and has a pot. */
+-function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => boolean): Map<string, string> {
++/** Whole cents times a share over the shares with a cut, in whole cents, rounded half to even
++ *  (a negative product rounded as its size is). Worked in BigInt so large amounts stay exact. */
++function shareOf(cents: number, share: number, total: number): number {
++  const product = BigInt(cents) * BigInt(share);
++  const size = product < 0n ? -product : product;
++  const divisor = BigInt(total);
++  const whole = size / divisor;
++  const twice = (size % divisor) * 2n;
++  const rounded = twice > divisor || (twice === divisor && whole % 2n === 1n) ? whole + 1n : whole;
++  return Number(product < 0n ? -rounded : rounded);
++}
++
++/** Each member's cut of the pool's pot, by member key: the pot times their share divided by the
++ *  shares of the members with a cut, rounded half to even, the remainder going to the member with
++ *  the largest share among them (the earliest added on a tie) so the cuts total the pot. A retired
++ *  member, and one held on the sheet's today, gets 0.00 (all 0.00 when none is left with a cut);
++ *  none unless the pool is balanced (a hold leaves the balance as it is) and has a pot. */
++function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => boolean,
++  held: (personId: number) => boolean): Map<string, string> {
+   const cutsByKey = new Map<string, string>();
+   const shares = memberShares(pool, retired);
+   if (pot === null || shares.reduce((sum, c) => sum + c, 0) !== 10000) return cutsByKey;
+   const potCents = cents(pot);
+-  const raw = shares.map((share) => (share === 0 ? 0 : dueCents(potCents, share)));
+-  let largest = 0;
+-  shares.forEach((share, i) => { if (share > shares[largest]) largest = i; });
+-  raw[largest] += potCents - raw.reduce((sum, c) => sum + c, 0);
++  const cutShares = pool.members.map((m, i) => (m.personId !== null && held(m.personId) ? 0 : shares[i]));
++  const total = cutShares.reduce((sum, c) => sum + c, 0);
++  const raw = cutShares.map((share) => (share === 0 ? 0 : shareOf(potCents, share, total)));
++  if (total > 0) {
++    let largest = 0;
++    cutShares.forEach((share, i) => { if (share > cutShares[largest]) largest = i; });
++    raw[largest] += potCents - raw.reduce((sum, c) => sum + c, 0);
++  }
+   pool.members.forEach((m, i) => cutsByKey.set(memberKey(m), money(raw[i])));
+   return cutsByKey;
+ }
+@@ -205,6 +223,9 @@ export class Pools {
+     const pools = this.pools();
+     const retiredIds = new Set(this.people().filter((p) => (p.retiredFrom ?? null) !== null).map((p) => p.id));
+     const retired = (id: number) => retiredIds.has(id);
++    const today = this.session.today();
++    const heldIds = new Set(this.people().filter((p) => today !== null && heldOn(p.holds, today)).map((p) => p.id));
++    const held = (id: number) => heldIds.has(id);
+     const parentOf = new Map<string, string>();
+     for (const p of pools) for (const m of p.members) if (m.pool !== null) parentOf.set(m.pool, p.name);
+     const byName = new Map(pools.map((p) => [p.name, p]));
+@@ -220,7 +241,7 @@ export class Pools {
+           ? (cutsFor(above, new Set([...seen, pool.name])).get(`pool-${pool.name}`) ?? null)
+           : null;
+       }
+-      const cuts = cutsOf(pool, pot, retired);
++      const cuts = cutsOf(pool, pot, retired, held);
+       all.set(pool.name, cuts);
+       return cuts;
+     };
