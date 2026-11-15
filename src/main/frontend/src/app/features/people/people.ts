@@ -1,7 +1,7 @@
 import { DOCUMENT, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
-import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp } from '../claims/claims-api';
+import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, deferred, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp, statusOn } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn, personPeriodDueCents } from '../periods/periods-api';
@@ -281,17 +281,32 @@ export class People {
   protected readonly money = money;
   /** The sheet's periods, by from-date. */
   protected readonly periods = signal<Period[]>([]);
+  /** Whether a claim counts in a period's live due-total, taken in the status its log gives it at
+   *  the end of the period's last day: as the live totals count it in that status (one not yet
+   *  added then does not count). */
+  private readonly countsAtEnd = computed(() => {
+    const holds = this.holdsById();
+    const today = this.session.today();
+    return (c: Claim, end: string) => {
+      const status = statusOn(c, end);
+      if (status === null) return false;
+      if (status === 'SETTLED') return true;
+      if ((status !== 'OPEN' && status !== 'PENDING') || deferred(c, today)) return false;
+      return isBound(c) || !heldOn(holds.get(c.personId) ?? [], c.date);
+    };
+  });
   /** Each person's live due-total for each period in cents, by person id then period id: the dues
-   *  (n/a ones skipped) of their OPEN and SETTLED claims whose date falls in it (open ones within a
-   *  hold, unbound, left out). */
+   *  (n/a ones skipped) of their claims whose date falls in it, each counted by its status at the
+   *  period's end (OPEN and SETTLED ones; open ones within a hold, unbound, or deferred, left out). */
   private readonly liveDueByPersonPeriod = computed(() => {
     const out = new Map<number, Map<number, number>>();
     const late = this.lateness();
+    const countsAtEnd = this.countsAtEnd();
     for (const p of this.people()) {
       const theirs = new Map<number, number>();
-      for (const c of this.claimsOf(p.id).filter(this.countsLive())) {
+      for (const c of this.claimsOf(p.id)) {
         const period = periodOn(this.periods(), c.date);
-        if (period === null) continue;
+        if (period === null || !countsAtEnd(c, period.to)) continue;
         theirs.set(period.id, (theirs.get(period.id) ?? 0) + (this.claimDueCents(p, c, late) ?? 0));
       }
       out.set(p.id, theirs);

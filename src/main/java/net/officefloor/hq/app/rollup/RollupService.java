@@ -14,6 +14,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimLog;
+import net.officefloor.hq.app.claim.ClaimLogRepository;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.LateCharge;
@@ -65,14 +67,16 @@ public class RollupService {
 
     private final PersonRepository people;
     private final ClaimRepository claims;
+    private final ClaimLogRepository log;
     private final RateRepository rates;
     private final SheetRepository sheets;
     private final Audit audit;
 
-    public RollupService(PersonRepository people, ClaimRepository claims, RateRepository rates,
+    public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository log, RateRepository rates,
             SheetRepository sheets, Audit audit) {
         this.people = people;
         this.claims = claims;
+        this.log = log;
         this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
@@ -112,8 +116,10 @@ public class RollupService {
     }
 
     /** Each person's due-total for the period from {@code from} to {@code to}, inclusive, by person
-     *  id, for everyone on the sheet: the dues (n/a ones skipped) their OPEN and SETTLED claims dated
-     *  inside it show now (OPEN ones within a hold of their person, unbound, or deferred, left out). */
+     *  id, for everyone on the sheet: the dues (n/a ones skipped) their claims dated inside it show
+     *  now, counting each by the status its log gives it at the end of {@code to} (OPEN and SETTLED
+     *  ones count; one added after then does not; OPEN ones within a hold of their person, unbound,
+     *  or deferred, left out). */
     public Map<Long, BigDecimal> dueByPersonBetween(String sheetId, LocalDate from, LocalDate to) {
         Optional<Sheet> sheet = sheets.findById(sheetId);
         LocalDate today = sheet.map(Sheet::getToday).orElseGet(LocalDate::now);
@@ -129,8 +135,10 @@ public class RollupService {
         for (Person p : sheetPeople) {
             out.put(p.getId(), zero());
         }
+        Map<Long, ClaimStatus> statusAtEnd = statusesOn(sheetId, to);
         sheetClaims.stream()
-                .filter(c -> counts(c, held, today))
+                .filter(c -> countsAt(c, statusAtEnd.containsKey(c.getId()) ? statusAtEnd.get(c.getId()) : c.getStatus(),
+                        held, today))
                 .filter(c -> !c.getDate().isBefore(from) && !c.getDate().isAfter(to))
                 .filter(c -> byId.containsKey(c.getPersonId()))
                 .forEach(c -> {
@@ -173,6 +181,34 @@ public class RollupService {
         }
         Person person = held.get(c.getPersonId());
         return c.isBound() || person == null || !person.heldOn(c.getDate());
+    }
+
+    /** Whether a claim counts toward a period's due-total, taken in {@code status} (the one it had
+     *  at the period's end; null when it was not yet added then): as {@link #counts} has it. */
+    private static boolean countsAt(Claim c, ClaimStatus status, Map<Long, Person> held, LocalDate today) {
+        if (status == null) {
+            return false;
+        }
+        if (status == ClaimStatus.SETTLED) {
+            return true;
+        }
+        if (!status.isOpen() || c.isDeferredOn(today)) {
+            return false;
+        }
+        Person person = held.get(c.getPersonId());
+        return c.isBound() || person == null || !person.heldOn(c.getDate());
+    }
+
+    /** The status each of the sheet's claims had at the end of {@code on}, by claim id, as their
+     *  status logs record it (null for a claim not yet added then); a claim with no log at all is
+     *  left out, taken in its status now. */
+    private Map<Long, ClaimStatus> statusesOn(String sheetId, LocalDate on) {
+        Map<Long, ClaimStatus> out = new LinkedHashMap<>();
+        for (ClaimLog line : log.findBySheetIdOrderByIdAsc(sheetId)) {
+            ClaimStatus before = out.get(line.getClaimId());
+            out.put(line.getClaimId(), line.getOn().isAfter(on) ? before : line.getStatus());
+        }
+        return out;
     }
 
     private static Map<Long, Person> heldPeople(List<Person> sheetPeople) {

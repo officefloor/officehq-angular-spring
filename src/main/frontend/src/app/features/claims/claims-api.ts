@@ -69,6 +69,17 @@ export function logLineText(l: ClaimLogLine): string {
   return `${l.status} by ${l.by} on ${l.on} due=${l.due ?? 'n/a'}`;
 }
 
+/** The status a claim had at the end of a day (yyyy-mm-dd), as its status log records it; null
+ *  when it was not yet added then. A claim with no log at all is taken in its status now. */
+export function statusOn(c: Claim, day: string): ClaimStatus | null {
+  if (c.log.length === 0) return c.status;
+  let status: ClaimStatus | null = null;
+  for (const l of c.log) {
+    if (l.on <= day) status = l.status;
+  }
+  return status;
+}
+
 /** Claims as they are listed: newest (or most recently reassigned) first. */
 export function byListed(a: Claim, b: Claim): number {
   return b.listed - a.listed;
