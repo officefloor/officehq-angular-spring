@@ -1,0 +1,64 @@
+{
+  "checkpoint": 219,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp219_rollover-undo",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can undo the last rollover on the same sheet-today it was made (a button;\nROLLOVER_UNDONE fy=<old FY>): the periods it generated are removed and the opening balances it set\nare taken back. A later day, anyone else, or a generated period that a claim now belongs to is\nrefused with an error.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can undo the last rollover on the same sheet-today it was made (a button;\nROLLOVER_UNDONE fy=<old FY>): the periods it generated are removed and the opening balances it set\nare taken back. A later day, anyone else, or a generated period that a claim now belongs to is\nrefused with an error.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "cff459132751a8f67b320d700d44f506acfe3f6b",
+  "reset_sha": "",
+  "preagent_sha": "b48d1fd091a4ae223ffd01993621bcacf69f28c0",
+  "prev_sha": "b48d1fd091a4ae223ffd01993621bcacf69f28c0",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.964099,
+    "input_tokens": 92,
+    "output_tokens": 26319,
+    "cache_read_tokens": 3292955,
+    "cache_creation_tokens": 97345,
+    "num_turns": 47,
+    "duration_ms": 936919,
+    "duration_api_ms": 270407,
+    "model": "claude-opus-5-5",
+    "session_id": "8a1884da-5d6c-4205-9970-d56b06b602ab",
+    "stop_reason": "success",
+    "result_text": "Rollover undo is in place, but `bin/e2e` doesn't fully pass yet: 3 of the 4 tests pass and \"scenario 1\" fails on one step that the undo code doesn't touch.\n\n**What I built**\n- **Stored data:** a new migration, `V115__rollover_undo.sql`, keeps each sheet's last rollover. It records the fiscal year, who made it, the sheet-today it was made on, whether it has been undone, the periods it generated, and the opening amounts it added for each person.\n- **Server:**\n  - `rollover` now saves that record.\n  - The new `undoRollover` in `PeriodService` (`POST \u2026/periods/rollover/undo`) deletes the generated periods, takes back the openings that were added, marks the record undone and writes `ROLLOVER_UNDONE sheet=\u2026 by=\u2026 fy=FY<year>`.\n  - It refuses with 403 if the user isn't a steward or isn't the one who made the rollover. It refuses with 409 if there's nothing left to undo, the sheet-today has changed, or any claim (voided ones included) is dated or due inside one of the generated periods.\n- **Front end:** a `rollover-undo` button next to the rollover form. A refusal shows in `rollover-error`; on success the period list is replaced with the server's.\n- **One change to existing behaviour:** rolling over the same year again while the last rollover still stands now makes no new openings. Without this, the test's second rollover of FY2026 carried Ada's open amount twice: her 2027-01 carried figure showed 3.00 where the test expects 2.00, and the test's audit file has no second `OPENING_SET` line.\n\n**The remaining failure** (`acceptance.spec.ts:610`): a viewer (wes) clicks \"generate periods\" for 2026-01-15 to 2026-02-20 and the test expects the screen to report **0** periods made. The app refuses any change by a viewer with a 403 (\"Your role may not change anything on this sheet.\"), so the helper gets an error instead of a count. I checked the server directly and got the 403. I also ran a copy of scenario 1 with only that one expectation flipped to \"refused\", and the whole scenario then passed, so this is the only mismatch. I deleted that copy afterwards; the real test is unchanged.\n\nI didn't make the app accept it. A 0 would mean letting a viewer run generate and quietly do nothing, which goes against the app's rule that viewers can change nothing and has nothing to do with rollover undo. If you'd rather match the test anyway, that would be a change to how viewers are handled for generate \u2014 tell me and I'll make it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.964099,
+        "num_turns": 47,
+        "duration_ms": 936919,
+        "duration_api_ms": 270407,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp219.agent.jsonl",
+  "agent_diff_file": "cp219.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
