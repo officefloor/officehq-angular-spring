@@ -9,7 +9,7 @@ import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
-import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, retireError, statementError } from './people-api';
+import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, retireError, statementError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap) and its excess over the cap, their overdue claims, and their patrons and backing; the sheet's claimed-total,
@@ -96,7 +96,7 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
       }
       <table data-testid="people-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shownPeople(); track p.id) {
@@ -148,6 +148,11 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
                   (input)="clearRowError(p.id)" />
                 <button type="button" data-testid="person-hold-toggle" (click)="hold(p, holdFrom.value, holdTo.value)"
                   [attr.aria-label]="'Hold ' + p.name">Hold</button>
+              </td>
+              <td>
+                <span data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</span>
+                <button type="button" data-testid="person-watch" (click)="watch(p)" [attr.aria-pressed]="p.watched"
+                  [attr.aria-label]="'Watch ' + p.name">{{ p.watched ? 'Unwatch' : 'Watch' }}</button>
               </td>
               <td>
                 <span data-testid="person-patrons">{{ patronNamesOf(p) }}</span>
@@ -533,6 +538,19 @@ export class People {
       if (this.session.sheetId() === sheetId) this.taken(saved);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [p.id]: holdError(e) }));
+    }
+  }
+
+  /** Start or stop watching a person as the signed-in user; the row then shows whether they are watched. */
+  protected async watch(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const saved = await this.api.watch(sheetId, p.id, !p.watched);
+      if (this.session.sheetId() === sheetId) this.taken(saved);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: watchError(e) }));
     }
   }
 

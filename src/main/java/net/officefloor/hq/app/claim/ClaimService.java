@@ -18,6 +18,8 @@ import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.person.PersonStatement;
 import net.officefloor.hq.app.person.PersonStatementRepository;
+import net.officefloor.hq.app.person.PersonWatch;
+import net.officefloor.hq.app.person.PersonWatchRepository;
 import net.officefloor.hq.app.person.StatementSummary;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
@@ -42,6 +44,7 @@ public class ClaimService {
     private final ClaimLogRepository log;
     private final PersonRepository people;
     private final PersonStatementRepository statements;
+    private final PersonWatchRepository watches;
     private final RateRepository rates;
     private final SheetService sheets;
     private final RollupService rollup;
@@ -58,11 +61,12 @@ public class ClaimService {
     }
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository log, PersonRepository people, PersonStatementRepository statements,
-            RateRepository rates, SheetService sheets, RollupService rollup, PeriodService periods, SettingsService settings, Audit audit) {
+            PersonWatchRepository watches, RateRepository rates, SheetService sheets, RollupService rollup, PeriodService periods, SettingsService settings, Audit audit) {
         this.claims = claims;
         this.log = log;
         this.people = people;
         this.statements = statements;
+        this.watches = watches;
         this.rates = rates;
         this.sheets = sheets;
         this.rollup = rollup;
@@ -232,6 +236,7 @@ public class ClaimService {
         };
         if (to == ClaimStatus.SETTLED) {
             record(event, user, person, claim, number, " due=" + dueText(claim.getSettledDue()));
+            notifyWatchers(user, person, number);
         } else {
             record(event, user, person, claim, number);
         }
@@ -287,6 +292,7 @@ public class ClaimService {
         claims.flush();
         logStatus(user, person, claim);
         record("CLAIM_APPROVED", user, person, claim, claim.getNumber(), " due=" + dueText(due));
+        notifyWatchers(user, person, claim.getNumber());
         rollup.recordChanges(sheetId, user, before);
         return claim;
     }
@@ -349,6 +355,7 @@ public class ClaimService {
         logStatus(user, person, claim);
         record("CLAIM_RESETTLED", user, person, claim, claim.getNumber(),
                 " old=" + dueText(old) + " new=" + dueText(due));
+        notifyWatchers(user, person, claim.getNumber());
         rollup.recordChanges(sheetId, user, before);
         return claim;
     }
@@ -623,6 +630,15 @@ public class ClaimService {
         audit.recordOnCommit(event + " sheet=" + claim.getSheetId() + " by=" + user
                 + " person=" + person.getName() + " amount=" + claim.getAmount().setScale(2).toPlainString()
                 + " date=" + claim.getDate() + (number != null ? " number=" + number : "") + extra);
+    }
+
+    /** Notify each user watching the person that one of their claims was settled, in the order
+     *  they started watching. */
+    private void notifyWatchers(String user, Person person, String number) {
+        for (PersonWatch w : watches.findByPersonIdOrderByIdAsc(person.getId())) {
+            audit.recordOnCommit("NOTIFY sheet=" + person.getSheetId() + " by=" + user + " user=" + w.getUserName()
+                    + " person=" + person.getName() + " number=" + number);
+        }
     }
 
     private static String noteOf(String note) {

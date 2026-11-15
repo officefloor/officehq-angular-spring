@@ -3,6 +3,7 @@ package net.officefloor.hq.app.person;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -20,15 +21,18 @@ public class PersonService {
     private final PersonRepository people;
     private final PersonStatementRepository statements;
     private final PersonPatronRepository patrons;
+    private final PersonWatchRepository watches;
     private final SheetService sheets;
     private final RollupService rollup;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonStatementRepository statements,
-            PersonPatronRepository patrons, SheetService sheets, RollupService rollup, Audit audit) {
+            PersonPatronRepository patrons, PersonWatchRepository watches, SheetService sheets, RollupService rollup,
+            Audit audit) {
         this.people = people;
         this.statements = statements;
         this.patrons = patrons;
+        this.watches = watches;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -75,6 +79,35 @@ public class PersonService {
     @Transactional(readOnly = true)
     public List<Long> patronIds(long personId) {
         return patrons.findByPersonIdOrderByIdAsc(personId).stream().map(PersonPatron::getPatronId).toList();
+    }
+
+    /** The ids of the people on the sheet the user watches. */
+    @Transactional(readOnly = true)
+    public Set<Long> watchedIds(String sheetId, String user) {
+        return watches.findBySheetIdAndUserName(sheetId, user).stream().map(PersonWatch::getPersonId)
+                .collect(Collectors.toSet());
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isWatching(long personId, String user) {
+        return watches.existsByPersonIdAndUserName(personId, user);
+    }
+
+    /** Start (on) or stop watching the person as the user; already so, nothing changes. */
+    @Transactional
+    public Person watch(String sheetId, String user, long id, boolean on) {
+        Person person = people.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (on) {
+            if (watches.existsByPersonIdAndUserName(person.getId(), user)) {
+                return person;
+            }
+            watches.saveAndFlush(new PersonWatch(sheetId, person.getId(), user));
+            audit.recordOnCommit("PERSON_WATCHED sheet=" + sheetId + " by=" + user + " name=" + person.getName());
+        } else if (watches.deleteByPersonIdAndUserName(person.getId(), user) > 0) {
+            audit.recordOnCommit("PERSON_UNWATCHED sheet=" + sheetId + " by=" + user + " name=" + person.getName());
+        }
+        return person;
     }
 
     /** Name another person on the sheet as the person's patron; refused for the person themselves

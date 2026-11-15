@@ -59,6 +59,8 @@ export interface Person {
   holds: Hold[];
   /** The ids of the person's patrons (other people on the sheet), in the order they were named. */
   patronIds: number[];
+  /** Whether the signed-in user watches the person. */
+  watched: boolean;
 }
 
 /** A statement just taken: the person as they now show, and all their claims, newest first. */
@@ -121,6 +123,13 @@ export class PeopleApi {
     );
   }
 
+  /** Start (on) or stop watching a person as the signed-in user. */
+  watch(sheetId: string, id: number, on: boolean): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/watch`, { on }, { headers: this.headers() }),
+    );
+  }
+
   /** Name another person on the sheet as the person's patron. */
   addPatron(sheetId: string, id: number, patronId: number): Promise<Person> {
     return firstValueFrom(
@@ -158,6 +167,11 @@ export function retireError(e: unknown): string {
 export function holdError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter the dates as yyyy-mm-dd.';
   if (e instanceof HttpErrorResponse && e.status === 422) return 'The to-date must not be before the from-date.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  return otherError(e);
+}
+
+export function watchError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   return otherError(e);
 }
