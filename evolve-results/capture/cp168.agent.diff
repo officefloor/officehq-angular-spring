@@ -1,0 +1,376 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews-api.ts b/src/main/frontend/src/app/features/crews/crews-api.ts
+index b68aa4b56..039ef3814 100644
+--- a/src/main/frontend/src/app/features/crews/crews-api.ts
++++ b/src/main/frontend/src/app/features/crews/crews-api.ts
+@@ -44,7 +44,7 @@ export class CrewsApi {
+ 
+ export function crewError(e: unknown): string {
+   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name for the crew and choose its lead.';
+-  if (e instanceof HttpErrorResponse && e.status === 409) return 'The sheet has a crew of that name already.';
++  if (e instanceof HttpErrorResponse && e.status === 409) return 'The sheet has a crew or a pool of that name already.';
+   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on the sheet; load the sheet again.';
+   return otherError(e);
+ }
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index da597b5b2..c168806fa 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -419,3 +419,23 @@ export function isStale(e: unknown): boolean {
+ export function csvLine(values: string[]): string {
+   return values.map((v) => (/[",\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v)).join(',') + '\n';
+ }
++
++/** The shares, in hundredths, of a person's patrons in the order they were named: 100.00 split
++ *  equally, each rounded half to even, with the remainder given to the first-named patron. */
++export function patronShares(count: number): number[] {
++  if (count === 0) return [];
++  const share = divideHalfEven(10000, count);
++  const shares = Array<number>(count).fill(share);
++  shares[0] += 10000 - share * count;
++  return shares;
++}
++
++/** The integer quotient of the integers, rounded half to even. */
++export function divideHalfEven(n: number, d: number): number {
++  const sign = n < 0 ? -1 : 1;
++  const a = Math.abs(n);
++  const q = Math.floor(a / d);
++  const r = a - q * d;
++  const up = 2 * r > d || (2 * r === d && q % 2 === 1);
++  return sign * (up ? q + 1 : q);
++}
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index c5f879f7c..addd1fbc0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -16,7 +16,7 @@ import { Summary, SummaryPerson } from '../summary/summary';
+ import { ClassicSummary } from '../summary/classic-summary';
+ import { Header } from '../header/header';
+ import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
+-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, retireError, statementError, transferError, unretireError, watchError } from './people-api';
++import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, unretireError, watchError } from './people-api';
+ 
+ // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
+ // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
+@@ -34,7 +34,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
+     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
+     <app-classic-summary [periods]="periods()" [dueTotals]="classicDueByPeriod()" [dueTotal]="classicDueTotal()" />
+-    <app-pools [people]="people()" (cutTotals)="cutTotals.set($event)" />
++    <app-pools [people]="people()" [crews]="crews()" (cutTotals)="cutTotals.set($event)" />
+     <app-crews [people]="people()" [dueTotals]="dueByPerson()" [(crews)]="crews" />
+     <section aria-labelledby="people-heading">
+       <h2 id="people-heading">People</h2>
+@@ -1783,26 +1783,6 @@ export class People {
+ }
+ 
+ /** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
+-/** The shares, in hundredths, of a person's patrons in the order they were named: 100.00 split
+- *  equally, each rounded half to even, with the remainder given to the first-named patron. */
+-function patronShares(count: number): number[] {
+-  if (count === 0) return [];
+-  const share = divideHalfEven(10000, count);
+-  const shares = Array<number>(count).fill(share);
+-  shares[0] += 10000 - share * count;
+-  return shares;
+-}
+-
+-/** The integer quotient of the integers, rounded half to even. */
+-function divideHalfEven(n: number, d: number): number {
+-  const sign = n < 0 ? -1 : 1;
+-  const a = Math.abs(n);
+-  const q = Math.floor(a / d);
+-  const r = a - q * d;
+-  const up = 2 * r > d || (2 * r === d && q % 2 === 1);
+-  return sign * (up ? q + 1 : q);
+-}
+-
+ function trimmedSum(figures: number[]): number {
+   const sum = figures.reduce((a, b) => a + b, 0);
+   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
+diff --git a/src/main/frontend/src/app/features/pools/pools-api.ts b/src/main/frontend/src/app/features/pools/pools-api.ts
+index 8b80d5e06..86b07a37d 100644
+--- a/src/main/frontend/src/app/features/pools/pools-api.ts
++++ b/src/main/frontend/src/app/features/pools/pools-api.ts
+@@ -2,6 +2,9 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session, otherError } from '../../core/session';
++import { money } from '../claims/claims-api';
++import { type Crew } from '../crews/crews-api';
++import { patronShares } from '../people/people-api';
+ 
+ /** A share percent: up to two decimals (more than 0.00 and at most 100.00 is checked apart). */
+ export const SHARE_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
+@@ -32,10 +35,24 @@ export function memberKey(m: PoolMember): string {
+   return m.pool !== null ? `pool-${m.pool}` : String(m.personId);
+ }
+ 
+-/** A pool on the sheet: its name and its members, in the order they were added. */
++/** A pool on the sheet: its name and its members, in the order they were added. A crew is a pool
++ *  too (crew set): its lead and its members at equal shares, kept by the crew itself. */
+ export interface Pool {
+   name: string;
+   members: PoolMember[];
++  crew?: boolean;
++}
++
++/** A crew as a pool under its name: its lead, then its members, at equal shares (100.00 split as
++ *  patrons' shares are, the remainder on the lead). */
++export function crewPool(crew: Crew): Pool {
++  const ids = [crew.leadId, ...crew.memberIds];
++  const shares = patronShares(ids.length);
++  return {
++    name: crew.name,
++    members: ids.map((personId, i) => ({ personId, pool: null, share: money(shares[i]), from: null, to: null })),
++    crew: true,
++  };
+ }
+ 
+ @Injectable({ providedIn: 'root' })
+@@ -72,7 +89,7 @@ export class PoolsApi {
+ 
+ export function poolError(e: unknown): string {
+   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name for the pool.';
+-  if (e instanceof HttpErrorResponse && e.status === 409) return 'The sheet has a pool of that name already.';
++  if (e instanceof HttpErrorResponse && e.status === 409) return 'The sheet has a pool or a crew of that name already.';
+   return otherError(e);
+ }
+ 
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 6c1aabf6f..ff1dc126a 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -6,7 +6,8 @@ import { Session } from '../../core/session';
+ import { cents, money } from '../claims/claims-api';
+ import { csvLine, heldOn, type Person } from '../people/people-api';
+ import { dueCents } from '../rates/rates-api';
+-import { MEMBER_DATE_PATTERN, Pool, PoolMember, PoolsApi, SHARE_PATTERN, memberError, memberKey, memberOn, poolError } from './pools-api';
++import { type Crew } from '../crews/crews-api';
++import { MEMBER_DATE_PATTERN, Pool, PoolMember, PoolsApi, SHARE_PATTERN, crewPool, memberError, memberKey, memberOn, poolError } from './pools-api';
+ 
+ /** A pool's members' shares in cents, a member whose dates do not include the day counting 0. */
+ function memberShares(pool: Pool, day: string | null): number[] {
+@@ -82,29 +83,31 @@ function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => b
+           </li>
+         }
+       </ul>
+-      <form [formGroup]="form" (ngSubmit)="add()" [attr.aria-label]="'Add a member to pool ' + pool().name">
+-        <label [for]="'pool-member-select-' + pool().name">Person or pool</label>
+-        <select [id]="'pool-member-select-' + pool().name" data-testid="pool-member-select" formControlName="member">
+-          <option value="">Choose a person or pool</option>
+-          @for (p of people(); track p.id) {
+-            <option [value]="p.id">{{ p.name }}</option>
+-          }
+-          @for (p of pools(); track p.name) {
+-            <option [value]="'pool:' + p.name">pool:{{ p.name }}</option>
++      @if (!pool().crew) {
++        <form [formGroup]="form" (ngSubmit)="add()" [attr.aria-label]="'Add a member to pool ' + pool().name">
++          <label [for]="'pool-member-select-' + pool().name">Person or pool</label>
++          <select [id]="'pool-member-select-' + pool().name" data-testid="pool-member-select" formControlName="member">
++            <option value="">Choose a person or pool</option>
++            @for (p of people(); track p.id) {
++              <option [value]="p.id">{{ p.name }}</option>
++            }
++            @for (p of pools(); track p.name) {
++              <option [value]="'pool:' + p.name">pool:{{ p.name }}</option>
++            }
++          </select>
++          <label [for]="'pool-member-share-' + pool().name">Share %</label>
++          <input [id]="'pool-member-share-' + pool().name" data-testid="pool-member-share" formControlName="share"
++            inputmode="decimal" autocomplete="off" />
++          <label [for]="'pool-member-from-' + pool().name">From (blank: no start)</label>
++          <input [id]="'pool-member-from-' + pool().name" type="date" data-testid="pool-member-from" formControlName="from" />
++          <label [for]="'pool-member-to-' + pool().name">To (blank: no end)</label>
++          <input [id]="'pool-member-to-' + pool().name" type="date" data-testid="pool-member-to" formControlName="to" />
++          <button type="submit" data-testid="pool-member-add">Add member</button>
++          @if (error(); as err) {
++            <p role="alert" data-testid="pool-error">{{ err }}</p>
+           }
+-        </select>
+-        <label [for]="'pool-member-share-' + pool().name">Share %</label>
+-        <input [id]="'pool-member-share-' + pool().name" data-testid="pool-member-share" formControlName="share"
+-          inputmode="decimal" autocomplete="off" />
+-        <label [for]="'pool-member-from-' + pool().name">From (blank: no start)</label>
+-        <input [id]="'pool-member-from-' + pool().name" type="date" data-testid="pool-member-from" formControlName="from" />
+-        <label [for]="'pool-member-to-' + pool().name">To (blank: no end)</label>
+-        <input [id]="'pool-member-to-' + pool().name" type="date" data-testid="pool-member-to" formControlName="to" />
+-        <button type="submit" data-testid="pool-member-add">Add member</button>
+-        @if (error(); as err) {
+-          <p role="alert" data-testid="pool-error">{{ err }}</p>
+-        }
+-      </form>
++        </form>
++      }
+   `,
+ })
+ export class PoolRow {
+@@ -114,7 +117,7 @@ export class PoolRow {
+   readonly pool = input.required<Pool>();
+   /** The people on the sheet (retired ones too). */
+   readonly people = input.required<Person[]>();
+-  /** The sheet's pools, any of which may be chosen as a member. */
++  /** The sheet's pools (not its crews), any of which may be chosen as a member. */
+   readonly pools = input.required<Pool[]>();
+   /** Each member's cut of this pool's pot, by member key. */
+   readonly cuts = input.required<Map<string, string>>();
+@@ -227,7 +230,7 @@ export class PoolRow {
+       </form>
+       <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools (CSV)</button>
+       <ul aria-label="Pools" data-testid="pools-list">
+-        @for (p of pools(); track p.name) {
++        @for (p of allPools(); track p.name) {
+           <li appPoolRow [pool]="p" [people]="people()" [pools]="pools()" [cuts]="cuts().get(p.name) ?? noCuts"
+             (saved)="taken($event)"></li>
+         }
+@@ -242,18 +245,22 @@ export class Pools {
+ 
+   /** The people on the sheet (retired ones too). */
+   readonly people = input.required<Person[]>();
++  /** The sheet's crews, each also a pool under its name. */
++  readonly crews = input.required<Crew[]>();
+   /** Each person's cut total in cents, by person id: their cuts across every pool they are a
+    *  member of, added up (a pool that shows no cuts adds nothing). */
+   readonly cutTotals = output<Map<number, number>>();
+ 
+   protected readonly pools = signal<Pool[]>([]);
++  /** The sheet's pools, then its crews as pools, each in the order they were added. */
++  protected readonly allPools = computed(() => [...this.pools(), ...this.crews().map(crewPool)]);
+   protected readonly error = signal<string | null>(null);
+   protected readonly noCuts = new Map<string, string>();
+   /** Each pool's members' cuts, by pool name: a pool that is a member of none cuts the sheet's
+    *  pot; a pool that is a member of another has no pot of its own but its cut in the pool above
+    *  (none when that pool has no cuts). */
+   protected readonly cuts = computed(() => {
+-    const pools = this.pools();
++    const pools = this.allPools();
+     const retiredIds = new Set(this.people().filter((p) => (p.retiredFrom ?? null) !== null).map((p) => p.id));
+     const retired = (id: number) => retiredIds.has(id);
+     const today = this.session.today();
+@@ -294,7 +301,7 @@ export class Pools {
+     effect(() => {
+       const totals = new Map<number, number>();
+       const cuts = this.cuts();
+-      for (const p of this.pools()) {
++      for (const p of this.allPools()) {
+         const poolCuts = cuts.get(p.name);
+         for (const m of p.members) {
+           const cut = poolCuts?.get(memberKey(m));
+@@ -321,7 +328,7 @@ export class Pools {
+     const byId = new Map(this.people().map((p) => [p.id, p.name]));
+     const cuts = this.cuts();
+     const lines = [csvLine(['pool', 'member', 'share', 'cut'])];
+-    for (const p of this.pools()) {
++    for (const p of this.allPools()) {
+       for (const m of p.members) {
+         const member = m.pool !== null ? `pool:${m.pool}` : (byId.get(m.personId ?? -1) ?? '');
+         lines.push(csvLine([p.name, member, m.share, cuts.get(p.name)?.get(memberKey(m)) ?? '']));
+@@ -350,8 +357,8 @@ export class Pools {
+       this.error.set('Enter a name for the pool.');
+       return;
+     }
+-    if (this.pools().some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+-      this.error.set('The sheet has a pool of that name already.');
++    if (this.allPools().some((p) => p.name.toLowerCase() === name.toLowerCase())) {
++      this.error.set('The sheet has a pool or a crew of that name already.');
+       return;
+     }
+     this.saving = true;
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewService.java b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+index ddf4281ae..4fd2b560f 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/CrewService.java
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewService.java
+@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.pool.PoolRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.stereotype.Service;
+@@ -22,14 +23,16 @@ public class CrewService {
+     private final CrewRepository crews;
+     private final CrewMemberRepository members;
+     private final PersonRepository people;
++    private final PoolRepository pools;
+     private final SheetService sheets;
+     private final Audit audit;
+ 
+     public CrewService(CrewRepository crews, CrewMemberRepository members, PersonRepository people,
+-            SheetService sheets, Audit audit) {
++            PoolRepository pools, SheetService sheets, Audit audit) {
+         this.crews = crews;
+         this.members = members;
+         this.people = people;
++        this.pools = pools;
+         this.sheets = sheets;
+         this.audit = audit;
+     }
+@@ -44,7 +47,7 @@ public class CrewService {
+     }
+ 
+     /** Add a crew led by a person of the sheet; refused (404) for a person not on the sheet, (409)
+-     *  when the sheet has a crew of the name already. */
++     *  when the sheet has a crew or a pool (a crew is a pool too) of the name already. */
+     @Transactional
+     public Crew add(String sheetId, String user, String name, long leadId) {
+         sheets.load(sheetId, user);
+@@ -54,6 +57,9 @@ public class CrewService {
+         if (crews.findBySheetIdAndNameIgnoreCase(sheetId, name).isPresent()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet has a crew of that name");
+         }
++        if (pools.findBySheetIdAndNameIgnoreCase(sheetId, name).isPresent()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet has a pool of that name");
++        }
+         Crew crew = crews.saveAndFlush(new Crew(sheetId, name, lead.getId()));
+         audit.recordOnCommit("CREW_ADDED sheet=" + sheetId + " by=" + user + " name=" + name
+                 + " lead=" + lead.getName());
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 1f3e8dd92..725f67625 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -7,6 +7,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.crew.CrewRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -25,14 +26,16 @@ public class PoolService {
+     private final PoolRepository pools;
+     private final PoolMemberRepository members;
+     private final PersonRepository people;
++    private final CrewRepository crews;
+     private final SheetService sheets;
+     private final Audit audit;
+ 
+     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
+-            SheetService sheets, Audit audit) {
++            CrewRepository crews, SheetService sheets, Audit audit) {
+         this.pools = pools;
+         this.members = members;
+         this.people = people;
++        this.crews = crews;
+         this.sheets = sheets;
+         this.audit = audit;
+     }
+@@ -47,7 +50,7 @@ public class PoolService {
+     }
+ 
+     /** Add a pool to the sheet, the sheet created first if it was never loaded; refused (409) when
+-     *  the sheet has a pool of the name already. */
++     *  the sheet has a pool or a crew (a crew is a pool too) of the name already. */
+     @Transactional
+     public Pool add(String sheetId, String user, String name) {
+         sheets.load(sheetId, user);
+@@ -55,6 +58,9 @@ public class PoolService {
+         if (pools.findBySheetIdAndNameIgnoreCase(sheetId, name).isPresent()) {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet has a pool of that name");
+         }
++        if (crews.findBySheetIdAndNameIgnoreCase(sheetId, name).isPresent()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet has a crew of that name");
++        }
+         Pool pool = pools.saveAndFlush(new Pool(sheetId, name));
+         audit.recordOnCommit("POOL_ADDED sheet=" + sheetId + " by=" + user + " name=" + name);
+         return pool;
