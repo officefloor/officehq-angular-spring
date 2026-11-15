@@ -47,7 +47,7 @@ public class RollupService {
     /** A person's figures: claimed, due-total held to the sheet's cap (null: n/a), and
      *  overdue-total (the dues their overdue counting claims show, n/a ones skipped, not capped);
      *  with their grade on the sheet's today, whether they have a retirement date, and their aliases;
-     *  and the dues (n/a ones skipped) their counting SETTLED claims show, and how many of their
+     *  and the dues (n/a ones skipped) their counting SETTLED claims that correct nothing show, and how many of their
      *  counting claims are overdue. */
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
             String grade, boolean retired, List<String> aliases, BigDecimal settled, int overdueCount) {
@@ -193,7 +193,8 @@ public class RollupService {
                     .filter(Objects::nonNull)
                     .reduce(zero(), BigDecimal::add);
             BigDecimal settled = theirs.stream()
-                    .filter(c -> c.getStatus() == ClaimStatus.SETTLED)
+                    .filter(c -> c.getStatus() == ClaimStatus.SETTLED
+                            && (c.getCorrects() == null || c.getCorrects().isBlank()))
                     .map(c -> shownDueOf(c, p, sheetRates, floor, late, rounding))
                     .filter(Objects::nonNull)
                     .reduce(zero(), BigDecimal::add);

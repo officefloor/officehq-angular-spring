@@ -673,23 +673,25 @@ export class People {
   });
   /** Each person's uncapped due-total split in cents, by person id: the dues (n/a ones skipped) their
    *  counting SETTLED claims show (at their fixed figures) and those their counting open (OPEN and
-   *  PENDING) claims show. */
+   *  PENDING) claims show; and the settled part left from the score (those that correct nothing). */
   private readonly settledOpenByPerson = computed(() => {
-    const out = new Map<number, { settled: number; open: number }>();
+    const out = new Map<number, { settled: number; open: number; scored: number }>();
     const late = this.lateness();
     for (const p of this.people()) {
-      const split = { settled: 0, open: 0 };
+      const split = { settled: 0, open: 0, scored: 0 };
       for (const c of this.claimsOf(p.id).filter(this.countsLive())) {
         const due = this.claimDueCents(p, c, late) ?? 0;
-        if (c.status === 'SETTLED') split.settled += due;
-        else if (isOpen(c)) split.open += due;
+        if (c.status === 'SETTLED') {
+          split.settled += due;
+          if (!c.corrects) split.scored += due;
+        } else if (isOpen(c)) split.open += due;
       }
       out.set(p.id, split);
     }
     return out;
   });
-  protected settledOpenOf(personId: number): { settled: number; open: number } {
-    return this.settledOpenByPerson().get(personId) ?? { settled: 0, open: 0 };
+  protected settledOpenOf(personId: number): { settled: number; open: number; scored: number } {
+    return this.settledOpenByPerson().get(personId) ?? { settled: 0, open: 0, scored: 0 };
   }
   /** Everyone's settled-total added up (not trimmed). */
   protected readonly settledTotal = computed(() =>
@@ -719,10 +721,11 @@ export class People {
     }
     return out;
   });
-  /** The person's score: their settled figures (the dues of their counting SETTLED claims) over 100,
+  /** The person's score: their settled figures (the dues of their counting SETTLED claims that
+   *  correct nothing) over 100,
    *  less 5 for each of their counting overdue claims, rounded half to even to a whole number. */
   protected scoreOf(personId: number): number {
-    const x = this.settledOpenOf(personId).settled - 50000 * this.overdueOf(personId).count;
+    const x = this.settledOpenOf(personId).scored - 50000 * this.overdueOf(personId).count;
     const q = Math.floor(x / 10000);
     const r = x - q * 10000;
     return r > 5000 || (r === 5000 && q % 2 !== 0) ? q + 1 : q;
