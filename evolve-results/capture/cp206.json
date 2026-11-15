@@ -1,0 +1,64 @@
+{
+  "checkpoint": 206,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp206_restricted-role",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA fourth role, restricted, can be assigned. A restricted user sees on the people list only the\npeople of the crews they lead or belong to (by a person with the user's name) and that person\nthemselves: no other row is on the screen. Every other figure (the totals row, the header, the\nsummary, the periods, the pools) is still over everyone on the sheet.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "00f2c85453405f1aa444e1cf752fedabab28c901",
+  "reset_sha": "",
+  "preagent_sha": "2d7624a0333435b84ce41f154197992b192dd930",
+  "prev_sha": "2d7624a0333435b84ce41f154197992b192dd930",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7353317999999999,
+    "input_tokens": 40,
+    "output_tokens": 7847,
+    "cache_read_tokens": 869479,
+    "cache_creation_tokens": 50542,
+    "num_turns": 21,
+    "duration_ms": 300982,
+    "duration_api_ms": 82793,
+    "model": "claude-opus-5-5",
+    "session_id": "9c2c12ad-9c33-4df9-b082-c706042d3857",
+    "stop_reason": "success",
+    "result_text": "There's now a fourth role, **restricted**, and all 4 tests in `bin/e2e` pass.\n\n**What a restricted user sees:** on the people list, only the person with their name (matched on name or alias, ignoring case) and the people of any crew that person leads or belongs to. Everything else on the screen still covers the whole sheet: the totals row, header, summary, periods, pools and crews. A restricted user with no person of their own on the sheet sees no rows at all, which the test checks for \"vic\".\n\n**Changes:**\n- **Stored data:** a new migration, `V107__role_restricted.sql`, rebuilds the `sheet_role` table so the stored role may be `restricted`. It does this the same way V39 added `viewer`.\n- **Server:**\n  - `Role` gains `RESTRICTED`, and the role form accepts it.\n  - For permissions, `SettingsService.mayTake` treats a restricted user as a clerk.\n  - Setting the role writes the expected `ROLE_SET \u2026 role=restricted` audit line through the existing path.\n- **Front end:**\n  - In `people.ts`, `shownPeople` now filters through a new `visibleIds` computed signal, built from the user's role, their own person and the sheet's crews.\n  - All the figures are still worked out from the full people list, so the filter changes only which rows are shown.\n  - `restricted` is added to the role choices and to the role form's error message.\n\n**One decision for you:** the request didn't say what a restricted user may *do*, so I made them act as a clerk everywhere except the list. A permission-matrix entry of \"clerk\" therefore covers restricted users too, and restricted can't be named separately in the matrix. If restricted users should have fewer rights than clerks, that needs a further change.\n\nThe list is filtered in the browser, so the server still sends everyone's data to a restricted user. If they mustn't be able to get other people's rows at all, the server would need to filter them too.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7353317999999999,
+        "num_turns": 21,
+        "duration_ms": 300982,
+        "duration_api_ms": 82793,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp206.agent.jsonl",
+  "agent_diff_file": "cp206.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

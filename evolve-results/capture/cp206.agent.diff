@@ -1,0 +1,125 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7e29d4680..203194df1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -541,11 +541,27 @@ export class People {
+   protected readonly grades = GRADES;
+   protected readonly columns = PEOPLE_COLUMNS;
+   protected readonly people = signal<Person[]>([]);
+-  /** The people the list shows: retired ones (any with a retirement date) only with "show retired" on. */
++  /** The people the list shows: retired ones (any with a retirement date) only with "show retired" on; for a
++   *  restricted user, only the person who goes by their name and the people of the crews that person leads or
++   *  belongs to. */
+   protected readonly shownPeople = computed(() => {
+-    const shown = this.session.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null);
++    const visible = this.visibleIds();
++    const listed = visible ? this.people().filter((p) => visible.has(p.id)) : this.people();
++    const shown = this.session.showRetired() ? listed : listed.filter((p) => p.retiredFrom === null);
+     return this.sorted(shown);
+   });
++  /** The ids of the people a restricted user may see on the list; null when the user is not restricted. */
++  private readonly visibleIds = computed<Set<number> | null>(() => {
++    if (this.myRole() !== 'restricted') return null;
++    const me = this.me();
++    if (!me) return new Set();
++    const ids = new Set([me.id]);
++    for (const c of this.crews()) {
++      const people = crewIds(c);
++      if (people.includes(me.id)) people.forEach((id) => ids.add(id));
++    }
++    return ids;
++  });
+   /** Every claim on the sheet, newest first. */
+   protected readonly claims = signal<Claim[]>([]);
+   /** The retirement date of each person with one, by person id: from the sheet's today on or after it, their
+diff --git a/src/main/frontend/src/app/features/settings/settings-api.ts b/src/main/frontend/src/app/features/settings/settings-api.ts
+index a1ecabaab..6dee9788d 100644
+--- a/src/main/frontend/src/app/features/settings/settings-api.ts
++++ b/src/main/frontend/src/app/features/settings/settings-api.ts
+@@ -4,8 +4,9 @@ import { firstValueFrom } from 'rxjs';
+ import { DatedSettings, Session, otherError } from '../../core/session';
+ 
+ /** The roles a user name can hold on a sheet; a name without one is a clerk. A viewer sees the
+- *  sheet and may change nothing on it. */
+-export const ROLES = ['clerk', 'steward', 'viewer'] as const;
++ *  sheet and may change nothing on it. A restricted user acts as a clerk, but its people list shows only the
++ *  people of the crews its person leads or belongs to, and that person. */
++export const ROLES = ['clerk', 'steward', 'viewer', 'restricted'] as const;
+ 
+ /** The actions whose roles the permission matrix sets, each with its standing rule (used while
+  *  its entry is blank). */
+@@ -345,7 +346,7 @@ export function settingsError(e: unknown): string {
+ }
+ 
+ export function roleError(e: unknown): string {
+-  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a user name without spaces and a role of clerk, steward or viewer.';
++  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a user name without spaces and a role of clerk, steward, viewer or restricted.';
+   if (e instanceof HttpErrorResponse && e.status === 409) return 'The role was changed at the same moment; try again.';
+   return otherError(e);
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/settings/Role.java b/src/main/java/net/officefloor/hq/app/settings/Role.java
+index fe3851a9c..081b7cc8c 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/Role.java
++++ b/src/main/java/net/officefloor/hq/app/settings/Role.java
+@@ -1,9 +1,10 @@
+ package net.officefloor.hq.app.settings;
+ 
+ /** A user's role on a sheet. Any name without one is a clerk. A viewer sees the sheet and changes
+- *  nothing on it. */
++ *  nothing on it. A restricted user acts as a clerk, but sees on the people list only the people of
++ *  the crews its person leads or belongs to, and that person. */
+ public enum Role {
+-    CLERK, STEWARD, VIEWER;
++    CLERK, STEWARD, VIEWER, RESTRICTED;
+ 
+     /** The role as it is stored, shown and audited. */
+     public String key() {
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 332310883..d93e5825d 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -212,7 +212,7 @@ public class SettingsController {
+     /** A role as the form submits it: a user name without spaces and clerk, steward or viewer. */
+     public record RoleForm(
+             @NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String user,
+-            @NotNull @Pattern(regexp = "clerk|steward|viewer") String role) {
++            @NotNull @Pattern(regexp = "clerk|steward|viewer|restricted") String role) {
+     }
+ 
+     public record DelegationView(long id, String user, String steward, LocalDate from, LocalDate to) {
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index e09a462e2..a877891eb 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -805,10 +805,11 @@ public class SettingsService {
+     }
+ 
+     /** Whether the user's role may take the action: as the permission matrix sets it, else by its
+-     *  standing rule. */
++     *  standing rule; a restricted user takes it as a clerk. */
+     @Transactional(readOnly = true)
+     public boolean mayTake(String sheetId, String user, Permission action) {
+-        Role role = roleOf(sheetId, user);
++        Role acting = roleOf(sheetId, user);
++        Role role = acting == Role.RESTRICTED ? Role.CLERK : acting;
+         return permissions.findBySheetIdAndAction(sheetId, action.key())
+                 .map(p -> p.roleSet().contains(role))
+                 .orElseGet(() -> action.standing().contains(role));
+diff --git a/src/main/resources/db/migration/V107__role_restricted.sql b/src/main/resources/db/migration/V107__role_restricted.sql
+new file mode 100644
+index 000000000..438f10081
+--- /dev/null
++++ b/src/main/resources/db/migration/V107__role_restricted.sql
+@@ -0,0 +1,12 @@
++-- A fourth role, restricted: acts as a clerk, but its people list shows only the people of the
++-- crews its person leads or belongs to and that person. The role's check is rebuilt to allow it.
++CREATE TABLE sheet_role_new (
++    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    user_name VARCHAR(100) NOT NULL,
++    role      VARCHAR(20)  NOT NULL CHECK (role IN ('clerk', 'steward', 'viewer', 'restricted'))
++);
++INSERT INTO sheet_role_new (id, sheet_id, user_name, role) SELECT id, sheet_id, user_name, role FROM sheet_role;
++DROP TABLE sheet_role;
++ALTER TABLE sheet_role_new RENAME TO sheet_role;
++CREATE UNIQUE INDEX sheet_role_user ON sheet_role (sheet_id, user_name);
