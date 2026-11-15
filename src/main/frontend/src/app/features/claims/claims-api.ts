@@ -307,6 +307,13 @@ export class ClaimsApi {
     );
   }
 
+  /** The claim's timeline: the audit lines about it, newest first, as the file holds them. */
+  timeline(sheetId: string, id: number): Promise<string[]> {
+    return firstValueFrom(
+      this.http.get<string[]>(`${this.url(sheetId)}/claims/${id}/timeline`, { headers: this.headers() }),
+    );
+  }
+
   /** Comment on a claim. */
   comment(sheetId: string, id: number, text: string): Promise<Claim> {
     return firstValueFrom(

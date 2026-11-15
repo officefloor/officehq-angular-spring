@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
-import { Session } from '../../core/session';
+import { Session, otherError } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { RateLevels, claimDueCents } from '../rates/rates-api';
@@ -81,6 +81,13 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment,
             <ol [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
               @for (m of c.comments; track $index) {
                 <li data-testid="claim-comments-line">{{ commentText(m) }}</li>
+              }
+            </ol>
+            <button type="button" data-testid="claim-timeline" (click)="showTimeline(c)"
+              [attr.aria-label]="'Show the timeline of claim of ' + c.amount + ' on ' + c.date">Timeline</button>
+            <ol [attr.aria-label]="'Timeline of claim of ' + c.amount + ' on ' + c.date">
+              @for (t of timelines()[c.id] ?? []; track $index) {
+                <li data-testid="claim-timeline-line">{{ t }}</li>
               }
             </ol>
             <label [for]="'claim-comment-text-' + c.id">Comment</label>
@@ -222,6 +229,8 @@ export class PersonClaims {
   /** The new date typed for re-dating each claim, by claim id. */
   protected readonly redates = signal<Record<number, string>>({});
   /** The comment typed on each claim, by claim id. */
+  /** Each claim's timeline as last shown, by claim id. */
+  protected readonly timelines = signal<Record<number, string[]>>({});
   protected readonly commentTexts = signal<Record<number, string>>({});
   /** The line typed for adding to each DRAFT claim, by claim id. */
   protected readonly lineDrafts = signal<Record<number, { label: string; qty: string; unit: string }>>({});
@@ -547,6 +556,21 @@ export class PersonClaims {
       }
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: lineError(e) }));
+    }
+  }
+
+  /** Show the claim's timeline, read afresh from the audit file; a refusal shows an error on the
+   *  claim. */
+  protected async showTimeline(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    this.timelines.update((ts) => ({ ...ts, [c.id]: [] }));
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const lines = await this.api.timeline(sheetId, c.id);
+      if (this.session.sheetId() === sheetId) this.timelines.update((ts) => ({ ...ts, [c.id]: lines }));
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: otherError(e) }));
     }
   }
 

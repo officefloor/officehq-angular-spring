@@ -92,12 +92,7 @@ public class Audit {
      * as names are (case and surrounding spaces ignored).
      */
     public synchronized List<String> lines(String sheetId, String name) {
-        List<String> all;
-        try {
-            all = Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : List.of();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        List<String> all = read();
         String who = name == null ? "" : name.trim();
         List<String> found = new ArrayList<>();
         for (String line : all) {
@@ -108,6 +103,38 @@ public class Audit {
         }
         Collections.reverse(found);
         return found;
+    }
+
+    /**
+     * The sheet's records about one claim exactly as the file holds them, newest first: with a
+     * number, those carrying {@code number=} it; without, those naming its person, amount and date
+     * together ({@code person=.. amount=.. date=..}) that carry no number of their own.
+     */
+    public synchronized List<String> claimLines(String sheetId, String number, String person, String amount,
+            String date) {
+        String about = person + " amount=" + amount + " date=" + date;
+        List<String> found = new ArrayList<>();
+        for (String line : read()) {
+            if (!hasField(line, "sheet", sheetId, false)) {
+                continue;
+            }
+            boolean match = number != null
+                    ? hasField(line, "number", number, false)
+                    : !line.contains(" number=") && hasField(line, "person", about, false);
+            if (match) {
+                found.add(line);
+            }
+        }
+        Collections.reverse(found);
+        return found;
+    }
+
+    private List<String> read() {
+        try {
+            return Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : List.of();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /** Whether the record carries the field {@code key=value}: after the event name, ending the
