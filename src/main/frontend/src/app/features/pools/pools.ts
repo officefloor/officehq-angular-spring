@@ -191,6 +191,9 @@ export class Pools {
 
   /** The people on the sheet (retired ones too). */
   readonly people = input.required<Person[]>();
+  /** Each person's cut total in cents, by person id: their cuts across every pool they are a
+   *  member of, added up (a pool that shows no cuts adds nothing). */
+  readonly cutTotals = output<Map<number, number>>();
 
   protected readonly pools = signal<Pool[]>([]);
   protected readonly error = signal<string | null>(null);
@@ -234,6 +237,18 @@ export class Pools {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(null));
+    effect(() => {
+      const totals = new Map<number, number>();
+      const cuts = this.cuts();
+      for (const p of this.pools()) {
+        const poolCuts = cuts.get(p.name);
+        for (const m of p.members) {
+          const cut = poolCuts?.get(memberKey(m));
+          if (m.personId !== null && cut !== undefined) totals.set(m.personId, (totals.get(m.personId) ?? 0) + cents(cut));
+        }
+      }
+      untracked(() => this.cutTotals.emit(totals));
+    });
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
