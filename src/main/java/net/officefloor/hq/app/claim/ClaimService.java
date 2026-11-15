@@ -1043,10 +1043,11 @@ public class ClaimService {
 
     /** The number a claim due by {@code date} takes as it is opened: under period numbering (set,
      *  and the sheet's today on or after it) the next within the period containing the due-by
-     *  (<period name>-<n>), or X-<n> when none does; otherwise the sheet's next number. */
+     *  (<period name>-<n>), or X-<n> when none does; otherwise the sheet's next number within the
+     *  fiscal year of the due-by (FY<yyyy>-<n>). */
     public String nextNumber(String sheetId, LocalDate date) {
         if (!sheets.periodNumberingOn(sheetId)) {
-            return String.valueOf(sheets.nextClaimNumber(sheetId));
+            return sheets.nextFiscalClaimNumber(sheetId, date);
         }
         // held until the transaction ends, so two claims opened at once are numbered one after the other
         sheets.lock(sheetId);

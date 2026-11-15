@@ -372,19 +372,8 @@ public class Sheet {
         return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
     }
 
-    /** Take the sheet's next claim number. */
-    public int nextClaimNumber() {
-        return ++lastClaimNumber;
-    }
-
     /** The last claim number the sheet gave (0 when none). */
     public int getLastClaimNumber() {
-        return lastClaimNumber;
-    }
-
-    /** Take the next claim number after {@code last}, the last given anywhere in the sheet's tree. */
-    public int nextClaimNumberAfter(int last) {
-        lastClaimNumber = Math.max(lastClaimNumber, last) + 1;
         return lastClaimNumber;
     }
 }

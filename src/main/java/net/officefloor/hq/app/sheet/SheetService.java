@@ -17,11 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class SheetService {
 
     private final SheetRepository sheets;
+    private final SheetFiscalNumberRepository fiscalNumbers;
     private final RollupService rollup;
     private final ApplicationEventPublisher events;
 
-    public SheetService(SheetRepository sheets, RollupService rollup, ApplicationEventPublisher events) {
+    public SheetService(SheetRepository sheets, SheetFiscalNumberRepository fiscalNumbers, RollupService rollup, ApplicationEventPublisher events) {
         this.sheets = sheets;
+        this.fiscalNumbers = fiscalNumbers;
         this.rollup = rollup;
         this.events = events;
     }
@@ -162,21 +164,33 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::isPeriodNumberingOn).orElse(false);
     }
 
-    /** Take the sheet's next claim number: the sheets of a tree share one sequence, so it is the
-     *  next after the last number given on any sheet of the tree (1 for the first), holding the
-     *  sheets locked until the transaction ends so numbers are never shared and, if it rolls back,
-     *  never skipped. */
+    /** Take the sheet's next claim number for a claim due by {@code date}: FY&lt;yyyy&gt;-&lt;n&gt;, counting
+     *  from 1 within the fiscal year the date falls in (by the sheet's fiscal start month, named by
+     *  the calendar year its first day falls in). The sheets of a tree share one sequence per fiscal
+     *  year, so it is the next after the last given in that year on any sheet of the tree, holding
+     *  the sheets locked until the transaction ends so numbers are never shared and, if it rolls
+     *  back, never skipped. */
     @Transactional
-    public int nextClaimNumber(String id) {
+    public String nextFiscalClaimNumber(String id, LocalDate date) {
         Sheet sheet = sheets.findForUpdate(id).orElseThrow();
-        int last = tree(id).stream().sorted()
-                .map(sheets::findForUpdate)
+        int year = fiscalYear(date, sheet.getFiscalStartMonth());
+        List<String> tree = tree(id).stream().sorted().toList();
+        tree.forEach(sheets::findForUpdate);
+        int last = tree.stream()
+                .map(s -> fiscalNumbers.findBySheetIdAndFiscalYear(s, year))
                 .flatMap(Optional::stream)
-                .mapToInt(Sheet::getLastClaimNumber)
+                .mapToInt(SheetFiscalNumber::getLastNumber)
                 .max().orElse(0);
-        int number = sheet.nextClaimNumberAfter(last);
-        sheets.flush();
-        return number;
+        SheetFiscalNumber counter = fiscalNumbers.findBySheetIdAndFiscalYear(id, year)
+                .orElseGet(() -> new SheetFiscalNumber(id, year));
+        int number = counter.nextNumberAfter(last);
+        fiscalNumbers.saveAndFlush(counter);
+        return "FY" + year + "-" + number;
+    }
+
+    /** The fiscal year a date falls in, named by the calendar year its first day falls in. */
+    static int fiscalYear(LocalDate date, int startMonth) {
+        return date.getMonthValue() >= startMonth ? date.getYear() : date.getYear() - 1;
     }
 
     /** Hold the sheet locked until the transaction ends, so changes checked against the rest of
