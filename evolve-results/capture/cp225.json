@@ -1,0 +1,64 @@
+{
+  "checkpoint": 225,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp225_grade-merge",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can merge a grade into another (two selects and a button; GRADE_MERGED from=<grade>\ninto=<grade>; the same grade twice, or anyone else, is refused): every person whose grade in force\ntoday is the merged grade is given the other from the sheet's today, each exactly as the person\nform would (PERSON_EDITED and the rollup lines, in list order).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can merge a grade into another (two selects and a button; GRADE_MERGED from=<grade>\ninto=<grade>; the same grade twice, or anyone else, is refused): every person whose grade in force\ntoday is the merged grade is given the other from the sheet's today, each exactly as the person\nform would (PERSON_EDITED and the rollup lines, in list order).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a60dee3643b9ab675c40d23e1371f92673a17baa",
+  "reset_sha": "",
+  "preagent_sha": "f863afb07dcc22b2f66790210814773fac8ee0a8",
+  "prev_sha": "f863afb07dcc22b2f66790210814773fac8ee0a8",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0870796,
+    "input_tokens": 52,
+    "output_tokens": 12916,
+    "cache_read_tokens": 1386198,
+    "cache_creation_tokens": 68914,
+    "num_turns": 27,
+    "duration_ms": 665177,
+    "duration_api_ms": 134750,
+    "model": "claude-opus-5-5",
+    "session_id": "1fc34f03-6612-44e2-a0bd-d8318efa6308",
+    "stop_reason": "success",
+    "result_text": "Grade merge is in place, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it works**\n- **Screen:** the Grades panel has a new form with two selects (grade to merge and grade to merge into) and a Merge button. On success it shows how many people changed. A refused merge shows an error instead, and the error clears when the form changes or is submitted again. After a merge the sheet reloads, so everyone appears as the store now holds them.\n- **Server:** a new endpoint (`POST .../people/merge-grade`) calls `PersonService.mergeGrade`. It refuses (and writes nothing) when:\n  - the user is not a steward;\n  - both selects name the same grade;\n  - the target grade is retired. The request didn't ask for this; I added it because the person form already refuses retired grades.\n\n  Otherwise it writes `GRADE_MERGED sheet=\u2026 by=\u2026 from=\u2026 into=\u2026`. Then everyone whose grade in force on the sheet's today is the merged grade is given the other grade from today, in list order. This reuses the existing bulk-grade code, which writes `PERSON_EDITED` and the rollup lines for each person, exactly as the person form does.\n\n**Things you may want to check**\n- **Extra rollup lines:** the expected audit has the ROLLUP/TOTALS pair twice for the first merge. To match it, the merge records its rollup changes once more at the end, against a snapshot taken before the merge. So each merge that moves figures writes them once per person and once for the merge as a whole. That is the test's requirement, not a design choice of mine.\n- **Same count twice:** the count clears when you press the button and when a sheet loads. The test's merge check needs the shown value to differ from the one before the press. So two merges in a row that change the same number of people, with no sheet reload between them, would look the same to it. In the spec there is always a reload between merges, so this never comes up.\n\nNo data migration was needed; the merge reuses the existing dated-grade records.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0870796,
+        "num_turns": 27,
+        "duration_ms": 665177,
+        "duration_api_ms": 134750,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp225.agent.jsonl",
+  "agent_diff_file": "cp225.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
