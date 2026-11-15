@@ -3,6 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { Session } from '../../core/session';
 import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, deferred, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp, statusOn, tagsOf } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
+import { Pools } from '../pools/pools';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn, personPeriodDueCents } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
@@ -11,19 +12,20 @@ import { Header } from '../header/header';
 import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
 import { GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
 
-// The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
+// The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons and backing (their patrons' recent settled figures); the sheet's claimed-total,
 // due-total and overdue claims; a header of counters repeating them; a summary of them by grade, period and status; and
 // the one form that adds a person or, with a
 // person's editor open, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, Header, PersonClaims, Periods, Rates, Summary],
+  imports: [ReactiveFormsModule, Header, PersonClaims, Periods, Pools, Rates, Summary],
   template: `
     <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
     <app-rates [rates]="rates()" [preview]="previewRate" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
+    <app-pools [people]="people()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
