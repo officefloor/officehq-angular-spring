@@ -1,0 +1,175 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 6f29aa4b4..e043749c9 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -11,9 +11,11 @@ import { STATUSES, statusCounts } from '../summary/summary';
+ // of the people on it, retired ones left out, and per status how many claims are in it); and the signed-in user's own
+ // due-total and overdue-total, when a person on the sheet goes by their name, and their crew total,
+ // when that person leads a crew; and, for a steward, their dashboard: how many claims are PENDING,
+-// how many in REVIEW and how many counting ones are overdue (the cells empty for anyone else); and
++// how many in REVIEW and how many counting ones are overdue, over the sheet and all its descendants
++// (the cells empty for anyone else); and
+ // how many REVIEW claims are assigned to the signed-in user.
+-/** A steward's dashboard: the sheet's PENDING claims, REVIEW claims and counting overdue claims. */
++/** A steward's dashboard: the PENDING claims, REVIEW claims and counting overdue claims of the
++ *  sheet and all its descendants. */
+ export interface Dashboard {
+   pending: number;
+   review: number;
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index ae31545e4..98213e8c1 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -141,7 +141,7 @@ export function personTags(p: Person): string[] {
+ /** Figures added up over a sheet's descendants: how many people (retired ones too), each
+  *  sheet's due-total and overdue-total as that sheet shows it, per grade the due-totals of the
+  *  people on it (retired ones left out), and per status how many claims are in it (only grades and
+- *  statuses with some listed). */
++ *  statuses with some listed), and how many counting claims are overdue. */
+ export interface DescendantFigures {
+   people: number;
+   dueTotal: string;
+@@ -150,6 +150,8 @@ export interface DescendantFigures {
+   statusCounts: Record<string, number>;
+   /** Each person's name and aliases, due-total (null: n/a) and overdue-total. */
+   members: FigureMember[];
++  /** How many counting claims are overdue. */
++  overdueCount: number;
+ }
+ 
+ /** A person as the consolidated figures take them. */
+@@ -160,7 +162,7 @@ export interface FigureMember {
+ }
+ 
+ /** Figures with nothing in them. */
+-export const NO_FIGURES: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {}, members: [] };
++export const NO_FIGURES: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {}, members: [], overdueCount: 0 };
+ 
+ @Injectable({ providedIn: 'root' })
+ export class PeopleApi {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index a485bf6bc..a22dc1b50 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -807,15 +807,16 @@ export class People {
+   }
+   /** The role the signed-in user acts in on the sheet (as it stood then, under an as-of date), as last read. */
+   private readonly myRole = signal<string | null>(null);
+-  /** The steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that
+-   *  count; null unless the signed-in user is a steward. */
++  /** The steward's dashboard: the PENDING and REVIEW claims and the overdue claims that count,
++   *  over the sheet and all its descendants; null unless the signed-in user is a steward. */
+   protected readonly dashboard = computed<Dashboard | null>(() => {
+     if (this.myRole() !== 'steward') return null;
+     const claims = this.claims();
++    const d = this.descendants();
+     return {
+-      pending: claims.filter((c) => c.status === 'PENDING').length,
+-      review: claims.filter((c) => c.status === 'REVIEW').length,
+-      overdue: this.overdueCount(),
++      pending: claims.filter((c) => c.status === 'PENDING').length + (d.statusCounts['PENDING'] ?? 0),
++      review: claims.filter((c) => c.status === 'REVIEW').length + (d.statusCounts['REVIEW'] ?? 0),
++      overdue: this.overdueCount() + d.overdueCount,
+     };
+   });
+   protected readonly overdueCount = computed(() =>
+@@ -999,6 +1000,7 @@ export class People {
+       statusCounts: Object.fromEntries(STATUSES.map((s) =>
+         [s, (own.statusCounts[s] ?? 0) + (d.statusCounts[s] ?? 0)])),
+       members,
++      overdueCount: own.overdueCount + d.overdueCount,
+     };
+   });
+   /** The sheet's own figures, live, as the consolidated figures add them up. */
+@@ -1017,6 +1019,7 @@ export class People {
+         [g, money(people.filter((p) => p.grade === g).reduce((sum, p) => sum + (p.due ?? 0), 0))])),
+       statusCounts: Object.fromEntries(statusCounts(this.claims()).map((s) => [s.status, s.count])),
+       members,
++      overdueCount: this.overdueCount(),
+     };
+   });
+   protected readonly claimedTotal = computed(() =>
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+index da87e442f..b2658f672 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+@@ -27,9 +27,10 @@ public class RollupController {
+     /** Figures added up over a sheet's descendants (or the sheet's own), the totals with two
+      *  decimals: per grade the due-totals of the people on it (retired ones left out), and per
+      *  status how many claims are in it (only grades and statuses with some), and each person's
+-     *  names and figures. */
++     *  names and figures, and how many counting claims are overdue. */
+     public record ConsolidatedView(int people, String dueTotal, String overdueTotal,
+-            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, List<MemberView> members) {
++            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, List<MemberView> members,
++            int overdueCount) {
+     }
+ 
+     /** A person's name and aliases, due-total (null: n/a) and overdue-total, with two decimals. */
+@@ -82,6 +83,6 @@ public class RollupController {
+                         Map.Entry::getValue, (a, b) -> a, TreeMap::new)),
+                 c.members().stream().map(m -> new MemberView(m.names(),
+                         m.dueTotal() == null ? null : m.dueTotal().setScale(2).toPlainString(),
+-                        m.overdueTotal().setScale(2).toPlainString())).toList());
++                        m.overdueTotal().setScale(2).toPlainString())).toList(), c.overdueCount());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 33ddc060d..70ad52b00 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -80,6 +80,11 @@ public class RollupService {
+             return out;
+         }
+ 
++        /** How many of everyone's counting claims are overdue. */
++        int overdueCount() {
++            return people.values().stream().mapToInt(Figures::overdueCount).sum();
++        }
++
+         BigDecimal claimedTotal() {
+             return people.values().stream().map(Figures::claimed).reduce(zero(), BigDecimal::add);
+         }
+@@ -260,9 +265,11 @@ public class RollupService {
+     /** Figures added up over sheets: how many people (retired ones too), the due-totals and
+      *  overdue-totals each sheet shows, per grade the due-totals of the people on it (retired ones
+      *  left out), per status how many claims are in it, and each person's names and figures (so a
+-     *  tree's figures can be trimmed over all its people, and people matched by name counted once). */
++     *  tree's figures can be trimmed over all its people, and people matched by name counted once),
++     *  and how many counting claims are overdue. */
+     public record Consolidated(int people, BigDecimal dueTotal, BigDecimal overdueTotal,
+-            Map<String, BigDecimal> gradeDueTotals, Map<ClaimStatus, Integer> statusCounts, List<Member> members) {
++            Map<String, BigDecimal> gradeDueTotals, Map<ClaimStatus, Integer> statusCounts, List<Member> members,
++            int overdueCount) {
+     }
+ 
+     /** A person as the consolidated figures take them: their name and aliases, due-total held to
+@@ -275,7 +282,7 @@ public class RollupService {
+     public Consolidated own(String sheetId, LocalDate asOf) {
+         Snapshot figures = asOf == null ? snapshot(sheetId) : snapshotAsOf(sheetId, asOf);
+         return new Consolidated(figures.people().size(), figures.dueTotal(), figures.overdueTotal(),
+-                figures.dueByGrade(), figures.statuses(), figures.members());
++                figures.dueByGrade(), figures.statuses(), figures.members(), figures.overdueCount());
+     }
+ 
+     /** The figures of the sheet's descendants (its children, theirs, and so on), each sheet's as
+@@ -288,6 +295,7 @@ public class RollupService {
+         Map<String, BigDecimal> grades = new LinkedHashMap<>();
+         Map<ClaimStatus, Integer> statuses = new LinkedHashMap<>();
+         List<Member> members = new ArrayList<>();
++        int overdueCount = 0;
+         Set<String> seen = new HashSet<>(Set.of(sheetId));
+         ArrayDeque<String> todo = new ArrayDeque<>(List.of(sheetId));
+         while (!todo.isEmpty()) {
+@@ -303,9 +311,10 @@ public class RollupService {
+                 figures.dueByGrade().forEach((g, d) -> grades.merge(g, d, BigDecimal::add));
+                 figures.statuses().forEach((st, n) -> statuses.merge(st, n, Integer::sum));
+                 members.addAll(figures.members());
++                overdueCount += figures.overdueCount();
+             }
+         }
+-        return new Consolidated(count, due, overdue, grades, statuses, members);
++        return new Consolidated(count, due, overdue, grades, statuses, members, overdueCount);
+     }
+ 
+     /** Each person's due-total for the period from {@code from} to {@code to}, inclusive, by person
