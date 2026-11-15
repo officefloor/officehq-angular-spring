@@ -116,6 +116,9 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
       <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong>
         open total <strong data-testid="rollup-open-total">{{ openTotal() | figure }}</strong></p>
       <p>Cut total <strong data-testid="rollup-cut-total">{{ money(cutTotal()) | figure }}</strong></p>
+      <p>Aged due 0–30 <strong data-testid="rollup-aged-0-30">{{ money(agedTotal().upTo30) | figure }}</strong>
+        31–60 <strong data-testid="rollup-aged-31-60">{{ money(agedTotal().upTo60) | figure }}</strong>
+        61+ <strong data-testid="rollup-aged-61">{{ money(agedTotal().over60) | figure }}</strong></p>
       @if (tagTotals().length > 0) {
         <table aria-label="Due total by tag">
           <thead><tr><th scope="col">Tag</th><th scope="col">Due total</th></tr></thead>
@@ -685,6 +688,16 @@ export class People {
       out.set(p.id, aged);
     }
     return out;
+  });
+  /** Everyone's age buckets added up (not trimmed), in cents. */
+  protected readonly agedTotal = computed<Aged>(() => {
+    const total: Aged = { upTo30: 0, upTo60: 0, over60: 0 };
+    for (const a of this.agedByPerson().values()) {
+      total.upTo30 += a.upTo30;
+      total.upTo60 += a.upTo60;
+      total.over60 += a.over60;
+    }
+    return total;
   });
   protected agedOf(personId: number): Aged {
     return this.agedByPerson().get(personId) ?? { upTo30: 0, upTo60: 0, over60: 0 };
