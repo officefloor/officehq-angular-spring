@@ -90,6 +90,10 @@ public class ClaimController {
     public record DeferForm(@NotNull LocalDate until) {
     }
 
+    /** The new date a claim is re-dated to. */
+    public record RedateForm(@NotNull LocalDate date) {
+    }
+
     /** The amount split off a claim: up to two decimals. */
     public record SplitForm(@NotNull @Pattern(regexp = "\\d{1,13}(\\.\\d{1,2})?") String amount) {
     }
@@ -233,6 +237,15 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody DeferForm body) {
         return view(service.defer(sheetId, user.trim(), id, body.until()));
+    }
+
+    @PostMapping("/claims/{id}/redate")
+    public ClaimView redate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody RedateForm body) {
+        return view(service.redate(sheetId, user.trim(), id, body.date()));
     }
 
     @PostMapping("/claims/{id}/proofs")

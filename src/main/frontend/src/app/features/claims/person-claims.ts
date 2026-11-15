@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, deferError, deferred, proofError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, deferError, deferred, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -68,6 +68,11 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine,
               [value]="deferDates()[c.id] ?? ''" (input)="deferDateChanged(c.id, $any($event.target).value)" />
             <button type="button" data-testid="claim-defer" (click)="defer(c)"
               [attr.aria-label]="'Defer claim of ' + c.amount + ' on ' + c.date">Defer</button>
+            <label [for]="'claim-date-new-' + c.id">Re-date to</label>
+            <input [id]="'claim-date-new-' + c.id" type="date" data-testid="claim-date-new"
+              [value]="redates()[c.id] ?? ''" (input)="redateChanged(c.id, $any($event.target).value)" />
+            <button type="button" data-testid="claim-redate" (click)="redate(c)"
+              [attr.aria-label]="'Re-date claim of ' + c.amount + ' on ' + c.date">Re-date</button>
             <button type="button" data-testid="claim-approve" (click)="changeStatus(c, 'approve')"
               [attr.aria-label]="'Approve claim of ' + c.amount + ' on ' + c.date">Approve</button>
             <button type="button" data-testid="claim-resettle" (click)="changeStatus(c, 'resettle')"
@@ -140,6 +145,8 @@ export class PersonClaims {
   protected readonly rejectReasons = signal<Record<number, string>>({});
   /** The date typed for deferring each OPEN claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The new date typed for re-dating each claim, by claim id. */
+  protected readonly redates = signal<Record<number, string>>({});
   /** The amount typed for splitting off each OPEN claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
   protected readonly fieldId = (name: string) => `claim-form-${name}-${this.personId()}`;
@@ -269,6 +276,29 @@ export class PersonClaims {
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: deferError(e) }));
+    }
+  }
+
+  protected redateChanged(id: number, date: string): void {
+    this.clearRowError(id);
+    this.redates.update((ds) => ({ ...ds, [id]: date }));
+  }
+
+  /** Re-date the claim to the date typed for it; a refusal shows an error on the claim. */
+  protected async redate(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const date = (this.redates()[c.id] ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Enter a date as yyyy-mm-dd to re-date the claim to.' }));
+      return;
+    }
+    try {
+      const claim = await this.api.redate(sheetId, c.id, date);
+      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: redateError(e) }));
     }
   }
 

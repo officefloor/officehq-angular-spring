@@ -42,6 +42,7 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final ClaimLogRepository log;
+    private final RetiredNumberRepository retired;
     private final PersonRepository people;
     private final PersonStatementRepository statements;
     private final PersonWatchRepository watches;
@@ -60,10 +61,11 @@ public class ClaimService {
     public record Split(Claim original, Claim split) {
     }
 
-    public ClaimService(ClaimRepository claims, ClaimLogRepository log, PersonRepository people, PersonStatementRepository statements,
+    public ClaimService(ClaimRepository claims, ClaimLogRepository log, RetiredNumberRepository retired, PersonRepository people, PersonStatementRepository statements,
             PersonWatchRepository watches, RateRepository rates, SheetService sheets, RollupService rollup, PeriodService periods, SettingsService settings, Audit audit) {
         this.claims = claims;
         this.log = log;
+        this.retired = retired;
         this.people = people;
         this.statements = statements;
         this.watches = watches;
@@ -298,6 +300,51 @@ public class ClaimService {
         record("CLAIM_DEFERRED", user, person, claim, claim.getNumber(), " until=" + until);
         rollup.recordChanges(sheetId, user, before);
         return claim;
+    }
+
+    /** A steward re-dates an OPEN or PENDING claim: its due-by stays as it was fixed, a figure a
+     *  statement bound it to stays bound, and its period follows the new date. Under period
+     *  numbering, when the new date is in another period than the old (or none), the claim takes
+     *  the next number of the new period's sequence and its old number is never given again.
+     *  Refused (404) when missing, (403) for anyone but a steward, (423) when its old or new date
+     *  is in a closed period, (409) unless OPEN or PENDING, and (422) when the new date is after
+     *  the person's retirement date. */
+    @Transactional
+    public Claim redate(String sheetId, String user, long id, LocalDate date) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward re-dates a claim");
+        }
+        refuseIfClosed(sheetId, claim.getDate());
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only an OPEN or PENDING claim is re-dated, not a " + claim.getStatus() + " one");
+        }
+        refuseIfClosed(sheetId, date);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        refuseIfRetired(person, date);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate old = claim.getDate();
+        if (sheets.periodNumberingOn(sheetId) && !samePeriod(sheetId, old, date)) {
+            String number = nextNumber(sheetId, date);
+            if (claim.getNumber() != null) {
+                retired.save(new RetiredNumber(sheetId, claim.getNumber()));
+            }
+            claim.setNumber(number);
+        }
+        claim.setDate(date);
+        claims.flush();
+        record("CLAIM_REDATED", user, person, claim, claim.getNumber(), " old=" + old + " new=" + date);
+        rollup.recordChanges(sheetId, user, before);
+        return claim;
+    }
+
+    /** Whether two dates fall in the same period (or both in none). */
+    private boolean samePeriod(String sheetId, LocalDate a, LocalDate b) {
+        return periods.containing(sheetId, a).map(Period::getId)
+                .equals(periods.containing(sheetId, b).map(Period::getId));
     }
 
     /** A steward approves a PENDING claim: it becomes SETTLED, its due (its live figure, with its
@@ -556,7 +603,9 @@ public class ClaimService {
         // held until the transaction ends, so two claims opened at once are numbered one after the other
         sheets.lock(sheetId);
         String prefix = periods.containing(sheetId, date).map(Period::getName).orElse(NO_PERIOD) + "-";
-        int last = claims.findNumbers(sheetId).stream()
+        List<String> given = new ArrayList<>(claims.findNumbers(sheetId));
+        given.addAll(retired.findNumbers(sheetId));
+        int last = given.stream()
                 .filter(n -> n.startsWith(prefix))
                 .map(n -> n.substring(prefix.length()))
                 .filter(n -> n.matches("\\d{1,9}"))

@@ -199,6 +199,13 @@ export class ClaimsApi {
     );
   }
 
+  /** Re-date an OPEN or PENDING claim (a steward only). */
+  redate(sheetId: string, id: number, date: string): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/redate`, { date }, { headers: this.headers() }),
+    );
+  }
+
   /** Add a proof to a claim that is neither SETTLED nor VOID. */
   addProof(sheetId: string, id: number): Promise<Claim> {
     return firstValueFrom(
@@ -313,6 +320,17 @@ export function deferError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 422) return "Defer the claim until a date after the sheet's today.";
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
+  return otherError(e);
+}
+
+/** Why a re-dating was refused. */
+export function redateError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a date as yyyy-mm-dd.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can re-date a claim.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open or pending claim can be re-dated.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return "The new date is after the person's retirement date.";
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'The claim or its new date is in a closed period.';
   return otherError(e);
 }
 
