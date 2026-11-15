@@ -365,6 +365,12 @@ export class ClaimsApi {
       { ids, personId }, { headers: this.headers() }));
   }
 
+  /** Re-date each of the claims to the date, in list order, as re-dating one would; those that cannot be re-dated are left as they are. */
+  bulkRedate(sheetId: string, ids: number[], date: string): Promise<{ redated: number; refused: number }> {
+    return firstValueFrom(this.http.post<{ redated: number; refused: number }>(`${this.url(sheetId)}/claims/bulk-redate`,
+      { ids, date }, { headers: this.headers() }));
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }

@@ -173,6 +173,16 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
       @if (bulkReassignError(); as err) {
         <p role="alert" data-testid="bulk-reassign-error">{{ err }}</p>
       }
+      <label for="bulk-redate-date">Re-date selected claims to</label>
+      <input #bulkRedateDate id="bulk-redate-date" type="date" data-testid="bulk-redate-date" (input)="bulkRedateError.set(null)" />
+      <button type="button" data-testid="bulk-redate" (click)="bulkRedate(bulkRedateDate.value)">Re-date selected claims</button>
+      @if (bulkRedateResult(); as r) {
+        <p role="status">Re-dated <strong data-testid="bulk-redated">{{ r.redated }}</strong>,
+          refused <strong data-testid="bulk-redate-refused">{{ r.refused }}</strong></p>
+      }
+      @if (bulkRedateError(); as err) {
+        <p role="alert" data-testid="bulk-redate-error">{{ err }}</p>
+      }
       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade selected people">
         <label for="bulk-grade">Grade selected people</label>
         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
@@ -688,6 +698,10 @@ export class People {
   protected readonly bulkReassignResult = signal<{ reassigned: number; refused: number } | null>(null);
   protected readonly bulkReassignError = signal<string | null>(null);
   private bulkReassigning = false;
+  /** The last bulk re-date's counts; gone while one runs. */
+  protected readonly bulkRedateResult = signal<{ redated: number; refused: number } | null>(null);
+  protected readonly bulkRedateError = signal<string | null>(null);
+  private bulkRedating = false;
   /** The ids of the people selected for a bulk grade. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** The bulk grade bar: a grade and the date it is in force from (blank: the sheet's today). */
@@ -797,6 +811,8 @@ export class People {
         this.bulkSettleError.set(null);
         this.bulkReassignResult.set(null);
         this.bulkReassignError.set(null);
+        this.bulkRedateResult.set(null);
+        this.bulkRedateError.set(null);
         this.selectedPeople.set(new Set());
         this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
         this.bulkGraded.set(null);
@@ -1244,6 +1260,35 @@ export class People {
       this.bulkReassignError.set('Something went wrong reassigning the claims; try again.');
     } finally {
       this.bulkReassigning = false;
+    }
+  }
+
+  /** Re-date every selected claim that can be re-dated, in list order, by the rules of re-dating
+   *  one; then show how many were re-dated and refused, and the claims as the store now holds them. */
+  protected async bulkRedate(date: string): Promise<void> {
+    if (this.bulkRedating) return;
+    this.bulkRedateResult.set(null);
+    this.bulkRedateError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    date = date.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.bulkRedateError.set('Enter a date as yyyy-mm-dd to re-date the claims to.');
+      return;
+    }
+    const ids = [...this.selectedClaims()];
+    this.bulkRedating = true;
+    try {
+      const result = await this.claimsApi.bulkRedate(sheetId, ids, date);
+      const claims = await this.claimsApi.list(sheetId);
+      if (this.session.sheetId() !== sheetId) return;
+      this.claims.set(claims);
+      this.selectedClaims.set(new Set());
+      this.bulkRedateResult.set(result);
+    } catch {
+      this.bulkRedateError.set('Something went wrong re-dating the claims; try again.');
+    } finally {
+      this.bulkRedating = false;
     }
   }
 

@@ -176,6 +176,14 @@ public class ClaimController {
     public record BulkReassignView(int reassigned, int refused) {
     }
 
+    /** The claims selected for a bulk re-date, by id, and the new date they are re-dated to. */
+    public record BulkRedateForm(@NotNull @Size(max = 10000) List<@NotNull Long> ids, @NotNull LocalDate date) {
+    }
+
+    /** A bulk re-date's result: how many of the selected claims were re-dated and how many refused. */
+    public record BulkRedateView(int redated, int refused) {
+    }
+
     /** A bulk settle's result: how many of the selected claims were settled (a claim sent to
      *  PENDING counts) and how many refused. */
     public record BulkSettleView(int settled, int refused) {
@@ -463,6 +471,32 @@ public class ClaimController {
             }
         }
         return new BulkReassignView(reassigned, selected - reassigned);
+    }
+
+    /** Re-date each selected claim in list order (people by their place in the list, newest claim
+     *  first), each on its own by the rules of re-dating one; a claim that cannot be re-dated is
+     *  left as it is. */
+    @PostMapping("/claims/bulk-redate")
+    @ViewerAllowed
+    public BulkRedateView bulkRedate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkRedateForm body) {
+        int selected = (int) body.ids().stream().distinct().count();
+        if (settings.isViewer(sheetId, user.trim()) || sheets.archived(sheetId)) {
+            return new BulkRedateView(0, selected);
+        }
+        List<Long> ordered = service.inListOrder(sheetId, body.ids());
+        int redated = 0;
+        for (long id : ordered) {
+            try {
+                service.redate(sheetId, user.trim(), id, body.date());
+                redated++;
+            } catch (ResponseStatusException e) {
+                // refused: left as it is
+            }
+        }
+        return new BulkRedateView(redated, selected - redated);
     }
 
     @PostMapping("/claims/{id}/split")
