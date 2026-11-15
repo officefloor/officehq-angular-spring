@@ -20,7 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class RateService {
 
     /** The grades the rate form takes. */
-    private static final Pattern GRADE = Pattern.compile("[ABC]");
+    private static final Pattern GRADE = Pattern.compile("[A-Z]{1,3}");
 
     /** A percent as the rate form takes it: 0.00 or more with up to two decimals. */
     private static final Pattern PCT = Pattern.compile("\\d{1,7}(\\.\\d{1,2})?");
@@ -57,6 +57,7 @@ public class RateService {
      *  added after it is saved, those already on any sheet keeping the rates that applied to them. */
     @Transactional
     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
+        sheets.requireGrade(sheetId, grade);
         LocalDate today = sheets.load(sheetId, user).getToday();
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal scaled = pct.setScale(2);

@@ -4,8 +4,6 @@ import { firstValueFrom } from 'rxjs';
 import { Session, otherError } from '../../core/session';
 import { Claim } from '../claims/claims-api';
 
-export const GRADES = ['A', 'B', 'C'] as const;
-
 /** A grade a person was given, and the first date (yyyy-mm-dd) it is in force; null for their first
  *  grade, in force from the beginning of time. */
 export interface DatedGrade {

@@ -361,6 +361,7 @@ public class PersonService {
         if (from.equals(into)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A grade cannot be merged into itself");
         }
+        sheets.requireGrade(sheetId, from);
         sheets.requireActiveGrade(sheetId, into);
         LocalDate today = sheets.today(sheetId);
         List<Long> ids = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
@@ -631,7 +632,8 @@ public class PersonService {
      *  They leave this sheet entirely: their patron links (both ways), pool memberships and watches are
      *  dropped, and the numbers their claims had are never given here again. Refused (404) for a
      *  person not on the sheet, (403) unless the user acts as a steward or when either sheet is
-     *  archived, (422) for a retired person or this sheet's own id, and (409) when their name or an
+     *  archived, (422) for a retired person, this sheet's own id, or a person who has had a grade the
+     *  other sheet does not have (when they are not merged there), and (409) when their name or an
      *  alias is a name or alias on another sheet of the other sheet's tree, or when their contact is
      *  already on the other sheet. When someone on the other sheet goes by their name or an alias
      *  they are merged into them there instead, as a merge does: their claims are listed after
@@ -671,6 +673,8 @@ public class PersonService {
         Person into = matches.isEmpty() ? null : people.findForUpdate(matches.get(0).getId(), target)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Saved by another user"));
         if (into == null) {
+            // a grade the person has had must be one of the other sheet's grades
+            person.getGrades().forEach(g -> sheets.requireGrade(target, g.grade()));
             names.forEach(name -> requireUnusedName(target, null, name));
             requireUnusedContact(target, null, person.getContact());
         } else if (into.isRetired()) {

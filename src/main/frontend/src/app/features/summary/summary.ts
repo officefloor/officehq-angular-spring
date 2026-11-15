@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session, otherError } from '../../core/session';
 import { Claim, money, reviewLate } from '../claims/claims-api';
-import { GRADES, PeopleApi } from '../people/people-api';
+import { PeopleApi } from '../people/people-api';
 import { Period, periodDueCents } from '../periods/periods-api';
 
 /** The statuses the summary counts, in the order it lists them. */
@@ -117,7 +117,7 @@ export class Summary {
 
   protected readonly money = money;
 
-  protected readonly byGrade = computed(() => GRADES.map((grade) => {
+  protected readonly byGrade = computed(() => this.session.grades().map((grade) => {
     const on = this.people().filter((p) => !p.retired && p.grade === grade);
     return { grade, count: on.length, cents: on.reduce((sum, p) => sum + (p.due ?? 0), 0),
       active: on.filter((p) => p.active).length };

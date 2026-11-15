@@ -198,6 +198,14 @@ public class SettingsController {
     public record RetireGradeForm(@NotNull @Size(max = 10) String grade) {
     }
 
+    /** A grade to add as the form submits it; stored trimmed. */
+    public record AddGradeForm(@NotNull @Size(max = 10) String grade) {
+    }
+
+    /** The sheet's grades: A, B and C, then those added in the order added. */
+    public record GradesView(List<String> grades) {
+    }
+
     /** The sheet's retired grades, in the order retired. */
     public record RetiredGradesView(List<String> retiredGrades) {
     }
@@ -264,8 +272,6 @@ public class SettingsController {
     public record HolidayForm(@NotNull @Pattern(regexp = "\\s*\\d{4}-\\d{2}-\\d{2}\\s*") String date) {
     }
 
-    /** The grades a person can hold. */
-    private static final List<String> GRADES = List.of("A", "B", "C");
 
     private final SettingsService service;
     private final HistoryService history;
@@ -296,7 +302,7 @@ public class SettingsController {
     @PutMapping("/settings/clerk-limit/{grade}")
     public SettingsView setGradeClerkLimit(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @PathVariable @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClerkLimitForm body) {
         BigDecimal limit = body.value().isEmpty() ? null : new BigDecimal(body.value());
@@ -327,7 +333,7 @@ public class SettingsController {
     @PutMapping("/settings/terms/{grade}")
     public SettingsView setGradeTerms(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @PathVariable @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody TermsForm body) {
         Integer terms = body.value().isEmpty() ? null : Integer.valueOf(body.value());
@@ -338,7 +344,7 @@ public class SettingsController {
     @PutMapping("/settings/grace/{grade}")
     public SettingsView setGradeGrace(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @PathVariable @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody TermsForm body) {
         Integer grace = body.value().isEmpty() ? null : Integer.valueOf(body.value());
@@ -379,7 +385,7 @@ public class SettingsController {
     @PutMapping("/settings/proof-threshold/{grade}")
     public SettingsView setGradeProofThreshold(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @PathVariable @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @PathVariable @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ProofThresholdForm body) {
         BigDecimal threshold = body.value().isEmpty() ? null : new BigDecimal(body.value());
@@ -575,6 +581,14 @@ public class SettingsController {
         return new DefaultGradeView(service.setDefaultGrade(sheetId, user.trim(), body.value()));
     }
 
+    @PostMapping("/grades")
+    public GradesView addGrade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody AddGradeForm body) {
+        return new GradesView(service.addGrade(sheetId, user.trim(), body.grade().trim()));
+    }
+
     @PostMapping("/grades/retire")
     public RetiredGradesView retireGrade(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
@@ -615,7 +629,7 @@ public class SettingsController {
     private static SettingsView viewAsOf(HistoryService.AsOf then) {
         Sheet sheet = then.sheet();
         Map<String, Integer> gradeTerms = new TreeMap<>();
-        for (String grade : GRADES) {
+        for (String grade : sheet.getGrades()) {
             Integer terms = sheet.getGradeTerms(grade);
             if (terms != null) {
                 gradeTerms.put(grade, terms);
@@ -641,7 +655,7 @@ public class SettingsController {
 
     private Map<String, Integer> gradeTerms(String sheetId) {
         Map<String, Integer> out = new TreeMap<>();
-        for (String grade : GRADES) {
+        for (String grade : service.grades(sheetId)) {
             Integer terms = service.gradeTerms(sheetId, grade);
             if (terms != null) {
                 out.put(grade, terms);

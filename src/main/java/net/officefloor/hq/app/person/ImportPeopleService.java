@@ -16,7 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class ImportPeopleService {
 
     /** The grades the person form takes. */
-    private static final Pattern GRADE = Pattern.compile("[ABC]");
+    private static final Pattern GRADE = Pattern.compile("[A-Z]{1,3}");
 
     /** Terms as the person form takes them: whole days, blank for none. */
     private static final Pattern TERMS = Pattern.compile("\\d{0,4}");
@@ -58,6 +58,7 @@ public class ImportPeopleService {
         Set<String> contacts = new HashSet<>();
         Set<Long> matched = new HashSet<>();
         String defaultGrade = sheets.defaultGrade(sheetId);
+        List<String> grades = sheets.grades(sheetId);
         int n = 0;
         for (String raw : text.split("\\r?\\n|\\r")) {
             n++;
@@ -70,7 +71,7 @@ public class ImportPeopleService {
             String grade = f[1].isBlank() ? defaultGrade : f[1].trim();
             String terms = f.length > 2 ? f[2].trim() : "";
             String contact = f.length > 3 ? f[3].trim() : "";
-            if (name.isEmpty() || name.length() > MAX || !GRADE.matcher(grade).matches()
+            if (name.isEmpty() || name.length() > MAX || !GRADE.matcher(grade).matches() || !grades.contains(grade)
                     || !TERMS.matcher(terms).matches() || contact.length() > MAX) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Line " + n + ": not a person the form takes");
             }

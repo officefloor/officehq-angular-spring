@@ -16,7 +16,7 @@ import { STATUSES, Summary, SummaryPerson, statusCounts } from '../summary/summa
 import { ClassicSummary } from '../summary/classic-summary';
 import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
 import { Dashboard, Header } from '../header/header';
-import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
+import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap less their cut total), its excess over that and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -44,7 +44,7 @@ import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person,
         <input id="person-form-name" data-testid="person-form-name" formControlName="name" autocomplete="off" />
         <label for="person-form-grade">Grade</label>
         <select id="person-form-grade" data-testid="person-form-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -248,7 +248,7 @@ import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person,
       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade selected people">
         <label for="bulk-grade">Grade selected people</label>
         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -329,7 +329,7 @@ import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person,
                 <label [for]="'person-inline-grade-' + p.id" class="visually-hidden">Grade for {{ p.name }}</label>
                 <select [id]="'person-inline-grade-' + p.id" data-testid="person-inline-grade" #inlineGrade
                   (change)="clearRowError(p.id)">
-                  @for (g of grades; track g) {
+                  @for (g of grades(); track g) {
                     <option [value]="g" [selected]="g === gradeOf(p)">{{ g }}</option>
                   }
                 </select>
@@ -543,7 +543,7 @@ export class People {
   private readonly periodsApi = inject(PeriodsApi);
   private readonly document = inject(DOCUMENT);
 
-  protected readonly grades = GRADES;
+  protected readonly grades = this.session.grades;
   protected readonly columns = PEOPLE_COLUMNS;
   protected readonly people = signal<Person[]>([]);
   /** The people the list shows: retired ones (any with a retirement date) only with "show retired" on; for a
@@ -998,7 +998,7 @@ export class People {
       people: distinctPeople(members),
       dueTotal: money(trimmedSum(members.flatMap((m) => (m.dueTotal === null ? [] : [cents(m.dueTotal)])))),
       overdueTotal: money(trimmedSum(members.map((m) => cents(m.overdueTotal)))),
-      gradeDueTotals: Object.fromEntries(GRADES.map((g) =>
+      gradeDueTotals: Object.fromEntries(this.session.grades().map((g) =>
         [g, money(cents(own.gradeDueTotals[g] ?? '0.00') + cents(d.gradeDueTotals[g] ?? '0.00'))])),
       statusCounts: Object.fromEntries(STATUSES.map((s) =>
         [s, (own.statusCounts[s] ?? 0) + (d.statusCounts[s] ?? 0)])),
@@ -1018,7 +1018,7 @@ export class People {
     });
     return {
       people: this.people().length, dueTotal: this.dueTotal(), overdueTotal: this.overdueTotal(),
-      gradeDueTotals: Object.fromEntries(GRADES.map((g) =>
+      gradeDueTotals: Object.fromEntries(this.session.grades().map((g) =>
         [g, money(people.filter((p) => p.grade === g).reduce((sum, p) => sum + (p.due ?? 0), 0))])),
       statusCounts: Object.fromEntries(statusCounts(this.claims()).map((s) => [s.status, s.count])),
       members,
@@ -1309,7 +1309,7 @@ export class People {
     const key = (p: Person): string | number => {
       switch (by) {
         case 'name': return p.name.toLowerCase();
-        case 'grade': return GRADES.indexOf(this.gradeOf(p) as (typeof GRADES)[number]);
+        case 'grade': return this.session.grades().indexOf(this.gradeOf(p));
         default: return dues.get(p.id) ?? Number.POSITIVE_INFINITY;
       }
     };
@@ -1941,7 +1941,7 @@ export class People {
       this.error.set('Enter a name.');
       return;
     }
-    if (!(GRADES as readonly string[]).includes(value.grade)) {
+    if (!this.session.grades().includes(value.grade)) {
       this.error.set('Choose a grade.');
       return;
     }

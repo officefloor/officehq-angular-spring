@@ -1,7 +1,8 @@
-import { Component, computed, input } from '@angular/core';
+import { Component, computed, inject, input } from '@angular/core';
 import { FigurePipe } from '../../core/figure.pipe';
+import { Session } from '../../core/session';
 import { Claim } from '../claims/claims-api';
-import { DescendantFigures, GRADES } from '../people/people-api';
+import { DescendantFigures } from '../people/people-api';
 import { STATUSES, statusCounts } from '../summary/summary';
 
 // The sheet's counters, shown at all times: how many people are on it (retired ones too), how many
@@ -47,7 +48,7 @@ export interface Dashboard {
         due total <strong data-testid="consolidated-due-total">{{ consolidated().dueTotal | figure }}</strong>,
         overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal | figure }}</strong></p>
       <p>With its descendants, due total by grade:
-        @for (g of grades; track g) {
+        @for (g of grades(); track g) {
           {{ g }} <strong [attr.data-testid]="'consolidated-grade-' + g + '-due-total'">{{ (consolidated().gradeDueTotals[g] ?? '0.00') | figure }}</strong>
         }
       </p>
@@ -65,7 +66,12 @@ export class Header {
   readonly dueTotal = input.required<string>();
   readonly overdueTotal = input.required<string>();
   readonly consolidated = input.required<DescendantFigures>();
-  protected readonly grades = GRADES;
+  private readonly session = inject(Session);
+  /** The sheet's grades, then any other grade a descendant sheet has a due-total for. */
+  protected readonly grades = computed(() => {
+    const own = this.session.grades();
+    return [...own, ...Object.keys(this.consolidated().gradeDueTotals).filter((g) => !own.includes(g))];
+  });
   protected readonly statuses = STATUSES;
   /** The signed-in user's own figures (of the person on the sheet going by their name); null when none. */
   readonly myDueTotal = input<string | null>(null);

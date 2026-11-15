@@ -82,8 +82,8 @@ public class SettingsService {
     /** The key the default grade is audited under. */
     public static final String DEFAULT_GRADE = "default-grade";
 
-    /** The grades the default grade may be. */
-    private static final List<String> GRADES = List.of("A", "B", "C");
+    /** The code a grade added to a sheet takes: one to three capital letters. */
+    private static final java.util.regex.Pattern GRADE_CODE = java.util.regex.Pattern.compile("[A-Z]{1,3}");
 
     /** The key the parent sheet is audited under. */
     public static final String PARENT = "parent";
@@ -155,6 +155,7 @@ public class SettingsService {
      *  on the sheet's today is this one is held to it while it is in force then. */
     @Transactional
     public BigDecimal setGradeClerkLimit(String sheetId, String user, String grade, BigDecimal limit, LocalDate from) {
+        sheets.requireGrade(sheetId, grade);
         Sheet sheet = sheets.load(sheetId, user);
         sheets.lock(sheetId);
         BigDecimal scaled = limit == null ? null : limit.setScale(2);
@@ -222,6 +223,7 @@ public class SettingsService {
      *  stays as it is. */
     @Transactional
     public Integer setGradeTerms(String sheetId, String user, String grade, Integer terms, LocalDate from) {
+        sheets.requireGrade(sheetId, grade);
         Sheet sheet = sheets.load(sheetId, user);
         sheets.lock(sheetId);
         record(sheet, user, TERMS_OF_GRADE + grade, terms == null ? "" : String.valueOf(terms), from);
@@ -235,6 +237,7 @@ public class SettingsService {
      *  with them while every due-by and settled figure stays as it is. */
     @Transactional
     public Integer setGradeGrace(String sheetId, String user, String grade, Integer grace, LocalDate from) {
+        sheets.requireGrade(sheetId, grade);
         Sheet sheet = sheets.load(sheetId, user);
         sheets.lock(sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
@@ -568,9 +571,10 @@ public class SettingsService {
     @Transactional
     public String setDefaultGrade(String sheetId, String user, String grade) {
         String value = grade.trim();
-        if (!value.isEmpty() && !GRADES.contains(value)) {
+        List<String> grades = sheets.grades(sheetId);
+        if (!value.isEmpty() && !grades.contains(value)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
-                    "The default grade is one of " + String.join(", ", GRADES) + ", not " + value);
+                    "The default grade is one of " + String.join(", ", grades) + ", not " + value);
         }
         Sheet sheet = sheets.load(sheetId, user);
         sheets.lock(sheetId);
@@ -587,9 +591,10 @@ public class SettingsService {
      *  the sheet's retired grades, in the order retired. */
     @Transactional
     public List<String> retireGrade(String sheetId, String user, String grade) {
-        if (!GRADES.contains(grade)) {
+        List<String> grades = sheets.grades(sheetId);
+        if (!grades.contains(grade)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
-                    "A grade is one of " + String.join(", ", GRADES) + ", not " + grade);
+                    "A grade is one of " + String.join(", ", grades) + ", not " + grade);
         }
         Sheet sheet = sheets.load(sheetId, user);
         sheets.lock(sheetId);
@@ -600,6 +605,35 @@ public class SettingsService {
         sheets.flush();
         audit.recordOnCommit("GRADE_RETIRED sheet=" + sheetId + " by=" + user + " grade=" + grade);
         return retiredGrades(sheet);
+    }
+
+    /** Add a grade to the sheet, the sheet created first if it was never loaded; not dated. It
+     *  can be chosen for a person, given rates and settings, and is summed up, as A, B and C are.
+     *  Refused (422) when it is not one to three capital letters, (409) when it is one of the
+     *  sheet's grades already. Resolves to the sheet's grades. */
+    @Transactional
+    public List<String> addGrade(String sheetId, String user, String grade) {
+        if (!GRADE_CODE.matcher(grade).matches()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A grade is one to three capital letters, not " + grade);
+        }
+        if (sheets.grades(sheetId).contains(grade)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Grade " + grade + " is a grade already");
+        }
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        if (sheet.hasGrade(grade)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Grade " + grade + " is a grade already");
+        }
+        sheet.addGrade(grade);
+        sheets.flush();
+        audit.recordOnCommit("GRADE_ADDED sheet=" + sheetId + " by=" + user + " grade=" + grade);
+        return sheet.getGrades();
+    }
+
+    /** The sheet's grades: A, B and C, then those added in the order added. */
+    public List<String> grades(String sheetId) {
+        return sheets.grades(sheetId);
     }
 
     /** The sheet's retired grades, in the order retired. */
@@ -689,6 +723,7 @@ public class SettingsService {
      *  cannot be settled or approved while it has no proof. */
     @Transactional
     public BigDecimal setGradeProofThreshold(String sheetId, String user, String grade, BigDecimal threshold, LocalDate from) {
+        sheets.requireGrade(sheetId, grade);
         Sheet sheet = sheets.load(sheetId, user);
         sheets.lock(sheetId);
         BigDecimal scaled = threshold == null ? null : threshold.setScale(2);

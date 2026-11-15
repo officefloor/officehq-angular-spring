@@ -85,6 +85,8 @@ export class Session {
   readonly defaultGrade = signal<string | null>(null);
   /** The sheet's retired grades, in the order retired: none may be chosen for a new person or in an edit. */
   readonly retiredGrades = signal<string[]>([]);
+  /** The sheet's grades: A, B and C, then those added to it in the order added. */
+  readonly grades = signal<string[]>(['A', 'B', 'C']);
   /** Whether the people list shows retired people too: off at first, and kept as it is when a
    *  sheet is loaded. */
   readonly showRetired = signal(false);
@@ -219,6 +221,7 @@ export class Session {
       this.proofKinds.set(res.proofKinds);
       this.defaultGrade.set(res.defaultGrade);
       this.retiredGrades.set(res.retiredGrades);
+      this.grades.set(res.grades);
       this.shownAsOf.set(asOf);
       this.loads.update((n) => n + 1);
       return null;
@@ -358,6 +361,7 @@ interface SheetView {
   proofKinds: string | null;
   defaultGrade: string | null;
   retiredGrades: string[];
+  grades: string[];
 }
 
 /** A value recorded for a dated setting: in force from its from-date (yyyy-mm-dd) until the next

@@ -3,7 +3,6 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
-import { GRADES } from '../people/people-api';
 import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rateError } from './rates-api';
 
 // The rate in force on the sheet's today for each grade, every rate the sheet has for each grade by
@@ -20,7 +19,7 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
       <form [formGroup]="form" (ngSubmit)="submit()" aria-label="Set rate">
         <label for="rate-form-grade">Grade</label>
         <select id="rate-form-grade" data-testid="rate-form-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -49,7 +48,7 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
       <form [formGroup]="previewForm" (ngSubmit)="runPreview()" aria-label="Preview rate">
         <label for="rate-preview-grade">Grade</label>
         <select id="rate-preview-grade" data-testid="rate-preview-grade" formControlName="grade">
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <option [value]="g">{{ g }}</option>
           }
         </select>
@@ -72,7 +71,7 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
           <tr><th scope="col">Grade</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
         </thead>
         <tbody>
-          @for (g of grades; track g) {
+          @for (g of grades(); track g) {
             <tr>
               <th scope="row">{{ g }}</th>
               <td [attr.data-testid]="'rate-current-' + g">{{ (currentOf(g) ?? 'n/a') | figure }}</td>
@@ -92,7 +91,7 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
             </tr>
           </thead>
           <tbody>
-            @for (g of grades; track g) {
+            @for (g of grades(); track g) {
               <tr>
                 <th scope="row">{{ g }}</th>
                 @for (m of cal.months; track m) {
@@ -137,7 +136,7 @@ export class Rates {
   /** A rate just set, for the sheet to take in. */
   readonly saved = output<Rate>();
 
-  protected readonly grades = GRADES;
+  protected readonly grades = this.session.grades;
   protected readonly error = signal<string | null>(null);
   /** Whether a submit is waiting for its answer; a second submit meanwhile is ignored. */
   private submitting = false;
@@ -198,7 +197,7 @@ export class Rates {
     this.previewed.set(null);
     this.previewError.set(null);
     const { grade, pct } = this.previewForm.getRawValue();
-    if (!(GRADES as readonly string[]).includes(grade)) {
+    if (!this.session.grades().includes(grade)) {
       this.previewError.set('Choose a grade.');
       return;
     }
@@ -233,7 +232,7 @@ export class Rates {
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
     const { grade, pct, from, to } = this.form.getRawValue();
-    if (!(GRADES as readonly string[]).includes(grade)) {
+    if (!this.session.grades().includes(grade)) {
       this.error.set('Choose a grade.');
       return;
     }

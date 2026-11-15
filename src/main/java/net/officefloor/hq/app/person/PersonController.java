@@ -92,7 +92,7 @@ public class PersonController {
      *  claim's are; blank or null for none. */
     public record PersonForm(
             @NotBlank @Size(max = 200) String name,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             Long version,
             LocalDate gradeFrom,
             @Pattern(regexp = "\\s*\\d{0,4}\\s*") String terms,
@@ -159,14 +159,14 @@ public class PersonController {
     }
 
     /** A grade as the row submits it: in force from the sheet's today. */
-    public record GradeForm(@NotNull @Pattern(regexp = "[ABC]") String grade) {
+    public record GradeForm(@NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade) {
     }
 
     /** A bulk grade as the screen submits it: the selected people by id, the grade, and the date it
      *  is in force from (null: the sheet's today). */
     public record BulkGradeForm(
             @NotNull @Size(min = 1, max = 10000) List<@NotNull Long> ids,
-            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String grade,
             LocalDate from) {
     }
 
@@ -176,8 +176,8 @@ public class PersonController {
 
     /** A grade merge as the screen submits it: the grade merged, and the grade it is merged into. */
     public record GradeMergeForm(
-            @NotNull @Pattern(regexp = "[ABC]") String from,
-            @NotNull @Pattern(regexp = "[ABC]") String into) {
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String from,
+            @NotNull @Pattern(regexp = "[A-Z]{1,3}") String into) {
     }
 
     /** A grade merge's result: how many people were given the other grade. */

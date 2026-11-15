@@ -175,6 +175,11 @@ public class Sheet {
     @Column(name = "retired_grades")
     private String retiredGrades;
 
+    /** The grades added to the sheet, comma separated in the order added, after the grades every
+     *  sheet has (A, B, C); null when none. Not dated. */
+    @Column(name = "added_grades")
+    private String addedGrades;
+
     /** Whether a steward has archived the sheet: every change on it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -212,6 +217,7 @@ public class Sheet {
         copy.proofKinds = proofKinds;
         copy.defaultGrade = defaultGrade;
         copy.retiredGrades = retiredGrades;
+        copy.addedGrades = addedGrades;
         return copy;
     }
 
@@ -478,6 +484,29 @@ public class Sheet {
     /** Retire the grade (it is not retired yet). */
     public void retireGrade(String grade) {
         retiredGrades = retiredGrades == null ? grade : retiredGrades + "," + grade;
+    }
+
+    /** The grades every sheet has, before any added to it. */
+    public static final List<String> BASE_GRADES = List.of("A", "B", "C");
+
+    /** The sheet's grades: A, B and C, then those added to it in the order added. */
+    public List<String> getGrades() {
+        if (addedGrades == null) {
+            return BASE_GRADES;
+        }
+        List<String> all = new ArrayList<>(BASE_GRADES);
+        all.addAll(Arrays.asList(addedGrades.split(",")));
+        return List.copyOf(all);
+    }
+
+    /** Whether the grade is one of the sheet's grades. */
+    public boolean hasGrade(String grade) {
+        return getGrades().contains(grade);
+    }
+
+    /** Add the grade to the sheet (it is not one of its grades yet). */
+    public void addGrade(String grade) {
+        addedGrades = addedGrades == null ? grade : addedGrades + "," + grade;
     }
 
     public String getSource() {

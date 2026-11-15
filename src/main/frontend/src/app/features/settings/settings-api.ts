@@ -43,9 +43,6 @@ export const SCORE_PATTERN = /^-?\d{1,6}$/;
 /** A fiscal year start month: 1 to 12. */
 export const FISCAL_START_MONTH_PATTERN = /^(0?[1-9]|1[0-2])$/;
 
-/** The grades a person can hold, each of which can have terms of its own. */
-export const GRADES = ['A', 'B', 'C'] as const;
-
 export interface Settings {
   /** Two decimals, as the server formats it; null when there is no limit. */
   clerkLimit: string | null;
@@ -365,6 +362,13 @@ export class SettingsApi {
     );
   }
 
+  /** Add a grade; resolves to the sheet's grades with it. */
+  addGrade(sheetId: string, grade: string): Promise<{ grades: string[] }> {
+    return firstValueFrom(
+      this.http.post<{ grades: string[] }>(`${this.url(sheetId)}/grades`, { grade }, { headers: this.headers() }),
+    );
+  }
+
   /** Retire a grade; resolves to the sheet's retired grades with it. */
   retireGrade(sheetId: string, grade: string): Promise<{ retiredGrades: string[] }> {
     return firstValueFrom(
@@ -414,8 +418,14 @@ export function holidayError(e: unknown): string {
   return otherError(e);
 }
 
+export function addGradeError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && (e.status === 400 || e.status === 422)) return 'Enter a grade of one to three capital letters.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'That grade is a grade already.';
+  return otherError(e);
+}
+
 export function retireGradeError(e: unknown): string {
-  if (e instanceof HttpErrorResponse && (e.status === 400 || e.status === 422)) return 'Choose a grade: A, B or C.';
+  if (e instanceof HttpErrorResponse && (e.status === 400 || e.status === 422)) return 'Choose one of the grades.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That grade is retired already.';
   return otherError(e);
 }

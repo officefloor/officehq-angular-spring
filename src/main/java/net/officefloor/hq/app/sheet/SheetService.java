@@ -113,9 +113,24 @@ public class SheetService {
                 .map(Sheet::getDefaultGrade).orElse("A");
     }
 
-    /** Refuse (422) choosing a grade retired on the sheet. */
+    /** The sheet's grades: A, B and C, then those added to it in the order added. */
+    @Transactional(readOnly = true)
+    public List<String> grades(String id) {
+        return sheets.findById(id).map(Sheet::getGrades).orElse(Sheet.BASE_GRADES);
+    }
+
+    /** Refuse (422) a grade that is not one of the sheet's grades. */
+    @Transactional(readOnly = true)
+    public void requireGrade(String id, String grade) {
+        if (!grades(id).contains(grade)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Grade " + grade + " is not one of the sheet's grades");
+        }
+    }
+
+    /** Refuse (422) choosing a grade that is not one of the sheet's, or is retired on it. */
     @Transactional(readOnly = true)
     public void requireActiveGrade(String id, String grade) {
+        requireGrade(id, grade);
         if (sheets.findById(id).map(s -> s.isGradeRetired(grade)).orElse(false)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Grade " + grade + " is retired");
         }
