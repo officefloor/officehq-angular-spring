@@ -1,8 +1,9 @@
+import { DOCUMENT } from '@angular/common';
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { cents, money } from '../claims/claims-api';
-import { heldOn, type Person } from '../people/people-api';
+import { csvLine, heldOn, type Person } from '../people/people-api';
 import { dueCents } from '../rates/rates-api';
 import { MEMBER_DATE_PATTERN, Pool, PoolMember, PoolsApi, SHARE_PATTERN, memberError, memberKey, memberOn, poolError } from './pools-api';
 
@@ -219,6 +220,7 @@ export class PoolRow {
           <p role="alert" data-testid="pool-form-error">{{ err }}</p>
         }
       </form>
+      <button type="button" data-testid="export-pools" (click)="exportCsv()">Export pools (CSV)</button>
       <ul aria-label="Pools" data-testid="pools-list">
         @for (p of pools(); track p.name) {
           <li appPoolRow [pool]="p" [people]="people()" [pools]="pools()" [cuts]="cuts().get(p.name) ?? noCuts"
@@ -230,6 +232,7 @@ export class PoolRow {
 })
 export class Pools {
   private readonly session = inject(Session);
+  private readonly document = inject(DOCUMENT);
   private readonly api = inject(PoolsApi);
 
   /** The people on the sheet (retired ones too). */
@@ -305,6 +308,26 @@ export class Pools {
         if (id) void this.read(id);
       });
     });
+  }
+
+  /** Download the pools as CSV: pools in the order added, each one's members in the order added,
+   *  a pool member as pool:<name>, the cut as shown (empty when none). */
+  protected exportCsv(): void {
+    const byId = new Map(this.people().map((p) => [p.id, p.name]));
+    const cuts = this.cuts();
+    const lines = [csvLine(['pool', 'member', 'share', 'cut'])];
+    for (const p of this.pools()) {
+      for (const m of p.members) {
+        const member = m.pool !== null ? `pool:${m.pool}` : (byId.get(m.personId ?? -1) ?? '');
+        lines.push(csvLine([p.name, member, m.share, cuts.get(p.name)?.get(memberKey(m)) ?? '']));
+      }
+    }
+    const url = URL.createObjectURL(new Blob([lines.join('')], { type: 'text/csv' }));
+    const link = this.document.createElement('a');
+    link.href = url;
+    link.download = `pools-${this.session.sheetId()}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url));
   }
 
   protected taken(pools: Pool[]): void {
