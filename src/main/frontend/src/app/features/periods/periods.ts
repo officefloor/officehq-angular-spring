@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
-import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, lockError, openingsError, periodDueCents, periodError, reopenError } from './periods-api';
+import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, generateQuartersError, lockError, openingsError, periodDueCents, periodError, reopenError } from './periods-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -38,6 +38,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <label for="period-generate-fy-year">Fiscal year (yyyy)</label>
         <input id="period-generate-fy-year" data-testid="period-generate-fy-year" [formControl]="fyForm.controls.year" inputmode="numeric" autocomplete="off" />
         <button type="button" data-testid="period-generate-fy" (click)="generateFiscalYear()">Generate fiscal year</button>
+        <label for="period-generate-quarters-year">Calendar year (yyyy)</label>
+        <input id="period-generate-quarters-year" data-testid="period-generate-quarters-year" [formControl]="quartersForm.controls.year" inputmode="numeric" autocomplete="off" />
+        <button type="button" data-testid="period-generate-quarters" (click)="generateQuarters()">Generate quarters</button>
         @if (generated() !== null) {
           <p role="status">Made <strong data-testid="period-generated">{{ generated() }}</strong></p>
         }
@@ -126,6 +129,10 @@ export class Periods {
   protected readonly fyForm = new FormGroup({
     year: new FormControl('', { nonNullable: true }),
   });
+  /** The calendar year whose four quarters are generated. */
+  protected readonly quartersForm = new FormGroup({
+    year: new FormControl('', { nonNullable: true }),
+  });
   /** How many periods the last generate made; null while one runs or before the first. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateErr = signal<string | null>(null);
@@ -144,6 +151,7 @@ export class Periods {
     this.form.valueChanges.subscribe(() => this.error.set(null));
     this.generateForm.valueChanges.subscribe(() => this.generateErr.set(null));
     this.fyForm.valueChanges.subscribe(() => this.generateErr.set(null));
+    this.quartersForm.valueChanges.subscribe(() => this.generateErr.set(null));
     this.openingForm.valueChanges.subscribe(() => this.openingErr.set(null));
     effect(() => {
       this.session.sheetId();
@@ -151,6 +159,7 @@ export class Periods {
       untracked(() => {
         this.generateForm.reset({ from: '', to: '' });
         this.fyForm.reset({ year: '' });
+        this.quartersForm.reset({ year: '' });
         this.generated.set(null);
         this.generateErr.set(null);
         this.openingForm.reset({ text: '' });
@@ -211,6 +220,32 @@ export class Periods {
       this.generated.set(made.length);
     } catch (e) {
       this.generateErr.set(generateFiscalYearError(e));
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  /** Make the four calendar quarters of a year, each as the period form would add it; then show
+   *  how many were made. */
+  protected async generateQuarters(): Promise<void> {
+    if (this.generating) return;
+    this.generated.set(null);
+    this.generateErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const year = this.quartersForm.controls.year.value.trim();
+    if (!/^\d{4}$/.test(year)) {
+      this.generateErr.set('Enter a year as yyyy.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await this.api.generateQuarters(sheetId, year);
+      if (this.session.sheetId() !== sheetId) return;
+      for (const period of made) this.saved.emit(period);
+      this.generated.set(made.length);
+    } catch (e) {
+      this.generateErr.set(generateQuartersError(e));
     } finally {
       this.generating = false;
     }

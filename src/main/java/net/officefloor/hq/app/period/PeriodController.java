@@ -129,6 +129,20 @@ public class PeriodController {
                 .map(PeriodView::of).toList();
     }
 
+    /** A calendar year as the generate-quarters form submits it (yyyy). */
+    public record GenerateQuartersForm(@NotNull @Pattern(regexp = "\\d{4}") String year) {
+    }
+
+    @PostMapping("/generate-quarters")
+    @ResponseStatus(HttpStatus.CREATED)
+    public List<PeriodView> generateQuarters(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GenerateQuartersForm body) {
+        return service.generateQuarters(sheetId, user.trim(), Integer.parseInt(body.year())).stream()
+                .map(PeriodView::of).toList();
+    }
+
     /** Opening balances as the paste submits them: lines of name,period,amount. */
     public record OpeningsForm(@NotNull @Size(max = 100_000) String text) {
     }

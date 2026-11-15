@@ -94,6 +94,12 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<Period[]>(`${this.url(sheetId)}/generate-fy`, { year }, { headers: this.headers() }));
   }
 
+  /** Make the four calendar quarters of a year, named <yyyy>-Q1 to <yyyy>-Q4, leaving out one
+   *  whose name is in use or whose days overlap a period; returns the periods made. */
+  generateQuarters(sheetId: string, year: string): Promise<Period[]> {
+    return firstValueFrom(this.http.post<Period[]>(`${this.url(sheetId)}/generate-quarters`, { year }, { headers: this.headers() }));
+  }
+
   /** Add each pasted line of name,period,amount to the person's opening balance for the period;
    *  all or none go through. */
   importOpenings(sheetId: string, text: string): Promise<OpeningsImported> {
@@ -144,6 +150,11 @@ export function generateError(e: unknown): string {
 
 export function generateFiscalYearError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a fiscal year as yyyy.';
+  return otherError(e);
+}
+
+export function generateQuartersError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a year as yyyy.';
   return otherError(e);
 }
 

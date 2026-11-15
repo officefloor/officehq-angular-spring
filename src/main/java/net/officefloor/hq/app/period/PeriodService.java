@@ -103,22 +103,49 @@ public class PeriodService {
         if (to.isBefore(from)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date is before the from-date");
         }
+        List<Span> spans = new ArrayList<>();
+        for (YearMonth month = YearMonth.from(from); !month.isAfter(YearMonth.from(to)); month = month.plusMonths(1)) {
+            spans.add(new Span(month.toString(), month.atDay(1), month.atEndOfMonth()));
+        }
+        return addAll(sheetId, user, spans);
+    }
+
+    /** A period to be generated: its name and its days. */
+    private record Span(String name, LocalDate first, LocalDate last) {
+    }
+
+    /** Add each span as a period, in order, leaving out one whose name is already a period's or
+     *  whose days overlap a period on the sheet; the sheet is loaded and locked by the caller.
+     *  Returns the periods made. */
+    private List<Period> addAll(String sheetId, String user, List<Span> spans) {
         List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromAsc(sheetId));
         List<Period> made = new ArrayList<>();
-        for (YearMonth month = YearMonth.from(from); !month.isAfter(YearMonth.from(to)); month = month.plusMonths(1)) {
-            String name = month.toString();
-            LocalDate first = month.atDay(1);
-            LocalDate last = month.atEndOfMonth();
-            if (existing.stream().anyMatch(p -> p.getName().equalsIgnoreCase(name) || p.overlaps(first, last))) {
+        for (Span span : spans) {
+            if (existing.stream().anyMatch(p -> p.getName().equalsIgnoreCase(span.name()) || p.overlaps(span.first(), span.last()))) {
                 continue;
             }
-            Period period = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            Period period = periods.saveAndFlush(new Period(sheetId, span.name(), span.first(), span.last()));
             existing.add(period);
             made.add(period);
             audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user
-                    + " period=" + name + " from=" + first + " to=" + last);
+                    + " period=" + span.name() + " from=" + span.first() + " to=" + span.last());
         }
         return made;
+    }
+
+    /** Generate the four calendar quarters of a year, named &lt;yyyy&gt;-Q1 to &lt;yyyy&gt;-Q4, each
+     *  as {@link #add} would add it: a quarter whose name is already a period's, or whose days
+     *  overlap a period on the sheet, is left out. Returns the periods made, by from-date. */
+    @Transactional
+    public List<Period> generateQuarters(String sheetId, String user, int year) {
+        sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        List<Span> spans = new ArrayList<>();
+        for (int q = 1; q <= 4; q++) {
+            YearMonth first = YearMonth.of(year, q * 3 - 2);
+            spans.add(new Span(year + "-Q" + q, first.atDay(1), first.plusMonths(2).atEndOfMonth()));
+        }
+        return addAll(sheetId, user, spans);
     }
 
     /** Generate the twelve monthly periods of a fiscal year, named FY&lt;yyyy&gt; by the calendar year
