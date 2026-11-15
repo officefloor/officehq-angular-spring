@@ -1,0 +1,287 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools-api.ts b/src/main/frontend/src/app/features/pools/pools-api.ts
+index b4daeaefd..e942fcb3f 100644
+--- a/src/main/frontend/src/app/features/pools/pools-api.ts
++++ b/src/main/frontend/src/app/features/pools/pools-api.ts
+@@ -63,9 +63,10 @@ export interface PersonThen {
+   holds: Hold[];
+ }
+ 
+-/** A period whose to-date is on or before the sheet's today, with what its cuts are worked from as
+- *  it all stood at the end of that to-date (the day the cuts are taken on): the pot then (null when
+- *  none), the pools and crews then, and the people then. */
++/** A period whose to-date is on or before the sheet's today, or that is closed, with what its cuts
++ *  are worked from as it all stood at the end of that to-date, or when it was closed (the cuts fixed
++ *  then): the day the cuts are taken on (its to-date, or the sheet's today when it was closed), the
++ *  pot then (null when none), the pools and crews then, and the people then. */
+ export interface PeriodThen {
+   period: string;
+   to: string;
+diff --git a/src/main/java/net/officefloor/hq/app/history/HistoryService.java b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+index ab5f2f0df..e9bc867c2 100644
+--- a/src/main/java/net/officefloor/hq/app/history/HistoryService.java
++++ b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+@@ -101,7 +101,7 @@ public class HistoryService {
+ 
+     record PeriodState(String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
+             Map<Long, BigDecimal> personTotals, Integer cap, Map<Long, BigDecimal> personCarried,
+-            Map<Long, BigDecimal> openings, Boolean locked) {
++            Map<Long, BigDecimal> openings, Boolean locked, Long cutsAt, LocalDate cutsOn) {
+     }
+ 
+     record StatementState(long personId, BigDecimal dueTotal, int claims, LocalDate takenOn, LocalDate asOf,
+@@ -198,7 +198,8 @@ public class HistoryService {
+         } else if (entity instanceof Period p) {
+             write(p.getSheetId(), PERIOD, String.valueOf(p.getId()), new PeriodState(p.getName(), p.getFrom(), p.getTo(),
+                     p.isClosed(), p.isSoftClosed(), new TreeMap<>(p.getClosedPersonTotals()), p.getCap(),
+-                    p.isCarriedFixed() ? new TreeMap<>(p.getClosedPersonCarried()) : null, new TreeMap<>(p.getOpenings()), p.isLocked()));
++                    p.isCarriedFixed() ? new TreeMap<>(p.getClosedPersonCarried()) : null, new TreeMap<>(p.getOpenings()), p.isLocked(),
++                    p.getCutsAt(), p.getCutsOn()));
+         } else if (entity instanceof PersonStatement st) {
+             write(st.getSheetId(), STATEMENT, String.valueOf(st.getId()), new StatementState(st.getPersonId(),
+                     st.getDueTotal(), st.getClaims(), st.getTakenOn(), st.getAsOf(), st.getTakenBy()));
+@@ -275,14 +276,31 @@ public class HistoryService {
+                 sheetId, kind, entityId, Date.valueOf(madeOn), text);
+     }
+ 
++    /** The last version of the sheet's history written so far (0 when none). */
++    public long lastVersion(String sheetId) {
++        Long last = jdbc.queryForObject("SELECT MAX(id) FROM history WHERE sheet_id = ?", Long.class, sheetId);
++        return last == null ? 0 : last;
++    }
++
+     /** The sheet as it stood at the end of {@code on}: each of its entities and its settings in the
+      *  last version a change made while the sheet's today was on or before it left (one with none,
+      *  or removed then, was not there), and {@code on} as its today. */
+     public AsOf asOf(String sheetId, LocalDate on) {
++        return asOf(sheetId, on, null);
++    }
++
++    /** The sheet as it stood just after history version {@code version} was written (as
++     *  {@link #asOf(String, LocalDate)} rebuilds it, from the versions up to it), with {@code on}
++     *  as its today. */
++    public AsOf asOfVersion(String sheetId, long version, LocalDate on) {
++        return asOf(sheetId, on, version);
++    }
++
++    private AsOf asOf(String sheetId, LocalDate on, Long version) {
+         Map<String, String> latest = new LinkedHashMap<>();
+-        jdbc.query("SELECT kind, entity_id, made_on, state FROM history WHERE sheet_id = ? ORDER BY id",
++        jdbc.query("SELECT id, kind, entity_id, made_on, state FROM history WHERE sheet_id = ? ORDER BY id",
+                 rs -> {
+-                    if (!rs.getDate("made_on").toLocalDate().isAfter(on)) {
++                    if (version != null ? rs.getLong("id") <= version : !rs.getDate("made_on").toLocalDate().isAfter(on)) {
+                         latest.put(rs.getString("kind") + "/" + rs.getString("entity_id"), rs.getString("state"));
+                     }
+                 }, sheetId);
+@@ -350,6 +368,8 @@ public class HistoryService {
+                     } else if (p.softClosed()) {
+                         period.softClose(p.personTotals(), p.personCarried());
+                     }
++                    // a version written before cuts were fixed at a close has none
++                    period.fixCuts(p.cutsAt(), p.cutsOn());
+                     periods.put(Long.valueOf(id), period);
+                 }
+                 case STATEMENT -> {
+diff --git a/src/main/java/net/officefloor/hq/app/period/Period.java b/src/main/java/net/officefloor/hq/app/period/Period.java
+index 6c54082b1..519343a33 100644
+--- a/src/main/java/net/officefloor/hq/app/period/Period.java
++++ b/src/main/java/net/officefloor/hq/app/period/Period.java
+@@ -78,6 +78,12 @@ public class Period {
+     @Column(name = "amount", nullable = false)
+     private Map<Long, BigDecimal> openings = new LinkedHashMap<>();
+ 
++    @Column(name = "cuts_at")
++    private Long cutsAt;
++
++    @Column(name = "cuts_on")
++    private LocalDate cutsOn;
++
+     protected Period() {
+     }
+ 
+@@ -194,8 +200,28 @@ public class Period {
+         }
+     }
+ 
+-    /** Reopen the period, its due-totals live again. */
++    /** The last version of the sheet's history when the period was closed, its pool members' cuts
++     *  for it fixed as the sheet then stood; null while open. */
++    public Long getCutsAt() {
++        return cutsAt;
++    }
++
++    /** The sheet's today when the period was closed, the day its fixed cuts are taken on; null while open. */
++    public LocalDate getCutsOn() {
++        return cutsOn;
++    }
++
++    /** Fix the pool members' cuts for the period as the sheet stood at history version {@code at},
++     *  taken on {@code on}. */
++    public void fixCuts(Long at, LocalDate on) {
++        this.cutsAt = at;
++        this.cutsOn = on;
++    }
++
++    /** Reopen the period, its due-totals and cuts live again. */
+     public void reopen() {
++        this.cutsAt = null;
++        this.cutsOn = null;
+         this.closed = false;
+         this.softClosed = false;
+         this.closedTotal = null;
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index b3255739b..7e7c657b3 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -10,6 +10,7 @@ import java.util.Map;
+ import java.util.Optional;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.history.HistoryService;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
+@@ -37,15 +38,17 @@ public class PeriodService {
+     private final SheetService sheets;
+     private final RollupService rollup;
+     private final SettingsService settings;
++    private final HistoryService history;
+     private final Audit audit;
+ 
+     public PeriodService(PeriodRepository periods, PersonRepository people, SheetService sheets, RollupService rollup,
+-            SettingsService settings, Audit audit) {
++            SettingsService settings, HistoryService history, Audit audit) {
+         this.periods = periods;
+         this.people = people;
+         this.sheets = sheets;
+         this.rollup = rollup;
+         this.settings = settings;
++        this.history = history;
+         this.audit = audit;
+     }
+ 
+@@ -299,6 +302,7 @@ public class PeriodService {
+             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed");
+         }
+         period.softClose(rollup.dueByPersonBetween(sheetId, period.getFrom(), period.getTo()), carriedInto(sheetId, period));
++        fixCuts(sheetId, period);
+         periods.flush();
+         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user
+                 + " period=" + period.getName() + " total=" + period.getClosedTotal().toPlainString());
+@@ -324,12 +328,18 @@ public class PeriodService {
+     /** Fix the period's figures as they show now and audit it, with any trailing fields. */
+     private void closeNow(String sheetId, String user, Period period, String trailing) {
+         period.close(rollup.dueByPersonBetween(sheetId, period.getFrom(), period.getTo()), carriedInto(sheetId, period));
++        fixCuts(sheetId, period);
+         periods.flush();
+         BigDecimal total = period.getClosedTotal();
+         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user
+                 + " period=" + period.getName() + " total=" + total.toPlainString() + trailing);
+     }
+ 
++    /** Fix the period's pool members' cuts as the sheet stands now, taken on the sheet's today. */
++    private void fixCuts(String sheetId, Period period) {
++        period.fixCuts(history.lastVersion(sheetId), sheets.today(sheetId));
++    }
++
+     /** Each person's carried figure into the period as it shows now, by person id: what their
+      *  claims carry into it plus their opening balance for it. */
+     private Map<Long, BigDecimal> carriedInto(String sheetId, Period period) {
+@@ -340,7 +350,7 @@ public class PeriodService {
+         return carried;
+     }
+ 
+-    /** Reopen a closed or soft-closed period, its due-total and carried figures live again; refused (403) unless the
++    /** Reopen a closed or soft-closed period, its due-total, carried figures and cuts live again; refused (403) unless the
+      *  user's role may reopen by the sheet's permission matrix (by default a steward), and (409)
+      *  when it is neither closed nor soft-closed, or it is locked. */
+     @Transactional
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index a554b2de7..73eaac001 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -68,8 +68,9 @@ public class PoolController {
+         }
+     }
+ 
+-    /** A period whose to-date has come, with what its cuts are worked from as they stood at the end
+-     *  of it: the period's name and to-date (the day the cuts are taken on), the pot then (two
++    /** A period whose to-date has come, or that is closed, with what its cuts are worked from as
++     *  they stood at the end of its to-date (or when it was closed): the period's name and the day
++     *  the cuts are taken on (its to-date, or the sheet's today when it was closed), the pot then (two
+      *  decimals, null when none), the pools and crews then and the people then. */
+     public record PeriodCutsView(String period, String to, String pot, List<PoolView> pools,
+             List<CrewController.CrewView> crews, List<PersonThen> people) {
+@@ -92,7 +93,7 @@ public class PoolController {
+                             then.crewMembers().values().stream().filter(m -> m.crewId() == e.getKey())
+                                     .map(HistoryService.CrewMemberState::personId).toList()))
+                     .toList();
+-            return new PeriodCutsView(p.period().getName(), p.period().getTo().toString(),
++            return new PeriodCutsView(p.period().getName(), p.day().toString(),
+                     then.sheet().getPot() == null ? null : then.sheet().getPot().setScale(2).toPlainString(),
+                     pools, crews,
+                     then.people().entrySet().stream().map(e -> PersonThen.of(e.getKey(), e.getValue())).toList());
+@@ -131,8 +132,9 @@ public class PoolController {
+         return all.stream().map(p -> PoolView.of(p, poolNames)).toList();
+     }
+ 
+-    /** Each period whose to-date is on or before the sheet's today (or the as-of date), by from-date,
+-     *  with the pools, crews, pot and people as they stood at the end of its to-date. */
++    /** Each period whose to-date is on or before the sheet's today (or the as-of date), or that is
++     *  closed, by from-date, with the pools, crews, pot and people as they stood at the end of its
++     *  to-date (as they stood when it was closed, for a closed one). */
+     @GetMapping("/history")
+     public List<PeriodCutsView> history(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index ab761f21c..703af26f9 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -27,8 +27,9 @@ public class PoolService {
+     public record PoolWithMembers(Pool pool, List<PoolMember> members) {
+     }
+ 
+-    /** A period and the sheet as it stood at the end of its to-date. */
+-    public record PeriodThen(Period period, HistoryService.AsOf then) {
++    /** A period, the sheet its cuts are worked from (as it stood at the end of its to-date, or when
++     *  it was closed) and the day they are taken on (its to-date, or the sheet's today when it was closed). */
++    public record PeriodThen(Period period, HistoryService.AsOf then, LocalDate day) {
+     }
+ 
+     private final PoolRepository pools;
+@@ -63,7 +64,8 @@ public class PoolService {
+ 
+     /** Each of the sheet's periods (by from-date) whose to-date is on or before the day (the sheet's
+      *  today when none is given; the periods then as they stood at the end of it), with the sheet as
+-     *  it stood at the end of that to-date. */
++     *  it stood at the end of that to-date; and each closed or soft-closed one, with the sheet as it
++     *  stood when it was closed, its today then the day its cuts are taken on. */
+     @Transactional(readOnly = true)
+     public List<PeriodThen> history(String sheetId, LocalDate asOf) {
+         LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
+@@ -71,8 +73,11 @@ public class PoolService {
+                 ? history.asOf(sheetId, asOf).periods().values().stream()
+                         .sorted(Comparator.comparing(Period::getFrom)).toList()
+                 : periods.findBySheetIdOrderByFromAsc(sheetId);
+-        return all.stream().filter(p -> !p.getTo().isAfter(today))
+-                .map(p -> new PeriodThen(p, history.asOf(sheetId, p.getTo()))).toList();
++        return all.stream().filter(p -> p.getCutsAt() != null || !p.getTo().isAfter(today))
++                .map(p -> p.getCutsAt() != null
++                        ? new PeriodThen(p, history.asOfVersion(sheetId, p.getCutsAt(), p.getCutsOn()), p.getCutsOn())
++                        : new PeriodThen(p, history.asOf(sheetId, p.getTo()), p.getTo()))
++                .toList();
+     }
+ 
+     /** Add a pool to the sheet, the sheet created first if it was never loaded; refused (409) when
+diff --git a/src/main/resources/db/migration/V112__period_cuts_fixed.sql b/src/main/resources/db/migration/V112__period_cuts_fixed.sql
+new file mode 100644
+index 000000000..15011ca23
+--- /dev/null
++++ b/src/main/resources/db/migration/V112__period_cuts_fixed.sql
+@@ -0,0 +1,6 @@
++-- A closed or soft-closed period fixes every pool member's cut for it as it stood when it was
++-- closed: the last version of the sheet's history then (its pools, crews, pot and people) and the
++-- sheet's today then, the day the cuts are taken on. Both null while open (the cuts are worked as
++-- they stood at the end of its to-date).
++ALTER TABLE period ADD COLUMN cuts_at BIGINT;
++ALTER TABLE period ADD COLUMN cuts_on DATE;
