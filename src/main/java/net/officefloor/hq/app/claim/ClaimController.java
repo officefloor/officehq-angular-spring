@@ -48,13 +48,13 @@ public class ClaimController {
      *  it (null while unlocked); whether it was added while its period was soft-closed; the last
      *  day it was reminded (null when never reminded); its external reference (null when none); its
      *  tags, lower-case, sorted and comma separated (null when none); the reason it was voided with
-     *  (null when none); its comments, oldest first. */
+     *  (null when none); its comments, oldest first; who last edited it (null when never edited). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason,
-            List<CommentView> comments) {
+            List<CommentView> comments, String editedBy) {
         static ClaimView of(Claim c, List<ClaimLog> log, List<ClaimComment> comments) {
             return of(c.getId(), c, log, comments);
         }
@@ -66,7 +66,7 @@ public class ClaimController {
                     c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
                     log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLockedBy(),
                     c.isLateEntry(), c.getReminded(), c.getRef(), c.getTags(), c.getVoidReason(),
-                    comments.stream().map(CommentView::of).toList());
+                    comments.stream().map(CommentView::of).toList(), c.getEditedBy());
         }
 
         private static String money(BigDecimal value) {

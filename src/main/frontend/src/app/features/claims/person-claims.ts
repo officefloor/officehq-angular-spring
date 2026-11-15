@@ -509,7 +509,7 @@ export class PersonClaims {
       this.rejectReasons.update(({ [c.id]: _, ...rest }) => rest);
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
-      this.rowErrors.update((errs) => ({ ...errs, [c.id]: statusError(e, c.openedBy === this.session.user()) }));
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: statusError(e, this.isOpenerOrEditor(c)) }));
     }
   }
 
@@ -536,7 +536,7 @@ export class PersonClaims {
       this.voidChoices.update(({ [c.id]: _, ...rest }) => rest);
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
-      this.rowErrors.update((errs) => ({ ...errs, [c.id]: voidError(e, c.openedBy === this.session.user()) }));
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: voidError(e, this.isOpenerOrEditor(c)) }));
     }
   }
 
@@ -549,9 +549,15 @@ export class PersonClaims {
       const claim = await this.api.changeStatus(sheetId, c.id, action);
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
-      const err = action === 'resettle' ? resettleError(e) : statusError(e, c.openedBy === this.session.user());
+      const err = action === 'resettle' ? resettleError(e) : statusError(e, this.isOpenerOrEditor(c));
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: err }));
     }
+  }
+
+  /** Whether the user opened or last edited the claim, and so may not settle or approve it. */
+  private isOpenerOrEditor(c: Claim): boolean {
+    const user = this.session.user();
+    return c.openedBy === user || c.editedBy === user;
   }
 
   protected splitAmountChanged(id: number, amount: string): void {

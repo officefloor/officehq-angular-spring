@@ -34,6 +34,9 @@ export interface Claim {
   settledDue: string | null;
   /** The user who opened the claim, who cannot settle it; null while DRAFT. */
   openedBy: string | null;
+  /** The user who last edited the claim, who like its opener cannot settle or approve it; null
+   *  when never edited. */
+  editedBy: string | null;
   /** Whether the person's last statement bound the claim: it then shows and totals statedDue,
    *  except while PENDING, when it shows and totals its live figure. */
   stated: boolean;
@@ -383,7 +386,7 @@ export function editError(e: unknown): string {
   return otherError(e);
 }
 
-/** Why a status change was refused; `opener` says whether the user is the one who opened the claim. */
+/** Why a status change was refused; `opener` says whether the user is the one who opened or last edited the claim. */
 export const VOID_REASON_NEEDED = 'Choose a reason from the sheet\'s list to void this claim.';
 
 /** The message for a refused void: without a reason from the sheet's list while it has one (422),
@@ -398,7 +401,7 @@ export function statusError(e: unknown, opener: boolean): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status, is deferred, or was settled more than 7 days ago.';
   if (e instanceof HttpErrorResponse && e.status === 403) {
     return opener
-      ? 'The user who opened this claim cannot settle or approve it, or your role may not make that change.'
+      ? 'The user who opened or last edited this claim cannot settle or approve it, or your role may not make that change.'
       : 'Your role may not make that change to this claim.';
   }
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';

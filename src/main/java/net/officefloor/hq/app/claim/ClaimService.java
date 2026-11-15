@@ -237,6 +237,7 @@ public class ClaimService {
         claim.setDate(on);
         claim.setNote(noteOf(note));
         claim.setLockedBy(null);
+        claim.setEditedBy(user);
         claims.flush();
         keepTags(claim);
         record("CLAIM_EDITED", user, person, claim);
@@ -331,6 +332,10 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot settle it");
+        }
+        if (to == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who last edited a claim cannot settle it");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
@@ -494,7 +499,7 @@ public class ClaimService {
 
     /** A steward approves a PENDING claim: it becomes SETTLED, its due (its live figure, with its
      *  late charge) frozen now. Refused (409) unless PENDING, (403) for a clerk or the user who
-     *  opened it, (423) when it is due in a closed period, and (422) when its due is above the
+     *  opened or last edited it, (423) when it is due in a closed period, and (422) when its due is above the
      *  proof threshold in force on its date while it has no proof. */
     @Transactional
     public Claim approve(String sheetId, String user, long id) {
@@ -502,6 +507,10 @@ public class ClaimService {
         if (user.equals(claim.getOpenedBy())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "The user who opened a claim cannot approve it");
+        }
+        if (user.equals(claim.getEditedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who last edited a claim cannot approve it");
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
