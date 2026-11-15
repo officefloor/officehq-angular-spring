@@ -1,4 +1,5 @@
-import { Component, computed, input } from '@angular/core';
+import { Component, computed, inject, input } from '@angular/core';
+import { Session } from '../../core/session';
 import { Claim, money } from '../claims/claims-api';
 import { GRADES } from '../people/people-api';
 import { Period, periodDueCents } from '../periods/periods-api';
@@ -22,7 +23,7 @@ export interface SummaryPerson {
 
 // The sheet in figures, each as the lists show it: per grade, how many people not retired are on it
 // today, their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total; per status, how
-// many claims have it.
+// many claims have it; per void reason on the sheet's list, how many VOID claims were voided with it.
 @Component({
   selector: 'app-summary',
   template: `
@@ -72,6 +73,20 @@ export interface SummaryPerson {
           }
         </tbody>
       </table>
+      <table data-testid="summary-void-reasons">
+        <caption>Voided by reason</caption>
+        <thead>
+          <tr><th scope="col">Reason</th><th scope="col">Claims</th></tr>
+        </thead>
+        <tbody>
+          @for (r of byVoidReason(); track r.reason) {
+            <tr>
+              <th scope="row">{{ r.reason }}</th>
+              <td [attr.data-testid]="'summary-void-' + r.reason + '-count'">{{ r.count }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
     </section>
   `,
 })
@@ -90,7 +105,13 @@ export class Summary {
       active: on.filter((p) => p.active).length };
   }));
 
+  private readonly session = inject(Session);
+
   protected readonly byStatus = computed(() => statusCounts(this.claims()));
+
+  protected readonly byVoidReason = computed(() => this.session.voidReasons().map((reason) => ({
+    reason, count: this.claims().filter((c) => c.status === 'VOID' && c.voidReason === reason).length,
+  })));
 
   protected periodDue(p: Period): number {
     return periodDueCents(p, this.dueTotals());

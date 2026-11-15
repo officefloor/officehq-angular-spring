@@ -34,6 +34,9 @@ export class Session {
   /** The active sheet's note threshold (two decimals) in force on its today, null when there is
    *  none: a claim whose due is above the one in force on its date is opened only with a note. */
   readonly noteThreshold = computed(() => valueOn(this.dated(), 'note-threshold', this.today())?.value ?? null);
+  /** The active sheet's void reasons, in the order they were added: while there are any, a claim
+   *  is voided only with one of them. */
+  readonly voidReasons = signal<string[]>([]);
   /** Whether the active sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
   /** Whether the people list shows retired people too: off at first, and kept as it is when a

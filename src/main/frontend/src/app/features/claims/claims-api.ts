@@ -65,6 +65,8 @@ export interface Claim {
   ref: string | null;
   /** The claim's tags: lower-case, sorted and comma separated; null when none. */
   tags: string | null;
+  /** The reason a VOID claim was voided with, from the sheet's list; null when none. */
+  voidReason: string | null;
 }
 
 /** A line of a claim's status log: the status, who moved the claim there, the sheet's today then
@@ -233,6 +235,13 @@ export class ClaimsApi {
     );
   }
 
+  /** Void a claim with a reason from the sheet's list (null: none). */
+  voidClaim(sheetId: string, id: number, reason: string | null): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/void`, { reason }, { headers: this.headers() }),
+    );
+  }
+
   /** Defer an OPEN claim until a date after the sheet's today. */
   defer(sheetId: string, id: number, until: string): Promise<Claim> {
     return firstValueFrom(
@@ -354,6 +363,15 @@ export function editError(e: unknown): string {
 }
 
 /** Why a status change was refused; `opener` says whether the user is the one who opened the claim. */
+export const VOID_REASON_NEEDED = 'Choose a reason from the sheet\'s list to void this claim.';
+
+/** The message for a refused void: without a reason from the sheet's list while it has one (422),
+ *  else as for any status change. */
+export function voidError(e: unknown, opener: boolean): string {
+  if (e instanceof HttpErrorResponse && e.status === 422) return VOID_REASON_NEEDED;
+  return statusError(e, opener);
+}
+
 export function statusError(e: unknown, opener: boolean): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a reason for rejecting the claim.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status, is deferred, or was settled more than 7 days ago.';

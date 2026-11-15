@@ -61,18 +61,20 @@ public class SettingsService {
     private final SheetPermissionRepository permissions;
     private final SheetDelegationRepository delegations;
     private final SheetHolidayRepository holidays;
+    private final SheetVoidReasonRepository voidReasons;
     private final SheetService sheets;
     private final RollupService rollup;
     private final HistoryService history;
     private final Audit audit;
 
     public SettingsService(SheetRoleRepository roles, SheetPermissionRepository permissions,
-            SheetDelegationRepository delegations, SheetHolidayRepository holidays, SheetService sheets,
-            RollupService rollup, HistoryService history, Audit audit) {
+            SheetDelegationRepository delegations, SheetHolidayRepository holidays, SheetVoidReasonRepository voidReasons,
+            SheetService sheets, RollupService rollup, HistoryService history, Audit audit) {
         this.roles = roles;
         this.permissions = permissions;
         this.delegations = delegations;
         this.holidays = holidays;
+        this.voidReasons = voidReasons;
         this.sheets = sheets;
         this.rollup = rollup;
         this.history = history;
@@ -409,6 +411,32 @@ public class SettingsService {
         holidays.saveAndFlush(new SheetHoliday(sheetId, day));
         audit.recordOnCommit("HOLIDAY_ADDED sheet=" + sheetId + " by=" + user + " date=" + day);
         return day;
+    }
+
+    /** The sheet's void reasons, in the order they were added. */
+    @Transactional(readOnly = true)
+    public List<String> voidReasons(String sheetId) {
+        return voidReasons.findBySheetIdOrderByIdAsc(sheetId).stream().map(SheetVoidReason::getReason).toList();
+    }
+
+    /** Whether the reason is on the sheet's list of void reasons. */
+    @Transactional(readOnly = true)
+    public boolean isVoidReason(String sheetId, String reason) {
+        return voidReasons.existsBySheetIdAndReason(sheetId, reason);
+    }
+
+    /** Add a void reason to the sheet, the sheet created first if it was never loaded; refused (409)
+     *  when the reason is on its list already. */
+    @Transactional
+    public String addVoidReason(String sheetId, String user, String reason) {
+        sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        if (voidReasons.existsBySheetIdAndReason(sheetId, reason)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The reason is on the list already");
+        }
+        voidReasons.saveAndFlush(new SheetVoidReason(sheetId, reason));
+        audit.recordOnCommit("VOID_REASON_ADDED sheet=" + sheetId + " by=" + user + " reason=" + reason);
+        return reason;
     }
 
     /** Archive the sheet, the sheet created first if it was never loaded; refused (403) unless the

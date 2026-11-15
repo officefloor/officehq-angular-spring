@@ -216,6 +216,18 @@ export class SettingsApi {
     return firstValueFrom(this.http.post<string>(`${this.url(sheetId)}/holidays`, { date }, { headers: this.headers() }));
   }
 
+  /** The sheet's void reasons, in the order they were added. */
+  voidReasons(sheetId: string): Promise<string[]> {
+    return firstValueFrom(this.http.get<string[]>(`${this.url(sheetId)}/void-reasons`, { headers: this.headers() }));
+  }
+
+  /** Add a void reason; resolves to the sheet's void reasons with it. */
+  addVoidReason(sheetId: string, reason: string): Promise<string[]> {
+    return firstValueFrom(
+      this.http.post<string[]>(`${this.url(sheetId)}/void-reasons`, { reason }, { headers: this.headers() }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }
@@ -242,6 +254,12 @@ export function roleError(e: unknown): string {
 export function delegateError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a user name without spaces and a to-date on or after the from-date, each as yyyy-mm-dd.';
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can delegate the steward role.';
+  return otherError(e);
+}
+
+export function voidReasonError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a void reason.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'That reason is on the list already.';
   return otherError(e);
 }
 

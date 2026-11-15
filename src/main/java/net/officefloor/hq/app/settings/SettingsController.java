@@ -168,6 +168,10 @@ public class SettingsController {
             String to) {
     }
 
+    /** A void reason as the form submits it: text, trimmed of spaces at either end, not blank. */
+    public record VoidReasonForm(@NotBlank @Size(max = 200) String reason) {
+    }
+
     /** A holiday as the form submits it: a date as yyyy-mm-dd. */
     public record HolidayForm(@NotNull @Pattern(regexp = "\\s*\\d{4}-\\d{2}-\\d{2}\\s*") String date) {
     }
@@ -446,5 +450,21 @@ public class SettingsController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody HolidayForm body) {
         return service.addHoliday(sheetId, user.trim(), fromOf(body.date().trim()));
+    }
+
+    @GetMapping("/void-reasons")
+    public List<String> voidReasons(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return service.voidReasons(sheetId);
+    }
+
+    @PostMapping("/void-reasons")
+    public List<String> addVoidReason(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody VoidReasonForm body) {
+        service.addVoidReason(sheetId, user.trim(), body.reason().trim());
+        return service.voidReasons(sheetId);
     }
 }

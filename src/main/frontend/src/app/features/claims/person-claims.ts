@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, deferError, deferred, remindError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError, tagsOf } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, deferError, deferred, remindError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -92,7 +92,17 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine,
               [value]="rejectReasons()[c.id] ?? ''" (input)="reasonChanged(c.id, $any($event.target).value)" />
             <button type="button" data-testid="claim-reject" (click)="reject(c)"
               [attr.aria-label]="'Reject claim of ' + c.amount + ' on ' + c.date">Reject</button>
-            <button type="button" data-testid="claim-void" (click)="changeStatus(c, 'void')"
+            @if (session.voidReasons().length > 0) {
+              <label [for]="'claim-void-reason-' + c.id">Void reason</label>
+              <select [id]="'claim-void-reason-' + c.id" data-testid="claim-void-reason"
+                [value]="voidChoices()[c.id] ?? ''" (change)="voidReasonChanged(c.id, $any($event.target).value)">
+                <option value="">Choose a reason</option>
+                @for (r of session.voidReasons(); track r) {
+                  <option [value]="r">{{ r }}</option>
+                }
+              </select>
+            }
+            <button type="button" data-testid="claim-void" (click)="voidClaim(c)"
               [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
             <button type="button" data-testid="claim-edit" (click)="edit(c)"
               [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
@@ -128,7 +138,7 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine,
   `,
 })
 export class PersonClaims {
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
   private readonly api = inject(ClaimsApi);
 
   readonly personId = input.required<number>();
@@ -160,6 +170,8 @@ export class PersonClaims {
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** The reason typed for rejecting each PENDING claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
+  /** The void reason chosen for each claim from the sheet's list, by claim id. */
+  protected readonly voidChoices = signal<Record<number, string>>({});
   /** The date typed for deferring each OPEN claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
   /** The new date typed for re-dating each claim, by claim id. */
@@ -455,6 +467,33 @@ export class PersonClaims {
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: statusError(e, c.openedBy === this.session.user()) }));
+    }
+  }
+
+  protected voidReasonChanged(id: number, reason: string): void {
+    this.clearRowError(id);
+    this.voidChoices.update((rs) => ({ ...rs, [id]: reason }));
+  }
+
+  /** Void a claim, with the reason chosen for it while the sheet has a list of void reasons; a
+   *  void without one then is refused with an error on the claim. */
+  protected async voidClaim(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const reasons = this.session.voidReasons();
+    const chosen = this.voidChoices()[c.id] ?? '';
+    const reason = reasons.includes(chosen) ? chosen : null;
+    if (reasons.length > 0 && reason === null) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: VOID_REASON_NEEDED }));
+      return;
+    }
+    try {
+      const claim = await this.api.voidClaim(sheetId, c.id, reason);
+      this.voidChoices.update(({ [c.id]: _, ...rest }) => rest);
+      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: voidError(e, c.openedBy === this.session.user()) }));
     }
   }
 

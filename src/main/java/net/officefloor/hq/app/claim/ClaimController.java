@@ -47,12 +47,13 @@ public class ClaimController {
      *  claim it was split from (null when not made by a split); the user whose open editor locks
      *  it (null while unlocked); whether it was added while its period was soft-closed; the last
      *  day it was reminded (null when never reminded); its external reference (null when none); its
-     *  tags, lower-case, sorted and comma separated (null when none). */
+     *  tags, lower-case, sorted and comma separated (null when none); the reason it was voided with
+     *  (null when none). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
-            boolean lateEntry, LocalDate reminded, String ref, String tags) {
+            boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason) {
         static ClaimView of(Claim c, List<ClaimLog> log) {
             return of(c.getId(), c, log);
         }
@@ -63,7 +64,7 @@ public class ClaimController {
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
                     c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
                     log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLockedBy(),
-                    c.isLateEntry(), c.getReminded(), c.getRef(), c.getTags());
+                    c.isLateEntry(), c.getReminded(), c.getRef(), c.getTags(), c.getVoidReason());
         }
 
         private static String money(BigDecimal value) {
@@ -101,6 +102,10 @@ public class ClaimController {
     }
 
     /** The reason a steward gives for rejecting a PENDING claim. */
+    /** A void as the screen submits it: the reason chosen from the sheet's list, null or blank for none. */
+    public record VoidForm(@Size(max = 200) String reason) {
+    }
+
     public record RejectForm(@NotBlank @Size(max = 500) String reason) {
     }
 
@@ -383,8 +388,10 @@ public class ClaimController {
     public ClaimView voidClaim(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @PathVariable long id,
-            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return view(service.changeStatus(sheetId, user.trim(), id, ClaimStatus.VOID));
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody(required = false) VoidForm body) {
+        String reason = body == null || body.reason() == null || body.reason().isBlank() ? null : body.reason().trim();
+        return view(service.voidClaim(sheetId, user.trim(), id, reason));
     }
 
     @PostMapping("/people/{personId}/statement")

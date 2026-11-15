@@ -1,10 +1,10 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTERN, POLICY_DATE_PATTERN, PermissionAction, ROLES, TERMS_PATTERN, Delegation, RoleGrant, SETTINGS_INVALID, SettingsApi, delegateError, holidayError, roleError, settingsError } from './settings-api';
+import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTERN, POLICY_DATE_PATTERN, PermissionAction, ROLES, TERMS_PATTERN, Delegation, RoleGrant, SETTINGS_INVALID, SettingsApi, delegateError, holidayError, roleError, settingsError, voidReasonError } from './settings-api';
 
 // The sheet's settings (its permission matrix: the roles that may open, settle, void, reassign, close or reopen, each blank for its standing rule; its clerk limit: a clerk settles only claims whose due is at or below it;
-// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period; its entry date: while set, a new claim left undated takes it; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one, and the sheet's holidays (a claim's due-by, as it is created, is moved past them) with the form that adds one.
+// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period; its entry date: while set, a new claim left undated takes it; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one, and the sheet's holidays (a claim's due-by, as it is created, is moved past them) with the form that adds one, and the sheet's void reasons (while there are any, a claim is voided only with one of them) with the form that adds one.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -148,6 +148,19 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
           <li [attr.data-testid]="'holiday-row-' + h">{{ h }}</li>
         }
       </ul>
+      <form [formGroup]="voidReasonForm" (ngSubmit)="addVoidReason()" aria-label="Add a void reason">
+        <label for="void-reason-text">Void reason</label>
+        <input id="void-reason-text" data-testid="void-reason-text" formControlName="reason" autocomplete="off" />
+        <button type="submit" data-testid="void-reason-add">Add void reason</button>
+        @if (voidReasonErr(); as err) {
+          <p role="alert" data-testid="void-reason-error">{{ err }}</p>
+        }
+      </form>
+      <ul aria-label="Void reasons" data-testid="void-reasons-list">
+        @for (r of session.voidReasons(); track r) {
+          <li [attr.data-testid]="'void-reason-row-' + r">{{ r }}</li>
+        }
+      </ul>
     </section>
   `,
 })
@@ -180,6 +193,8 @@ export class Settings {
   protected readonly holidays = signal<string[]>([]);
   protected readonly holidayErr = signal<string | null>(null);
   private addingHoliday = false;
+  protected readonly voidReasonErr = signal<string | null>(null);
+  private addingVoidReason = false;
   /** Whether a save is waiting for its answer; a second one meanwhile runs once it is answered. */
   private savingSettings = false;
   /** Whether a save was submitted while another was waiting; it runs once that one is answered. */
@@ -256,6 +271,10 @@ export class Settings {
     date: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly voidReasonForm = new FormGroup({
+    reason: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     this.settingsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.gradeTermsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
@@ -266,6 +285,7 @@ export class Settings {
     this.roleForm.valueChanges.subscribe(() => this.roleErr.set(null));
     this.delegateForm.valueChanges.subscribe(() => this.delegateErr.set(null));
     this.holidayForm.valueChanges.subscribe(() => this.holidayErr.set(null));
+    this.voidReasonForm.valueChanges.subscribe(() => this.voidReasonErr.set(null));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
@@ -283,6 +303,9 @@ export class Settings {
         this.holidays.set([]);
         this.holidayErr.set(null);
         this.holidayForm.reset({ date: '' }, { emitEvent: false });
+        this.session.voidReasons.set([]);
+        this.voidReasonErr.set(null);
+        this.voidReasonForm.reset({ reason: '' }, { emitEvent: false });
         this.settingsForm.reset({
           clerkLimit: '', clerkLimitFrom: '', floor: '', floorFrom: '', terms: '', termsFrom: '', latePct: '', latePctFrom: '',
           policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', noteThreshold: '', noteThresholdFrom: '', graceDays: '',
@@ -556,11 +579,38 @@ export class Settings {
     }
   }
 
+  protected async addVoidReason(): Promise<void> {
+    if (this.addingVoidReason) return;
+    this.voidReasonErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const reason = this.voidReasonForm.getRawValue().reason.trim();
+    if (reason === '') {
+      this.voidReasonErr.set('Enter a void reason.');
+      return;
+    }
+    if (this.session.voidReasons().includes(reason)) {
+      this.voidReasonErr.set('That reason is on the list already.');
+      return;
+    }
+    this.addingVoidReason = true;
+    try {
+      const reasons = await this.api.addVoidReason(sheetId, reason);
+      if (this.session.sheetId() === sheetId) this.session.voidReasons.set(reasons);
+      this.voidReasonForm.reset({ reason: '' }, { emitEvent: false });
+    } catch (e) {
+      this.voidReasonErr.set(voidReasonError(e));
+    } finally {
+      this.addingVoidReason = false;
+    }
+  }
+
   private async read(sheetId: string): Promise<void> {
     const seq = ++this.readSeq;
     try {
-      const [settings, grants, delegations, holidays] = await Promise.all([
+      const [settings, grants, delegations, holidays, voidReasons] = await Promise.all([
         this.api.get(sheetId), this.api.roles(sheetId), this.api.delegations(sheetId), this.api.holidays(sheetId),
+        this.api.voidReasons(sheetId),
       ]);
       if (seq === this.readSeq) {
         this.session.dated.set(settings.dated);
@@ -586,6 +636,7 @@ export class Settings {
         this.grants.set(grants);
         this.delegations.set(delegations);
         this.holidays.set(holidays);
+        this.session.voidReasons.set(voidReasons);
       }
     } catch {
       if (seq === this.readSeq) this.settingsErr.set('Something went wrong loading settings; try again.');

@@ -256,6 +256,18 @@ public class ClaimService {
      *  refused (422) before the clerk limit is considered. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus to) {
+        return changeStatus(sheetId, user, id, to, null);
+    }
+
+    /** Void a claim as {@link #changeStatus} does, with a reason from the sheet's list of void
+     *  reasons (null: none): while the list is not empty, a void without one of them is refused
+     *  (422), and a reason given while it is empty is refused too. The VOIDED record ends with it. */
+    @Transactional
+    public Claim voidClaim(String sheetId, String user, long id, String reason) {
+        return changeStatus(sheetId, user, id, ClaimStatus.VOID, reason);
+    }
+
+    private Claim changeStatus(String sheetId, String user, long id, ClaimStatus to, String voidReason) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         refuseIfClosed(sheetId, claim.getDueBy());
@@ -273,6 +285,9 @@ public class ClaimService {
         }
         if (to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
             refuseUnlessVoidableSettled(sheetId, user, claim);
+        }
+        if (to == ClaimStatus.VOID) {
+            refuseUnlessListedReason(sheetId, voidReason);
         }
         if (to == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -310,6 +325,8 @@ public class ClaimService {
             claim.setOpenedBy(user);
         } else if (to == ClaimStatus.SETTLED) {
             claim.setSettledDue(settling);
+        } else if (to == ClaimStatus.VOID) {
+            claim.setVoidReason(voidReason);
         }
         claims.flush();
         logStatus(user, person, claim);
@@ -323,13 +340,23 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED) {
             record(event, user, person, claim, number, " due=" + dueText(claim.getSettledDue()));
             notifyWatchers(user, person, number);
-        } else if (reversing) {
-            record(event, user, person, claim, number, " reversed=" + dueText(reversed));
+        } else if (to == ClaimStatus.VOID) {
+            record(event, user, person, claim, number, (reversing ? " reversed=" + dueText(reversed) : "")
+                    + (voidReason != null ? " reason=" + voidReason : ""));
         } else {
             record(event, user, person, claim, number);
         }
         rollup.recordChanges(sheetId, user, before);
         return claim;
+    }
+
+    /** Refuse a void (422) without a reason from the sheet's list of void reasons while it is not
+     *  empty, and with a reason not on it. */
+    private void refuseUnlessListedReason(String sheetId, String reason) {
+        if (reason == null ? !settings.voidReasons(sheetId).isEmpty() : !settings.isVoidReason(sheetId, reason)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Choose a reason from the sheet's list to void the claim");
+        }
     }
 
     /** Refuse voiding a SETTLED claim (403) by anyone but a steward, and (409) once the sheet's
