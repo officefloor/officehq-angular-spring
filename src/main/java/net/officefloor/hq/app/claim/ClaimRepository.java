@@ -47,6 +47,11 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Query("select c from Claim c where c.personId = :personId and c.sheetId = :sheetId order by c.listed desc")
     List<Claim> findByPersonForUpdate(Long personId, String sheetId);
 
+    /** The sheet's claims, locked while a holiday re-fixes their due-by. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Claim c where c.sheetId = :sheetId order by c.id")
+    List<Claim> findBySheetIdForUpdate(String sheetId);
+
     /** Release every claim's lock on the sheet (its today changed). */
     @Modifying
     @Query("update Claim c set c.lockedBy = null where c.sheetId = :sheetId and c.lockedBy is not null")

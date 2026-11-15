@@ -37,9 +37,14 @@ public class Claim {
 
     /** The date the claim is due by: fixed when it is created, its date plus its person's own
      *  terms, else the terms of their grade in force on that date, else the sheet's then; later
-     *  changes to the terms or its date leave it. */
+     *  changes to the terms or its date leave it. A holiday added on or before it re-fixes it (while
+     *  the claim is neither SETTLED nor VOID) from its date with {@link #terms}. */
     @Column(name = "due_by", nullable = false)
     private LocalDate dueBy;
+
+    /** The terms (business days) the claim's due-by was fixed with. */
+    @Column(name = "terms", nullable = false)
+    private int terms;
 
     @Column(name = "note", nullable = false)
     private String note;
@@ -195,6 +200,18 @@ public class Claim {
 
     public LocalDate getDueBy() {
         return dueBy;
+    }
+
+    public void setDueBy(LocalDate dueBy) {
+        this.dueBy = dueBy;
+    }
+
+    public int getTerms() {
+        return terms;
+    }
+
+    public void setTerms(int terms) {
+        this.terms = terms;
     }
 
     public String getNote() {

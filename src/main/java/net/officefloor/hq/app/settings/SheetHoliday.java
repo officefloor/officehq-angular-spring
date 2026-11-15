@@ -8,7 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 
-/** A holiday on the sheet: terms count business days, which skip it, as a claim's due-by is fixed at creation. */
+/** A holiday on the sheet: terms count business days, which skip it, as a claim's due-by is fixed, and adding it re-fixes those due on or after it. */
 @Entity
 @Table(name = "sheet_holiday")
 public class SheetHoliday {

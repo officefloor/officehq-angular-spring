@@ -12,6 +12,7 @@ import net.officefloor.hq.app.sheet.DatedSetting;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,10 +70,12 @@ public class SettingsService {
     private final RollupService rollup;
     private final HistoryService history;
     private final Audit audit;
+    private final ApplicationEventPublisher events;
 
     public SettingsService(SheetRoleRepository roles, SheetPermissionRepository permissions,
             SheetDelegationRepository delegations, SheetHolidayRepository holidays, SheetVoidReasonRepository voidReasons,
-            SheetService sheets, RollupService rollup, HistoryService history, Audit audit) {
+            SheetService sheets, RollupService rollup, HistoryService history, Audit audit,
+            ApplicationEventPublisher events) {
         this.roles = roles;
         this.permissions = permissions;
         this.delegations = delegations;
@@ -82,6 +85,7 @@ public class SettingsService {
         this.rollup = rollup;
         this.history = history;
         this.audit = audit;
+        this.events = events;
     }
 
     /** The sheet's clerk limit in force on its today; null when there is none. */
@@ -415,8 +419,8 @@ public class SettingsService {
     }
 
     /** Add a holiday to the sheet, the sheet created first if it was never loaded; refused (409)
-     *  when the date is on its list already. A holiday leaves the due-by of the claims already
-     *  created as it is. */
+     *  when the date is on its list already. {@link HolidayAdded} is published once it is on the
+     *  list, re-fixing the due-by of the claims due on or after it. */
     @Transactional
     public LocalDate addHoliday(String sheetId, String user, LocalDate day) {
         sheets.load(sheetId, user);
@@ -426,6 +430,7 @@ public class SettingsService {
         }
         holidays.saveAndFlush(new SheetHoliday(sheetId, day));
         audit.recordOnCommit("HOLIDAY_ADDED sheet=" + sheetId + " by=" + user + " date=" + day);
+        events.publishEvent(new HolidayAdded(sheetId, user, day));
         return day;
     }
 

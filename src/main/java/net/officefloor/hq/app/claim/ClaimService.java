@@ -27,6 +27,7 @@ import net.officefloor.hq.app.person.StatementSummary;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.HolidayAdded;
 import net.officefloor.hq.app.settings.Permission;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
@@ -178,13 +179,15 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.entryDate(sheetId);
-        LocalDate dueBy = dueByOf(sheetId, person, on);
+        int terms = termsOf(sheetId, person, on);
+        LocalDate dueBy = dueByOf(sheetId, on, terms);
         refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, on);
         String corrected = correctedBy(sheetId, personId, amount, corrects);
         String reference = refOf(sheetId, null, ref);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         Claim fresh = new Claim(sheetId, personId, amount, on, dueBy, noteOf(note));
+        fresh.setTerms(terms);
         fresh.setCorrects(corrected);
         fresh.setRef(reference);
         fresh.setTags(tagsOf(tags));
@@ -696,7 +699,9 @@ public class ClaimService {
         LocalDate on = claim.getDate();
         claim.setAmount(claim.getAmount().subtract(amount));
         claim.unbind();
-        Claim fresh = new Claim(sheetId, person.getId(), amount, on, dueByOf(sheetId, person, on), claim.getNote());
+        int terms = termsOf(sheetId, person, on);
+        Claim fresh = new Claim(sheetId, person.getId(), amount, on, dueByOf(sheetId, on, terms), claim.getNote());
+        fresh.setTerms(terms);
         fresh.setStatus(ClaimStatus.OPEN);
         fresh.setNumber(nextNumber(sheetId, fresh.getDueBy()));
         fresh.setOpenedBy(user);
@@ -848,15 +853,38 @@ public class ClaimService {
         return new Statement(person, StatementSummary.of(statements.findByPersonIdOrderByIdAsc(personId)), theirs);
     }
 
-    /** The due-by a claim of the person dated {@code on} is fixed with as it is created: its date
-     *  the terms-th business day after it, the person's own terms, else those of their grade then in
-     *  force on it, else the sheet's. Business days skip every Saturday, Sunday and holiday on the
-     *  sheet. */
-    private LocalDate dueByOf(String sheetId, Person person, LocalDate on) {
-        int terms = person.getTerms() != null ? person.getTerms()
+    /** The terms a claim of the person dated {@code on} is fixed with as it is created: the
+     *  person's own terms, else those of their grade then in force on it, else the sheet's. */
+    private int termsOf(String sheetId, Person person, LocalDate on) {
+        return person.getTerms() != null ? person.getTerms()
                 : sheets.find(sheetId).map(s -> s.termsFor(person.gradeOn(on), on)).orElse(Sheet.DEFAULT_TERMS);
+    }
+
+    /** The due-by of a claim dated {@code on} with the terms: the terms-th business day after its
+     *  date. Business days skip every Saturday, Sunday and holiday on the sheet. */
+    private LocalDate dueByOf(String sheetId, LocalDate on, int terms) {
         Set<LocalDate> holidays = new HashSet<>(settings.holidays(sheetId));
         return BusinessDays.after(on, terms, holidays);
+    }
+
+    /** A holiday just added re-fixes the due-by of every claim on the sheet that is neither SETTLED
+     *  nor VOID and is due on or after it: from its date, with the terms it was fixed with, over the
+     *  holidays on the sheet now. The figures that moves are recorded. */
+    @EventListener
+    @Transactional
+    public void redate(HolidayAdded added) {
+        String sheetId = added.sheetId();
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Set<LocalDate> holidays = new HashSet<>(settings.holidays(sheetId));
+        for (Claim c : claims.findBySheetIdForUpdate(sheetId)) {
+            if (c.getStatus() == ClaimStatus.SETTLED || c.getStatus() == ClaimStatus.VOID
+                    || c.getDueBy().isBefore(added.day())) {
+                continue;
+            }
+            c.setDueBy(BusinessDays.after(c.getDate(), c.getTerms(), holidays));
+        }
+        claims.flush();
+        rollup.recordChanges(sheetId, added.user(), before);
     }
 
     /** The number a claim due by {@code date} takes as it is opened: under period numbering (set,
