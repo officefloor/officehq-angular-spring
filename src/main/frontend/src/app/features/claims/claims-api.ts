@@ -12,7 +12,7 @@ export const CLAIM_AMOUNT_PATTERN = /^-?\d{1,13}(\.\d{1,2})?$/;
 
 /** DRAFT when added, then OPEN, then SETTLED; a clerk settling one above the clerk limit sends it to
  *  PENDING, which a steward approves (SETTLED) or rejects (back to OPEN). A DRAFT, OPEN or PENDING
- *  claim may be VOID. */
+ *  claim may be VOID, and a steward may void a SETTLED one within 7 days of its settlement. */
 export type ClaimStatus = 'DRAFT' | 'OPEN' | 'PENDING' | 'SETTLED' | 'VOID';
 
 /** A move of a claim's status, as the server names it. */
@@ -286,7 +286,7 @@ export function pasteError(e: unknown): string {
 /** Why a status change was refused; `opener` says whether the user is the one who opened the claim. */
 export function statusError(e: unknown, opener: boolean): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a reason for rejecting the claim.';
-  if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status, or is deferred.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status, is deferred, or was settled more than 7 days ago.';
   if (e instanceof HttpErrorResponse && e.status === 403) {
     return opener
       ? 'The user who opened this claim cannot settle or approve it, or your role may not make that change.'

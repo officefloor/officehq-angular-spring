@@ -174,7 +174,8 @@ public class ClaimService {
 
     /** Move a claim to a new status; a move its status does not allow is refused (409), as is
      *  a move the user's role may not make by the sheet's permission matrix (403), settling by the user who opened the claim (403), settling a deferred claim (409), settling a PENDING claim (409: it is
-     *  approved or rejected instead), and any move of a claim dated in a closed period (423). A
+     *  approved or rejected instead), voiding a SETTLED claim by anyone but a steward (403) or more
+     *  than 7 days after its settlement (409), and any move of a claim dated in a closed period (423). A
      *  clerk settling a claim whose due is above the sheet's clerk limit sends it to PENDING. Settling
      *  a claim whose due is above the proof threshold in force on its date while it has no proof is
      *  refused (422) before the clerk limit is considered. */
@@ -194,6 +195,9 @@ public class ClaimService {
                 || !claim.getStatus().canMoveTo(to)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot become " + to);
+        }
+        if (to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED) {
+            refuseUnlessVoidableSettled(sheetId, user, claim);
         }
         if (to == ClaimStatus.SETTLED && claim.isDeferredOn(sheets.today(sheetId))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -218,6 +222,9 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         // a voided claim keeps its number (never reused), and the VOIDED record carries it
         String number = claim.getNumber();
+        // a voided SETTLED claim keeps its frozen figure, which leaves every total
+        boolean reversing = to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
+        BigDecimal reversed = claim.getSettledDue();
         claim.setStatus(to);
         if (to == ClaimStatus.OPEN) {
             number = nextNumber(sheetId, claim.getDate());
@@ -238,11 +245,32 @@ public class ClaimService {
         if (to == ClaimStatus.SETTLED) {
             record(event, user, person, claim, number, " due=" + dueText(claim.getSettledDue()));
             notifyWatchers(user, person, number);
+        } else if (reversing) {
+            record(event, user, person, claim, number, " reversed=" + dueText(reversed));
         } else {
             record(event, user, person, claim, number);
         }
         rollup.recordChanges(sheetId, user, before);
         return claim;
+    }
+
+    /** Refuse voiding a SETTLED claim (403) by anyone but a steward, and (409) once the sheet's
+     *  today is more than {@link ClaimStatus#SETTLED_VOID_DAYS} days after its settlement (the
+     *  first SETTLED line of its status log). */
+    private void refuseUnlessVoidableSettled(String sheetId, String user, Claim claim) {
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward voids a SETTLED claim");
+        }
+        LocalDate settledOn = log.findByClaimIdOrderByIdAsc(claim.getId()).stream()
+                .filter(line -> line.getStatus() == ClaimStatus.SETTLED)
+                .map(ClaimLog::getOn)
+                .findFirst()
+                .orElse(null);
+        LocalDate today = sheets.today(sheetId);
+        if (settledOn == null || today.isAfter(settledOn.plusDays(ClaimStatus.SETTLED_VOID_DAYS))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A SETTLED claim is voided only within " + ClaimStatus.SETTLED_VOID_DAYS + " days of its settlement");
+        }
     }
 
     /** Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches
