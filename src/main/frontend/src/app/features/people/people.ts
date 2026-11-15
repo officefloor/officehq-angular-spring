@@ -390,7 +390,7 @@ export class People {
     };
   });
   /** Each person's live due-total for each period in cents, by person id then period id: the dues
-   *  (n/a ones skipped) of their claims whose date falls in it, each counted by its status at the
+   *  (n/a ones skipped) of their claims whose due-by falls in it, each counted by its status at the
    *  period's end (OPEN and SETTLED ones; ones still open within a hold, unbound, or deferred, left out). */
   private readonly liveDueByPersonPeriod = computed(() => {
     const out = new Map<number, Map<number, number>>();
@@ -399,7 +399,7 @@ export class People {
     for (const p of this.people()) {
       const theirs = new Map<number, number>();
       for (const c of this.claimsOf(p.id)) {
-        const period = periodOn(this.periods(), c.date);
+        const period = periodOn(this.periods(), c.dueBy);
         if (period === null || !countsAtEnd(c, period.to)) continue;
         theirs.set(period.id, (theirs.get(period.id) ?? 0) + (this.claimDueCents(p, c, late) ?? 0));
       }

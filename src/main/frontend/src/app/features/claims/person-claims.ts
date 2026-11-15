@@ -215,9 +215,9 @@ export class PersonClaims {
     return deferred(c, this.session.today());
   }
 
-  /** The name of the period whose dates contain the claim's date; blank when none does. */
+  /** The name of the period whose dates contain the claim's due-by; blank when none does. */
   protected periodOf(c: Claim): string {
-    return periodOn(this.periods(), c.date)?.name ?? '';
+    return periodOn(this.periods(), dueBy(c))?.name ?? '';
   }
 
   protected async edit(c: Claim): Promise<void> {
@@ -227,8 +227,8 @@ export class PersonClaims {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Only a draft claim can be edited; void it and add a new one.' }));
       return;
     }
-    if (periodOn(this.periods(), c.date)?.closed) {
-      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'This claim is dated in a closed period.' }));
+    if (periodOn(this.periods(), dueBy(c))?.closed) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'This claim is due in a closed period.' }));
       return;
     }
     const sheetId = this.session.sheetId();

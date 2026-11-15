@@ -122,7 +122,7 @@ public class PeriodService {
         return period;
     }
 
-    /** Soft-close an open period, fixing its figures as a close does while claims dated inside it
+    /** Soft-close an open period, fixing its figures as a close does while claims due inside it
      *  can still be changed; refused (403) when the user's role may not close by the sheet's
      *  permission matrix, and (409) when it is already closed or soft-closed. */
     @Transactional
@@ -197,7 +197,7 @@ public class PeriodService {
                 .anyMatch(p -> p.isSoftClosed() && p.contains(date));
     }
 
-    /** Refuse (423) a change to a claim dated {@code date} when a closed period contains it. */
+    /** Refuse (423) a change to a claim due by {@code date} when a closed period contains it. */
     @Transactional(readOnly = true)
     public void refuseIfClosed(String sheetId, LocalDate date) {
         periods.findBySheetIdOrderByFromAsc(sheetId).stream()
@@ -205,7 +205,7 @@ public class PeriodService {
                 .findFirst()
                 .ifPresent(p -> {
                     throw new ResponseStatusException(HttpStatus.LOCKED,
-                            "The claim's date is in closed period " + p.getName());
+                            "The claim's due-by is in closed period " + p.getName());
                 });
     }
 

@@ -20,7 +20,7 @@ import net.officefloor.hq.app.history.HistoryListener;
 
 /** One of the sheet's periods: a name unique on the sheet and its from and to dates, inclusive;
  *  once closed (or soft-closed), its due-total and each person's due-total for it are fixed at the
- *  figures they had then; a soft-closed period still takes changes to the claims dated inside it. */
+ *  figures they had then; a soft-closed period still takes changes to the claims due inside it. */
 @Entity
 @EntityListeners(HistoryListener.class)
 @Table(name = "period")

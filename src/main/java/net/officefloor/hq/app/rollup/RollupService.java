@@ -128,7 +128,7 @@ public class RollupService {
     }
 
     /** Each person's due-total for the period from {@code from} to {@code to}, inclusive, by person
-     *  id, for everyone on the sheet: the dues (n/a ones skipped) their claims dated inside it show
+     *  id, for everyone on the sheet: the dues (n/a ones skipped) their claims due inside it show
      *  now, counting each by the status its log gives it at the end of {@code to} (OPEN and SETTLED
      *  ones count; one added after then does not; OPEN ones within a hold of their person, unbound,
      *  or deferred, left out). */
@@ -151,7 +151,7 @@ public class RollupService {
         sheetClaims.stream()
                 .filter(c -> countsAt(c, statusAtEnd.containsKey(c.getId()) ? statusAtEnd.get(c.getId()) : c.getStatus(),
                         held, today))
-                .filter(c -> !c.getDate().isBefore(from) && !c.getDate().isAfter(to))
+                .filter(c -> !c.getDueBy().isBefore(from) && !c.getDueBy().isAfter(to))
                 .filter(c -> byId.containsKey(c.getPersonId()))
                 .forEach(c -> {
                     BigDecimal due = shownDueOf(c, byId.get(c.getPersonId()), sheetRates, floor, late, rounding);

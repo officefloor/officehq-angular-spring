@@ -275,7 +275,7 @@ export function claimError(e: unknown, correction = false): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount with up to two decimals.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft claim can be edited; void it and add a new one.';
-  if (e instanceof HttpErrorResponse && e.status === 423) return 'The date is in a closed period.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'The claim would be due in a closed period.';
   if (e instanceof HttpErrorResponse && e.status === 422) {
     return correction
       ? "A correction must name the number of a settled claim of this person, and be dated by the person's retirement date."
@@ -287,7 +287,7 @@ export function claimError(e: unknown, correction = false): string {
 export function quickAddError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name and an amount of 0.00 or more with up to two decimals.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That name was just added by someone else; try again.';
-  if (e instanceof HttpErrorResponse && e.status === 423) return "The sheet's today is in a closed period.";
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'The claim would be due in a closed period.';
   if (e instanceof HttpErrorResponse && e.status === 422) return "The sheet's today is after that person's retirement date.";
   return otherError(e);
 }
@@ -300,7 +300,7 @@ export function pasteError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 422) {
     return "Every name must be on the sheet, and every date by that person's retirement date; an amount below zero is a correction, which the paste does not take.";
   }
-  if (e instanceof HttpErrorResponse && e.status === 423) return 'A date is in a closed period.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'A claim would be due in a closed period.';
   return otherError(e);
 }
 
@@ -308,7 +308,7 @@ export function pasteError(e: unknown): string {
 export function editError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft claim that no one else is editing can be edited.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
-  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
   return otherError(e);
 }
 
@@ -322,7 +322,7 @@ export function statusError(e: unknown, opener: boolean): string {
       : 'Your role may not make that change to this claim.';
   }
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
-  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
   if (e instanceof HttpErrorResponse && e.status === 422) {
     return 'This claim\'s due is above a threshold: it needs a note to be opened, or a proof to be settled or approved.';
   }
@@ -333,7 +333,7 @@ export function statusError(e: unknown, opener: boolean): string {
 export function proofError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'A settled or void claim takes no more proofs.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
-  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
   return otherError(e);
 }
 
@@ -343,7 +343,7 @@ export function deferError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open claim can be deferred.';
   if (e instanceof HttpErrorResponse && e.status === 422) return "Defer the claim until a date after the sheet's today.";
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
-  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
   return otherError(e);
 }
 
@@ -354,7 +354,7 @@ export function redateError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open or pending claim can be re-dated.';
   if (e instanceof HttpErrorResponse && e.status === 422) return "The new date is after the person's retirement date.";
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
-  if (e instanceof HttpErrorResponse && e.status === 423) return 'The claim or its new date is in a closed period.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
   return otherError(e);
 }
 
@@ -363,7 +363,7 @@ export function resettleError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can re-settle a claim.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a settled claim can be re-settled.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
-  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
   return otherError(e);
 }
 
@@ -372,7 +372,7 @@ export function reassignError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not reassign a claim.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft, open or pending claim can move to another person.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
-  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
   if (e instanceof HttpErrorResponse && e.status === 422) return "The claim's date is after that person's retirement date.";
   return otherError(e);
 }
@@ -384,7 +384,7 @@ export function splitError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open claim that is not deferred can be split.';
   if (e instanceof HttpErrorResponse && e.status === 422) return "Split off an amount more than 0.00 and less than the claim's.";
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
-  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
   return otherError(e);
 }
 
