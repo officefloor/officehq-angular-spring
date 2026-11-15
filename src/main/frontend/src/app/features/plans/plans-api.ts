@@ -5,22 +5,25 @@ import { Session, otherError } from '../../core/session';
 import type { Claim } from '../claims/claims-api';
 
 /** A person's plan: a DRAFT claim of its amount (two decimals) for each plan date, its start and
- *  then every so many days, up to its end; with how many claims it has made so far. */
+ *  then every so many days, or its day of the month in every month from the start's (the other
+ *  null), up to its end; with how many claims it has made so far. */
 export interface Plan {
   id: number;
   personId: number;
   amount: string;
   start: string;
-  every: number;
+  every: number | null;
+  day: number | null;
   end: string;
   generated: number;
 }
 
-/** A plan as the form submits it: a blank start takes the sheet's today. */
+/** A plan as the form submits it: a blank start takes the sheet's today; one of every and day. */
 export interface PlanForm {
   amount: string;
   start: string | null;
-  every: number;
+  every: number | null;
+  day: number | null;
   end: string;
 }
 
@@ -60,9 +63,11 @@ export class PlansApi {
 
 export function planError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) {
-    return 'Enter an amount of 0.00 or more with up to two decimals, a whole number of days of 1 or more and an end date.';
+    return 'Enter an amount of 0.00 or more with up to two decimals, a whole number of days of 1 or more or a day of the month of 1 to 31, and an end date.';
   }
-  if (e instanceof HttpErrorResponse && e.status === 422) return 'Give an end on or after the start and repeat every 1 day or more.';
+  if (e instanceof HttpErrorResponse && e.status === 422) {
+    return 'Give an end on or after the start, and repeat either every 1 day or more or monthly on a day of 1 to 31.';
+  }
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on the sheet.';
   return otherError(e);
 }

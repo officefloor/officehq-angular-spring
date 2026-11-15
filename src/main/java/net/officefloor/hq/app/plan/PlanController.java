@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.plan;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -30,21 +31,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class PlanController {
 
     /** A plan as the screen shows it: its amount with two decimals, its dates, its interval in days
-     *  and how many claims it has made so far. */
-    public record PlanView(long id, long personId, String amount, LocalDate start, int every, LocalDate end, long generated) {
+     *  or its day of the month (the other null) and how many claims it has made so far. */
+    public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
+            LocalDate end, long generated) {
         static PlanView of(Plan p, Map<Long, Long> made) {
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().setScale(2).toPlainString(), p.getStart(),
-                    p.getEvery(), p.getEnd(), made.getOrDefault(p.getId(), 0L));
+                    p.getEvery(), p.getDay(), p.getEnd(), made.getOrDefault(p.getId(), 0L));
         }
     }
 
     /** A plan as the form submits it: an amount the claim form takes for a new claim (0.00 or
-     *  more, up to two decimals), a start (null: the sheet's today), an interval of whole days (at
-     *  least 1) and an end. */
+     *  more, up to two decimals), a start (null: the sheet's today), either an interval of whole
+     *  days (at least 1) or a day of the month (1 to 31), and an end. */
     public record PlanForm(
             @NotNull @Pattern(regexp = "\\d{1,13}(\\.\\d{1,2})?") String amount,
             LocalDate start,
-            @NotNull @Min(1) Integer every,
+            @Min(1) Integer every,
+            @Min(1) @Max(31) Integer day,
             @NotNull LocalDate end) {
     }
 
@@ -75,7 +78,8 @@ public class PlanController {
             @PathVariable long personId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PlanForm body) {
-        Plan plan = service.add(sheetId, user.trim(), personId, new BigDecimal(body.amount()), body.start(), body.every(), body.end());
+        Plan plan = service.add(sheetId, user.trim(), personId, new BigDecimal(body.amount()), body.start(), body.every(),
+                body.day(), body.end());
         return PlanView.of(plan, Map.of());
     }
 

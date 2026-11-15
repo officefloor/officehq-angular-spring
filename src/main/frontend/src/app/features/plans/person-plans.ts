@@ -16,6 +16,8 @@ import { PlansApi, planError } from './plans-api';
       <input [id]="fieldId('start')" type="date" data-testid="plan-form-start" formControlName="start" />
       <label [for]="fieldId('every')">Every (days)</label>
       <input [id]="fieldId('every')" data-testid="plan-form-every" formControlName="every" inputmode="numeric" autocomplete="off" />
+      <label [for]="fieldId('day')">Or monthly on day</label>
+      <input [id]="fieldId('day')" data-testid="plan-form-day" formControlName="day" inputmode="numeric" autocomplete="off" />
       <label [for]="fieldId('end')">End</label>
       <input [id]="fieldId('end')" type="date" data-testid="plan-form-end" formControlName="end" />
       <button type="submit" data-testid="plan-form-submit">Add plan</button>
@@ -29,7 +31,11 @@ import { PlansApi, planError } from './plans-api';
           <li [attr.data-testid]="'plan-row-' + pl.id">
             <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
             from <span data-testid="plan-start">{{ pl.start }}</span>
-            every <span data-testid="plan-every">{{ pl.every }}</span> days
+            @if (pl.day !== null) {
+              monthly on day <span data-testid="plan-day">{{ pl.day }}</span>
+            } @else {
+              every <span data-testid="plan-every">{{ pl.every }}</span> days
+            }
             to <span data-testid="plan-end">{{ pl.end }}</span>;
             made <span data-testid="plan-generated">{{ pl.generated }}</span>
           </li>
@@ -53,6 +59,7 @@ export class PersonPlans {
     amount: new FormControl('', { nonNullable: true }),
     start: new FormControl('', { nonNullable: true }),
     every: new FormControl('', { nonNullable: true }),
+    day: new FormControl('', { nonNullable: true }),
     end: new FormControl('', { nonNullable: true }),
   });
 
@@ -63,7 +70,7 @@ export class PersonPlans {
       this.session.loads();
       untracked(() => {
         this.error.set(null);
-        this.form.reset({ amount: '', start: '', every: '', end: '' }, { emitEvent: false });
+        this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
       });
     });
   }
@@ -81,13 +88,22 @@ export class PersonPlans {
     const amount = value.amount.trim();
     const start = value.start.trim();
     const every = value.every.trim();
+    const day = value.day.trim();
     const end = value.end.trim();
     if (!AMOUNT_PATTERN.test(amount)) {
       this.error.set('Enter an amount of 0.00 or more with up to two decimals.');
       return;
     }
-    if (!/^\d{1,9}$/.test(every) || Number(every) < 1) {
+    if ((every === '') === (day === '')) {
+      this.error.set('Repeat either every so many days or monthly on a day of the month.');
+      return;
+    }
+    if (every !== '' && (!/^\d{1,9}$/.test(every) || Number(every) < 1)) {
       this.error.set('Repeat every whole number of days, 1 or more.');
+      return;
+    }
+    if (day !== '' && (!/^\d{1,2}$/.test(day) || Number(day) < 1 || Number(day) > 31)) {
+      this.error.set('Repeat monthly on a day of the month from 1 to 31.');
       return;
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) {
@@ -101,11 +117,12 @@ export class PersonPlans {
     }
     this.submitting = true;
     try {
-      const plan = await this.api.add(sheetId, this.personId(), { amount, start: start === '' ? null : start, every: Number(every), end });
+      const plan = await this.api.add(sheetId, this.personId(), { amount, start: start === '' ? null : start, every: every === '' ? null : Number(every),
+        day: day === '' ? null : Number(day), end });
       if (this.session.sheetId() === sheetId) {
         this.session.plans.update((ps) => [...ps.filter((p) => p.id !== plan.id), plan].sort((a, b) => a.id - b.id));
       }
-      this.form.reset({ amount: '', start: '', every: '', end: '' }, { emitEvent: false });
+      this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
     } catch (e) {
       this.error.set(planError(e));
     } finally {
