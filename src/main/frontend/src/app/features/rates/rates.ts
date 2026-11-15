@@ -9,7 +9,8 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
 // The rate in force on the sheet's today for each grade, every rate the sheet has for each grade by
 // from-date, the form that sets a grade's rate from a date, optionally through a date, an import box
 // that sets a rate per pasted line, and a preview of what a candidate rate for a grade would change
-// (nothing is saved).
+// (nothing is saved), and a calendar of each grade's rate on the first of each month of the sheet's
+// today's year.
 @Component({
   selector: 'app-rates',
   imports: [FigurePipe, ReactiveFormsModule],
@@ -79,6 +80,29 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
           }
         </tbody>
       </table>
+      @if (calendar(); as cal) {
+        <table data-testid="rates-calendar">
+          <caption>Rate on the first of each month of {{ cal.year }}</caption>
+          <thead>
+            <tr>
+              <th scope="col">Grade</th>
+              @for (m of cal.months; track m) {
+                <th scope="col">{{ m }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (g of grades; track g) {
+              <tr>
+                <th scope="row">{{ g }}</th>
+                @for (m of cal.months; track m) {
+                  <td [attr.data-testid]="'rate-month-' + g + '-' + m">{{ (monthOf(g, m) ?? 'n/a') | figure }}</td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
       <table data-testid="rates-list">
         <caption>All rates</caption>
         <thead>
@@ -189,6 +213,18 @@ export class Rates {
   /** The grade's rate in force on the sheet's today, or null when it has none then. */
   protected currentOf(grade: string): string | null {
     return pctOn(this.effective().filter((r) => r.grade === grade), this.session.today());
+  }
+
+  /** The months (yyyy-mm) of the sheet's today's calendar year; null before the sheet has a today. */
+  protected readonly calendar = computed(() => {
+    const year = this.session.today()?.slice(0, 4);
+    if (!year) return null;
+    return { year, months: Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`) };
+  });
+
+  /** The grade's rate in force on the first day of a month (yyyy-mm), or null when it has none then. */
+  protected monthOf(grade: string, month: string): string | null {
+    return pctOn(this.effective().filter((r) => r.grade === grade), `${month}-01`);
   }
 
   protected async submit(): Promise<void> {

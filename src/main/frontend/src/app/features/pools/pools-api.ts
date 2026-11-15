@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session, otherError } from '../../core/session';
 import { money } from '../claims/claims-api';
-import { type Crew } from '../crews/crews-api';
+import { type Crew, crewIds } from '../crews/crews-api';
 import { patronShares } from '../people/people-api';
 
 /** A share percent: up to two decimals (more than 0.00 and at most 100.00 is checked apart). */
@@ -44,9 +44,9 @@ export interface Pool {
 }
 
 /** A crew as a pool under its name: its lead, then its members, at equal shares (100.00 split as
- *  patrons' shares are, the remainder on the lead). */
+ *  patrons' shares are, the remainder on the lead, or on the first member when it has no lead). */
 export function crewPool(crew: Crew): Pool {
-  const ids = [crew.leadId, ...crew.memberIds];
+  const ids = crewIds(crew);
   const shares = patronShares(ids.length);
   return {
     name: crew.name,

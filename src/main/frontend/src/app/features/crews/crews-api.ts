@@ -3,12 +3,17 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session, otherError } from '../../core/session';
 
-/** A crew on the sheet: its name, its lead's person id and its members' person ids, in the order
- *  they were added. */
+/** A crew on the sheet: its name, its lead's person id (null once the lead has left the sheet) and
+ *  its members' person ids, in the order they were added. */
 export interface Crew {
   name: string;
-  leadId: number;
+  leadId: number | null;
   memberIds: number[];
+}
+
+/** A crew's people: its lead (when it has one), then its members. */
+export function crewIds(crew: Crew): number[] {
+  return crew.leadId === null ? [...crew.memberIds] : [crew.leadId, ...crew.memberIds];
 }
 
 @Injectable({ providedIn: 'root' })

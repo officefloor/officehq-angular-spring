@@ -75,7 +75,7 @@ public class CrewService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such crew"));
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        if (crew.getLeadId().equals(person.getId())) {
+        if (person.getId().equals(crew.getLeadId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The person leads the crew");
         }
         if (members.existsByCrewIdAndPersonId(crew.getId(), person.getId())) {
@@ -100,7 +100,7 @@ public class CrewService {
         crews.flush();
         for (CrewMember member : members.findByPersonIdOrderByIdAsc(fromId)) {
             Crew crew = crews.findById(member.getCrewId()).orElseThrow();
-            if (crew.getLeadId().equals(intoId) || members.existsByCrewIdAndPersonId(crew.getId(), intoId)) {
+            if (intoId.equals(crew.getLeadId()) || members.existsByCrewIdAndPersonId(crew.getId(), intoId)) {
                 members.delete(member);
             } else {
                 member.setPersonId(intoId);
@@ -109,16 +109,14 @@ public class CrewService {
         members.flush();
     }
 
-    /** Drop a person leaving the sheet from its crews: their memberships, and the crews they lead
-     *  with those crews' members. */
+    /** Drop a person leaving the sheet from its crews: their memberships, and the lead of the crews
+     *  they lead, those crews staying with their members and no lead. */
     @Transactional
     public void drop(Long personId) {
         members.deleteAll(members.findByPersonIdOrderByIdAsc(personId));
         members.flush();
         for (Crew crew : crews.findByLeadIdOrderByIdAsc(personId)) {
-            members.deleteAll(members.findByCrewIdInOrderByIdAsc(List.of(crew.getId())));
-            members.flush();
-            crews.delete(crew);
+            crew.setLeadId(null);
         }
         crews.flush();
     }

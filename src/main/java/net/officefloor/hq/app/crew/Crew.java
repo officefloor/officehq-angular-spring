@@ -7,8 +7,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
-/** A crew on the sheet: a name, unique on the sheet, its lead (a person of the sheet) and its
- *  members ({@link CrewMember}). */
+/** A crew on the sheet: a name, unique on the sheet, its lead (a person of the sheet; none once
+ *  they have left it) and its members ({@link CrewMember}). */
 @Entity
 @Table(name = "crew")
 public class Crew {
@@ -23,7 +23,7 @@ public class Crew {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "lead_id", nullable = false)
+    @Column(name = "lead_id")
     private Long leadId;
 
     protected Crew() {
@@ -47,6 +47,7 @@ public class Crew {
         return name;
     }
 
+    /** The lead's person id; null when the lead has left the sheet. */
     public Long getLeadId() {
         return leadId;
     }

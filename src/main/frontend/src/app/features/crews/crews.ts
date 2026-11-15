@@ -4,7 +4,7 @@ import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
 import { type Person } from '../people/people-api';
-import { Crew, CrewsApi, crewError, crewMemberError } from './crews-api';
+import { Crew, CrewsApi, crewError, crewIds, crewMemberError } from './crews-api';
 
 // One crew's row: its lead, its due-total, its members, and the form that adds a member to it.
 @Component({
@@ -58,16 +58,15 @@ export class CrewRow {
   /** The lead's and the members' due-totals added up, n/a skipped. */
   protected readonly dueTotal = computed(() => {
     const dues = this.dueTotals();
-    return money([this.crew().leadId, ...this.crew().memberIds]
-      .reduce((sum, id) => sum + (dues.get(id) ?? 0), 0));
+    return money(crewIds(this.crew()).reduce((sum, id) => sum + (dues.get(id) ?? 0), 0));
   });
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(null));
   }
 
-  protected nameOf(personId: number): string {
-    return this.byId().get(personId)?.name ?? '';
+  protected nameOf(personId: number | null): string {
+    return (personId !== null && this.byId().get(personId)?.name) || '';
   }
 
   protected async add(): Promise<void> {

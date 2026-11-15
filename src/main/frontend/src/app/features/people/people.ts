@@ -8,7 +8,7 @@ import { PersonPlans } from '../plans/person-plans';
 import { PlansApi } from '../plans/plans-api';
 import { Pools } from '../pools/pools';
 import { Crews } from '../crews/crews';
-import { Crew } from '../crews/crews-api';
+import { Crew, crewIds } from '../crews/crews-api';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn, personPeriodCarriedCents, personPeriodDueCents } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
@@ -793,7 +793,7 @@ export class People {
     if (led.length === 0) return null;
     const dues = this.dueByPerson();
     return money(led.reduce((sum, c) =>
-      sum + [c.leadId, ...c.memberIds].reduce((s, id) => s + (dues.get(id) ?? 0), 0), 0));
+      sum + crewIds(c).reduce((s, id) => s + (dues.get(id) ?? 0), 0), 0));
   });
   /** The figures of the sheet's descendants added up, as last read from the store. */
   private readonly descendants = signal<DescendantFigures>({ people: 0, dueTotal: '0.00', overdueTotal: '0.00' });
