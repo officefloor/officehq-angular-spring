@@ -1,0 +1,64 @@
+{
+  "checkpoint": 123,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp123_bulk-retire",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Selected people can be retired together from a date: a date entry and a button beside the bulk\nbuttons. Each selected person is retired in list order exactly as the row's retire does (with its\nPERSON_RETIRED and rollup lines); show how many were retired.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nSelected people can be retired together from a date: a date entry and a button beside the bulk\nbuttons. Each selected person is retired in list order exactly as the row's retire does (with its\nPERSON_RETIRED and rollup lines); show how many were retired.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "b2d826151b893a680d07b6130d74635ec9fa12cc",
+  "reset_sha": "",
+  "preagent_sha": "977473d07b79bc8b24588a022985bf15b92828a8",
+  "prev_sha": "977473d07b79bc8b24588a022985bf15b92828a8",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6545808,
+    "input_tokens": 30,
+    "output_tokens": 7243,
+    "cache_read_tokens": 534724,
+    "cache_creation_tokens": 50332,
+    "num_turns": 16,
+    "duration_ms": 324575,
+    "duration_api_ms": 65987,
+    "model": "claude-opus-5-5",
+    "session_id": "06ea8f64-dddf-4b87-8535-fc08a4c9714c",
+    "stop_reason": "success",
+    "result_text": "Bulk retire is in, and `bin/e2e` passes all 4 tests in the spec.\n\n**What it does:** next to the other bulk buttons there's now a \"Retire selected people from\" date box and a \"Retire selected\" button. Each selected person is retired in list order, the same way the row's own retire does it, so the audit file gets their `PERSON_RETIRED` line and the rollup lines after it. The screen then shows \"Retired N\". A blank date means the sheet's today.\n\n**Choices worth knowing:**\n- **Viewers get 0, not an error.** When a viewer presses the button, it reports 0 retired and changes nothing. That's what the spec expects, and it's how bulk grade already works.\n- **All or none.** If any selected person is no longer on the sheet, or another user saved one at the same moment, the whole action is refused and the `person-error` element is shown.\n- **Shared selection.** It uses the same person checkboxes as bulk grade, and the selection is cleared after a successful retire.\n\n**Changes:**\n- **Server:** a new endpoint, `POST /bulk-retire`, in `PersonController`, and a `PersonService.retire(sheetId, user, ids, from)` method that repeats the single-person retire steps for each person.\n- **Front end:** `people-api.ts` gets the `bulkRetire` call and its error messages. `people.ts` gets the form, the `bulk-retired` count (cleared while a retire runs) and the `person-error` message.\n\nNo database change was needed, since a person's retired-from date is already stored.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6545808,
+        "num_turns": 16,
+        "duration_ms": 324575,
+        "duration_api_ms": 65987,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp123.agent.jsonl",
+  "agent_diff_file": "cp123.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
