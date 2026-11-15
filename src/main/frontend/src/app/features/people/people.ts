@@ -12,7 +12,7 @@ import { Lateness, Rate, RatesApi, claimDueCents, pctOn, plusDays } from '../rat
 import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
-// claims, what they have claimed, their due-total (held to the sheet's cap) and its excess over the cap, their overdue claims, their open claims' dues by age, and their patrons and backing (their patrons' recent settled figures); the sheet's claimed-total,
+// claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons and backing (their patrons' recent settled figures); the sheet's claimed-total,
 // due-total and overdue claims; a header of counters repeating them; a summary of them by grade, period and status; and
 // the one form that adds a person or, with a
 // person's editor open, saves that person.
@@ -74,6 +74,8 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
       <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong>
         totalling <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
+      <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong>
+        open total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
       <label>
         <input type="checkbox" data-testid="show-retired" [checked]="session.showRetired()"
           (change)="session.showRetired.set($any($event.target).checked)" />
@@ -131,6 +133,8 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
               <td>
                 <span data-testid="person-due-total">{{ dueOf(p) }}</span>
                 <span>excess <span data-testid="person-excess">{{ money(excessOf(p.id)) }}</span></span>
+                <span>settled <span data-testid="person-settled-total">{{ money(settledOpenOf(p.id).settled) }}</span></span>
+                <span>open <span data-testid="person-open-total">{{ money(settledOpenOf(p.id).open) }}</span></span>
               </td>
               <td>
                 @for (period of periods(); track period.id) {
@@ -325,6 +329,32 @@ export class People {
     }
     return out;
   });
+  /** Each person's uncapped due-total split in cents, by person id: the dues (n/a ones skipped) their
+   *  counting SETTLED claims show (at their fixed figures) and those their counting open (OPEN and
+   *  PENDING) claims show. */
+  private readonly settledOpenByPerson = computed(() => {
+    const out = new Map<number, { settled: number; open: number }>();
+    const late = this.lateness();
+    for (const p of this.people()) {
+      const split = { settled: 0, open: 0 };
+      for (const c of this.claimsOf(p.id).filter(this.countsLive())) {
+        const due = this.claimDueCents(p, c, late) ?? 0;
+        if (c.status === 'SETTLED') split.settled += due;
+        else if (isOpen(c)) split.open += due;
+      }
+      out.set(p.id, split);
+    }
+    return out;
+  });
+  protected settledOpenOf(personId: number): { settled: number; open: number } {
+    return this.settledOpenByPerson().get(personId) ?? { settled: 0, open: 0 };
+  }
+  /** Everyone's settled-total added up (not trimmed). */
+  protected readonly settledTotal = computed(() =>
+    money([...this.settledOpenByPerson().values()].reduce((sum, s) => sum + s.settled, 0)));
+  /** Everyone's open-total added up (not trimmed). */
+  protected readonly openTotal = computed(() =>
+    money([...this.settledOpenByPerson().values()].reduce((sum, s) => sum + s.open, 0)));
   /** The person's excess in cents: how far their uncapped due-total is above their capped one (0 otherwise). */
   protected excessOf(personId: number): number {
     return (this.uncappedDueByPerson().get(personId) ?? 0) - (this.dueByPerson().get(personId) ?? 0);
