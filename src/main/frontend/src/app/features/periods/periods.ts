@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
-import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, openingsError, periodDueCents, periodError, reopenError } from './periods-api';
+import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, lockError, openingsError, periodDueCents, periodError, reopenError } from './periods-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -58,7 +58,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       </form>
       <table data-testid="periods-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -70,6 +70,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ session.fiscalYearOf(p.from) }}</td>
               <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
+              <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                   [attr.aria-label]="'Close period ' + p.name">Close</button>
@@ -77,6 +78,10 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
                   [attr.aria-label]="'Soft-close period ' + p.name">Soft-close</button>
                 <button type="button" data-testid="period-reopen" (click)="reopen(p)"
                   [attr.aria-label]="'Reopen period ' + p.name">Reopen</button>
+                <button type="button" data-testid="period-lock" (click)="lock(p, true)"
+                  [attr.aria-label]="'Lock period ' + p.name">Lock</button>
+                <button type="button" data-testid="period-unlock" (click)="lock(p, false)"
+                  [attr.aria-label]="'Unlock period ' + p.name">Unlock</button>
                 @if (rowErrors()[p.id]; as err) {
                   <p role="alert" data-testid="period-error">{{ err }}</p>
                 }
@@ -278,6 +283,19 @@ export class Periods {
       if (this.session.sheetId() === sheetId) this.saved.emit(reopened);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [p.id]: reopenError(e) }));
+    }
+  }
+
+  /** Lock a period so it cannot be reopened, or unlock it; a refusal shows an error on the period. */
+  protected async lock(p: Period, locked: boolean): Promise<void> {
+    this.rowErrors.update(({ [p.id]: _, ...rest }) => rest);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const changed = locked ? await this.api.lock(sheetId, p.id) : await this.api.unlock(sheetId, p.id);
+      if (this.session.sheetId() === sheetId) this.saved.emit(changed);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: lockError(e) }));
     }
   }
 

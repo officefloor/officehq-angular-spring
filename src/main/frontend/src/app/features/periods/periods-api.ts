@@ -27,6 +27,8 @@ export interface Period {
   /** Each person's opening balance for the period (two decimals), by person id: added to the
    *  carried figure they show for it while it is open. */
   openings: Record<string, string>;
+  /** Whether a steward has locked the period: a locked one cannot be reopened. */
+  locked: boolean;
 }
 
 /** What an opening-balance paste did: how many lines went through, and the periods it changed. */
@@ -111,6 +113,15 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<Period>(`${this.url(sheetId)}/${id}/reopen`, null, { headers: this.headers() }));
   }
 
+  /** Lock a period so it cannot be reopened (a steward only). */
+  lock(sheetId: string, id: number): Promise<Period> {
+    return firstValueFrom(this.http.post<Period>(`${this.url(sheetId)}/${id}/lock`, null, { headers: this.headers() }));
+  }
+
+  unlock(sheetId: string, id: number): Promise<Period> {
+    return firstValueFrom(this.http.post<Period>(`${this.url(sheetId)}/${id}/unlock`, null, { headers: this.headers() }));
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}/periods`;
   }
@@ -151,7 +162,14 @@ export function closeError(e: unknown): string {
 
 export function reopenError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not reopen a period.';
-  if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is neither closed nor soft-closed.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is neither closed nor soft-closed, or it is locked.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That period is no longer on this sheet.';
+  return otherError(e);
+}
+
+export function lockError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may lock or unlock a period.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is already locked, or not locked.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That period is no longer on this sheet.';
   return otherError(e);
 }
