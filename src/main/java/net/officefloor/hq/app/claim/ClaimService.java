@@ -651,7 +651,7 @@ public class ClaimService {
     }
 
     /** A steward (or a role the permission matrix lets reassign) moves a DRAFT, OPEN or PENDING claim to another person on the sheet: it keeps its
-     *  number and date, is listed as the new person's newest claim, and loses any figure a
+     *  date and takes the next number in its sequence (its old one never given again; a draft has none), is listed as the new person's newest claim, and loses any figure a
      *  statement bound it to (live again until the new person's next statement). Refused (404)
      *  when the claim or person is missing, (423) when it is due in a closed period, (403) for a
      *  role the sheet's permission matrix does not let reassign, (409) when SETTLED or VOID or already the person's, and (422) when it is dated after
@@ -682,6 +682,12 @@ public class ClaimService {
         Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         RollupService.Snapshot before = rollup.snapshot(sheetId);
+        if (claim.getNumber() != null && claim.getPersonId() != toPersonId) {
+            // moved to another person: the next number in its sequence, the old one never given again
+            retired.save(new RetiredNumber(sheetId, claim.getNumber()));
+            claims.flush();
+            claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
+        }
         claim.setPersonId(to.getId());
         claim.unbind();
         claim.setListed(claims.findLastListed(sheetId) + 1);

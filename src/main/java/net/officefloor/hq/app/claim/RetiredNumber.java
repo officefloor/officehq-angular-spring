@@ -7,7 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
-/** A claim number a re-dated claim left behind as it moved to another period: never given again. */
+/** A claim number a re-dated or reassigned claim left behind: never given again. */
 @Entity
 @Table(name = "retired_number")
 public class RetiredNumber {
