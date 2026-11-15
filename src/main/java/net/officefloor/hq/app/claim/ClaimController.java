@@ -53,14 +53,15 @@ public class ClaimController {
      *  lines, in the order added; and what it was added as against a forward-only rate's mark (its
      *  own id, or for a copy in a clone the claim it copies was added as); and its review day, the
      *  sheet's today when it went to REVIEW (null when it never did); and whether a steward waived
-     *  its late charge; and of its proofs, how many are receipts and how many photos. */
+     *  its late charge; and of its proofs, how many are receipts and how many photos; and whether it
+     *  is held. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason,
             List<CommentView> comments, String editedBy, Integer batch, List<LineView> lines, long added,
-            LocalDate reviewOn, boolean waived, int receiptProofs, int photoProofs) {
+            LocalDate reviewOn, boolean waived, int receiptProofs, int photoProofs, boolean held) {
         static ClaimView of(Claim c, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines) {
             return of(c.getId(), c, log, comments, lines);
         }
@@ -74,7 +75,7 @@ public class ClaimController {
                     c.isLateEntry(), c.getReminded(), c.getRef(), c.getTags(), c.getVoidReason(),
                     comments.stream().map(CommentView::of).toList(), c.getEditedBy(), c.getBatch(),
                     lines.stream().map(LineView::of).toList(), c.getAdded() != null ? c.getAdded() : id,
-                    c.getReviewOn(), c.isWaived(), c.getReceiptProofs(), c.getPhotoProofs());
+                    c.getReviewOn(), c.isWaived(), c.getReceiptProofs(), c.getPhotoProofs(), c.isHeld());
         }
 
         private static String money(BigDecimal value) {
@@ -388,6 +389,14 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         return view(service.waive(sheetId, user.trim(), id));
+    }
+
+    @PostMapping("/claims/{id}/hold")
+    public ClaimView hold(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return view(service.toggleHold(sheetId, user.trim(), id));
     }
 
     @PostMapping("/claims/{id}/comments")

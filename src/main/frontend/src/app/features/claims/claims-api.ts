@@ -76,6 +76,8 @@ export interface Claim {
   reminded: string | null;
   /** Whether a steward waived the claim's late charge: it bears none from then on. */
   waived: boolean;
+  /** Whether the claim is held: held and open, unless bound by a statement, it counts in no live total. */
+  held: boolean;
   /** yyyy-mm-dd: the claim's review day (the sheet's today when it went to REVIEW); null when it never did. */
   reviewOn: string | null;
   /** The claim's external reference, unique on its sheet without regard to case; null when none. */
@@ -329,6 +331,13 @@ export class ClaimsApi {
     );
   }
 
+  /** Hold an OPEN or PENDING claim, or release a held one. */
+  toggleHold(sheetId: string, id: number): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/hold`, null, { headers: this.headers() }),
+    );
+  }
+
   /** The claim's timeline: the audit lines about it, newest first, as the file holds them. */
   timeline(sheetId: string, id: number): Promise<string[]> {
     return firstValueFrom(
@@ -533,6 +542,13 @@ export function remindError(e: unknown): string {
 export function waiveError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 403) return "Only a steward can waive a claim's late charge.";
   if (e instanceof HttpErrorResponse && e.status === 409) return "Only an open or pending claim not already waived can have its late charge waived.";
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  return otherError(e);
+}
+
+/** Why holding or releasing a claim was refused. */
+export function holdClaimError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open or pending claim can be held or released.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   return otherError(e);
 }

@@ -674,6 +674,27 @@ public class ClaimService {
         return claim;
     }
 
+    /** Hold an OPEN or PENDING claim, or release a held one: held, unless bound by a statement, it
+     *  counts in no live total, as a held person's claims do. CLAIM_HELD or CLAIM_RELEASED is
+     *  written. Refused (404) when missing and (409) unless OPEN or PENDING. */
+    @Transactional
+    public Claim toggleHold(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only an OPEN or PENDING claim is held or released, not a " + claim.getStatus() + " one");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setHeld(!claim.isHeld());
+        claims.flush();
+        record(claim.isHeld() ? "CLAIM_HELD" : "CLAIM_RELEASED", user, person, claim, claim.getNumber());
+        rollup.recordChanges(sheetId, user, before);
+        return claim;
+    }
+
     /** A steward re-dates an OPEN or PENDING claim: its due-by stays as it was fixed, a figure a
      *  statement bound it to stays bound, and so does its period (that of its due-by) and its
      *  number. Refused (404) when missing, (403) for anyone but a steward, (423) when its due-by
@@ -1281,13 +1302,13 @@ public class ClaimService {
     }
 
     /** Whether a claim counts toward claimed and due totals: only OPEN (or PENDING) and SETTLED ones
-     *  do, but not an open one dated within a hold of its person, nor one of a person whose
-     *  retirement date the sheet's today has reached, unless bound by a statement, nor one deferred
+     *  do, but not a held open one, nor an open one dated within a hold of its person, nor one of a
+     *  person whose retirement date the sheet's today has reached, unless bound by a statement, nor one deferred
      *  on the sheet's today. */
     private static boolean counts(Claim c, Person person, LocalDate today) {
         return c.getStatus() == ClaimStatus.SETTLED
                 || (c.getStatus().isOpen() && !c.isDeferredOn(today)
-                        && (c.isBound() || !(person.heldOn(c.getDate()) || person.retiredOn(today))));
+                        && (c.isBound() || !(c.isHeld() || person.heldOn(c.getDate()) || person.retiredOn(today))));
     }
 
     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it to

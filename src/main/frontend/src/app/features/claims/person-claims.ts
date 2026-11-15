@@ -6,7 +6,7 @@ import { Session, otherError } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { RateLevels, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, waiveError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, reviewLate, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, waiveError, holdClaimError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, reviewLate, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -76,6 +76,7 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, 
             <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
             <span>Reminded <span data-testid="claim-reminded">{{ c.reminded ?? '' }}</span></span>
             <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
+            <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
             <span>Split from No. <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
             <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
               @for (l of c.log; track $index) {
@@ -133,6 +134,8 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, 
               [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
             <button type="button" data-testid="claim-waive" (click)="waive(c)"
               [attr.aria-label]="'Waive the late charge of claim of ' + c.amount + ' on ' + c.date">Waive late charge</button>
+            <button type="button" data-testid="claim-hold" (click)="toggleHold(c)"
+              [attr.aria-label]="(c.held ? 'Release' : 'Hold') + ' claim of ' + c.amount + ' on ' + c.date">{{ c.held ? 'Release' : 'Hold' }}</button>
             <label [for]="'claim-defer-date-' + c.id">Defer until</label>
             <input [id]="'claim-defer-date-' + c.id" type="date" data-testid="claim-defer-date"
               [value]="deferDates()[c.id] ?? ''" (input)="deferDateChanged(c.id, $any($event.target).value)" />
@@ -616,6 +619,19 @@ export class PersonClaims {
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: waiveError(e) }));
+    }
+  }
+
+  /** Hold an OPEN or PENDING claim, or release a held one; a refusal shows an error on the claim. */
+  protected async toggleHold(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const claim = await this.api.toggleHold(sheetId, c.id);
+      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: holdClaimError(e) }));
     }
   }
 

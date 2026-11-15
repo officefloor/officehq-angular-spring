@@ -407,10 +407,10 @@ public class RollupService {
     }
 
     /** Whether an unbound open claim of the person (null: one with neither a hold nor a retirement)
-     *  is left out of the live totals: dated within a hold of theirs, or their retirement date
-     *  reached on the sheet's today. */
+     *  is left out of the live totals: held itself, dated within a hold of theirs, or their
+     *  retirement date reached on the sheet's today. */
     private static boolean leftOut(Person person, Claim c, LocalDate today) {
-        return person != null && (person.heldOn(c.getDate()) || person.retiredOn(today));
+        return c.isHeld() || (person != null && (person.heldOn(c.getDate()) || person.retiredOn(today)));
     }
 
     /** The people with a hold or a retirement date, by id. */

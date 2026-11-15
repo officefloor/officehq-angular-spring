@@ -136,6 +136,11 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
+    /** Whether the claim is held: a held open claim, unless bound by a statement, counts in no live
+     *  total, as a held person's claims do. */
+    @Column(name = "held", nullable = false)
+    private boolean held;
+
     /** The claim's review day: the sheet's today when it went to REVIEW; none when it never did. */
     @Column(name = "review_on")
     private LocalDate reviewOn;
@@ -373,6 +378,14 @@ public class Claim {
         this.waived = waived;
     }
 
+    public boolean isHeld() {
+        return held;
+    }
+
+    public void setHeld(boolean held) {
+        this.held = held;
+    }
+
     public LocalDate getReviewOn() {
         return reviewOn;
     }
@@ -426,6 +439,7 @@ public class Claim {
         copy.reminded = reminded;
         copy.escalated = escalated;
         copy.waived = waived;
+        copy.held = held;
         copy.reviewOn = reviewOn;
         copy.tags = tags;
         copy.voidReason = voidReason;

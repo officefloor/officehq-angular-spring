@@ -502,15 +502,15 @@ export class People {
    *  open (OPEN or PENDING) claims count in no live total unless bound by a statement. */
   private readonly retiredFromById = computed(() =>
     new Map(this.people().filter((p) => p.retiredFrom !== null).map((p) => [p.id, p.retiredFrom as string])));
-  /** Whether an unbound open claim is left out of the live totals: dated within a hold of its person, or its
-   *  person's retirement date reached on the sheet's today. */
+  /** Whether an unbound open claim is left out of the live totals: held itself, dated within a hold of its
+   *  person, or its person's retirement date reached on the sheet's today. */
   private readonly leftOut = computed(() => {
     const holds = this.holdsById();
     const retired = this.retiredFromById();
     const today = this.session.today();
     return (c: Claim) => {
       const from = retired.get(c.personId);
-      return heldOn(holds.get(c.personId) ?? [], c.date) || (from !== undefined && today !== null && from <= today);
+      return c.held || heldOn(holds.get(c.personId) ?? [], c.date) || (from !== undefined && today !== null && from <= today);
     };
   });
   /** Whether a claim counts in the live totals: open (OPEN or PENDING) and SETTLED ones, but not a deferred one,
