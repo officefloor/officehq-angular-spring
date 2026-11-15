@@ -23,6 +23,7 @@ import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.LateCharge;
 import net.officefloor.hq.app.claim.Rounding;
+import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
@@ -87,10 +88,12 @@ public class RollupService {
     private final ClaimLogRepository log;
     private final RateChain rateChain;
     private final SheetRepository sheets;
+    private final HistoryService history;
     private final Audit audit;
 
     public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository log,
-            RateChain rateChain, SheetRepository sheets, Audit audit) {
+            RateChain rateChain, SheetRepository sheets, HistoryService history, Audit audit) {
+        this.history = history;
         this.rateChain = rateChain;
         this.people = people;
         this.claims = claims;
@@ -101,15 +104,39 @@ public class RollupService {
 
     /** The sheet's figures now, as the store (and this transaction) holds them. */
     public Snapshot snapshot(String sheetId) {
-        Optional<Sheet> sheet = sheets.findById(sheetId);
+        Map<Long, Person> sheetPeople = new LinkedHashMap<>();
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> sheetPeople.put(p.getId(), p));
+        return snapshotOf(sheets.findById(sheetId), sheetPeople, claims.findBySheetIdOrderByIdDesc(sheetId),
+                rateChain.levels(sheetId));
+    }
+
+    /** The sheet's figures as it stood at the end of {@code on}, rebuilt from its history (and its
+     *  ancestors' rates from theirs), with {@code on} as its today. */
+    public Snapshot snapshotAsOf(String sheetId, LocalDate on) {
+        HistoryService.AsOf then = history.asOf(sheetId, on);
+        List<Claim> sheetClaims = then.claims().entrySet().stream()
+                .sorted(Map.Entry.<Long, Claim>comparingByKey().reversed())
+                .map(Map.Entry::getValue)
+                .toList();
+        RateChain.Levels sheetRates = new RateChain.Levels(sheetId, then.rates(),
+                rateChain.ancestors(sheetId).stream().map(a -> history.asOf(a, on).rates()).toList());
+        return snapshotOf(Optional.of(then.sheet()), then.people(), sheetClaims, sheetRates);
+    }
+
+    /** The figures of a sheet with these settings (none: the defaults, today the real date), people
+     *  (by id, in list order), claims (newest first) and rates. */
+    private static Snapshot snapshotOf(Optional<Sheet> sheet, Map<Long, Person> sheetPeople, List<Claim> sheetClaims,
+            RateChain.Levels sheetRates) {
         LocalDate today = sheet.map(Sheet::getToday).orElseGet(LocalDate::now);
         Function<LocalDate, BigDecimal> floor = floorOf(sheet);
         BigDecimal cap = sheet.map(Sheet::getCap).orElse(null);
         LateCharge late = LateCharge.of(sheet);
-        RateChain.Levels sheetRates = rateChain.levels(sheetId);
-        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
-        Map<Long, Person> held = heldPeople(sheetPeople);
-        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        Map<Long, Person> held = new LinkedHashMap<>();
+        sheetPeople.forEach((id, p) -> {
+            if (p.isHeld() || p.isRetired()) {
+                held.put(id, p);
+            }
+        });
         Function<Claim, RoundingMode> rounding = roundingOf(sheet, sheetClaims);
         Map<Long, List<Claim>> counted = new LinkedHashMap<>();
         for (Claim c : sheetClaims) {
@@ -118,8 +145,8 @@ public class RollupService {
             }
         }
         Map<Long, Figures> out = new LinkedHashMap<>();
-        for (Person p : sheetPeople) {
-            List<Claim> theirs = counted.getOrDefault(p.getId(), List.of());
+        sheetPeople.forEach((id, p) -> {
+            List<Claim> theirs = counted.getOrDefault(id, List.of());
             BigDecimal claimed = theirs.stream().filter(c -> !isCorrection(c))
                     .map(Claim::getAmount).reduce(zero(), BigDecimal::add);
             BigDecimal overdue = theirs.stream()
@@ -127,9 +154,9 @@ public class RollupService {
                     .map(c -> shownDueOf(c, p, sheetRates, floor, late, rounding))
                     .filter(Objects::nonNull)
                     .reduce(zero(), BigDecimal::add);
-            out.put(p.getId(), new Figures(p.getName(), claimed,
+            out.put(id, new Figures(p.getName(), claimed,
                     Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding), cap), overdue));
-        }
+        });
         return new Snapshot(out);
     }
 
@@ -138,16 +165,17 @@ public class RollupService {
     public record Consolidated(int people, BigDecimal dueTotal, BigDecimal overdueTotal) {
     }
 
-    /** The sheet's own figures as it is now: how many people (retired ones too), and the
-     *  due-total and overdue-total it shows. */
-    public Consolidated own(String sheetId) {
-        Snapshot figures = snapshot(sheetId);
+    /** The sheet's own figures as it is now, or as it stood at the end of {@code asOf} when given:
+     *  how many people (retired ones too), and the due-total and overdue-total it shows. */
+    public Consolidated own(String sheetId, LocalDate asOf) {
+        Snapshot figures = asOf == null ? snapshot(sheetId) : snapshotAsOf(sheetId, asOf);
         return new Consolidated(figures.people().size(), figures.dueTotal(), figures.overdueTotal());
     }
 
     /** The figures of the sheet's descendants (its children, theirs, and so on), each sheet's as
-     *  it is now, added up; all zero for a sheet with no children. */
-    public Consolidated descendants(String sheetId) {
+     *  it is now, or as it stood at the end of {@code asOf} when given, added up; all zero for a
+     *  sheet with no children. */
+    public Consolidated descendants(String sheetId, LocalDate asOf) {
         int count = 0;
         BigDecimal due = zero();
         BigDecimal overdue = zero();
@@ -159,7 +187,7 @@ public class RollupService {
                     continue;
                 }
                 todo.add(child.getId());
-                Snapshot figures = snapshot(child.getId());
+                Snapshot figures = asOf == null ? snapshot(child.getId()) : snapshotAsOf(child.getId(), asOf);
                 count += figures.people().size();
                 due = due.add(figures.dueTotal());
                 overdue = overdue.add(figures.overdueTotal());
@@ -194,6 +222,48 @@ public class RollupService {
                         held, today))
                 .filter(c -> !c.getDueBy().isBefore(from) && !c.getDueBy().isAfter(to))
                 .filter(c -> byId.containsKey(c.getPersonId()))
+                .forEach(c -> {
+                    BigDecimal due = shownDueOf(c, byId.get(c.getPersonId()), sheetRates, floor, late, rounding);
+                    if (due != null) {
+                        out.merge(c.getPersonId(), due, BigDecimal::add);
+                    }
+                });
+        return out;
+    }
+
+    /** Each person's carried figure for the period from {@code from} to {@code to}, by person id,
+     *  for everyone on the sheet: the dues (n/a ones skipped) their claims show now whose due-by
+     *  falls in another of the sheet's periods ({@code periodEndOn} gives the to-date of the period
+     *  containing a date, null outside every one) ending before {@code from}, and that were still
+     *  OPEN or PENDING at the end of {@code to} by their log, counted as {@link #dueByPersonBetween}
+     *  counts them. */
+    public Map<Long, BigDecimal> carriedByPersonInto(String sheetId, LocalDate from, LocalDate to,
+            Function<LocalDate, LocalDate> periodEndOn) {
+        Optional<Sheet> sheet = sheets.findById(sheetId);
+        LocalDate today = sheet.map(Sheet::getToday).orElseGet(LocalDate::now);
+        Function<LocalDate, BigDecimal> floor = floorOf(sheet);
+        LateCharge late = LateCharge.of(sheet);
+        RateChain.Levels sheetRates = rateChain.levels(sheetId);
+        List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+        Map<Long, Person> held = heldPeople(sheetPeople);
+        Map<Long, Person> byId = sheetPeople.stream().collect(Collectors.toMap(Person::getId, p -> p));
+        List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+        Function<Claim, RoundingMode> rounding = roundingOf(sheet, sheetClaims);
+        Map<Long, BigDecimal> out = new LinkedHashMap<>();
+        for (Person p : sheetPeople) {
+            out.put(p.getId(), zero());
+        }
+        Map<Long, ClaimStatus> statusAtEnd = statusesOn(sheetId, to);
+        sheetClaims.stream()
+                .filter(c -> byId.containsKey(c.getPersonId()))
+                .filter(c -> {
+                    LocalDate ownEnd = periodEndOn.apply(c.getDueBy());
+                    return ownEnd != null && ownEnd.isBefore(from);
+                })
+                .filter(c -> {
+                    ClaimStatus status = statusAtEnd.containsKey(c.getId()) ? statusAtEnd.get(c.getId()) : c.getStatus();
+                    return status != null && status.isOpen() && countsAt(c, status, held, today);
+                })
                 .forEach(c -> {
                     BigDecimal due = shownDueOf(c, byId.get(c.getPersonId()), sheetRates, floor, late, rounding);
                     if (due != null) {

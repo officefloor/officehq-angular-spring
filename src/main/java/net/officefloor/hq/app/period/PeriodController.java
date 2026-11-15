@@ -32,11 +32,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class PeriodController {
 
     /** A period as the screen shows it: whether it is closed or soft-closed, the due-total fixed when it was
-     *  closed (null while open), and each person's due-total for it fixed then, by person id
-     *  (empty while open). */
+     *  closed (null while open), each person's due-total for it fixed then, by person id
+     *  (empty while open), and each person's carried figure for it fixed then, by person id (null
+     *  while open, or when closed before carried figures were fixed). */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
             String closedTotal, Integer cap,
-            Map<Long, String> closedPersonTotals) {
+            Map<Long, String> closedPersonTotals, Map<Long, String> closedPersonCarried) {
         static PeriodView of(Period p) {
             return of(p.getId(), p);
         }
@@ -45,8 +46,15 @@ public class PeriodController {
         static PeriodView of(long id, Period p) {
             Map<Long, String> personTotals = new LinkedHashMap<>();
             p.getClosedPersonTotals().forEach((personId, total) -> personTotals.put(personId, total.setScale(2).toPlainString()));
+            Map<Long, String> personCarried = null;
+            if (p.isCarriedFixed()) {
+                Map<Long, String> fixed = new LinkedHashMap<>();
+                p.getClosedPersonCarried().forEach((personId, carried) -> fixed.put(personId, carried.setScale(2).toPlainString()));
+                personCarried = fixed;
+            }
             return new PeriodView(id, p.getName(), p.getFrom(), p.getTo(), p.isClosed(), p.isSoftClosed(),
-                    p.getClosedTotal() == null ? null : p.getClosedTotal().setScale(2).toPlainString(), p.getCap(), personTotals);
+                    p.getClosedTotal() == null ? null : p.getClosedTotal().setScale(2).toPlainString(), p.getCap(), personTotals,
+                    personCarried);
         }
     }
 

@@ -8,7 +8,7 @@ import { PersonPlans } from '../plans/person-plans';
 import { PlansApi } from '../plans/plans-api';
 import { Pools } from '../pools/pools';
 import { Periods } from '../periods/periods';
-import { Period, PeriodsApi, periodOn, personPeriodDueCents } from '../periods/periods-api';
+import { Period, PeriodsApi, periodOn, personPeriodCarriedCents, personPeriodDueCents } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { ClassicSummary } from '../summary/classic-summary';
@@ -702,9 +702,10 @@ export class People {
     }
     return out;
   });
-  /** The person's carried figure for the period in cents (0 with nothing carried). */
+  /** The person's carried figure for the period in cents: fixed when it was closed, else live
+   *  (0 with nothing carried). */
   protected carriedOf(personId: number, period: Period): number {
-    return this.carriedByPersonPeriod().get(personId)?.get(period.id) ?? 0;
+    return personPeriodCarriedCents(period, personId, this.carriedByPersonPeriod().get(personId) ?? new Map());
   }
   /** The person's due-total for the period in cents: fixed when it was closed, else live. */
   protected periodDueOf(personId: number, period: Period): number {
@@ -765,10 +766,12 @@ export class People {
   });
   /** The figures of the sheet's descendants added up, as last read from the store. */
   private readonly descendants = signal<DescendantFigures>({ people: 0, dueTotal: '0.00', overdueTotal: '0.00' });
-  /** The sheet's own figures as it is now, read from the store while the screen shows it as of a
-   *  date; null when it shows the sheet as it stands (the screen's own figures are then live). */
+  /** The sheet's own figures as it stood at the end of the as-of date, read from the store while
+   *  the screen shows it as of a date; null when it shows the sheet as it stands (the screen's own
+   *  figures are then live). */
   private readonly ownLive = signal<DescendantFigures | null>(null);
-  /** The sheet's own figures as it is now and its descendants' added up. */
+  /** The sheet's own figures and its descendants' added up, each as the screen shows the sheet:
+   *  as it is now, or as it stood at the end of the as-of date. */
   protected readonly consolidated = computed<DescendantFigures>(() => {
     const d = this.descendants();
     const own = this.ownLive() ?? {

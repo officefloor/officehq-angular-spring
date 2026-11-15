@@ -3,7 +3,10 @@ package net.officefloor.hq.app.rollup;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
+import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.session.CurrentUser;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,20 +29,24 @@ public class RollupController {
         this.service = service;
     }
 
-    /** The figures of the sheet's descendants, each as it is now (even when the sheet is shown as of a date), added up. */
+    /** The figures of the sheet's descendants, each as it is now, or as it stood at the end of the
+     *  date the sheet is shown as of (that date its today), added up. */
     @GetMapping("/descendants/figures")
     public ConsolidatedView figures(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return view(service.descendants(sheetId));
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return view(service.descendants(sheetId, asOf));
     }
 
-    /** The sheet's own figures as it is now (even when the sheet is shown as of a date). */
+    /** The sheet's own figures as it is now, or as it stood at the end of the date the sheet is
+     *  shown as of (that date its today). */
     @GetMapping("/figures")
     public ConsolidatedView ownFigures(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return view(service.own(sheetId));
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return view(service.own(sheetId, asOf));
     }
 
     private static ConsolidatedView view(RollupService.Consolidated c) {

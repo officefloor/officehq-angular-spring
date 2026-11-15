@@ -6,6 +6,7 @@ import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -122,7 +123,7 @@ public class PeriodService {
         return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
     }
 
-    /** Close a period, fixing each person's due-total for it, and its own (their sum), at the
+    /** Close a period, fixing each person's due-total and carried figure for it, and its own due-total (their sum), at the
      *  figures they show now (afresh for a soft-closed one); refused (403) when the user's role may
      *  not close by the sheet's permission matrix, and (409) when it is already closed. */
     @Transactional
@@ -151,7 +152,7 @@ public class PeriodService {
         if (period.isClosed() || period.isSoftClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed");
         }
-        period.softClose(rollup.dueByPersonBetween(sheetId, period.getFrom(), period.getTo()));
+        period.softClose(rollup.dueByPersonBetween(sheetId, period.getFrom(), period.getTo()), carriedInto(sheetId, period));
         periods.flush();
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user
                 + " period=" + period.getName() + " total=" + period.getClosedTotal().toPlainString());
@@ -176,14 +177,21 @@ public class PeriodService {
 
     /** Fix the period's figures as they show now and audit it, with any trailing fields. */
     private void closeNow(String sheetId, String user, Period period, String trailing) {
-        period.close(rollup.dueByPersonBetween(sheetId, period.getFrom(), period.getTo()));
+        period.close(rollup.dueByPersonBetween(sheetId, period.getFrom(), period.getTo()), carriedInto(sheetId, period));
         periods.flush();
         BigDecimal total = period.getClosedTotal();
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user
                 + " period=" + period.getName() + " total=" + total.toPlainString() + trailing);
     }
 
-    /** Reopen a closed or soft-closed period, its due-total live again; refused (403) unless the
+    /** Each person's carried figure into the period as it shows now, by person id. */
+    private Map<Long, BigDecimal> carriedInto(String sheetId, Period period) {
+        List<Period> all = periods.findBySheetIdOrderByFromAsc(sheetId);
+        return rollup.carriedByPersonInto(sheetId, period.getFrom(), period.getTo(), date -> all.stream()
+                .filter(p -> p.contains(date)).findFirst().map(Period::getTo).orElse(null));
+    }
+
+    /** Reopen a closed or soft-closed period, its due-total and carried figures live again; refused (403) unless the
      *  user's role may reopen by the sheet's permission matrix (by default a steward), and (409)
      *  when it is neither closed nor soft-closed. */
     @Transactional

@@ -253,7 +253,7 @@ export class PeopleApi {
     );
   }
 
-  /** The sheet's own figures as it is now, even while the screen shows it as of a date. */
+  /** The sheet's own figures as it is now, or (while the screen shows it as of a date) as it stood then. */
   ownFigures(sheetId: string): Promise<DescendantFigures> {
     return firstValueFrom(this.http.get<DescendantFigures>(
       `/api/sheets/${encodeURIComponent(sheetId)}/figures`, { headers: this.headers() }));
@@ -266,7 +266,8 @@ export class PeopleApi {
     );
   }
 
-  /** The figures of the sheet's descendants (its children, theirs, and so on), each as it is now, added up. */
+  /** The figures of the sheet's descendants (its children, theirs, and so on), each as it is now
+   *  (or, while the screen shows the sheet as of a date, as it stood then), added up. */
   descendantFigures(sheetId: string): Promise<DescendantFigures> {
     return firstValueFrom(this.http.get<DescendantFigures>(
       `/api/sheets/${encodeURIComponent(sheetId)}/descendants/figures`, { headers: this.headers() }));

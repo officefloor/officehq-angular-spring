@@ -21,6 +21,9 @@ export interface Period {
   /** Each person's due-total for the period fixed when it was closed (two decimals), by person
    *  id; empty while open. */
   closedPersonTotals: Record<string, string>;
+  /** Each person's carried figure for the period fixed when it was closed (two decimals), by
+   *  person id; null while open, or when it was closed before carried figures were fixed. */
+  closedPersonCarried: Record<string, string> | null;
 }
 
 /** The period whose dates contain a date (yyyy-mm-dd), or null when none does. */
@@ -42,6 +45,16 @@ export function personPeriodDueCents(p: Period, personId: number, dueTotals: Rea
     return fixed === undefined ? 0 : cents(fixed);
   }
   return dueTotals.get(p.id) ?? 0;
+}
+
+/** The carried figure a person shows for a period, in cents: the one fixed when it was closed or
+ *  soft-closed (0 for a person added since), else the live one from carried (by period id; 0 with none). */
+export function personPeriodCarriedCents(p: Period, personId: number, carried: ReadonlyMap<number, number>): number {
+  if ((p.closed || p.softClosed) && p.closedPersonCarried !== null) {
+    const fixed = p.closedPersonCarried[personId];
+    return fixed === undefined ? 0 : cents(fixed);
+  }
+  return carried.get(p.id) ?? 0;
 }
 
 // The sheet's periods, read and written through the server.

@@ -86,7 +86,7 @@ public class HistoryService {
     }
 
     record PeriodState(String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
-            Map<Long, BigDecimal> personTotals, Integer cap) {
+            Map<Long, BigDecimal> personTotals, Integer cap, Map<Long, BigDecimal> personCarried) {
     }
 
     record StatementState(long personId, BigDecimal dueTotal, int claims, LocalDate takenOn, LocalDate asOf,
@@ -157,7 +157,8 @@ public class HistoryService {
             recordSheet(s);
         } else if (entity instanceof Period p) {
             write(p.getSheetId(), PERIOD, String.valueOf(p.getId()), new PeriodState(p.getName(), p.getFrom(), p.getTo(),
-                    p.isClosed(), p.isSoftClosed(), new TreeMap<>(p.getClosedPersonTotals()), p.getCap()));
+                    p.isClosed(), p.isSoftClosed(), new TreeMap<>(p.getClosedPersonTotals()), p.getCap(),
+                    p.isCarriedFixed() ? new TreeMap<>(p.getClosedPersonCarried()) : null));
         } else if (entity instanceof PersonStatement st) {
             write(st.getSheetId(), STATEMENT, String.valueOf(st.getId()), new StatementState(st.getPersonId(),
                     st.getDueTotal(), st.getClaims(), st.getTakenOn(), st.getAsOf(), st.getTakenBy()));
@@ -269,9 +270,9 @@ public class HistoryService {
                     Period period = new Period(sheetId, p.name(), p.from(), p.to());
                     period.setCap(p.cap());
                     if (p.closed()) {
-                        period.close(p.personTotals());
+                        period.close(p.personTotals(), p.personCarried());
                     } else if (p.softClosed()) {
-                        period.softClose(p.personTotals());
+                        period.softClose(p.personTotals(), p.personCarried());
                     }
                     periods.put(Long.valueOf(id), period);
                 }
