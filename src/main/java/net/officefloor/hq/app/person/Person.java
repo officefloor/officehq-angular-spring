@@ -56,9 +56,17 @@ public class Person {
     @Column(name = "grade", nullable = false)
     private Map<LocalDate, String> datedGrades = new HashMap<>();
 
-    /** The person's own terms in days, ahead of their grade's and the sheet's; null when they have none. */
+    /** The person's own terms in days from the beginning of time, ahead of their grade's and the
+     *  sheet's; null when they have none. */
     @Column(name = "terms")
     private Integer terms;
+
+    /** The terms recorded since, by the date each is in force from ({@link #NO_TERMS}: none). */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_terms", joinColumns = @JoinColumn(name = "person_id"))
+    @MapKeyColumn(name = "from_date")
+    @Column(name = "terms", nullable = false)
+    private Map<LocalDate, Integer> datedTerms = new HashMap<>();
 
     /** The person's contact, trimmed and lower-cased; null when they have none. */
     @Column(name = "contact")
@@ -132,6 +140,7 @@ public class Person {
         Person copy = new Person(sheetId, name, grade);
         copy.datedGrades.putAll(datedGrades);
         copy.terms = terms;
+        copy.datedTerms.putAll(datedTerms);
         copy.contact = contact;
         copy.tags = tags;
         copy.aliases.addAll(aliases);
@@ -146,6 +155,7 @@ public class Person {
         Person copy = new Person(sheetId, name, grade);
         copy.datedGrades.putAll(datedGrades);
         copy.terms = terms;
+        copy.datedTerms.putAll(datedTerms);
         copy.contact = contact;
         copy.tags = tags;
         copy.aliases.addAll(aliases);
@@ -196,8 +206,40 @@ public class Person {
         return out;
     }
 
+    /** The value of dated terms recording that the person has none of their own from that date. */
+    public static final int NO_TERMS = -1;
+
+    /** Terms and the date they are in force from (null terms: none of their own). */
+    public record DatedTerms(Integer terms, LocalDate from) {
+    }
+
+    /** The person's own terms from the beginning of time, until any later ones; null when none. */
     public Integer getTerms() {
         return terms;
+    }
+
+    /** The person's own terms in force on a date: those with the latest from-date on or before it,
+     *  else those from the beginning of time; null when they have none then. */
+    public Integer termsOn(LocalDate on) {
+        Map.Entry<LocalDate, Integer> latest = new TreeMap<>(datedTerms).floorEntry(on);
+        if (latest == null) {
+            return terms;
+        }
+        return latest.getValue() == NO_TERMS ? null : latest.getValue();
+    }
+
+    /** Record terms (null: none) from a date, in place of any recorded from the same date; answers
+     *  whether that changed what is recorded. */
+    public boolean recordTerms(Integer terms, LocalDate from) {
+        Integer value = terms == null ? NO_TERMS : terms;
+        return !value.equals(datedTerms.put(from, value));
+    }
+
+    /** The terms recorded since the beginning of time, by from-date. */
+    public List<DatedTerms> getDatedTerms() {
+        List<DatedTerms> out = new ArrayList<>();
+        new TreeMap<>(datedTerms).forEach((from, t) -> out.add(new DatedTerms(t == NO_TERMS ? null : t, from)));
+        return out;
     }
 
     public void setTerms(Integer terms) {

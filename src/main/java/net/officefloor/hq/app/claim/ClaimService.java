@@ -1067,9 +1067,10 @@ public class ClaimService {
     }
 
     /** The terms a claim of the person dated {@code on} is fixed with as it is created: the
-     *  person's own terms, else those of their grade then in force on it, else the sheet's. */
+     *  person's own terms in force on it, else those of their grade then in force on it, else the sheet's. */
     private int termsOf(String sheetId, Person person, LocalDate on) {
-        return person.getTerms() != null ? person.getTerms()
+        Integer own = person.termsOn(on);
+        return own != null ? own
                 : sheets.find(sheetId).map(s -> s.termsFor(person.gradeOn(on), on)).orElse(Sheet.DEFAULT_TERMS);
     }
 

@@ -69,7 +69,10 @@ public class HistoryService {
 
     record PersonState(String name, String grade, List<GradeState> grades, Integer terms, LocalDate retiredFrom,
             List<HoldState> holds, String contact, List<String> aliases, Long position,
-            String originSheetId, List<HoldState> retirements, String tags) {
+            String originSheetId, List<HoldState> retirements, String tags, List<TermsState> datedTerms) {
+    }
+
+    record TermsState(LocalDate from, Integer terms) {
     }
 
     /** A rate's state; its version is null in states written before rates were kept as versions
@@ -149,7 +152,8 @@ public class HistoryService {
                     all.stream().skip(1).map(g -> new GradeState(g.from(), g.grade())).toList(), p.getTerms(),
                     p.getRetiredFrom(), p.getHolds().stream().map(h -> new HoldState(h.from(), h.to())).toList(),
                     p.getContact(), p.getAliases(), p.getPosition(), p.getOriginSheetId(),
-                    p.getRetirements().stream().map(r -> new HoldState(r.from(), r.to())).toList(), p.getTags()));
+                    p.getRetirements().stream().map(r -> new HoldState(r.from(), r.to())).toList(), p.getTags(),
+                    p.getDatedTerms().stream().map(t -> new TermsState(t.from(), t.terms())).toList()));
         } else if (entity instanceof Rate r) {
             write(r.getSheetId(), RATE, String.valueOf(r.getId()),
                     new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo(), r.getVersion(),
@@ -323,6 +327,9 @@ public class HistoryService {
         Person p = new Person(sheetId, s.name(), s.grade());
         s.grades().forEach(g -> p.recordGrade(g.grade(), g.from()));
         p.setTerms(s.terms());
+        if (s.datedTerms() != null) { // a version written before terms were dated has none
+            s.datedTerms().forEach(t -> p.recordTerms(t.terms(), t.from()));
+        }
         p.setContact(s.contact());
         p.setTags(s.tags());
         p.setRetiredFrom(s.retiredFrom());

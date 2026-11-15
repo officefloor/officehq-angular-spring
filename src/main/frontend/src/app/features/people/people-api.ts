@@ -88,7 +88,8 @@ export interface Person {
   patronIds: number[];
   /** Whether the signed-in user watches the person. */
   watched: boolean;
-  /** The person's own terms in days, ahead of their grade's and the sheet's; null when none. */
+  /** The person's own terms in days in force on the sheet's today, ahead of their grade's and the
+   *  sheet's; null when none. */
   terms: number | null;
   /** The person's contact, trimmed and lower-cased; null when none. */
   contact: string | null;
@@ -118,6 +119,9 @@ export interface PersonForm {
   gradeFrom?: string | null;
   /** The person's own terms in whole days; blank for none. */
   terms: string;
+  /** On an edit, the date the terms are in force from (yyyy-mm-dd); null records them from the
+   *  beginning of time. */
+  termsFrom?: string | null;
   /** The person's contact; blank for none. */
   contact: string;
   /** The person's tags, comma separated; blank for none. */

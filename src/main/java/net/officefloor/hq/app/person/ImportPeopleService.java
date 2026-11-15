@@ -91,7 +91,7 @@ public class ImportPeopleService {
                 added.add(people.add(sheetId, user, line.name(), line.grade(), line.terms(), line.contact(), null));
             } else {
                 updated.add(people.update(sheetId, user, p.getId(), p.getVersion(), p.getName(), line.grade(), null,
-                        line.terms() != null ? line.terms() : p.getTerms(),
+                        line.terms() != null ? line.terms() : p.getTerms(), null,
                         line.contact() != null ? line.contact() : p.getContact(), p.getTags()));
             }
         }

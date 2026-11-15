@@ -42,7 +42,7 @@ public class PersonController {
      *  they are retired from (null while not retired), their past retirements, their snapshot lines (oldest first), their statement lines (by date, oldest first), whether they have any hold, their holds, and the ids of
      *  their patrons in the order they were named, and whether the signed-in user watches them. The grade is the one in force on the sheet's
      *  today; grades lists every grade they have been given, by from-date, the first one undated; terms
-     *  are their own terms in days (null when they have none). Clashing: their name or an alias is
+     *  are their own terms in days in force on the sheet's today (null when they have none then). Clashing: their name or an alias is
      *  also a name or alias on another sheet of the sheet's tree. */
     public record PersonView(long id, String name, String grade, long version, int statementCount,
             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held, List<Person.Hold> holds,
@@ -60,7 +60,7 @@ public class PersonController {
                 boolean watched, boolean clashing) {
             return new PersonView(id, p.getName(), p.gradeOn(today), p.getVersion(), s.count(),
                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
-                    p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.getTerms(),
+                    p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.termsOn(today),
                     p.getContact(), p.getAliases(), clashing, p.getOriginSheetId(), p.getRetirements(),
                     p.getTags(), p.getSnapshots().stream().map(SnapshotLine::of).toList(),
                     s.lines().stream().map(StatementLine::of).toList());
@@ -86,7 +86,8 @@ public class PersonController {
     /** A person's values as the form submits them; the name is stored with surrounding spaces removed.
      *  An edit carries the version of the person its editor loaded, and the date its grade is in
      *  force from (null: the sheet's today); an add's grade is in force from the beginning of time.
-     *  The terms are the person's own in whole days, blank or null for none. The contact is stored
+     *  The terms are the person's own in whole days, blank or null for none; an edit records them
+     *  from termsFrom (null: from the beginning of time). The contact is stored
      *  trimmed and lower-cased; blank or null for none. The tags are comma separated, taken as a
      *  claim's are; blank or null for none. */
     public record PersonForm(
@@ -95,6 +96,7 @@ public class PersonController {
             Long version,
             LocalDate gradeFrom,
             @Pattern(regexp = "\\s*\\d{0,4}\\s*") String terms,
+            LocalDate termsFrom,
             @Size(max = 200) String contact,
             @Size(max = 1000) String tags) {
 
@@ -241,7 +243,7 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm body) {
         return view(sheetId, user, service.update(sheetId, user.trim(), id, body.version(), body.name(), body.grade(),
-                body.gradeFrom(), body.termsDays(), body.contactValue(), body.tagsValue()));
+                body.gradeFrom(), body.termsDays(), body.termsFrom(), body.contactValue(), body.tagsValue()));
     }
 
     /** Give the person the grade from the sheet's today, as saving them in the person form would. */

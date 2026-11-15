@@ -56,6 +56,8 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
         @if (editingId() !== null) {
           <label for="person-form-grade-from">Grade from</label>
           <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
+          <label for="person-form-terms-from">Terms from</label>
+          <input id="person-form-terms-from" type="date" data-testid="person-form-terms-from" formControlName="termsFrom" />
         }
         <button type="submit" data-testid="person-form-submit">{{ editingId() === null ? 'Add' : 'Save' }}</button>
         @if (editingId() !== null) {
@@ -906,6 +908,8 @@ export class People {
     gradeFrom: new FormControl('', { nonNullable: true }),
     /** The person's own terms in whole days; blank for none. */
     terms: new FormControl('', { nonNullable: true }),
+    /** On an edit, the date the terms are in force from; blank records them from the beginning of time. */
+    termsFrom: new FormControl('', { nonNullable: true }),
     /** The person's contact; blank for none. */
     contact: new FormControl('', { nonNullable: true }),
     /** The person's tags, comma separated; blank for none. */
@@ -1010,7 +1014,7 @@ export class People {
     this.error.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
-    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: termsText(p), contact: p.contact ?? '',
+    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: termsText(p), termsFrom: '', contact: p.contact ?? '',
       tags: personTags(p).join(', ') });
   }
 
@@ -1602,7 +1606,8 @@ export class People {
         if (this.session.sheetId() === sheetId) this.people.update((ps) => [...ps, added]);
       } else {
         const saved = await this.api.update(sheetId, editing,
-          { ...value, gradeFrom: value.gradeFrom.trim() || null, terms: value.terms.trim(), contact: value.contact.trim(),
+          { ...value, gradeFrom: value.gradeFrom.trim() || null, terms: value.terms.trim(),
+            termsFrom: value.termsFrom.trim() || null, contact: value.contact.trim(),
             tags: value.tags.trim(), version: this.editingVersion });
         if (this.session.sheetId() === sheetId) this.taken(saved);
       }
@@ -1734,7 +1739,7 @@ export class People {
       this.taken(current);
       this.editingVersion = current.version;
       this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: this.form.getRawValue().gradeFrom,
-        terms: termsText(current), contact: current.contact ?? '', tags: personTags(current).join(', ') },
+        terms: termsText(current), termsFrom: this.form.getRawValue().termsFrom, contact: current.contact ?? '', tags: personTags(current).join(', ') },
         { emitEvent: false });
     } catch {
       // the error shown already says the save was refused
@@ -1743,7 +1748,7 @@ export class People {
 
   private reset(): void {
     this.editingId.set(null);
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '', tags: '' });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', termsFrom: '', contact: '', tags: '' });
     this.error.set(null);
   }
 

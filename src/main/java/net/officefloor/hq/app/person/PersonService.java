@@ -241,12 +241,14 @@ public class PersonService {
     /** Save a person; refused when {@code version} (the one the editor loaded) is no longer the stored one.
      *  The grade is recorded from {@code gradeFrom} (null: the sheet's today), keeping those already
      *  recorded; with no from-date, a grade the same as the one in force on the sheet's today records nothing.
-     *  The person's own terms become {@code terms} (null: none), and their contact {@code contact}
+     *  The person's own terms {@code terms} (null: none) are recorded from {@code termsFrom}, keeping
+     *  those already recorded; with no from-date they become those from the beginning of time, unless
+     *  they are the same as those in force on the sheet's today (then nothing is recorded). Their contact {@code contact}
      *  (null: none), refused when another person on the sheet has it; their tags become {@code tags}
      *  (null: none). */
     @Transactional
     public Person update(String sheetId, String user, long id, Long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms, String contact, String tags) {
+            LocalDate gradeFrom, Integer terms, LocalDate termsFrom, String contact, String tags) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (version == null || version != person.getVersion()) {
@@ -262,12 +264,19 @@ public class PersonService {
         }
         requireUnusedContact(sheetId, id, contact);
         person.setName(trimmed);
-        boolean termsChanged = !Objects.equals(terms, person.getTerms());
-        person.setTerms(terms);
+        LocalDate today = sheets.today(sheetId);
+        boolean termsChanged;
+        if (termsFrom != null) {
+            termsChanged = person.recordTerms(terms, termsFrom);
+        } else if (Objects.equals(terms, person.termsOn(today))) {
+            termsChanged = false;
+        } else {
+            termsChanged = !Objects.equals(terms, person.getTerms());
+            person.setTerms(terms);
+        }
         boolean contactChanged = !Objects.equals(contact, person.getContact());
         person.setContact(contact);
         person.setTags(tags);
-        LocalDate today = sheets.today(sheetId);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.recordGrade(grade, gradeFrom != null ? gradeFrom : today);
         }
@@ -279,7 +288,7 @@ public class PersonService {
             throw savedByAnother(); // saved by another user at the same moment
         }
         record("PERSON_EDITED", sheetId, user, person, today,
-                (termsChanged ? termsField(terms) : "") + (contactChanged ? contactField(contact) : ""));
+                (termsChanged ? termsField(person.termsOn(today)) : "") + (contactChanged ? contactField(contact) : ""));
         rollup.recordChanges(sheetId, user, before);
         return person;
     }
