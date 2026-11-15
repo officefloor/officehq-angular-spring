@@ -143,7 +143,7 @@ public class PeriodService {
 
     /** Once the sheet's today changes, close every open period whose to-date plus the sheet's
      *  grace days (when set) is before the new today, in order of their to-dates, each as a close
-     *  by hand would. */
+     *  by hand would; a soft-closed one keeps the figures it fixed. */
     @EventListener
     @Transactional
     public void closePastGrace(TodayChanged change) {
@@ -152,7 +152,7 @@ public class PeriodService {
             return;
         }
         periods.findBySheetIdOrderByFromAsc(change.sheetId()).stream()
-                .filter(p -> !p.isClosed() && p.getTo().plusDays(graceDays).isBefore(change.today()))
+                .filter(p -> !p.isClosed() && !p.isSoftClosed() && p.getTo().plusDays(graceDays).isBefore(change.today()))
                 .sorted(Comparator.comparing(Period::getTo))
                 .forEach(p -> closeNow(change.sheetId(), change.user(), p, " auto=yes"));
     }

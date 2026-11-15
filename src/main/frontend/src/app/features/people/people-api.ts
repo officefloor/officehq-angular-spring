@@ -112,6 +112,14 @@ export class PeopleApi {
     );
   }
 
+  /** Cancel a person's last statement (a steward only): the claims it bound are live again. */
+  cancelStatement(sheetId: string, id: number): Promise<Statement> {
+    return firstValueFrom(
+      this.http.post<Statement>(`/api/sheets/${encodeURIComponent(sheetId)}/people/${id}/statement/cancel`, null,
+        { headers: this.headers() }),
+    );
+  }
+
   /** Retire a person from a date; a blank one takes the sheet's today. */
   retire(sheetId: string, id: number, from: string): Promise<Person> {
     return firstValueFrom(
@@ -160,6 +168,12 @@ export function personError(e: unknown): string {
 export function statementError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   return otherError(e);
+}
+
+export function cancelStatementError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may cancel a statement.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'This person has no statement to cancel.';
+  return statementError(e);
 }
 
 export function retireError(e: unknown): string {

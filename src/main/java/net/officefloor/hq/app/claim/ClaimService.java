@@ -639,6 +639,34 @@ public class ClaimService {
         return new Statement(person, StatementSummary.of(statements.findByPersonIdOrderByIdAsc(personId)), theirs);
     }
 
+    /** A steward cancels a person's last statement: it is removed, and every claim it bound is
+     *  live again (a figure an earlier statement bound is not restored). Refused (404) when the
+     *  person is missing, (403) for anyone but a steward, and (409) when the person has no
+     *  statement. */
+    @Transactional
+    public Statement cancelStatement(String sheetId, String user, long personId) {
+        Person person = people.findForUpdate(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward cancels a statement");
+        }
+        List<PersonStatement> taken = statements.findByPersonIdOrderByIdAsc(personId);
+        if (taken.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The person has no statement to cancel");
+        }
+        PersonStatement last = taken.get(taken.size() - 1);
+        List<Claim> theirs = claims.findByPersonForUpdate(personId, sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        theirs.forEach(Claim::unbind);
+        claims.flush();
+        statements.delete(last);
+        statements.flush();
+        audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
+                + " due-total=" + (last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString()));
+        rollup.recordChanges(sheetId, user, before);
+        return new Statement(person, StatementSummary.of(statements.findByPersonIdOrderByIdAsc(personId)), theirs);
+    }
+
     /** The number a claim dated {@code date} takes as it is opened: under period numbering (set,
      *  and the sheet's today on or after it) the next within the period containing the date
      *  (<period name>-<n>), or X-<n> when none does; otherwise the sheet's next number. */

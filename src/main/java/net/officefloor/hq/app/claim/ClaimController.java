@@ -335,9 +335,20 @@ public class ClaimController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @PathVariable long personId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        ClaimService.Statement s = service.statement(sheetId, user.trim(), personId);
+        return statementView(sheetId, service.statement(sheetId, user.trim(), personId), user.trim());
+    }
+
+    @PostMapping("/people/{personId}/statement/cancel")
+    public StatementView cancelStatement(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long personId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return statementView(sheetId, service.cancelStatement(sheetId, user.trim(), personId), user.trim());
+    }
+
+    private StatementView statementView(String sheetId, ClaimService.Statement s, String user) {
         return new StatementView(PersonView.of(s.person(), people.today(sheetId), s.summary(), people.patronIds(s.person().getId()),
-                people.isWatching(s.person().getId(), user.trim())),
+                people.isWatching(s.person().getId(), user)),
                 s.claims().stream().map(this::view).toList());
     }
 }

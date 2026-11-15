@@ -9,7 +9,7 @@ import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
-import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, retireError, statementError, watchError } from './people-api';
+import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap) and its excess over the cap, their overdue claims, and their patrons and backing (their patrons' recent settled figures); the sheet's claimed-total,
@@ -126,6 +126,8 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
                 <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
                 <button type="button" data-testid="person-statement" (click)="statement(p)"
                   [attr.aria-label]="'Take statement of ' + p.name">Statement</button>
+                <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)"
+                  [attr.aria-label]="'Cancel last statement of ' + p.name">Cancel statement</button>
               </td>
               <td>
                 <span data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</span>
@@ -539,6 +541,21 @@ export class People {
       this.claims.update((cs) => [...cs.filter((c) => c.personId !== p.id), ...taken.claims].sort(byListed));
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [p.id]: statementError(e) }));
+    }
+  }
+
+  /** Cancel a person's last statement; the row then shows the one before it and their claims live again. */
+  protected async cancelStatement(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const cancelled = await this.api.cancelStatement(sheetId, p.id);
+      if (this.session.sheetId() !== sheetId) return;
+      this.taken(cancelled.person);
+      this.claims.update((cs) => [...cs.filter((c) => c.personId !== p.id), ...cancelled.claims].sort(byListed));
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: cancelStatementError(e) }));
     }
   }
 
