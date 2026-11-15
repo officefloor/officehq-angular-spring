@@ -196,7 +196,8 @@ public class RollupService {
             return false;
         }
         Person person = held.get(c.getPersonId());
-        return c.isBound() || person == null || !person.heldOn(c.getDate());
+        // a hold leaves out a claim still open now, as the live due-total does
+        return !c.getStatus().isOpen() || c.isBound() || person == null || !person.heldOn(c.getDate());
     }
 
     /** The status each of the sheet's claims had at the end of {@code on}, by claim id, as their

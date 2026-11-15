@@ -278,7 +278,9 @@ export function statusError(e: unknown, opener: boolean): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a reason for rejecting the claim.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status, or is deferred.';
   if (e instanceof HttpErrorResponse && e.status === 403) {
-    return opener ? 'The user who opened this claim cannot settle or approve it.' : 'Only a steward can approve or reject a pending claim.';
+    return opener
+      ? 'The user who opened this claim cannot settle or approve it, or your role may not make that change.'
+      : 'Your role may not make that change to this claim.';
   }
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
@@ -315,7 +317,7 @@ export function resettleError(e: unknown): string {
 
 /** Why a reassignment was refused. */
 export function reassignError(e: unknown): string {
-  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can reassign a claim.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not reassign a claim.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft, open or pending claim can move to another person.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';

@@ -2,6 +2,7 @@ package net.officefloor.hq.app.settings;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
@@ -15,7 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The sheet's settings (its clerk limit, floor, terms, terms per grade, late percent, policy date, period numbering from-date, cap and proof threshold) and the role each user name holds on it. */
+/** The sheet's settings (its permission matrix, its clerk limit, floor, terms, terms per grade, late percent, policy date, period numbering from-date, cap and proof threshold) and the role each user name holds on it. */
 @Service
 public class SettingsService {
 
@@ -41,13 +42,19 @@ public class SettingsService {
     /** The key the proof threshold is audited under. */
     public static final String PROOF_THRESHOLD = Sheet.PROOF_THRESHOLD;
 
+    /** The key an action's roles in the permission matrix are audited under, followed by the action. */
+    public static final String PERMISSION = "perm-";
+
     private final SheetRoleRepository roles;
+    private final SheetPermissionRepository permissions;
     private final SheetService sheets;
     private final RollupService rollup;
     private final Audit audit;
 
-    public SettingsService(SheetRoleRepository roles, SheetService sheets, RollupService rollup, Audit audit) {
+    public SettingsService(SheetRoleRepository roles, SheetPermissionRepository permissions, SheetService sheets,
+            RollupService rollup, Audit audit) {
         this.roles = roles;
+        this.permissions = permissions;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -280,5 +287,55 @@ public class SettingsService {
         }
         BigDecimal limit = clerkLimit(sheetId);
         return limit == null || due.compareTo(limit) <= 0;
+    }
+
+    /** The roles the sheet's permission matrix sets for each action, as set; an action left blank
+     *  (keeping its standing rule) is left out. */
+    @Transactional(readOnly = true)
+    public Map<Permission, String> permissions(String sheetId) {
+        Map<Permission, String> out = new EnumMap<>(Permission.class);
+        permissions.findBySheetId(sheetId).forEach(p -> out.put(p.getAction(), p.getRoles()));
+        return out;
+    }
+
+    /** Set the roles that may take an action (blank: its standing rule), comma separated, the
+     *  sheet created first if it was never loaded; not dated, it applies from now on. */
+    @Transactional
+    public String setPermission(String sheetId, String user, Permission action, String rolesText) {
+        sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        SheetPermission held = permissions.findBySheetIdAndAction(sheetId, action.key()).orElse(null);
+        if (rolesText.isEmpty()) {
+            if (held != null) {
+                permissions.delete(held);
+            }
+        } else if (held == null) {
+            permissions.save(new SheetPermission(sheetId, action, rolesText));
+        } else {
+            held.setRoles(rolesText);
+        }
+        permissions.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + PERMISSION + action.key() + " value=" + rolesText);
+        return rolesText;
+    }
+
+    /** Whether the user's role may take the action: as the permission matrix sets it, else by its
+     *  standing rule. */
+    @Transactional(readOnly = true)
+    public boolean mayTake(String sheetId, String user, Permission action) {
+        Role role = roleOf(sheetId, user);
+        return permissions.findBySheetIdAndAction(sheetId, action.key())
+                .map(p -> p.roleSet().contains(role))
+                .orElseGet(() -> action.standing().contains(role));
+    }
+
+    /** Refuse (403) the action unless the user's role may take it. */
+    @Transactional(readOnly = true)
+    public void refuseUnlessAllowed(String sheetId, String user, Permission action) {
+        if (!mayTake(sheetId, user, action)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user's role may not " + action.key() + " on this sheet");
+        }
     }
 }

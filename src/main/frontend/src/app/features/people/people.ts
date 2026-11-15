@@ -292,12 +292,13 @@ export class People {
       if (status === null) return false;
       if (status === 'SETTLED') return true;
       if ((status !== 'OPEN' && status !== 'PENDING') || deferred(c, today)) return false;
-      return isBound(c) || !heldOn(holds.get(c.personId) ?? [], c.date);
+      // a hold leaves out a claim still open now, as the live due-total does
+      return !isOpen(c) || isBound(c) || !heldOn(holds.get(c.personId) ?? [], c.date);
     };
   });
   /** Each person's live due-total for each period in cents, by person id then period id: the dues
    *  (n/a ones skipped) of their claims whose date falls in it, each counted by its status at the
-   *  period's end (OPEN and SETTLED ones; open ones within a hold, unbound, or deferred, left out). */
+   *  period's end (OPEN and SETTLED ones; ones still open within a hold, unbound, or deferred, left out). */
   private readonly liveDueByPersonPeriod = computed(() => {
     const out = new Map<number, Map<number, number>>();
     const late = this.lateness();

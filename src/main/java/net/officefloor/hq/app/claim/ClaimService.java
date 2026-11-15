@@ -22,6 +22,7 @@ import net.officefloor.hq.app.person.StatementSummary;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.Permission;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -163,7 +164,7 @@ public class ClaimService {
     }
 
     /** Move a claim to a new status; a move its status does not allow is refused (409), as is
-     *  settling by the user who opened the claim (403), settling a deferred claim (409), settling a PENDING claim (409: it is
+     *  a move the user's role may not make by the sheet's permission matrix (403), settling by the user who opened the claim (403), settling a deferred claim (409), settling a PENDING claim (409: it is
      *  approved or rejected instead), and any move of a claim dated in a closed period (423). A
      *  clerk settling a claim whose due is above the sheet's clerk limit sends it to PENDING. Settling
      *  a claim whose due is above the proof threshold in force on its date while it has no proof is
@@ -173,6 +174,13 @@ public class ClaimService {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         refuseIfClosed(sheetId, claim.getDate());
+        switch (to) {
+            case OPEN -> settings.refuseUnlessAllowed(sheetId, user, Permission.OPEN);
+            case SETTLED -> settings.refuseUnlessAllowed(sheetId, user, Permission.SETTLE);
+            case VOID -> settings.refuseUnlessAllowed(sheetId, user, Permission.VOID);
+            default -> {
+            }
+        }
         if (to == ClaimStatus.PENDING || (to == ClaimStatus.SETTLED && claim.getStatus() == ClaimStatus.PENDING)
                 || !claim.getStatus().canMoveTo(to)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -358,11 +366,11 @@ public class ClaimService {
         return claim;
     }
 
-    /** A steward moves a DRAFT, OPEN or PENDING claim to another person on the sheet: it keeps its
+    /** A steward (or a role the permission matrix lets reassign) moves a DRAFT, OPEN or PENDING claim to another person on the sheet: it keeps its
      *  number and date, is listed as the new person's newest claim, and loses any figure a
      *  statement bound it to (live again until the new person's next statement). Refused (404)
      *  when the claim or person is missing, (423) when it is dated in a closed period, (403) for a
-     *  clerk, (409) when SETTLED or VOID or already the person's, and (422) when it is dated after
+     *  role the sheet's permission matrix does not let reassign, (409) when SETTLED or VOID or already the person's, and (422) when it is dated after
      *  the new person's retirement date. */
     @Transactional
     public Claim reassign(String sheetId, String user, long id, long toPersonId) {
@@ -371,9 +379,7 @@ public class ClaimService {
         Person to = people.findByIdAndSheetId(toPersonId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         refuseIfClosed(sheetId, claim.getDate());
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward reassigns a claim");
-        }
+        settings.refuseUnlessAllowed(sheetId, user, Permission.REASSIGN);
         if (claim.getStatus() == ClaimStatus.SETTLED || claim.getStatus() == ClaimStatus.VOID) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be reassigned");

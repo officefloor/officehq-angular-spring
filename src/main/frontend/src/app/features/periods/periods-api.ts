@@ -78,13 +78,14 @@ export function periodError(e: unknown): string {
 }
 
 export function closeError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not close a period.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is already closed.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That period is no longer on this sheet.';
   return 'Something went wrong; try again.';
 }
 
 export function reopenError(e: unknown): string {
-  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can reopen a period.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not reopen a period.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is not closed.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That period is no longer on this sheet.';
   return 'Something went wrong; try again.';

@@ -6,6 +6,22 @@ import { DatedSettings, Session } from '../../core/session';
 /** The roles a user name can hold on a sheet; a name without one is a clerk. */
 export const ROLES = ['clerk', 'steward'] as const;
 
+/** The actions whose roles the permission matrix sets, each with its standing rule (used while
+ *  its entry is blank). */
+export const PERMISSIONS = [
+  { action: 'open', standing: 'clerk,steward' },
+  { action: 'settle', standing: 'clerk,steward' },
+  { action: 'void', standing: 'clerk,steward' },
+  { action: 'reassign', standing: 'steward' },
+  { action: 'close', standing: 'clerk,steward' },
+  { action: 'reopen', standing: 'steward' },
+] as const;
+
+export type PermissionAction = (typeof PERMISSIONS)[number]['action'];
+
+/** Roles that may take an action: clerk and/or steward, comma separated. */
+export const PERMISSION_PATTERN = /^\s*(clerk|steward)\s*(,\s*(clerk|steward)\s*)*$/;
+
 /** A limit of 0.00 or more with up to two decimals. */
 export const LIMIT_PATTERN = /^\d{1,13}(\.\d{1,2})?$/;
 
@@ -45,6 +61,8 @@ export interface Settings {
   proofThreshold: string | null;
   /** Every value recorded for the dated settings, by key, each key's by from-date. */
   dated: DatedSettings;
+  /** The roles set for each action, comma separated; an action left blank (its standing rule) is not here. */
+  permissions: Partial<Record<PermissionAction, string>>;
 }
 
 export interface RoleGrant {
@@ -111,6 +129,13 @@ export class SettingsApi {
     );
   }
 
+  /** Save the roles that may take an action (blank: its standing rule). */
+  setPermission(sheetId: string, action: PermissionAction, value: string): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/perm/${action}`, { value }, { headers: this.headers() }),
+    );
+  }
+
   setPolicyDate(sheetId: string, value: string): Promise<Settings> {
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/policy-date`, { value }, { headers: this.headers() }),
@@ -141,7 +166,7 @@ export class SettingsApi {
 }
 
 export const SETTINGS_INVALID =
-  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of days (blank: 14) and terms for each grade of a whole number of days (blank: the sheet\'s terms) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off) and a cap of 0.00 or more with up to two decimals (blank: none) and a proof threshold of 0.00 or more with up to two decimals (blank: none), each from-date as yyyy-mm-dd (blank: the sheet\'s today).';
+  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of days (blank: 14) and terms for each grade of a whole number of days (blank: the sheet\'s terms) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off) and a cap of 0.00 or more with up to two decimals (blank: none) and a proof threshold of 0.00 or more with up to two decimals (blank: none) and the roles for each action as clerk and/or steward, comma separated (blank: the standing rule), each from-date as yyyy-mm-dd (blank: the sheet\'s today).';
 
 export function settingsError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return SETTINGS_INVALID;

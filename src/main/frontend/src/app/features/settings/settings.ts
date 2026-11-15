@@ -1,9 +1,9 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, POLICY_DATE_PATTERN, ROLES, TERMS_PATTERN, RoleGrant, SETTINGS_INVALID, SettingsApi, roleError, settingsError } from './settings-api';
+import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTERN, POLICY_DATE_PATTERN, PermissionAction, ROLES, TERMS_PATTERN, RoleGrant, SETTINGS_INVALID, SettingsApi, roleError, settingsError } from './settings-api';
 
-// The sheet's settings (its clerk limit: a clerk settles only claims whose due is at or below it;
+// The sheet's settings (its permission matrix: the roles that may open, settle, void, reassign, close or reopen, each blank for its standing rule; its clerk limit: a clerk settles only claims whose due is at or below it;
 // its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one.
 @Component({
   selector: 'app-settings',
@@ -22,6 +22,9 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, POLICY_DATE_PATTERN, ROLES, TE
       <p>Period numbering from (blank: off) <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
       <p>Cap in force (blank: none) <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
       <p>Proof threshold in force (blank: none) <strong data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' }}</strong></p>
+      @for (p of permissionList; track p.action) {
+        <p>Roles that may {{ p.action }} (blank: {{ p.standing }}) <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ permissions()[p.action] ?? '' }}</strong></p>
+      }
       <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()" aria-label="Settings">
         <label for="setting-clerk-limit">Clerk limit (blank: no limit)</label>
         <input id="setting-clerk-limit" data-testid="setting-clerk-limit" formControlName="clerkLimit" inputmode="decimal" autocomplete="off" />
@@ -57,6 +60,10 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, POLICY_DATE_PATTERN, ROLES, TE
         <input id="setting-proof-threshold" data-testid="setting-proof-threshold" formControlName="proofThreshold" inputmode="decimal" autocomplete="off" />
         <label for="setting-proof-threshold-from">Proof threshold from (blank: the sheet's today)</label>
         <input id="setting-proof-threshold-from" type="date" data-testid="setting-proof-threshold-from" formControlName="proofThresholdFrom" />
+        @for (p of permissionList; track p.action) {
+          <label [for]="'setting-perm-' + p.action">Roles that may {{ p.action }}, comma separated (blank: {{ p.standing }})</label>
+          <input [id]="'setting-perm-' + p.action" [attr.data-testid]="'setting-perm-' + p.action" [formControl]="permissionsForm.controls[p.action]" autocomplete="off" />
+        }
         <button type="submit" data-testid="settings-save">Save settings</button>
         @if (settingsErr(); as err) {
           <p role="alert" data-testid="settings-error">{{ err }}</p>
@@ -103,6 +110,9 @@ export class Settings {
   /** The sheet's period numbering from-date (yyyy-mm-dd); null when blank (off). */
   protected readonly periodNumberingFrom = signal<string | null>(null);
   protected readonly grades = GRADES;
+  protected readonly permissionList = PERMISSIONS;
+  /** The roles set for each action, as saved; an action not here keeps its standing rule. */
+  protected readonly permissions = signal<Partial<Record<PermissionAction, string>>>({});
   /** The roles set on the sheet. */
   protected readonly grants = signal<RoleGrant[]>([]);
   protected readonly sortedGrants = computed(() => [...this.grants()].sort((a, b) => a.user.localeCompare(b.user)));
@@ -144,6 +154,15 @@ export class Settings {
     B: new FormControl('', { nonNullable: true }),
     C: new FormControl('', { nonNullable: true }),
   });
+  /** The roles that may take each action, typed in beside the other settings and saved with them. */
+  protected readonly permissionsForm = new FormGroup({
+    open: new FormControl('', { nonNullable: true }),
+    settle: new FormControl('', { nonNullable: true }),
+    void: new FormControl('', { nonNullable: true }),
+    reassign: new FormControl('', { nonNullable: true }),
+    close: new FormControl('', { nonNullable: true }),
+    reopen: new FormControl('', { nonNullable: true }),
+  });
   protected readonly roleForm = new FormGroup({
     user: new FormControl('', { nonNullable: true }),
     role: new FormControl('', { nonNullable: true }),
@@ -153,6 +172,7 @@ export class Settings {
     this.settingsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.gradeTermsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.gradeTermsFromForm.valueChanges.subscribe(() => this.settingsErr.set(null));
+    this.permissionsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.roleForm.valueChanges.subscribe(() => this.roleErr.set(null));
     effect(() => {
       const id = this.session.sheetId();
@@ -160,6 +180,7 @@ export class Settings {
       untracked(() => {
         this.periodNumberingFrom.set(null);
         this.grants.set([]);
+        this.permissions.set({});
         this.settingsErr.set(null);
         this.roleErr.set(null);
         this.settingsForm.reset({
@@ -168,6 +189,7 @@ export class Settings {
         }, { emitEvent: false });
         this.gradeTermsForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.gradeTermsFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
+        this.permissionsForm.reset({ open: '', settle: '', void: '', reassign: '', close: '', reopen: '' }, { emitEvent: false });
         this.roleForm.reset({ user: '', role: '' }, { emitEvent: false });
         if (id) void this.read(id);
       });
@@ -204,8 +226,15 @@ export class Settings {
         grade: g, control: this.gradeTermsForm.controls[g], value: this.gradeTermsForm.controls[g].value.trim(),
         fromControl: this.gradeTermsFromForm.controls[g], from: this.gradeTermsFromForm.controls[g].value.trim(),
       }));
+    const permissionsToSave = PERMISSIONS
+      .filter((p) => typed(this.permissionsForm.controls[p.action]))
+      .map((p) => ({
+        action: p.action, control: this.permissionsForm.controls[p.action],
+        value: this.permissionsForm.controls[p.action].value.split(',').map((r) => r.trim()).filter((r) => r !== '').join(','),
+        typed: this.permissionsForm.controls[p.action].value.trim(),
+      }));
     const saveLimit = typed(clerkLimit) || typed(clerkLimitFrom)
-      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveCap || saveProofThreshold);
+      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveCap || saveProofThreshold);
     const limitFrom = clerkLimitFrom.value.trim();
     const floorFromValue = floorFrom.value.trim();
     const termsFromValue = termsFrom.value.trim();
@@ -233,7 +262,8 @@ export class Settings {
         || badFrom(saveLimit, limitFrom) || badFrom(saveFloor, floorFromValue) || badFrom(saveTerms, termsFromValue)
         || badFrom(saveLatePct, latePctFromValue) || badFrom(saveCap, capFromValue)
         || badFrom(saveProofThreshold, proofThresholdFromValue)
-        || gradeTermsToSave.some((t) => badFrom(true, t.from))) {
+        || gradeTermsToSave.some((t) => badFrom(true, t.from))
+        || permissionsToSave.some((p) => p.typed !== '' && !PERMISSION_PATTERN.test(p.typed))) {
       this.settingsErr.set(SETTINGS_INVALID);
       return;
     }
@@ -291,6 +321,11 @@ export class Settings {
         settled(proofThresholdFrom, proofThresholdFromValue);
         if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
       }
+      for (const p of permissionsToSave) {
+        const saved = await this.api.setPermission(sheetId, p.action, p.value);
+        if (p.control.value.trim() === p.typed) { p.control.markAsPristine(); p.control.markAsUntouched(); }
+        if (this.session.sheetId() === sheetId) this.permissions.set(saved.permissions);
+      }
     } catch (e) {
       this.settingsErr.set(settingsError(e));
     } finally {
@@ -298,7 +333,7 @@ export class Settings {
     }
     if (this.resaveSettings) {
       this.resaveSettings = false;
-      if (this.settingsForm.dirty || this.gradeTermsForm.dirty || this.gradeTermsFromForm.dirty) await this.saveSettings();
+      if (this.settingsForm.dirty || this.gradeTermsForm.dirty || this.gradeTermsFromForm.dirty || this.permissionsForm.dirty) await this.saveSettings();
     }
   }
 
@@ -345,6 +380,12 @@ export class Settings {
         // so does the proof threshold's
         const proofThreshold = this.settingsForm.controls.proofThreshold;
         if (!proofThreshold.dirty) proofThreshold.setValue(settings.proofThreshold ?? '', { emitEvent: false });
+        this.permissions.set(settings.permissions);
+        // each action's roles start at those set, so clearing them is a change that saves the standing rule
+        for (const p of PERMISSIONS) {
+          const control = this.permissionsForm.controls[p.action];
+          if (!control.dirty) control.setValue(settings.permissions[p.action] ?? '', { emitEvent: false });
+        }
         this.grants.set(grants);
       }
     } catch {
