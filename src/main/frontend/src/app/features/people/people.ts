@@ -37,6 +37,8 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
         </select>
         <label for="person-form-terms">Terms (business days)</label>
         <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" autocomplete="off" />
+        <label for="person-form-contact">Contact</label>
+        <input id="person-form-contact" data-testid="person-form-contact" formControlName="contact" autocomplete="off" />
         @if (editingId() !== null) {
           <label for="person-form-grade-from">Grade from</label>
           <input id="person-form-grade-from" type="date" data-testid="person-form-grade-from" formControlName="gradeFrom" />
@@ -152,7 +154,7 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
       </form>
       <table data-testid="people-list">
         <thead>
-          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Contact</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Aged</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shownPeople(); track p.id) {
@@ -164,6 +166,7 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
+              <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
               <td>
                 <span data-testid="person-due-total">{{ dueOf(p) }}</span>
@@ -576,6 +579,8 @@ export class People {
     gradeFrom: new FormControl('', { nonNullable: true }),
     /** The person's own terms in whole days; blank for none. */
     terms: new FormControl('', { nonNullable: true }),
+    /** The person's contact; blank for none. */
+    contact: new FormControl('', { nonNullable: true }),
   });
 
   /** The quick-add bar: a name and an amount make a DRAFT claim for that person. */
@@ -640,7 +645,7 @@ export class People {
     this.error.set(null);
     this.editingId.set(p.id);
     this.editingVersion = p.version;
-    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: termsText(p) });
+    this.form.setValue({ name: p.name, grade: this.gradeOf(p), gradeFrom: '', terms: termsText(p), contact: p.contact ?? '' });
   }
 
   protected claimsOf(personId: number): Claim[] {
@@ -1012,11 +1017,13 @@ export class People {
     this.submitting = true;
     try {
       if (editing === null) {
-        const added = await this.api.add(sheetId, { name: value.name, grade: value.grade, terms: value.terms.trim() });
+        const added = await this.api.add(sheetId, { name: value.name, grade: value.grade, terms: value.terms.trim(),
+          contact: value.contact.trim() });
         if (this.session.sheetId() === sheetId) this.people.update((ps) => [...ps, added]);
       } else {
         const saved = await this.api.update(sheetId, editing,
-          { ...value, gradeFrom: value.gradeFrom.trim() || null, terms: value.terms.trim(), version: this.editingVersion });
+          { ...value, gradeFrom: value.gradeFrom.trim() || null, terms: value.terms.trim(), contact: value.contact.trim(),
+            version: this.editingVersion });
         if (this.session.sheetId() === sheetId) this.taken(saved);
       }
       this.reset();
@@ -1099,7 +1106,7 @@ export class People {
       this.taken(current);
       this.editingVersion = current.version;
       this.form.setValue({ name: current.name, grade: this.gradeOf(current), gradeFrom: this.form.getRawValue().gradeFrom,
-        terms: termsText(current) },
+        terms: termsText(current), contact: current.contact ?? '' },
         { emitEvent: false });
     } catch {
       // the error shown already says the save was refused
@@ -1108,7 +1115,7 @@ export class People {
 
   private reset(): void {
     this.editingId.set(null);
-    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '' });
+    this.form.reset({ name: '', grade: 'A', gradeFrom: '', terms: '', contact: '' });
     this.error.set(null);
   }
 

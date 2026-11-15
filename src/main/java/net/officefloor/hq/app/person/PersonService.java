@@ -139,22 +139,26 @@ public class PersonService {
         return person;
     }
 
-    /** Add a person to the sheet (the sheet is created first if it was never loaded). */
+    /** Add a person to the sheet (the sheet is created first if it was never loaded); {@code contact}
+     *  (trimmed and lower-cased, null: none) is refused when another person on the sheet has it. */
     @Transactional
-    public Person add(String sheetId, String user, String name, String grade, Integer terms) {
+    public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact) {
         sheets.load(sheetId, user);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String trimmed = name.trim();
         requireUnusedName(sheetId, null, trimmed);
+        requireUnusedContact(sheetId, null, contact);
         Person person;
         try {
             Person fresh = new Person(sheetId, trimmed, grade);
             fresh.setTerms(terms);
+            fresh.setContact(contact);
             person = people.saveAndFlush(fresh);
         } catch (DataIntegrityViolationException e) {
-            throw nameInUse(); // added by another user at the same moment
+            throw inUse(e); // added by another user at the same moment
         }
-        record("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId), terms == null ? "" : termsField(terms));
+        record("PERSON_ADDED", sheetId, user, person, sheets.today(sheetId),
+                (terms == null ? "" : termsField(terms)) + (contact == null ? "" : contactField(contact)));
         rollup.recordChanges(sheetId, user, before);
         return person;
     }
@@ -162,10 +166,11 @@ public class PersonService {
     /** Save a person; refused when {@code version} (the one the editor loaded) is no longer the stored one.
      *  The grade is recorded from {@code gradeFrom} (null: the sheet's today), keeping those already
      *  recorded; with no from-date, a grade the same as the one in force on the sheet's today records nothing.
-     *  The person's own terms become {@code terms} (null: none). */
+     *  The person's own terms become {@code terms} (null: none), and their contact {@code contact}
+     *  (null: none), refused when another person on the sheet has it. */
     @Transactional
     public Person update(String sheetId, String user, long id, Long version, String name, String grade,
-            LocalDate gradeFrom, Integer terms) {
+            LocalDate gradeFrom, Integer terms, String contact) {
         Person person = people.findByIdAndSheetId(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (version == null || version != person.getVersion()) {
@@ -174,9 +179,12 @@ public class PersonService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String trimmed = name.trim();
         requireUnusedName(sheetId, id, trimmed);
+        requireUnusedContact(sheetId, id, contact);
         person.setName(trimmed);
         boolean termsChanged = !Objects.equals(terms, person.getTerms());
         person.setTerms(terms);
+        boolean contactChanged = !Objects.equals(contact, person.getContact());
+        person.setContact(contact);
         LocalDate today = sheets.today(sheetId);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
             person.recordGrade(grade, gradeFrom != null ? gradeFrom : today);
@@ -184,11 +192,12 @@ public class PersonService {
         try {
             people.flush();
         } catch (DataIntegrityViolationException e) {
-            throw nameInUse(); // taken by another user at the same moment
+            throw inUse(e); // taken by another user at the same moment
         } catch (ObjectOptimisticLockingFailureException e) {
             throw savedByAnother(); // saved by another user at the same moment
         }
-        record("PERSON_EDITED", sheetId, user, person, today, termsChanged ? termsField(terms) : "");
+        record("PERSON_EDITED", sheetId, user, person, today,
+                (termsChanged ? termsField(terms) : "") + (contactChanged ? contactField(contact) : ""));
         rollup.recordChanges(sheetId, user, before);
         return person;
     }
@@ -269,6 +278,29 @@ public class PersonService {
         return " terms=" + (terms == null ? "" : terms);
     }
 
+    /** The contact field of a person's record: the contact, empty when none. */
+    private static String contactField(String contact) {
+        return " contact=" + (contact == null ? "" : contact);
+    }
+
+    /** Refuse a contact another person on the sheet already has; none is never refused. */
+    private void requireUnusedContact(String sheetId, Long exceptId, String contact) {
+        if (contact == null) {
+            return;
+        }
+        boolean taken = people.findBySheetIdAndContact(sheetId, contact).stream()
+                .anyMatch(p -> !p.getId().equals(exceptId));
+        if (taken) {
+            throw contactInUse();
+        }
+    }
+
+    /** A unique name or contact taken by another user at the same moment. */
+    private static ResponseStatusException inUse(DataIntegrityViolationException e) {
+        String message = String.valueOf(e.getMostSpecificCause().getMessage()).toUpperCase(java.util.Locale.ROOT);
+        return message.contains("PERSON_SHEET_CONTACT") ? contactInUse() : nameInUse();
+    }
+
     /** Refuse a name another person on the sheet already has (ignoring case). */
     private void requireUnusedName(String sheetId, Long exceptId, String name) {
         boolean taken = people.findBySheetIdAndNameIgnoreCase(sheetId, name).stream()
@@ -284,6 +316,10 @@ public class PersonService {
 
     private static ResponseStatusException patronAlready() {
         return new ResponseStatusException(HttpStatus.CONFLICT, "Already a patron");
+    }
+
+    private static ResponseStatusException contactInUse() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "Contact already in use");
     }
 
     private static ResponseStatusException nameInUse() {

@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -43,7 +44,8 @@ public class PersonController {
      *  are their own terms in days (null when they have none). */
     public record PersonView(long id, String name, String grade, long version, int statementCount,
             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held, List<Person.Hold> holds,
-            List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms) {
+            List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms,
+            String contact) {
         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
                 boolean watched) {
             return of(p.getId(), p, today, s, patronIds, watched);
@@ -54,24 +56,32 @@ public class PersonController {
                 boolean watched) {
             return new PersonView(id, p.getName(), p.gradeOn(today), p.getVersion(), s.count(),
                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
-                    p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.getTerms());
+                    p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.getTerms(),
+                    p.getContact());
         }
     }
 
     /** A person's values as the form submits them; the name is stored with surrounding spaces removed.
      *  An edit carries the version of the person its editor loaded, and the date its grade is in
      *  force from (null: the sheet's today); an add's grade is in force from the beginning of time.
-     *  The terms are the person's own in whole days, blank or null for none. */
+     *  The terms are the person's own in whole days, blank or null for none. The contact is stored
+     *  trimmed and lower-cased; blank or null for none. */
     public record PersonForm(
             @NotBlank @Size(max = 200) String name,
             @NotNull @Pattern(regexp = "[ABC]") String grade,
             Long version,
             LocalDate gradeFrom,
-            @Pattern(regexp = "\\s*\\d{0,4}\\s*") String terms) {
+            @Pattern(regexp = "\\s*\\d{0,4}\\s*") String terms,
+            @Size(max = 200) String contact) {
 
         /** The terms in days; null when blank. */
         public Integer termsDays() {
             return terms == null || terms.isBlank() ? null : Integer.valueOf(terms.trim());
+        }
+
+        /** The contact as stored: trimmed and lower-cased; null when blank. */
+        public String contactValue() {
+            return contact == null || contact.isBlank() ? null : contact.trim().toLowerCase(Locale.ROOT);
         }
     }
 
@@ -158,7 +168,7 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm body) {
         return view(sheetId, user, service.add(sheetId, user.trim(), body.name(), body.grade(),
-                body.termsDays()));
+                body.termsDays(), body.contactValue()));
     }
 
     @PutMapping("/{id}")
@@ -168,7 +178,7 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PersonForm body) {
         return view(sheetId, user, service.update(sheetId, user.trim(), id, body.version(), body.name(), body.grade(),
-                body.gradeFrom(), body.termsDays()));
+                body.gradeFrom(), body.termsDays(), body.contactValue()));
     }
 
     /** Give the selected people the grade; a viewer, who may change nothing, changes no one. */

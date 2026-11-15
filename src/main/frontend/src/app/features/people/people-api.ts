@@ -63,6 +63,8 @@ export interface Person {
   watched: boolean;
   /** The person's own terms in days, ahead of their grade's and the sheet's; null when none. */
   terms: number | null;
+  /** The person's contact, trimmed and lower-cased; null when none. */
+  contact: string | null;
 }
 
 /** A statement just taken: the person as they now show, and all their claims, newest first. */
@@ -80,6 +82,8 @@ export interface PersonForm {
   gradeFrom?: string | null;
   /** The person's own terms in whole days; blank for none. */
   terms: string;
+  /** The person's contact; blank for none. */
+  contact: string;
 }
 
 // The people kept on the active sheet, read and written through the server.
@@ -170,7 +174,7 @@ export class PeopleApi {
 export function personError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name, choose a grade, enter a from-date as yyyy-mm-dd or none and terms as whole days or none.';
   if (isStale(e)) return 'Someone else saved this person since you opened it; the form now shows their values.';
-  if (e instanceof HttpErrorResponse && e.status === 409) return 'That name is already in use on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'That name or contact is already in use on this sheet.';
   return otherError(e);
 }
 

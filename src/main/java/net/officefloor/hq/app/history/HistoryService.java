@@ -67,7 +67,7 @@ public class HistoryService {
     }
 
     record PersonState(String name, String grade, List<GradeState> grades, Integer terms, LocalDate retiredFrom,
-            List<HoldState> holds) {
+            List<HoldState> holds, String contact) {
     }
 
     record RateState(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
@@ -140,7 +140,8 @@ public class HistoryService {
             List<Person.DatedGrade> all = p.getGrades();
             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
                     all.stream().skip(1).map(g -> new GradeState(g.from(), g.grade())).toList(), p.getTerms(),
-                    p.getRetiredFrom(), p.getHolds().stream().map(h -> new HoldState(h.from(), h.to())).toList()));
+                    p.getRetiredFrom(), p.getHolds().stream().map(h -> new HoldState(h.from(), h.to())).toList(),
+                    p.getContact()));
         } else if (entity instanceof Rate r) {
             write(r.getSheetId(), RATE, String.valueOf(r.getId()),
                     new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo()));
@@ -297,6 +298,7 @@ public class HistoryService {
         Person p = new Person(sheetId, s.name(), s.grade());
         s.grades().forEach(g -> p.recordGrade(g.grade(), g.from()));
         p.setTerms(s.terms());
+        p.setContact(s.contact());
         p.setRetiredFrom(s.retiredFrom());
         s.holds().forEach(h -> p.addHold(h.from(), h.to()));
         return p;

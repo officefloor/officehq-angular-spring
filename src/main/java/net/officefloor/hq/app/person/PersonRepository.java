@@ -17,6 +17,9 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     /** The sheet's people with this name, ignoring case. */
     List<Person> findBySheetIdAndNameIgnoreCase(String sheetId, String name);
 
+    /** The sheet's people with this contact. */
+    List<Person> findBySheetIdAndContact(String sheetId, String contact);
+
     /** The person, locked so two statements of them are taken one after the other. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Person p where p.id = :id and p.sheetId = :sheetId")

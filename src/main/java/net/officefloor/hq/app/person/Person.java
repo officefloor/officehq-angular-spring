@@ -54,6 +54,10 @@ public class Person {
     @Column(name = "terms")
     private Integer terms;
 
+    /** The person's contact, trimmed and lower-cased; null when they have none. */
+    @Column(name = "contact")
+    private String contact;
+
     /** The date the person is retired from; null while not retired. Set, they count as retired
      *  at once, whatever the date. */
     @Column(name = "retired_from")
@@ -125,6 +129,14 @@ public class Person {
 
     public void setTerms(Integer terms) {
         this.terms = terms;
+    }
+
+    public String getContact() {
+        return contact;
+    }
+
+    public void setContact(String contact) {
+        this.contact = contact;
     }
 
     public LocalDate getRetiredFrom() {
