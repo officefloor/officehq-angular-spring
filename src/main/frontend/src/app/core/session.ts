@@ -74,6 +74,8 @@ export class Session {
   /** The active sheet's proof kinds, comma separated, null when none: while set, a claim whose due
    *  is above the proof threshold needs a proof of each to be settled or approved. Not dated. */
   readonly proofKinds = signal<string | null>(null);
+  /** The sheet's default grade: a person the quick-add bar adds is given it; null when blank (A). */
+  readonly defaultGrade = signal<string | null>(null);
   /** Whether the people list shows retired people too: off at first, and kept as it is when a
    *  sheet is loaded. */
   readonly showRetired = signal(false);
@@ -190,6 +192,7 @@ export class Session {
       this.archived.set(res.archived);
       this.parent.set(res.parent);
       this.proofKinds.set(res.proofKinds);
+      this.defaultGrade.set(res.defaultGrade);
       this.shownAsOf.set(asOf);
       this.loads.update((n) => n + 1);
       return null;
@@ -313,6 +316,7 @@ interface SheetView {
   archived: boolean;
   parent: string | null;
   proofKinds: string | null;
+  defaultGrade: string | null;
 }
 
 /** A value recorded for a dated setting: in force from its from-date (yyyy-mm-dd) until the next

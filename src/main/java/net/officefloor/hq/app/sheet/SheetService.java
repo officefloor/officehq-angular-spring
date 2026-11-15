@@ -103,6 +103,12 @@ public class SheetService {
         return sheets.findById(id).map(s -> s.proofThresholdOn(on)).orElse(null);
     }
 
+    /** The grade a new person is given when none is named: the sheet's default grade, else A. */
+    @Transactional(readOnly = true)
+    public String defaultGrade(String id) {
+        return sheets.findById(id).map(Sheet::getDefaultGrade).orElse("A");
+    }
+
     /** The sheet's proof kinds, each of which a claim above the proof threshold needs a proof of;
      *  none when blank. */
     @Transactional(readOnly = true)

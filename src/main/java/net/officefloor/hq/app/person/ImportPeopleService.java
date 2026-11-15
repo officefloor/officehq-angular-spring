@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,10 +26,12 @@ public class ImportPeopleService {
 
     private final PersonService people;
     private final PersonRepository repository;
+    private final SheetService sheets;
 
-    public ImportPeopleService(PersonService people, PersonRepository repository) {
+    public ImportPeopleService(PersonService people, PersonRepository repository, SheetService sheets) {
         this.people = people;
         this.repository = repository;
+        this.sheets = sheets;
     }
 
     /** One pasted line as the person form would submit it, with the person on the sheet it names
@@ -41,7 +44,7 @@ public class ImportPeopleService {
     }
 
     /** Add or update a person for each line of name,grade,terms,contact, in order: the terms and
-     *  contact may be absent or blank; blank lines are skipped. Every line is checked first by the
+     *  contact may be absent or blank, a blank grade is the sheet's default grade; blank lines are skipped. Every line is checked first by the
      *  person form's rules (400 when it is not a person the form takes, 409 when a name, person or
      *  contact is repeated in the paste). A line naming a person on the sheet (by name or alias, as
      *  names are compared) saves them as the form would: their grade recorded from the sheet's
@@ -54,6 +57,7 @@ public class ImportPeopleService {
         Set<String> names = new HashSet<>();
         Set<String> contacts = new HashSet<>();
         Set<Long> matched = new HashSet<>();
+        String defaultGrade = sheets.defaultGrade(sheetId);
         int n = 0;
         for (String raw : text.split("\\r?\\n|\\r")) {
             n++;
@@ -63,7 +67,7 @@ public class ImportPeopleService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Line " + n + ": give name,grade,terms,contact");
             }
             String name = f[0].trim();
-            String grade = f[1].trim();
+            String grade = f[1].isBlank() ? defaultGrade : f[1].trim();
             String terms = f.length > 2 ? f[2].trim() : "";
             String contact = f.length > 3 ? f[3].trim() : "";
             if (name.isEmpty() || name.length() > MAX || !GRADE.matcher(grade).matches()

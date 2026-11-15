@@ -35,9 +35,10 @@ public class SheetController {
      *  the dated ones as in force on its today; and every value recorded for its dated settings,
      *  by key, each key's by from-date; whether it is archived; and its parent sheet's id (null when
      *  none), as it is now even when the sheet is shown as of a date; and its proof kinds, comma
-     *  separated (null when none). */
+     *  separated (null when none); and its default grade (null when blank: A). */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
-            String cap, Map<String, List<DatedValue>> dated, boolean archived, String parent, String proofKinds) {
+            String cap, Map<String, List<DatedValue>> dated, boolean archived, String parent, String proofKinds,
+            String defaultGrade) {
         static SheetView of(Sheet sheet) {
             return of(sheet, sheet.getParent());
         }
@@ -46,7 +47,8 @@ public class SheetController {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
                     sheet.getLatePct().setScale(2).toPlainString(), sheet.getPolicyDate(),
                     sheet.getCap() == null ? null : sheet.getCap().setScale(2).toPlainString(),
-                    DatedValue.of(sheet.getDatedSettings()), sheet.isArchived(), parent, sheet.getProofKinds());
+                    DatedValue.of(sheet.getDatedSettings()), sheet.isArchived(), parent, sheet.getProofKinds(),
+                    sheet.getDefaultGrade());
         }
     }
 

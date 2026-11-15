@@ -42,6 +42,7 @@ import { PROOF_KINDS } from '../claims/claims-api';
       <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</strong></p>
       <p>Parent sheet (blank: none) <strong data-testid="setting-parent-current">{{ session.parent() ?? '' }}</strong></p>
       <p>Proof kinds (blank: none) <strong data-testid="setting-proof-kinds-current">{{ session.proofKinds() ?? '' }}</strong></p>
+      <p>Default grade (blank: A) <strong data-testid="setting-default-grade-current">{{ session.defaultGrade() ?? '' }}</strong></p>
       @for (p of permissionList; track p.action) {
         <p>Roles that may {{ p.action }} (blank: {{ p.standing }}) <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ permissions()[p.action] ?? '' }}</strong></p>
       }
@@ -122,6 +123,8 @@ import { PROOF_KINDS } from '../claims/claims-api';
         <input id="setting-parent" data-testid="setting-parent" formControlName="parent" autocomplete="off" />
         <label for="setting-proof-kinds">Proof kinds: receipt and/or photo, comma separated; a claim whose due is above the proof threshold needs a proof of each to be settled (blank: none)</label>
         <input id="setting-proof-kinds" data-testid="setting-proof-kinds" formControlName="proofKinds" autocomplete="off" />
+        <label for="setting-default-grade">Default grade: one of {{ grades.join(', ') }}; a person the quick-add bar adds, or an import line with a blank grade, is given it (blank: A)</label>
+        <input id="setting-default-grade" data-testid="setting-default-grade" formControlName="defaultGrade" autocomplete="off" />
         @for (p of permissionList; track p.action) {
           <label [for]="'setting-perm-' + p.action">Roles that may {{ p.action }}, comma separated (blank: {{ p.standing }})</label>
           <input [id]="'setting-perm-' + p.action" [attr.data-testid]="'setting-perm-' + p.action" [formControl]="permissionsForm.controls[p.action]" autocomplete="off" />
@@ -279,6 +282,7 @@ export class Settings {
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
     parent: new FormControl('', { nonNullable: true }),
     proofKinds: new FormControl('', { nonNullable: true }),
+    defaultGrade: new FormControl('', { nonNullable: true }),
   });
   /** A grade's own terms, typed in beside the other settings and saved with them. */
   protected readonly gradeTermsForm = new FormGroup({
@@ -384,7 +388,7 @@ export class Settings {
         this.voidReasonForm.reset({ reason: '' }, { emitEvent: false });
         this.settingsForm.reset({
           clerkLimit: '', clerkLimitFrom: '', floor: '', floorFrom: '', terms: '', termsFrom: '', latePct: '', latePctFrom: '',
-          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', rounding: '', roundingFrom: '', noteThreshold: '', noteThresholdFrom: '', reviewThreshold: '', reviewThresholdFrom: '', graceDays: '', escalateAfter: '', reviewSla: '', pot: '', alertThreshold: '', fiscalStartMonth: '', parent: '', proofKinds: '',
+          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', rounding: '', roundingFrom: '', noteThreshold: '', noteThresholdFrom: '', reviewThreshold: '', reviewThresholdFrom: '', graceDays: '', escalateAfter: '', reviewSla: '', pot: '', alertThreshold: '', fiscalStartMonth: '', parent: '', proofKinds: '', defaultGrade: '',
         }, { emitEvent: false });
         this.gradeTermsForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.gradeTermsFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
@@ -412,7 +416,7 @@ export class Settings {
     this.settingsErr.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, rounding, roundingFrom, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, escalateAfter, reviewSla, pot, alertThreshold, fiscalStartMonth, parent, proofKinds } = this.settingsForm.controls;
+    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, rounding, roundingFrom, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, escalateAfter, reviewSla, pot, alertThreshold, fiscalStartMonth, parent, proofKinds, defaultGrade } = this.settingsForm.controls;
     // only the settings typed into (or entered and left, as when one already blank is cleared),
     // or whose from-date was, since the last save are saved (the clerk limit when none is)
     const typed = (c: AbstractControl) => c.dirty || c.touched;
@@ -435,6 +439,7 @@ export class Settings {
     const saveFiscalStartMonth = typed(fiscalStartMonth);
     const saveParent = typed(parent);
     const saveProofKinds = typed(proofKinds);
+    const saveDefaultGrade = typed(defaultGrade);
     const gradeTermsToSave = GRADES
       .filter((g) => typed(this.gradeTermsForm.controls[g]) || typed(this.gradeTermsFromForm.controls[g]))
       .map((g) => ({
@@ -461,7 +466,7 @@ export class Settings {
         typed: this.permissionsForm.controls[p.action].value.trim(),
       }));
     const saveLimit = typed(clerkLimit) || typed(clerkLimitFrom)
-      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveRounding || saveNoteThreshold || saveReviewThreshold || saveGraceDays || saveEscalateAfter || saveReviewSla || savePot || saveAlertThreshold || saveFiscalStartMonth || saveParent || saveProofKinds);
+      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveRounding || saveNoteThreshold || saveReviewThreshold || saveGraceDays || saveEscalateAfter || saveReviewSla || savePot || saveAlertThreshold || saveFiscalStartMonth || saveParent || saveProofKinds || saveDefaultGrade);
     const limitFrom = clerkLimitFrom.value.trim();
     const floorFromValue = floorFrom.value.trim();
     const termsFromValue = termsFrom.value.trim();
@@ -492,6 +497,7 @@ export class Settings {
     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
     const parentValue = parent.value.trim();
     const proofKindsValue = proofKinds.value.trim();
+    const defaultGradeValue = defaultGrade.value.trim();
     if ((saveLimit && limitValue !== '' && !LIMIT_PATTERN.test(limitValue))
         || (saveFloor && floorValue !== '' && !LIMIT_PATTERN.test(floorValue))
         || (saveTerms && termsValue !== '' && !TERMS_PATTERN.test(termsValue))
@@ -515,6 +521,7 @@ export class Settings {
         || (saveFiscalStartMonth && !FISCAL_START_MONTH_PATTERN.test(fiscalStartMonthValue))
         || (saveParent && !/^\S*$/.test(parentValue))
         || (saveProofKinds && proofKindsValue.split(',').map((k) => k.trim()).some((k) => k !== '' && !(PROOF_KINDS as readonly string[]).includes(k)))
+        || (saveDefaultGrade && defaultGradeValue !== '' && !(GRADES as readonly string[]).includes(defaultGradeValue))
         || badFrom(saveLimit, limitFrom) || badFrom(saveFloor, floorFromValue) || badFrom(saveTerms, termsFromValue)
         || badFrom(saveLatePct, latePctFromValue) || badFrom(saveCap, capFromValue)
         || badFrom(saveProofThreshold, proofThresholdFromValue) || badFrom(saveNoteThreshold, noteThresholdFromValue)
@@ -655,6 +662,11 @@ export class Settings {
         const saved = await this.api.setProofKinds(sheetId, proofKindsValue);
         settled(proofKinds, proofKindsValue);
         if (this.session.sheetId() === sheetId) this.session.proofKinds.set(saved.proofKinds);
+      }
+      if (saveDefaultGrade) {
+        const saved = await this.api.setDefaultGrade(sheetId, defaultGradeValue);
+        settled(defaultGrade, defaultGradeValue);
+        if (this.session.sheetId() === sheetId) this.session.defaultGrade.set(saved.defaultGrade);
       }
       for (const p of permissionsToSave) {
         const saved = await this.api.setPermission(sheetId, p.action, p.value);

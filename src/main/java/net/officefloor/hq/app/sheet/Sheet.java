@@ -142,6 +142,11 @@ public class Sheet {
     @Column(name = "proof_kinds")
     private String proofKinds;
 
+    /** The grade a person the quick-add bar adds, or an import line with a blank grade, is given;
+     *  null when blank (A). Not dated. */
+    @Column(name = "default_grade")
+    private String defaultGrade;
+
     /** Whether a steward has archived the sheet: every change on it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -173,6 +178,7 @@ public class Sheet {
         copy.parent = parent;
         copy.source = this.id;
         copy.proofKinds = proofKinds;
+        copy.defaultGrade = defaultGrade;
         return copy;
     }
 
@@ -377,6 +383,14 @@ public class Sheet {
 
     public void setProofKinds(String proofKinds) {
         this.proofKinds = proofKinds;
+    }
+
+    public String getDefaultGrade() {
+        return defaultGrade;
+    }
+
+    public void setDefaultGrade(String defaultGrade) {
+        this.defaultGrade = defaultGrade;
     }
 
     public String getSource() {

@@ -176,6 +176,14 @@ public class SettingsController {
     public record ProofKindsView(String proofKinds) {
     }
 
+    /** The default grade as the form submits it: one of the grades, blank for A. */
+    public record DefaultGradeForm(@NotNull @Size(max = 10) String value) {
+    }
+
+    /** The default grade as it is set; null when blank (A). */
+    public record DefaultGradeView(String defaultGrade) {
+    }
+
     /** The parent as the form submits it: a sheet id without spaces, blank for none. */
     public record ParentForm(@NotNull @Size(max = 100) @Pattern(regexp = "(\\S+)?") String value) {
     }
@@ -485,6 +493,14 @@ public class SettingsController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ProofKindsForm body) {
         return new ProofKindsView(service.setProofKinds(sheetId, user.trim(), body.value()));
+    }
+
+    @PutMapping("/settings/default-grade")
+    public DefaultGradeView setDefaultGrade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody DefaultGradeForm body) {
+        return new DefaultGradeView(service.setDefaultGrade(sheetId, user.trim(), body.value()));
     }
 
     @PutMapping("/settings/parent")

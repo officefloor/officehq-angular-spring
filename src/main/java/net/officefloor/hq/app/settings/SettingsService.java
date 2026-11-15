@@ -67,6 +67,12 @@ public class SettingsService {
     /** The key the proof kinds are audited under. */
     public static final String PROOF_KINDS = "proof-kinds";
 
+    /** The key the default grade is audited under. */
+    public static final String DEFAULT_GRADE = "default-grade";
+
+    /** The grades the default grade may be. */
+    private static final List<String> GRADES = List.of("A", "B", "C");
+
     /** The key the parent sheet is audited under. */
     public static final String PARENT = "parent";
 
@@ -451,6 +457,26 @@ public class SettingsService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + PROOF_KINDS + " value=" + (value == null ? "" : value));
         return value;
+    }
+
+    /** Set the sheet's default grade (blank: A), the sheet created first if it was never loaded; not
+     *  dated. A person the quick-add bar adds, and an import line with a blank grade, is given it;
+     *  no one already on the sheet changes. Refused (422) when it is not one of the grades. Resolves
+     *  to the grade as set (null: blank). */
+    @Transactional
+    public String setDefaultGrade(String sheetId, String user, String grade) {
+        String value = grade.trim();
+        if (!value.isEmpty() && !GRADES.contains(value)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "The default grade is one of " + String.join(", ", GRADES) + ", not " + value);
+        }
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        sheet.setDefaultGrade(value.isEmpty() ? null : value);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + DEFAULT_GRADE + " value=" + value);
+        return value.isEmpty() ? null : value;
     }
 
     /** The id of the sheet's parent; null when blank (none). */

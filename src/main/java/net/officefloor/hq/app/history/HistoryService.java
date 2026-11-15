@@ -66,7 +66,8 @@ public class HistoryService {
 
     record SheetState(LocalDate policyDate, List<SettingState> settings, LocalDate periodNumberingFrom,
             Integer graceDays, boolean archived, LocalDate entryDate, BigDecimal pot, Integer fiscalStartMonth,
-            BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla, String proofKinds) {
+            BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla, String proofKinds,
+            String defaultGrade) {
     }
 
     record GradeState(LocalDate from, String grade) {
@@ -166,7 +167,7 @@ public class HistoryService {
         write(sheet.getId(), SHEET, sheet.getId(), new SheetState(sheet.getPolicyDate(), settings,
                 sheet.getPeriodNumberingFrom(), sheet.getGraceDays(), sheet.isArchived(), sheet.getEntryDate(),
                 sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(), sheet.getEscalateAfter(),
-                sheet.getReviewSla(), sheet.getProofKinds()));
+                sheet.getReviewSla(), sheet.getProofKinds(), sheet.getDefaultGrade()));
     }
 
     /** Write the version of an entity of the sheet now, if it differs from the last one. */
@@ -318,6 +319,7 @@ public class HistoryService {
                     sheet.setPot(s.pot());
                     sheet.setAlertThreshold(s.alertThreshold());
                     sheet.setProofKinds(s.proofKinds());
+                    sheet.setDefaultGrade(s.defaultGrade());
                     sheet.setFiscalStartMonth(s.fiscalStartMonth() == null ? 1 : s.fiscalStartMonth());
                     if (s.archived()) {
                         sheet.archive();

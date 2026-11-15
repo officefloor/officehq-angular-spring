@@ -254,6 +254,13 @@ export class SettingsApi {
     );
   }
 
+  /** Set the sheet's default grade (one of the grades; blank: A); resolves to the grade as set. */
+  setDefaultGrade(sheetId: string, value: string): Promise<{ defaultGrade: string | null }> {
+    return firstValueFrom(
+      this.http.put<{ defaultGrade: string | null }>(`${this.url(sheetId)}/settings/default-grade`, { value }, { headers: this.headers() }),
+    );
+  }
+
   /** Set the sheet's parent (blank: none); resolves to the parent as set. */
   setParent(sheetId: string, value: string): Promise<{ parent: string | null }> {
     return firstValueFrom(
