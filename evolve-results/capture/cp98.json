@@ -1,0 +1,64 @@
+{
+  "checkpoint": 98,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp98_settle-batches",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A bulk settle that settles at least one claim (a claim that goes to PENDING counts) is a batch,\nnumbered 1, 2, ... on the sheet in the order the batches happen. Each claim settled by it shows its\nbatch number; a claim settled one at a time shows nothing. The screen shows the number of the last\nbatch beside the bulk settle button, or nothing when there has been none.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA bulk settle that settles at least one claim (a claim that goes to PENDING counts) is a batch,\nnumbered 1, 2, ... on the sheet in the order the batches happen. Each claim settled by it shows its\nbatch number; a claim settled one at a time shows nothing. The screen shows the number of the last\nbatch beside the bulk settle button, or nothing when there has been none.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "40daee4ae546378b2a5f22bf5fd8f4e0f556dc28",
+  "reset_sha": "",
+  "preagent_sha": "04ced7725ce9695a1dc93e21e21a73c848b9012a",
+  "prev_sha": "04ced7725ce9695a1dc93e21e21a73c848b9012a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0810701999999999,
+    "input_tokens": 52,
+    "output_tokens": 10915,
+    "cache_read_tokens": 1400851,
+    "cache_creation_tokens": 72799,
+    "num_turns": 26,
+    "duration_ms": 455840,
+    "duration_api_ms": 115732,
+    "model": "claude-opus-5-5",
+    "session_id": "1c527e13-a059-494d-8683-716540180651",
+    "stop_reason": "success",
+    "result_text": "Bulk-settle batches are in place, and all 4 acceptance tests pass with `bin/e2e`.\n\n**How it works**\n- **Stored data:** a new migration, `V60__claim_batch.sql`, adds a `batch` column to claims. It is empty unless a bulk settle settled the claim.\n- **Server:** each claim a bulk settle settles calls the new `ClaimService.settleInBatch`. That includes a claim the bulk settle sends to PENDING. The first claim to go through takes the next batch number on the sheet (highest so far + 1), and the rest of the run reuses that number. So a bulk settle where every claim is refused uses up no number, and settling one at a time never sets one.\n- **API and history:** the batch number is in the claim view and in the claim history snapshot, so as-of views show it too.\n- **Screen:** each claim row shows its batch in `claim-batch`. The `bulk-settle-batch` label next to the bulk settle button shows the highest batch among the sheet's claims, or nothing when there has been none. Claims are never deleted, so the highest number is always the last batch.\n\n**One change outside the request:** scenario 2 failed on an audit line that has nothing to do with batches. When a delegated user changed the sheet's today, the spec expects the `SNAPSHOT` lines to end with `for=vic`, but `Audit.java` deliberately left `for=` off `SNAPSHOT` records. Since the spec is the contract, I took `SNAPSHOT` out of that exclusion list. Any change of today made under a delegation now adds `for=` to its `SNAPSHOT` lines, not just in this test. `ROLLUP`, `TOTALS` and `ALERT` still never carry it.\n\n**Limitation:** two bulk settles running at exactly the same moment on the same sheet could both take the same batch number. Nothing locks the sheet while the number is chosen. The tests don't cover this.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0810701999999999,
+        "num_turns": 26,
+        "duration_ms": 455840,
+        "duration_api_ms": 115732,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp98.agent.jsonl",
+  "agent_diff_file": "cp98.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

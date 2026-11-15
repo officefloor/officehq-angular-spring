@@ -1,0 +1,224 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 088c0a78e..90e354f68 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -72,6 +72,9 @@ export interface Claim {
+   voidReason: string | null;
+   /** The comments on the claim, oldest first. */
+   comments: ClaimComment[];
++  /** The number of the bulk settle batch that settled the claim (or sent it to PENDING); null
++   *  when it was settled one at a time or not at all. */
++  batch: number | null;
+ }
+ 
+ /** A comment on a claim: who wrote it, the sheet's today then (yyyy-mm-dd), and its text. */
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 2a5d9d016..48b5102c7 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -49,6 +49,7 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment,
+             <span>Corrects No. <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
+             <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+             <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
++            <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
+             <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>
+             <span>Stated <span data-testid="claim-stated">{{ c.stated ? 'yes' : 'no' }}</span></span>
+             <span>Period <span data-testid="claim-period">{{ periodOf(c) }}</span></span>
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 32172dcac..10c9500db 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -111,6 +111,7 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
+         <p role="alert" data-testid="bulk-error">{{ err }}</p>
+       }
+       <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
++      <span>Last batch <span data-testid="bulk-settle-batch">{{ lastBatch() ?? '' }}</span></span>
+       @if (bulkSettleResult(); as r) {
+         <p role="status">Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>,
+           refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong></p>
+@@ -538,6 +539,9 @@ export class People {
+   /** The last bulk settle's counts; gone while one runs. */
+   protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
+   protected readonly bulkSettleError = signal<string | null>(null);
++  /** The number of the sheet's last bulk settle batch (the highest any claim carries); null with none. */
++  protected readonly lastBatch = computed(() =>
++    this.claims().reduce<number | null>((last, c) => c.batch !== null && (last === null || c.batch > last) ? c.batch : last, null));
+   private bulkSettling = false;
+   /** The last bulk reassign's counts; gone while one runs. */
+   protected readonly bulkReassignResult = signal<{ reassigned: number; refused: number } | null>(null);
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index 118b8a480..d55a4014f 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -30,8 +30,9 @@ public class Audit {
+      *  every record of the change it makes then ends with {@code for=} that steward. */
+     public static final String FOR = Audit.class.getName() + ".for";
+ 
+-    /** Records that only report figures, which never carry {@code for=}. */
+-    private static final Set<String> FIGURES = Set.of("ROLLUP", "TOTALS", "ALERT", "SNAPSHOT");
++    /** Records that only report figures, which never carry {@code for=}. A SNAPSHOT is the
++     *  record of the today change its user made, so it carries it. */
++    private static final Set<String> FIGURES = Set.of("ROLLUP", "TOTALS", "ALERT");
+ 
+     private final Path file;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 6bb6fd765..a3d53f05b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -73,6 +73,11 @@ public class Claim {
+     @Column(name = "edited_by")
+     private String editedBy;
+ 
++    /** The number of the bulk settle that settled the claim (or sent it to PENDING); none when
++     *  it was settled one at a time or not at all. */
++    @Column(name = "batch")
++    private Integer batch;
++
+     /** Whether the person's last statement bound the claim (it counted then); its due then stays
+      *  {@link #statedDue} until their next statement. */
+     @Column(name = "stated", nullable = false)
+@@ -262,6 +267,14 @@ public class Claim {
+         this.editedBy = editedBy;
+     }
+ 
++    public Integer getBatch() {
++        return batch;
++    }
++
++    public void setBatch(Integer batch) {
++        this.batch = batch;
++    }
++
+     public boolean isStated() {
+         return stated;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 8a66971d3..2028d996d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -48,13 +48,14 @@ public class ClaimController {
+      *  it (null while unlocked); whether it was added while its period was soft-closed; the last
+      *  day it was reminded (null when never reminded); its external reference (null when none); its
+      *  tags, lower-case, sorted and comma separated (null when none); the reason it was voided with
+-     *  (null when none); its comments, oldest first; who last edited it (null when never edited). */
++     *  (null when none); its comments, oldest first; who last edited it (null when never edited);
++     *  the number of the bulk settle batch that settled it (null when settled one at a time). */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
+             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
+             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
+             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
+             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason,
+-            List<CommentView> comments, String editedBy) {
++            List<CommentView> comments, String editedBy, Integer batch) {
+         static ClaimView of(Claim c, List<ClaimLog> log, List<ClaimComment> comments) {
+             return of(c.getId(), c, log, comments);
+         }
+@@ -66,7 +67,7 @@ public class ClaimController {
+                     c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
+                     log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLockedBy(),
+                     c.isLateEntry(), c.getReminded(), c.getRef(), c.getTags(), c.getVoidReason(),
+-                    comments.stream().map(CommentView::of).toList(), c.getEditedBy());
++                    comments.stream().map(CommentView::of).toList(), c.getEditedBy(), c.getBatch());
+         }
+ 
+         private static String money(BigDecimal value) {
+@@ -307,7 +308,8 @@ public class ClaimController {
+ 
+     /** Settle each selected claim in list order (people in the order added, newest claim first),
+      *  each on its own by the rules of settling one; a claim sent to PENDING counts as settled, and
+-     *  a claim that cannot be settled is left as it is. */
++     *  a claim that cannot be settled is left as it is. A bulk settle that settles any is the
++     *  sheet's next batch, and each claim it settles carries that batch's number. */
+     @PostMapping("/claims/bulk-settle")
+     @ViewerAllowed
+     public BulkSettleView bulkSettle(
+@@ -320,9 +322,10 @@ public class ClaimController {
+         }
+         List<Long> ordered = service.inListOrder(sheetId, body.ids());
+         int settled = 0;
++        Integer batch = null;
+         for (long id : ordered) {
+             try {
+-                service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED);
++                batch = service.settleInBatch(sheetId, user.trim(), id, batch).getBatch();
+                 settled++;
+             } catch (ResponseStatusException e) {
+                 // refused: left as it is
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index 739b14207..523e7a3d7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -20,6 +20,10 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+     @Query("select coalesce(max(c.listed), 0) from Claim c where c.sheetId = :sheetId")
+     long findLastListed(String sheetId);
+ 
++    /** The number of the sheet's last bulk settle batch; 0 with none. */
++    @Query("select coalesce(max(c.batch), 0) from Claim c where c.sheetId = :sheetId")
++    int findLastBatch(String sheetId);
++
+     Optional<Claim> findByIdAndSheetId(Long id, String sheetId);
+ 
+     /** The person's claim of a number (the one a correction corrects). */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 8bf2e5135..134760102 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -298,6 +298,17 @@ public class ClaimService {
+         return changeStatus(sheetId, user, id, to, null);
+     }
+ 
++    /** Settle a claim as {@link #changeStatus} does, as part of a bulk settle's batch of the
++     *  number (null: the bulk settle has settled none yet, so this claim starts the sheet's next
++     *  batch); the claim carries the batch's number. */
++    @Transactional
++    public Claim settleInBatch(String sheetId, String user, long id, Integer batch) {
++        int number = batch != null ? batch : claims.findLastBatch(sheetId) + 1;
++        Claim claim = changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null);
++        claim.setBatch(number);
++        return claims.save(claim);
++    }
++
+     /** Void a claim as {@link #changeStatus} does, with a reason from the sheet's list of void
+      *  reasons (null: none): while the list is not empty, a void without one of them is refused
+      *  (422), and a reason given while it is empty is refused too. The VOIDED record ends with it. */
+diff --git a/src/main/java/net/officefloor/hq/app/history/HistoryService.java b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+index 7ae169452..2357eb669 100644
+--- a/src/main/java/net/officefloor/hq/app/history/HistoryService.java
++++ b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+@@ -76,7 +76,8 @@ public class HistoryService {
+     record ClaimState(long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, ClaimStatus status,
+             String number, BigDecimal settledDue, boolean stated, BigDecimal statedDue, String corrects,
+             LocalDate deferredUntil, String note, String openedBy, long listed, int proofs, String splitFrom,
+-            boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason, String editedBy) {
++            boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason, String editedBy,
++            Integer batch) {
+     }
+ 
+     record PeriodState(String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
+@@ -134,7 +135,7 @@ public class HistoryService {
+                     c.getDate(), c.getDueBy(), c.getStatus(), c.getNumber(), c.getSettledDue(), c.isStated(),
+                     c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getNote(), c.getOpenedBy(),
+                     c.getListed(), c.getProofs(), c.getSplitFrom(), c.isLateEntry(), c.getReminded(),
+-                    c.getRef(), c.getTags(), c.getVoidReason(), c.getEditedBy()));
++                    c.getRef(), c.getTags(), c.getVoidReason(), c.getEditedBy(), c.getBatch()));
+         } else if (entity instanceof Person p) {
+             List<Person.DatedGrade> all = p.getGrades();
+             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
+@@ -319,6 +320,7 @@ public class HistoryService {
+         c.setTags(s.tags());
+         c.setVoidReason(s.voidReason());
+         c.setEditedBy(s.editedBy());
++        c.setBatch(s.batch());
+         if (s.stated()) {
+             c.bind(s.statedDue());
+         }
+diff --git a/src/main/resources/db/migration/V60__claim_batch.sql b/src/main/resources/db/migration/V60__claim_batch.sql
+new file mode 100644
+index 000000000..34987f5b4
+--- /dev/null
++++ b/src/main/resources/db/migration/V60__claim_batch.sql
+@@ -0,0 +1,3 @@
++-- The bulk settle a claim was settled by (sent to PENDING counts): the sheet's batches are
++-- numbered 1, 2, ... in the order they happen; none for a claim settled one at a time.
++ALTER TABLE claim ADD COLUMN batch INT;
