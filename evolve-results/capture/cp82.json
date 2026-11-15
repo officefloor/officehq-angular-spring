@@ -1,0 +1,64 @@
+{
+  "checkpoint": 82,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp82_settled-and-open-totals",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Show on each person their settled-total (the due of their SETTLED claims that count, at\ntheir frozen figures, corrections included) and their open-total (the due of their OPEN and\nPENDING claims that count: a held, deferred or retired-and-excluded claim is left out as it is\nfrom the due-total). Show the sheet's settled-total and open-total too, each simply everyone's\nfigure added up (not trimmed). The two must add up to the person's untrimmed due-total before the\ncap.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nShow on each person their settled-total (the due of their SETTLED claims that count, at\ntheir frozen figures, corrections included) and their open-total (the due of their OPEN and\nPENDING claims that count: a held, deferred or retired-and-excluded claim is left out as it is\nfrom the due-total). Show the sheet's settled-total and open-total too, each simply everyone's\nfigure added up (not trimmed). The two must add up to the person's untrimmed due-total before the\ncap.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "ac56bb7785d034b5cae3317905f58cefab4c2c9e",
+  "reset_sha": "",
+  "preagent_sha": "48e89e8daa149ba75f2476e65e527bcd7756fd99",
+  "prev_sha": "48e89e8daa149ba75f2476e65e527bcd7756fd99",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.51728,
+    "input_tokens": 22,
+    "output_tokens": 3546,
+    "cache_read_tokens": 391480,
+    "cache_creation_tokens": 45997,
+    "num_turns": 12,
+    "duration_ms": 217369,
+    "duration_api_ms": 36006,
+    "model": "claude-opus-5-5",
+    "session_id": "dba74fc7-37fd-4e42-ab14-c7bd775553e5",
+    "stop_reason": "success",
+    "result_text": "Each person row and the sheet totals now show a settled-total and an open-total, and all 4 acceptance tests pass with `bin/e2e`.\n\nThe whole change is in the front end, in `src/main/frontend/src/app/features/people/people.ts`. That's because the screen already works out the due-totals itself from the claims it loads. The server, the stored data and the audit records stay as they are, and the spec expects no new audit lines.\n\n- **Per person:** `person-settled-total` and `person-open-total` sit next to the due-total and excess. They use exactly the claims the due-total counts, so a held, deferred or retired-and-excluded claim is left out of both. Each claim counts at the due it shows: the fixed figure for a settled claim, with corrections included. Settled claims go into the settled-total and OPEN and PENDING claims into the open-total, so the two add up to the person's due-total before the cap.\n- **Sheet:** `rollup-settled-total` and `rollup-open-total` are everyone's figures added up. Unlike the sheet's due-total, nobody's figure is dropped from the sum (the request's \"not trimmed\").",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.51728,
+        "num_turns": 12,
+        "duration_ms": 217369,
+        "duration_api_ms": 36006,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp82.agent.jsonl",
+  "agent_diff_file": "cp82.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
