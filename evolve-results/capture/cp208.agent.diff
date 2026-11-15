@@ -1,0 +1,163 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index ede4705bc..5d2641072 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -32,7 +32,7 @@ export interface Claim {
+   date: string;
+   note: string;
+   status: ClaimStatus;
+-  /** The sheet's number for the claim, given when it is opened and kept if it is voided; null while DRAFT.
++  /** The sheet's number for the claim, given when it is settled or approved and kept if it is voided; null while DRAFT, OPEN, PENDING or REVIEW.
+    *  A sheet-wide number, or under period numbering one within its period (P1-1, X-1 in no period). */
+   number: string | null;
+   /** The due fixed when the claim was settled, with two decimals; null, so the due is live, for
+diff --git a/src/main/frontend/src/app/features/settings/settings-api.ts b/src/main/frontend/src/app/features/settings/settings-api.ts
+index 6dee9788d..951264477 100644
+--- a/src/main/frontend/src/app/features/settings/settings-api.ts
++++ b/src/main/frontend/src/app/features/settings/settings-api.ts
+@@ -56,7 +56,7 @@ export interface Settings {
+   /** yyyy-mm-dd: a claim dated before it rounds half up, one on or after it half to even; null when
+    *  blank, when the sheet's today is the policy date. */
+   policyDate: string | null;
+-  /** yyyy-mm-dd: while the sheet's today is on or after it, a claim opened is numbered within its
++  /** yyyy-mm-dd: while the sheet's today is on or after it, a claim settled is numbered within its
+    *  period; null when blank (off). */
+   periodNumberingFrom: string | null;
+   /** yyyy-mm-dd: while set, a new claim left undated takes it instead of the sheet's today; null
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index b61f4c7f0..9aefb5d85 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -6,7 +6,7 @@ import { FISCAL_START_MONTH_PATTERN, GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PE
+ import { PROOF_KINDS } from '../claims/claims-api';
+ 
+ // The sheet's settings (its permission matrix: the roles that may open, settle, void, reassign, close or reopen, each blank for its standing rule; its clerk limit: a clerk settles only claims whose due is at or below it, or below their person's grade's own when one is in force;
+-// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its rounding mode: a claim dated while one is in force rounds its live figures by it (half-up or half-even); its policy date: a claim dated with no rounding mode in force before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period; its entry date: while set, a new claim left undated takes it; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed; its fiscal start month: each period shows the fiscal year its from-date falls in; its pot: each balanced pool's members cut it by their shares; its alert threshold: a change that takes a person's due-total above it alerts) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one, and the sheet's holidays (a claim's due-by, as it is created, is moved past them) with the form that adds one, and the sheet's void reasons (while there are any, a claim is voided only with one of them) with the form that adds one.
++// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its rounding mode: a claim dated while one is in force rounds its live figures by it (half-up or half-even); its policy date: a claim dated with no rounding mode in force before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim settled is numbered within its period; its entry date: while set, a new claim left undated takes it; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed; its fiscal start month: each period shows the fiscal year its from-date falls in; its pot: each balanced pool's members cut it by their shares; its alert threshold: a change that takes a person's due-total above it alerts) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one, and the sheet's holidays (a claim's due-by, as it is created, is moved past them) with the form that adds one, and the sheet's void reasons (while there are any, a claim is voided only with one of them) with the form that adds one.
+ @Component({
+   selector: 'app-settings',
+   imports: [FigurePipe, ReactiveFormsModule],
+@@ -86,7 +86,7 @@ import { PROOF_KINDS } from '../claims/claims-api';
+         <input id="setting-late-pct-from" type="date" data-testid="setting-late-pct-from" formControlName="latePctFrom" />
+         <label for="setting-policy-date">Policy date: claims dated before it round half up, others half to even (blank: the sheet's today)</label>
+         <input id="setting-policy-date" type="date" data-testid="setting-policy-date" formControlName="policyDate" />
+-        <label for="setting-period-numbering-from">Period numbering from: claims opened from it are numbered within their period (blank: off)</label>
++        <label for="setting-period-numbering-from">Period numbering from: claims settled from it are numbered within their period (blank: off)</label>
+         <input id="setting-period-numbering-from" type="date" data-testid="setting-period-numbering-from" formControlName="periodNumberingFrom" />
+         <label for="setting-entry-date">Entry date: a new claim left undated takes it instead of the sheet's today (blank: off)</label>
+         <input id="setting-entry-date" type="date" data-testid="setting-entry-date" formControlName="entryDate" />
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 95d198f29..edf881c1b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -54,8 +54,9 @@ public class Claim {
+     @Column(name = "status", nullable = false)
+     private ClaimStatus status = ClaimStatus.DRAFT;
+ 
+-    /** The sheet's number for the claim, given when it is opened and kept if it is voided; none
+-     *  while DRAFT. A sheet-wide number (1, 2, ...), or under period numbering one within its
++    /** The sheet's number for the claim, given when it is settled (or approved) and kept if it is
++     *  voided; none while DRAFT, OPEN, PENDING or REVIEW (a claim numbered when opened, before
++     *  numbering moved to settlement, keeps its number). A sheet-wide number (1, 2, ...), or under period numbering one within its
+      *  period (<period name>-<n>, X-<n> in no period). */
+     @Column(name = "claim_number")
+     private String number;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 55d972adb..b9d856ee0 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -469,21 +469,20 @@ public class ClaimService {
+             to = ClaimStatus.PENDING;
+         }
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+-        // a voided claim keeps its number (never reused), and the VOIDED record carries it
++        // a voided claim keeps any number it was settled with (never reused), and the VOIDED record carries it
+         String number = claim.getNumber();
+         // a voided SETTLED claim keeps its frozen figure, which leaves every total
+         boolean reversing = to == ClaimStatus.VOID && claim.getStatus() == ClaimStatus.SETTLED;
+         BigDecimal reversed = claim.getSettledDue();
+         claim.setStatus(to);
+         if (to == ClaimStatus.OPEN) {
+-            number = nextNumber(sheetId, claim.getDueBy());
+-            claim.setNumber(number);
+             claim.setOpenedBy(user);
+         } else if (to == ClaimStatus.REVIEW) {
+             claim.setOpenedBy(user);
+             claim.setReviewOn(sheets.today(sheetId));
+         } else if (to == ClaimStatus.SETTLED) {
+             claim.setSettledDue(settling);
++            number = numberAtSettlement(sheetId, claim);
+         } else if (to == ClaimStatus.VOID) {
+             claim.setVoidReason(voidReason);
+         }
+@@ -781,6 +780,7 @@ public class ClaimService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         claim.setStatus(ClaimStatus.SETTLED);
+         claim.setSettledDue(due);
++        numberAtSettlement(sheetId, claim);
+         claims.flush();
+         logStatus(user, person, claim);
+         record("CLAIM_APPROVED", user, person, claim, claim.getNumber(), " due=" + dueText(due));
+@@ -960,7 +960,7 @@ public class ClaimService {
+ 
+     /** Split an amount off an OPEN claim: the claim keeps the rest of its amount and loses any
+      *  figure a statement bound it to, and a new OPEN claim of the amount, with the same date,
+-     *  note and tags, the next number, opened by the user, its due-by fixed now from the terms in force on
++     *  note and tags, no number (one is given at settlement), opened by the user, its due-by fixed now from the terms in force on
+      *  the date (the person's own, else their grade's, else the sheet's), and naming the original's number as split-from, is listed as the person's newest (a late entry
+      *  when a soft-closed period contains its due-by).
+      *  Refused (404) when missing, (423) when due in a closed period, (403) for a role the
+@@ -994,7 +994,6 @@ public class ClaimService {
+         Claim fresh = new Claim(sheetId, person.getId(), amount, on, dueByOf(sheetId, on, terms), claim.getNote());
+         fresh.setTerms(terms);
+         fresh.setStatus(ClaimStatus.OPEN);
+-        fresh.setNumber(nextNumber(sheetId, fresh.getDueBy()));
+         fresh.setOpenedBy(user);
+         fresh.setSplitFrom(claim.getNumber());
+         fresh.setTags(claim.getTags());
+@@ -1002,7 +1001,7 @@ public class ClaimService {
+         fresh.setListed(claims.findLastListed(sheetId) + 1);
+         Claim split = claims.saveAndFlush(fresh);
+         logStatus(user, person, split);
+-        record("CLAIM_SPLIT", user, person, claim, claim.getNumber(), " into=" + split.getNumber());
++        record("CLAIM_SPLIT", user, person, claim, claim.getNumber(), " into=" + (split.getNumber() == null ? "" : split.getNumber()));
+         record("CLAIM_OPENED", user, person, split);
+         rollup.recordChanges(sheetId, user, before);
+         return new Split(claim, split);
+@@ -1026,7 +1025,7 @@ public class ClaimService {
+         return new Split(s.original(), settled);
+     }
+ 
+-    /** A steward reviews a REVIEW claim: it becomes OPEN, numbered now, its opener kept;
++    /** A steward reviews a REVIEW claim: it becomes OPEN, still unnumbered, its opener kept;
+      *  CLAIM_REVIEWED then CLAIM_OPENED are written. Refused (404) when missing, (423) when due in a
+      *  closed period, (409) unless REVIEW, and (403) when the user is not a steward. */
+     @Transactional
+@@ -1046,7 +1045,6 @@ public class ClaimService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         record("CLAIM_REVIEWED", user, person, claim, null);
+         claim.setStatus(ClaimStatus.OPEN);
+-        claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
+         claims.flush();
+         logStatus(user, person, claim);
+         record("CLAIM_OPENED", user, person, claim);
+@@ -1243,7 +1241,18 @@ public class ClaimService {
+         rollup.recordChanges(sheetId, added.user(), before);
+     }
+ 
+-    /** The number a claim due by {@code date} takes as it is opened: under period numbering (set,
++    /** Number a claim as it is settled or approved, unless it was numbered already (a claim
++     *  numbered before numbering moved to settlement keeps its number): the next in the sequence
++     *  its due-by places it in now. Returns the claim's number. */
++    private String numberAtSettlement(String sheetId, Claim claim) {
++        if (claim.getNumber() == null) {
++            claims.flush();
++            claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
++        }
++        return claim.getNumber();
++    }
++
++    /** The number a claim due by {@code date} takes as it is settled: under period numbering (set,
+      *  and the sheet's today on or after it) the next within the period containing the due-by
+      *  (<period name>-<n>), or X-<n> when none does; otherwise the sheet's next number within the
+      *  fiscal year of the due-by (FY<yyyy>-<n>). */
