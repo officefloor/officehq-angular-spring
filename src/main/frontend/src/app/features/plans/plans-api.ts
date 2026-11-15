@@ -20,6 +20,8 @@ export interface Plan {
   pausedOn: string | null;
   /** Its past pauses: from the day it was paused (inclusive) to the day it was resumed (exclusive). */
   pauses: { from: string; to: string }[];
+  /** Its amount changes, oldest first: the sheet's today each was made on and the new amount. */
+  changes: { on: string; amount: string }[];
 }
 
 /** A plan as the form submits it: a blank start takes the sheet's today; one of every and day. */
@@ -56,6 +58,11 @@ export class PlansApi {
     return firstValueFrom(this.http.post<Plan>(`${this.url(sheetId)}/plans/${planId}/${on ? 'pause' : 'resume'}`, null, { headers: this.headers() }));
   }
 
+  /** Change the plan's amount on the sheet's today; the claims it makes from then on take it. */
+  changeAmount(sheetId: string, planId: number, amount: string): Promise<Plan> {
+    return firstValueFrom(this.http.post<Plan>(`${this.url(sheetId)}/plans/${planId}/amount`, { amount }, { headers: this.headers() }));
+  }
+
   /** Make the claims every plan on the sheet is due by the sheet's today. */
   generate(sheetId: string): Promise<Generated> {
     return firstValueFrom(this.http.post<Generated>(`${this.url(sheetId)}/plans/generate`, null, { headers: this.headers() }));
@@ -83,6 +90,12 @@ export function planError(e: unknown): string {
 
 export function pauseError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a running plan can be paused, and only a paused one resumed.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That plan is no longer on the sheet.';
+  return otherError(e);
+}
+
+export function amountError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount of 0.00 or more with up to two decimals.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That plan is no longer on the sheet.';
   return otherError(e);
 }

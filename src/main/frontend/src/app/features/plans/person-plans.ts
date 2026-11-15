@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { AMOUNT_PATTERN } from '../claims/claims-api';
-import { PlansApi, nextDates, pauseError, planError, type Plan } from './plans-api';
+import { PlansApi, amountError, nextDates, pauseError, planError, type Plan } from './plans-api';
 
 // One person's plans, in the order they were added, and the form that adds one.
 @Component({
@@ -43,6 +43,17 @@ import { PlansApi, nextDates, pauseError, planError, type Plan } from './plans-a
             paused <span data-testid="plan-paused">{{ pl.pausedOn !== null ? 'yes' : 'no' }}</span>
             <button type="button" data-testid="plan-pause" (click)="setPaused(pl, true)">Pause</button>
             <button type="button" data-testid="plan-resume" (click)="setPaused(pl, false)">Resume</button>
+            <label [for]="'plan-amount-' + pl.id">New amount</label>
+            <input [id]="'plan-amount-' + pl.id" data-testid="plan-amount" inputmode="decimal" autocomplete="off"
+              [value]="amounts()[pl.id] ?? ''" (input)="setAmount(pl.id, $any($event.target).value)" />
+            <button type="button" data-testid="plan-amount-save" (click)="changeAmount(pl)">Save amount</button>
+            @if (pl.changes.length > 0) {
+              <ul [attr.aria-label]="'Amount changes of the plan from ' + pl.start">
+                @for (c of pl.changes; track $index) {
+                  <li data-testid="plan-change-line">{{ c.on }} amount={{ c.amount }}</li>
+                }
+              </ul>
+            }
             @if (rowErrors()[pl.id]; as err) {
               <span role="alert" data-testid="plan-error">{{ err }}</span>
             }
@@ -63,6 +74,8 @@ export class PersonPlans {
   protected readonly error = signal<string | null>(null);
   /** Each plan's refused action, by plan id; removed when the next action on it is taken. */
   protected readonly rowErrors = signal<Record<number, string>>({});
+  /** Each plan's new-amount entry, by plan id. */
+  protected readonly amounts = signal<Record<number, string>>({});
   private submitting = false;
 
   protected readonly form = new FormGroup({
@@ -81,6 +94,7 @@ export class PersonPlans {
       untracked(() => {
         this.error.set(null);
         this.rowErrors.set({});
+        this.amounts.set({});
         this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
       });
     });
@@ -104,6 +118,32 @@ export class PersonPlans {
       }
     } catch (e) {
       if (this.session.sheetId() === sheetId) this.setRowError(plan.id, pauseError(e));
+    }
+  }
+
+  protected setAmount(planId: number, value: string): void {
+    this.amounts.update((all) => ({ ...all, [planId]: value }));
+    this.setRowError(planId, null);
+  }
+
+  /** Change the plan's amount to the one entered, on the sheet's today. */
+  protected async changeAmount(plan: Plan): Promise<void> {
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.setRowError(plan.id, null);
+    const amount = (this.amounts()[plan.id] ?? '').trim();
+    if (!AMOUNT_PATTERN.test(amount)) {
+      this.setRowError(plan.id, 'Enter an amount of 0.00 or more with up to two decimals.');
+      return;
+    }
+    try {
+      const saved = await this.api.changeAmount(sheetId, plan.id, amount);
+      if (this.session.sheetId() === sheetId) {
+        this.session.plans.update((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
+        this.amounts.update((all) => ({ ...all, [plan.id]: '' }));
+      }
+    } catch (e) {
+      if (this.session.sheetId() === sheetId) this.setRowError(plan.id, amountError(e));
     }
   }
 

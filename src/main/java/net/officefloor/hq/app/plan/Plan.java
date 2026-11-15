@@ -62,6 +62,18 @@ public class Plan {
     @OrderColumn(name = "position")
     private List<Pause> pauses = new ArrayList<>();
 
+    /** The plan's amount changes, oldest first. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "plan_change", joinColumns = @JoinColumn(name = "plan_id"))
+    @OrderColumn(name = "position")
+    private List<Change> changes = new ArrayList<>();
+
+    /** A change of the plan's amount: the sheet's today it was made on and the new amount. */
+    @Embeddable
+    public record Change(@Column(name = "on_date", nullable = false) LocalDate on,
+            @Column(name = "amount", nullable = false, precision = 15, scale = 2) BigDecimal amount) {
+    }
+
     /** A past pause: from the day the plan was paused (inclusive) to the day it was resumed (exclusive). */
     @Embeddable
     public record Pause(@Column(name = "from_date", nullable = false) LocalDate from,
@@ -132,6 +144,16 @@ public class Plan {
 
     public List<Pause> getPauses() {
         return List.copyOf(pauses);
+    }
+
+    public List<Change> getChanges() {
+        return List.copyOf(changes);
+    }
+
+    /** Change the plan's amount on a day: the claims it makes from then on are of the new amount. */
+    public void changeAmount(LocalDate on, BigDecimal to) {
+        amount = to;
+        changes.add(new Change(on, to));
     }
 
     /** Pause the plan on a day: its dates from that day on are skipped until it is resumed. */

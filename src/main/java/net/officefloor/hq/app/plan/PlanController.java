@@ -35,18 +35,27 @@ public class PlanController {
 
     /** A plan as the screen shows it: its amount with two decimals, its dates, its interval in days
      *  or its day of the month (the other null), how many claims it has made so far, the day it was
-     *  paused on (null while it runs) and its past pauses. */
+     *  paused on (null while it runs), its past pauses and its amount changes, oldest first. */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, long generated, LocalDate pausedOn, List<PauseView> pauses) {
+            LocalDate end, long generated, LocalDate pausedOn, List<PauseView> pauses, List<ChangeView> changes) {
         static PlanView of(Plan p, Map<Long, Long> made) {
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().setScale(2).toPlainString(), p.getStart(),
                     p.getEvery(), p.getDay(), p.getEnd(), made.getOrDefault(p.getId(), 0L), p.getPausedOn(),
-                    p.getPauses().stream().map(x -> new PauseView(x.from(), x.to())).toList());
+                    p.getPauses().stream().map(x -> new PauseView(x.from(), x.to())).toList(),
+                    p.getChanges().stream().map(c -> new ChangeView(c.on(), c.amount().setScale(2).toPlainString())).toList());
         }
     }
 
     /** A past pause: from the day the plan was paused (inclusive) to the day it was resumed (exclusive). */
     public record PauseView(LocalDate from, LocalDate to) {
+    }
+
+    /** An amount change: the sheet's today it was made on and the new amount with two decimals. */
+    public record ChangeView(LocalDate on, String amount) {
+    }
+
+    /** A plan's new amount: one the claim form takes for a new claim (0.00 or more, up to two decimals). */
+    public record AmountForm(@NotNull @Pattern(regexp = "\\d{1,13}(\\.\\d{1,2})?") String amount) {
     }
 
     /** A plan as the form submits it: an amount the claim form takes for a new claim (0.00 or
@@ -110,6 +119,16 @@ public class PlanController {
             @PathVariable long planId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         return PlanView.of(service.setPaused(sheetId, user.trim(), planId, false), service.madeCounts(sheetId));
+    }
+
+    @PostMapping("/plans/{planId}/amount")
+    public PlanView changeAmount(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long planId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody AmountForm body) {
+        return PlanView.of(service.changeAmount(sheetId, user.trim(), planId, new BigDecimal(body.amount())),
+                service.madeCounts(sheetId));
     }
 
     /** Generate the plans' claims; resolves to the claims made and the sheet's plans with their

@@ -114,6 +114,23 @@ public class PlanService {
         return plan;
     }
 
+    /** Change the amount of one of the sheet's plans on the sheet's today; the claims it makes from
+     *  then on are of the new amount, those made already keep theirs. Refused (404) when the sheet
+     *  has no such plan. */
+    @Transactional
+    public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+        sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        Plan plan = plans.findByIdAndSheetId(planId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan"));
+        plan.changeAmount(sheets.today(sheetId), amount);
+        plans.saveAndFlush(plan);
+        String name = people.findById(plan.getPersonId()).map(Person::getName).orElse("");
+        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + name + " start="
+                + plan.getStart() + " amount=" + amount.setScale(2).toPlainString());
+        return plan;
+    }
+
     /** For each of the sheet's plans in the order they were added, add a DRAFT claim of its amount
      *  with an empty note for each of its dates up to its end and the sheet's today that has none
      *  yet and that it does not skip for a pause, dated that day, by the claim form's rules. Each claim is its own change: a date the
