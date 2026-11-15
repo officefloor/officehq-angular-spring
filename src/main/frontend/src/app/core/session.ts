@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import type { Plan } from '../features/plans/plans-api';
 import type { ClaimTemplate } from '../features/templates/templates-api';
 
 // Who is signed in and which sheet is active. Everything else in the app is kept per sheet.
@@ -43,6 +44,8 @@ export class Session {
   readonly voidReasons = signal<string[]>([]);
   /** The active sheet's claim templates, by name. */
   readonly templates = signal<ClaimTemplate[]>([]);
+  /** The active sheet's plans, in the order they were added, each with how many claims it has made. */
+  readonly plans = signal<Plan[]>([]);
   /** Whether the active sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
   /** The id of the active sheet's parent, null when none: a grade with no rate of its own in force

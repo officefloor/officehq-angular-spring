@@ -1,8 +1,10 @@
 import { DOCUMENT, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Session } from '../../core/session';
+import { Session, otherError } from '../../core/session';
 import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, deferred, dueBy, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp, statusOn, tagsOf } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
+import { PersonPlans } from '../plans/person-plans';
+import { PlansApi } from '../plans/plans-api';
 import { Pools } from '../pools/pools';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn, personPeriodDueCents } from '../periods/periods-api';
@@ -19,7 +21,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
 // person's editor open, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, Header, PersonClaims, Periods, Pools, Rates, Summary],
+  imports: [ReactiveFormsModule, Header, PersonClaims, PersonPlans, Periods, Pools, Rates, Summary],
   template: `
     <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()"
       [myDueTotal]="myFigures()?.dueTotal ?? null" [myOverdueTotal]="myFigures()?.overdueTotal ?? null" />
@@ -54,6 +56,15 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
           <p role="alert" data-testid="person-form-error">{{ err }}</p>
         }
       </form>
+      <p>
+        <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
+        @if (planGenerated() !== null) {
+          <span role="status">Made <strong data-testid="plan-generated-count">{{ planGenerated() }}</strong></span>
+        }
+        @if (planGenerateErr(); as err) {
+          <span role="alert" data-testid="plan-generate-error">{{ err }}</span>
+        }
+      </p>
       <form [formGroup]="quickForm" (ngSubmit)="quickAdd()" aria-label="Quick add claim">
         <label for="quick-name">Name</label>
         <input id="quick-name" data-testid="quick-name" formControlName="name" autocomplete="off" />
@@ -295,6 +306,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
                 }
               </td>
               <td>
+                <app-person-plans [personId]="p.id" [personName]="p.name" />
                 <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="effectiveRates()" [grades]="p.grades" [others]="patronChoicesFor(p)" [periods]="periods()"
                   [selected]="selectedClaims()" (toggled)="claimToggled($event)" (saved)="claimSaved($event)" />
               </td>
@@ -335,6 +347,7 @@ export class People {
   protected readonly session = inject(Session);
   private readonly api = inject(PeopleApi);
   private readonly claimsApi = inject(ClaimsApi);
+  private readonly plansApi = inject(PlansApi);
   private readonly ratesApi = inject(RatesApi);
   private readonly periodsApi = inject(PeriodsApi);
   private readonly document = inject(DOCUMENT);
@@ -706,6 +719,11 @@ export class People {
   protected readonly pasteErr = signal<string | null>(null);
   private pasting = false;
 
+  /** How many claims the last generate of the plans made; null while one runs or before the first. */
+  protected readonly planGenerated = signal<number | null>(null);
+  protected readonly planGenerateErr = signal<string | null>(null);
+  private generating = false;
+
   /** The import box: lines of name,grade,terms,contact, each a person as the form adds them. */
   protected readonly importForm = new FormGroup({
     text: new FormControl('', { nonNullable: true }),
@@ -737,6 +755,9 @@ export class People {
         this.pasteForm.reset({ text: '' });
         this.pasted.set(null);
         this.pasteErr.set(null);
+        this.planGenerated.set(null);
+        this.planGenerateErr.set(null);
+        this.session.plans.set([]);
         this.importForm.reset({ text: '' });
         this.imported.set(null);
         this.importErr.set(null);
@@ -1375,6 +1396,27 @@ export class People {
     }
   }
 
+  /** Make the claims every plan on the sheet is due by the sheet's today; then show how many were made. */
+  protected async generatePlans(): Promise<void> {
+    if (this.generating) return;
+    this.planGenerated.set(null);
+    this.planGenerateErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.generating = true;
+    try {
+      const { claims, plans } = await this.plansApi.generate(sheetId);
+      if (this.session.sheetId() !== sheetId) return;
+      for (const claim of claims) this.claimSaved(claim);
+      this.session.plans.set(plans);
+      this.planGenerated.set(claims.length);
+    } catch (e) {
+      this.planGenerateErr.set(otherError(e));
+    } finally {
+      this.generating = false;
+    }
+  }
+
   /** Add or update a person per imported line, all or none; then show how many were added and updated. */
   protected async importPeople(): Promise<void> {
     if (this.importing) return;
@@ -1443,11 +1485,12 @@ export class People {
     const seq = ++this.readSeq;
     try {
       const asOf = this.session.asOf() !== null;
-      const [people, claims, rates, inherited, periods, tags, descendants, own] = await Promise.all([
+      const [people, claims, rates, inherited, periods, tags, descendants, own, plans] = await Promise.all([
         this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId), this.ratesApi.inherited(sheetId),
         this.periodsApi.list(sheetId), this.claimsApi.tags(sheetId), this.api.descendantFigures(sheetId),
-        asOf ? this.api.ownFigures(sheetId) : Promise.resolve(null)]);
+        asOf ? this.api.ownFigures(sheetId) : Promise.resolve(null), this.plansApi.list(sheetId)]);
       if (seq === this.readSeq) {
+        this.session.plans.set(plans);
         this.descendants.set(descendants);
         this.ownLive.set(own);
         this.tagsUsed.set(tags);
