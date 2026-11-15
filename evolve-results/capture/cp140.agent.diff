@@ -1,0 +1,56 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index 25ebc3e44..027cc2ad4 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -26,7 +26,8 @@ function shareOf(cents: number, share: number, total: number): number {
+ 
+ /** Each member's cut of the pool's pot, by member key: the pot times their share divided by the
+  *  shares of the members with a cut, rounded half to even, the remainder going to the member with
+- *  the largest share among them (the earliest added on a tie) so the cuts total the pot. A retired
++ *  the smallest non-zero cut (the latest added on a tie; a member with no cut gets none, and a pool
++ *  with no non-zero cut gives it to the last member with a share) so the cuts total the pot. A retired
+  *  member, and one held on the sheet's today, gets 0.00, their share spread over the others (all
+  *  0.00 when none is left with a cut; no cuts at all when every member is retired); none unless the
+  *  pool is balanced (a retirement or hold leaves the balance as it is) and has a pot. A member
+@@ -44,9 +45,12 @@ function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => b
+   const total = cutShares.reduce((sum, c) => sum + c, 0);
+   const raw = cutShares.map((share) => (share === 0 ? 0 : shareOf(potCents, share, total)));
+   if (total > 0) {
+-    let largest = 0;
+-    cutShares.forEach((share, i) => { if (share > cutShares[largest]) largest = i; });
+-    raw[largest] += potCents - raw.reduce((sum, c) => sum + c, 0);
++    let target = -1;
++    raw.forEach((cut, i) => {
++      if (cut !== 0 && (target < 0 || Math.abs(cut) <= Math.abs(raw[target]))) target = i;
++    });
++    if (target < 0) cutShares.forEach((share, i) => { if (share > 0) target = i; });
++    raw[target] += potCents - raw.reduce((sum, c) => sum + c, 0);
+   }
+   pool.members.forEach((m, i) => { if (memberOn(m, day)) cutsByKey.set(memberKey(m), money(raw[i])); });
+   return cutsByKey;
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index bca8d0647..bd1e0f234 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -781,7 +781,8 @@ public class ClaimService {
+     }
+ 
+     /** Reassign a claim as {@link #reassign(String, String, long, long)} does; when {@code toSame}
+-     *  a claim already the person's is moved too (listed as their newest), as a bulk reassign does. */
++     *  a claim already the person's is moved too (listed as their newest, taking the next number in
++     *  its sequence), as a bulk reassign does. */
+     @Transactional
+     public Claim reassign(String sheetId, String user, long id, long toPersonId, boolean toSame) {
+         Claim claim = claims.findForUpdate(id, sheetId)
+@@ -802,8 +803,9 @@ public class ClaimService {
+         Person from = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+-        if (claim.getNumber() != null && claim.getPersonId() != toPersonId) {
+-            // moved to another person: the next number in its sequence, the old one never given again
++        if (claim.getNumber() != null) {
++            // moved (to another person, or as the person's newest): the next number in its sequence,
++            // the old one never given again
+             retired.save(new RetiredNumber(sheetId, claim.getNumber()));
+             claims.flush();
+             claim.setNumber(nextNumber(sheetId, claim.getDueBy()));
