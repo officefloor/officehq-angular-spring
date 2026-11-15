@@ -1,0 +1,632 @@
+diff --git a/src/main/frontend/src/app/features/pools/pools-api.ts b/src/main/frontend/src/app/features/pools/pools-api.ts
+index 5e7bae402..b4daeaefd 100644
+--- a/src/main/frontend/src/app/features/pools/pools-api.ts
++++ b/src/main/frontend/src/app/features/pools/pools-api.ts
+@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
+ import { Session, otherError } from '../../core/session';
+ import { money } from '../claims/claims-api';
+ import { type Crew, crewIds } from '../crews/crews-api';
+-import { patronShares } from '../people/people-api';
++import { type Hold, patronShares } from '../people/people-api';
+ 
+ /** A share percent: up to two decimals (more than 0.00 and at most 100.00 is checked apart). */
+ export const SHARE_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
+@@ -55,6 +55,26 @@ export function crewPool(crew: Crew): Pool {
+   };
+ }
+ 
++/** A person as a period's cuts need them: their id, the date they are retired from (null when not
++ *  retired) and their holds. */
++export interface PersonThen {
++  id: number;
++  retiredFrom: string | null;
++  holds: Hold[];
++}
++
++/** A period whose to-date is on or before the sheet's today, with what its cuts are worked from as
++ *  it all stood at the end of that to-date (the day the cuts are taken on): the pot then (null when
++ *  none), the pools and crews then, and the people then. */
++export interface PeriodThen {
++  period: string;
++  to: string;
++  pot: string | null;
++  pools: Pool[];
++  crews: Crew[];
++  people: PersonThen[];
++}
++
+ @Injectable({ providedIn: 'root' })
+ export class PoolsApi {
+   private readonly http = inject(HttpClient);
+@@ -65,6 +85,12 @@ export class PoolsApi {
+     return firstValueFrom(this.http.get<Pool[]>(this.url(sheetId), { headers: this.headers() }));
+   }
+ 
++  /** Each period whose to-date is on or before the sheet's today, by from-date, as it all stood at
++   *  the end of its to-date. */
++  history(sheetId: string): Promise<PeriodThen[]> {
++    return firstValueFrom(this.http.get<PeriodThen[]>(`${this.url(sheetId)}/history`, { headers: this.headers() }));
++  }
++
+   /** Add a pool; resolves to the sheet's pools with it. */
+   add(sheetId: string, name: string): Promise<Pool[]> {
+     return firstValueFrom(this.http.post<Pool[]>(this.url(sheetId), { name }, { headers: this.headers() }));
+diff --git a/src/main/frontend/src/app/features/pools/pools.ts b/src/main/frontend/src/app/features/pools/pools.ts
+index ff1dc126a..30a6d7306 100644
+--- a/src/main/frontend/src/app/features/pools/pools.ts
++++ b/src/main/frontend/src/app/features/pools/pools.ts
+@@ -7,7 +7,7 @@ import { cents, money } from '../claims/claims-api';
+ import { csvLine, heldOn, type Person } from '../people/people-api';
+ import { dueCents } from '../rates/rates-api';
+ import { type Crew } from '../crews/crews-api';
+-import { MEMBER_DATE_PATTERN, Pool, PoolMember, PoolsApi, SHARE_PATTERN, crewPool, memberError, memberKey, memberOn, poolError } from './pools-api';
++import { MEMBER_DATE_PATTERN, PeriodThen, Pool, PoolMember, PoolsApi, SHARE_PATTERN, crewPool, memberError, memberKey, memberOn, poolError } from './pools-api';
+ 
+ /** A pool's members' shares in cents, a member whose dates do not include the day counting 0. */
+ function memberShares(pool: Pool, day: string | null): number[] {
+@@ -58,6 +58,43 @@ function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => b
+   return cutsByKey;
+ }
+ 
++/** Each pool's members' cuts, by pool name, on a day with a pot: a pool that is a member of none
++ *  cuts the pot; a pool that is a member of another has no pot of its own but its cut in the pool
++ *  above (none when that pool has no cuts). A person is retired and held as the sets say. */
++function allCuts(pools: Pool[], pot: string | null, retiredIds: Set<number>, heldIds: Set<number>,
++  day: string | null): Map<string, Map<string, string>> {
++  const retired = (id: number) => retiredIds.has(id);
++  const held = (id: number) => heldIds.has(id);
++  const parentOf = new Map<string, string>();
++  for (const p of pools) for (const m of p.members) if (m.pool !== null) parentOf.set(m.pool, p.name);
++  const byName = new Map(pools.map((p) => [p.name, p]));
++  const all = new Map<string, Map<string, string>>();
++  const cutsFor = (pool: Pool, seen: Set<string>): Map<string, string> => {
++    const known = all.get(pool.name);
++    if (known) return known;
++    const parent = parentOf.get(pool.name);
++    let potHere = pot;
++    if (parent !== undefined) {
++      const above = byName.get(parent);
++      potHere = above && !seen.has(parent)
++        ? (cutsFor(above, new Set([...seen, pool.name])).get(`pool-${pool.name}`) ?? null)
++        : null;
++    }
++    const cuts = cutsOf(pool, potHere, retired, held, day);
++    all.set(pool.name, cuts);
++    return cuts;
++  };
++  for (const p of pools) cutsFor(p, new Set([p.name]));
++  return all;
++}
++
++/** A period's cuts for one pool, by member key: the period's name and the cuts as they stood at the
++ *  end of its to-date. */
++export interface PeriodCuts {
++  period: string;
++  cuts: Map<string, string>;
++}
++
+ // One pool's row: its total share and whether it is balanced, its members each with their share,
+ // and the form that adds a member to it.
+ @Component({
+@@ -77,6 +114,10 @@ function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => b
+               <span data-testid="pool-member-dates">{{ m.from ?? '' }} – {{ m.to ?? '' }}</span>
+             }
+             <span data-testid="pool-cut">{{ (cuts().get(key(m)) ?? '') | figure }}</span>
++            @for (pc of periodCuts(); track pc.period) {
++              <span>{{ pc.period }}:
++                <span [attr.data-testid]="'pool-cut-' + pc.period">{{ (pc.cuts.get(key(m)) ?? '') | figure }}</span></span>
++            }
+             @if (m.personId !== null && retired(m.personId)) {
+               <span>(retired)</span>
+             }
+@@ -121,6 +162,8 @@ export class PoolRow {
+   readonly pools = input.required<Pool[]>();
+   /** Each member's cut of this pool's pot, by member key. */
+   readonly cuts = input.required<Map<string, string>>();
++  /** Each ended period's cuts of this pool, as they stood at the end of the period. */
++  readonly periodCuts = input.required<PeriodCuts[]>();
+   /** The sheet's pools after a member was added. */
+   readonly saved = output<Pool[]>();
+ 
+@@ -232,6 +275,7 @@ export class PoolRow {
+       <ul aria-label="Pools" data-testid="pools-list">
+         @for (p of allPools(); track p.name) {
+           <li appPoolRow [pool]="p" [people]="people()" [pools]="pools()" [cuts]="cuts().get(p.name) ?? noCuts"
++            [periodCuts]="periodCuts().get(p.name) ?? noPeriodCuts"
+             (saved)="taken($event)"></li>
+         }
+       </ul>
+@@ -260,34 +304,26 @@ export class Pools {
+    *  pot; a pool that is a member of another has no pot of its own but its cut in the pool above
+    *  (none when that pool has no cuts). */
+   protected readonly cuts = computed(() => {
+-    const pools = this.allPools();
+-    const retiredIds = new Set(this.people().filter((p) => (p.retiredFrom ?? null) !== null).map((p) => p.id));
+-    const retired = (id: number) => retiredIds.has(id);
+     const today = this.session.today();
+-    const heldIds = new Set(this.people().filter((p) => today !== null && heldOn(p.holds, today)).map((p) => p.id));
+-    const held = (id: number) => heldIds.has(id);
+-    const parentOf = new Map<string, string>();
+-    for (const p of pools) for (const m of p.members) if (m.pool !== null) parentOf.set(m.pool, p.name);
+-    const byName = new Map(pools.map((p) => [p.name, p]));
+-    const all = new Map<string, Map<string, string>>();
+-    const cutsFor = (pool: Pool, seen: Set<string>): Map<string, string> => {
+-      const known = all.get(pool.name);
+-      if (known) return known;
+-      const parent = parentOf.get(pool.name);
+-      let pot: string | null = this.session.pot();
+-      if (parent !== undefined) {
+-        const above = byName.get(parent);
+-        pot = above && !seen.has(parent)
+-          ? (cutsFor(above, new Set([...seen, pool.name])).get(`pool-${pool.name}`) ?? null)
+-          : null;
+-      }
+-      const cuts = cutsOf(pool, pot, retired, held, today);
+-      all.set(pool.name, cuts);
+-      return cuts;
+-    };
+-    for (const p of pools) cutsFor(p, new Set([p.name]));
+-    return all;
++    const people = this.people();
++    const retiredIds = new Set(people.filter((p) => (p.retiredFrom ?? null) !== null).map((p) => p.id));
++    const heldIds = new Set(people.filter((p) => today !== null && heldOn(p.holds, today)).map((p) => p.id));
++    return allCuts(this.allPools(), this.session.pot(), retiredIds, heldIds, today);
+   });
++  /** Each period whose to-date is on or before the sheet's today, as it all stood at the end of it. */
++  private readonly history = signal<PeriodThen[]>([]);
++  /** Each such period's cuts by pool name, worked as the cuts are with the pools, crews, pot and
++   *  people as they stood at the end of the period and its to-date as the sheet's today. */
++  private readonly historyCuts = computed(() => this.history().map((h) => {
++    const retiredIds = new Set(h.people.filter((p) => p.retiredFrom !== null).map((p) => p.id));
++    const heldIds = new Set(h.people.filter((p) => heldOn(p.holds, h.to)).map((p) => p.id));
++    const pools = [...h.pools, ...h.crews.map(crewPool)];
++    return { period: h.period, cuts: allCuts(pools, h.pot, retiredIds, heldIds, h.to) };
++  }));
++  /** Each pool's ended periods' cuts, by pool name (a pool that did not exist then has none). */
++  protected readonly periodCuts = computed(() => new Map(this.allPools().map((p) =>
++    [p.name, this.historyCuts().map((h): PeriodCuts => ({ period: h.period, cuts: h.cuts.get(p.name) ?? this.noCuts }))])));
++  protected readonly noPeriodCuts: PeriodCuts[] = [];
+   private saving = false;
+   /** Guards against a slower, older read landing over a newer one. */
+   private readSeq = 0;
+@@ -310,6 +346,15 @@ export class Pools {
+       }
+       untracked(() => this.cutTotals.emit(totals));
+     });
++    effect(() => {
++      const id = this.session.sheetId();
++      this.session.loads();
++      this.session.today();
++      untracked(() => {
++        this.history.set([]);
++        if (id) void this.readHistory(id);
++      });
++    });
+     effect(() => {
+       const id = this.session.sheetId();
+       this.session.loads();
+@@ -345,6 +390,8 @@ export class Pools {
+   protected taken(pools: Pool[]): void {
+     this.readSeq++;
+     this.pools.set(pools);
++    const id = this.session.sheetId();
++    if (id) void this.readHistory(id);
+   }
+ 
+   protected async add(): Promise<void> {
+@@ -373,6 +420,19 @@ export class Pools {
+     }
+   }
+ 
++  /** Guards against a slower, older read of the history landing over a newer one. */
++  private historySeq = 0;
++
++  private async readHistory(sheetId: string): Promise<void> {
++    const seq = ++this.historySeq;
++    try {
++      const history = await this.api.history(sheetId);
++      if (seq === this.historySeq && this.session.sheetId() === sheetId) this.history.set(history);
++    } catch {
++      if (seq === this.historySeq) this.error.set('Something went wrong loading pools; try again.');
++    }
++  }
++
+   private async read(sheetId: string): Promise<void> {
+     const seq = ++this.readSeq;
+     try {
+diff --git a/src/main/java/net/officefloor/hq/app/crew/Crew.java b/src/main/java/net/officefloor/hq/app/crew/Crew.java
+index 998178766..fb88298b9 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/Crew.java
++++ b/src/main/java/net/officefloor/hq/app/crew/Crew.java
+@@ -2,14 +2,17 @@ package net.officefloor.hq.app.crew;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import net.officefloor.hq.app.history.HistoryListener;
+ 
+ /** A crew on the sheet: a name, unique on the sheet, its lead (a person of the sheet; none once
+  *  they have left it) and its members ({@link CrewMember}). */
+ @Entity
++@EntityListeners(HistoryListener.class)
+ @Table(name = "crew")
+ public class Crew {
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/crew/CrewMember.java b/src/main/java/net/officefloor/hq/app/crew/CrewMember.java
+index 9f45bae38..da23c9011 100644
+--- a/src/main/java/net/officefloor/hq/app/crew/CrewMember.java
++++ b/src/main/java/net/officefloor/hq/app/crew/CrewMember.java
+@@ -2,13 +2,16 @@ package net.officefloor.hq.app.crew;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import net.officefloor.hq.app.history.HistoryListener;
+ 
+ /** A person in a crew, other than its lead. */
+ @Entity
++@EntityListeners(HistoryListener.class)
+ @Table(name = "crew_member")
+ public class CrewMember {
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/history/HistoryService.java b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+index 8c5fa2c36..8015b3597 100644
+--- a/src/main/java/net/officefloor/hq/app/history/HistoryService.java
++++ b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+@@ -12,11 +12,15 @@ import java.util.Map;
+ import java.util.TreeMap;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimStatus;
++import net.officefloor.hq.app.crew.Crew;
++import net.officefloor.hq.app.crew.CrewMember;
+ import net.officefloor.hq.app.period.Period;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonPatron;
+ import net.officefloor.hq.app.person.PersonStatement;
+ import net.officefloor.hq.app.person.PersonWatch;
++import net.officefloor.hq.app.pool.Pool;
++import net.officefloor.hq.app.pool.PoolMember;
+ import net.officefloor.hq.app.rate.Rate;
+ import net.officefloor.hq.app.settings.Permission;
+ import net.officefloor.hq.app.settings.Role;
+@@ -30,7 +34,7 @@ import tools.jackson.databind.json.JsonMapper;
+ 
+ /**
+  * The sheet's history: each version of its claims, people, rates, settings, periods, statements,
+- * patrons, watches, roles and delegations a change left, with the sheet's today when the change was
++ * patrons, watches, roles, delegations, pools and crews (with their members) a change left, with the sheet's today when the change was
+  * made (one removed leaves an empty version). A version is written (by {@link HistoryListener}, in
+  * the change's own transaction, so a refused change writes none) only when it differs from the one
+  * before it. {@link #asOf} rebuilds the sheet as it stood at the end of a date.
+@@ -49,6 +53,10 @@ public class HistoryService {
+     private static final String ROLE = "role";
+     private static final String DELEGATION = "delegation";
+     private static final String PERMISSION = "permission";
++    private static final String POOL = "pool";
++    private static final String POOL_MEMBER = "pool-member";
++    private static final String CREW = "crew";
++    private static final String CREW_MEMBER = "crew-member";
+ 
+     /** The version an entity that was removed leaves. */
+     private static final String REMOVED = "null";
+@@ -111,14 +119,34 @@ public class HistoryService {
+     record DelegationState(String user, String steward, LocalDate from, LocalDate to) {
+     }
+ 
++    /** A pool's state: its name. */
++    public record PoolState(String name) {
++    }
++
++    /** A pool member's state: its pool, the person or the member pool (exactly one), its share and
++     *  its from- and to-date (null when not given). */
++    public record PoolMemberState(long poolId, Long personId, Long memberPoolId, BigDecimal share, LocalDate from,
++            LocalDate to) {
++    }
++
++    /** A crew's state: its name and its lead's person id (null once the lead has left the sheet). */
++    public record CrewState(String name, Long leadId) {
++    }
++
++    /** A crew member's state: its crew and the person. */
++    public record CrewMemberState(long crewId, long personId) {
++    }
++
+     /** The sheet as it stood at the end of a date: its settings (its today that date), its people
+      *  by id in list order, its claims by id, its rates, its periods by id, its statements by id (oldest first), its
+-     *  patrons and watches, its roles (by user name), its delegations by id and its permission
+-     *  matrix; none of it is stored. */
++     *  patrons and watches, its roles (by user name), its delegations by id, its permission
++     *  matrix, and its pools, pool members, crews and crew members, each by id in the order they
++     *  were added; none of it is stored. */
+     public record AsOf(Sheet sheet, Map<Long, Person> people, List<Rate> rates, Map<Long, Claim> claims,
+             Map<Long, Period> periods, Map<Long, PersonStatement> statements, List<PersonPatron> patrons,
+             List<PersonWatch> watches, List<SheetRole> roles, Map<Long, SheetDelegation> delegations,
+-            Map<Permission, String> permissions) {
++            Map<Permission, String> permissions, Map<Long, PoolState> pools, Map<Long, PoolMemberState> poolMembers,
++            Map<Long, CrewState> crews, Map<Long, CrewMemberState> crewMembers) {
+     }
+ 
+     private final JdbcTemplate jdbc;
+@@ -183,11 +211,27 @@ public class HistoryService {
+                     new DelegationState(d.getUser(), d.getSteward(), d.getFrom(), d.getTo()));
+         } else if (entity instanceof SheetPermission sp) {
+             write(sp.getSheetId(), PERMISSION, sp.getAction().key(), sp.getRoles());
++        } else if (entity instanceof Pool p) {
++            write(p.getSheetId(), POOL, String.valueOf(p.getId()), new PoolState(p.getName()));
++        } else if (entity instanceof PoolMember m) {
++            write(sheetOf("pool", m.getPoolId()), POOL_MEMBER, String.valueOf(m.getId()), new PoolMemberState(
++                    m.getPoolId(), m.getPersonId(), m.getMemberPoolId(), m.getShare(), m.getFromDate(), m.getToDate()));
++        } else if (entity instanceof Crew c) {
++            write(c.getSheetId(), CREW, String.valueOf(c.getId()), new CrewState(c.getName(), c.getLeadId()));
++        } else if (entity instanceof CrewMember m) {
++            write(sheetOf("crew", m.getCrewId()), CREW_MEMBER, String.valueOf(m.getId()),
++                    new CrewMemberState(m.getCrewId(), m.getPersonId()));
+         }
+     }
+ 
++    /** The sheet a pool or crew (by its table) is on. */
++    private String sheetOf(String table, long id) {
++        return jdbc.queryForObject("SELECT sheet_id FROM " + table + " WHERE id = ?", String.class, id);
++    }
++
+     /** Write that an entity of the sheet is gone now: a person merged or transferred away (with
+-     *  their claims), a statement cancelled, a watch stopped, a permission set back to its standing rule. */
++     *  their claims), a statement cancelled, a watch stopped, a permission set back to its standing rule,
++     *  a pool or crew membership dropped. */
+     void removed(Object entity) {
+         if (entity instanceof Person p) {
+             writeText(p.getSheetId(), PERSON, String.valueOf(p.getId()), REMOVED);
+@@ -205,6 +249,10 @@ public class HistoryService {
+             writeText(r.getSheetId(), ROLE, r.getUser(), REMOVED);
+         } else if (entity instanceof SheetPermission sp) {
+             writeText(sp.getSheetId(), PERMISSION, sp.getAction().key(), REMOVED);
++        } else if (entity instanceof PoolMember m) {
++            writeText(sheetOf("pool", m.getPoolId()), POOL_MEMBER, String.valueOf(m.getId()), REMOVED);
++        } else if (entity instanceof CrewMember m) {
++            writeText(sheetOf("crew", m.getCrewId()), CREW_MEMBER, String.valueOf(m.getId()), REMOVED);
+         }
+     }
+ 
+@@ -247,6 +295,10 @@ public class HistoryService {
+         List<SheetRole> roles = new ArrayList<>();
+         Map<Long, SheetDelegation> delegations = new TreeMap<>();
+         Map<Permission, String> permissions = new EnumMap<>(Permission.class);
++        Map<Long, PoolState> pools = new TreeMap<>();
++        Map<Long, PoolMemberState> poolMembers = new TreeMap<>();
++        Map<Long, CrewState> crews = new TreeMap<>();
++        Map<Long, CrewMemberState> crewMembers = new TreeMap<>();
+         latest.forEach((key, state) -> {
+             if (state.equals(REMOVED)) {
+                 return;
+@@ -315,6 +367,10 @@ public class HistoryService {
+                     delegations.put(Long.valueOf(id), new SheetDelegation(sheetId, d.user(), d.steward(), d.from(), d.to()));
+                 }
+                 case PERMISSION -> permissions.put(Permission.of(id), json.readValue(state, String.class));
++                case POOL -> pools.put(Long.valueOf(id), json.readValue(state, PoolState.class));
++                case POOL_MEMBER -> poolMembers.put(Long.valueOf(id), json.readValue(state, PoolMemberState.class));
++                case CREW -> crews.put(Long.valueOf(id), json.readValue(state, CrewState.class));
++                case CREW_MEMBER -> crewMembers.put(Long.valueOf(id), json.readValue(state, CrewMemberState.class));
+                 default -> {
+                 }
+             }
+@@ -331,7 +387,7 @@ public class HistoryService {
+                         .thenComparing(Map.Entry::getKey))
+                 .forEach(e -> peopleListed.put(e.getKey(), e.getValue()));
+         return new AsOf(sheet, peopleListed, rates, claimsListed, periods, statements, patrons, watches, roles,
+-                delegations, permissions);
++                delegations, permissions, pools, poolMembers, crews, crewMembers);
+     }
+ 
+     private static Person personOf(String sheetId, long id, PersonState s) {
+diff --git a/src/main/java/net/officefloor/hq/app/pool/Pool.java b/src/main/java/net/officefloor/hq/app/pool/Pool.java
+index 43168d1e3..07a31e8a3 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/Pool.java
++++ b/src/main/java/net/officefloor/hq/app/pool/Pool.java
+@@ -2,13 +2,16 @@ package net.officefloor.hq.app.pool;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
++import net.officefloor.hq.app.history.HistoryListener;
+ 
+ /** A pool on the sheet: a name, unique on the sheet, and its members ({@link PoolMember}). */
+ @Entity
++@EntityListeners(HistoryListener.class)
+ @Table(name = "pool")
+ public class Pool {
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolController.java b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+index 87e48798a..a554b2de7 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolController.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolController.java
+@@ -11,7 +11,12 @@ import java.time.format.DateTimeParseException;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.stream.Collectors;
++import net.officefloor.hq.app.crew.CrewController;
++import net.officefloor.hq.app.history.AsOfGuard;
++import net.officefloor.hq.app.history.HistoryService;
++import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.session.CurrentUser;
++import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -48,6 +53,52 @@ public class PoolController {
+         }
+     }
+ 
++    /** A hold as the screen reads it: its from- and to-date (yyyy-mm-dd, the to-date null when open). */
++    public record HoldView(String from, String to) {
++    }
++
++    /** A person as a period's cuts need them: their id, the date they are retired from (null when
++     *  not retired) and their holds. */
++    public record PersonThen(long id, String retiredFrom, List<HoldView> holds) {
++        static PersonThen of(long id, Person p) {
++            return new PersonThen(id, p.getRetiredFrom() == null ? null : p.getRetiredFrom().toString(),
++                    p.getHolds().stream()
++                            .map(h -> new HoldView(h.from().toString(), h.to() == null ? null : h.to().toString()))
++                            .toList());
++        }
++    }
++
++    /** A period whose to-date has come, with what its cuts are worked from as they stood at the end
++     *  of it: the period's name and to-date (the day the cuts are taken on), the pot then (two
++     *  decimals, null when none), the pools and crews then and the people then. */
++    public record PeriodCutsView(String period, String to, String pot, List<PoolView> pools,
++            List<CrewController.CrewView> crews, List<PersonThen> people) {
++        static PeriodCutsView of(PoolService.PeriodThen p) {
++            HistoryService.AsOf then = p.then();
++            Map<Long, String> poolNames = then.pools().entrySet().stream()
++                    .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().name()));
++            List<PoolView> pools = then.pools().entrySet().stream()
++                    .map(e -> new PoolView(e.getValue().name(), then.poolMembers().values().stream()
++                            .filter(m -> m.poolId() == e.getKey())
++                            .map(m -> new MemberView(m.personId(),
++                                    m.memberPoolId() == null ? null : poolNames.get(m.memberPoolId()),
++                                    m.share().setScale(2).toPlainString(),
++                                    m.from() == null ? null : m.from().toString(),
++                                    m.to() == null ? null : m.to().toString()))
++                            .toList()))
++                    .toList();
++            List<CrewController.CrewView> crews = then.crews().entrySet().stream()
++                    .map(e -> new CrewController.CrewView(e.getValue().name(), e.getValue().leadId(),
++                            then.crewMembers().values().stream().filter(m -> m.crewId() == e.getKey())
++                                    .map(HistoryService.CrewMemberState::personId).toList()))
++                    .toList();
++            return new PeriodCutsView(p.period().getName(), p.period().getTo().toString(),
++                    then.sheet().getPot() == null ? null : then.sheet().getPot().setScale(2).toPlainString(),
++                    pools, crews,
++                    then.people().entrySet().stream().map(e -> PersonThen.of(e.getKey(), e.getValue())).toList());
++        }
++    }
++
+     /** A pool as the form submits it: a name (not blank). */
+     public record PoolForm(@NotBlank @Size(max = 200) String name) {
+     }
+@@ -80,6 +131,16 @@ public class PoolController {
+         return all.stream().map(p -> PoolView.of(p, poolNames)).toList();
+     }
+ 
++    /** Each period whose to-date is on or before the sheet's today (or the as-of date), by from-date,
++     *  with the pools, crews, pot and people as they stood at the end of its to-date. */
++    @GetMapping("/history")
++    public List<PeriodCutsView> history(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        return service.history(sheetId, asOf).stream().map(PeriodCutsView::of).toList();
++    }
++
+     /** Add a pool; resolves to the sheet's pools with it. */
+     @PostMapping
+     public List<PoolView> add(
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolMember.java b/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
+index 7027c8fe7..43bebdbe0 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolMember.java
+@@ -2,17 +2,20 @@ package net.officefloor.hq.app.pool;
+ 
+ import jakarta.persistence.Column;
+ import jakarta.persistence.Entity;
++import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
+ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import net.officefloor.hq.app.history.HistoryListener;
+ 
+ /** A person, or another pool, in a pool with their share percent (two decimals, more than 0.00,
+  *  at most 100.00): exactly one of the person and the member pool is set. The membership may carry
+  *  a from-date and a to-date (both inclusive, either optional). */
+ @Entity
++@EntityListeners(HistoryListener.class)
+ @Table(name = "pool_member")
+ public class PoolMember {
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/pool/PoolService.java b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+index 725f67625..ab761f21c 100644
+--- a/src/main/java/net/officefloor/hq/app/pool/PoolService.java
++++ b/src/main/java/net/officefloor/hq/app/pool/PoolService.java
+@@ -3,11 +3,15 @@ package net.officefloor.hq.app.pool;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.Comparator;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.crew.CrewRepository;
++import net.officefloor.hq.app.history.HistoryService;
++import net.officefloor.hq.app.period.Period;
++import net.officefloor.hq.app.period.PeriodRepository;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -23,20 +27,28 @@ public class PoolService {
+     public record PoolWithMembers(Pool pool, List<PoolMember> members) {
+     }
+ 
++    /** A period and the sheet as it stood at the end of its to-date. */
++    public record PeriodThen(Period period, HistoryService.AsOf then) {
++    }
++
+     private final PoolRepository pools;
+     private final PoolMemberRepository members;
+     private final PersonRepository people;
+     private final CrewRepository crews;
+     private final SheetService sheets;
++    private final PeriodRepository periods;
++    private final HistoryService history;
+     private final Audit audit;
+ 
+     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
+-            CrewRepository crews, SheetService sheets, Audit audit) {
++            CrewRepository crews, SheetService sheets, PeriodRepository periods, HistoryService history, Audit audit) {
+         this.pools = pools;
+         this.members = members;
+         this.people = people;
+         this.crews = crews;
+         this.sheets = sheets;
++        this.periods = periods;
++        this.history = history;
+         this.audit = audit;
+     }
+ 
+@@ -49,6 +61,20 @@ public class PoolService {
+         return all.stream().map(p -> new PoolWithMembers(p, byPool.getOrDefault(p.getId(), List.of()))).toList();
+     }
+ 
++    /** Each of the sheet's periods (by from-date) whose to-date is on or before the day (the sheet's
++     *  today when none is given; the periods then as they stood at the end of it), with the sheet as
++     *  it stood at the end of that to-date. */
++    @Transactional(readOnly = true)
++    public List<PeriodThen> history(String sheetId, LocalDate asOf) {
++        LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
++        List<Period> all = asOf != null
++                ? history.asOf(sheetId, asOf).periods().values().stream()
++                        .sorted(Comparator.comparing(Period::getFrom)).toList()
++                : periods.findBySheetIdOrderByFromAsc(sheetId);
++        return all.stream().filter(p -> !p.getTo().isAfter(today))
++                .map(p -> new PeriodThen(p, history.asOf(sheetId, p.getTo()))).toList();
++    }
++
+     /** Add a pool to the sheet, the sheet created first if it was never loaded; refused (409) when
+      *  the sheet has a pool or a crew (a crew is a pool too) of the name already. */
+     @Transactional
