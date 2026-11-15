@@ -193,6 +193,34 @@ public class PersonService {
         return person;
     }
 
+    /** Give each of the people of {@code ids}, in list order, {@code grade} from {@code gradeFrom}
+     *  (null: the sheet's today) as saving them in the person form would, each written with its
+     *  PERSON_EDITED and rollup lines; all or none. Refused (404) when any is not on the sheet. */
+    @Transactional
+    public int grade(String sheetId, String user, List<Long> ids, String grade, LocalDate gradeFrom) {
+        Set<Long> wanted = Set.copyOf(ids);
+        List<Person> chosen = people.findBySheetIdOrderByIdAsc(sheetId).stream()
+                .filter(p -> wanted.contains(p.getId())).toList();
+        if (chosen.size() != wanted.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person");
+        }
+        LocalDate today = sheets.today(sheetId);
+        for (Person person : chosen) {
+            RollupService.Snapshot before = rollup.snapshot(sheetId);
+            if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+                person.recordGrade(grade, gradeFrom != null ? gradeFrom : today);
+            }
+            try {
+                people.flush();
+            } catch (ObjectOptimisticLockingFailureException e) {
+                throw savedByAnother(); // saved by another user at the same moment
+            }
+            record("PERSON_EDITED", sheetId, user, person, today, "");
+            rollup.recordChanges(sheetId, user, before);
+        }
+        return chosen.size();
+    }
+
     /** Retire a person from a date (a missing one takes the sheet's today); they count as retired
      *  at once. Retiring them again moves the date. From the day the date is reached their open
      *  claims, unless bound by a statement, leave the live totals. */

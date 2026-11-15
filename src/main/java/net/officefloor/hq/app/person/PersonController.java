@@ -90,6 +90,18 @@ public class PersonController {
     public record PatronForm(@NotNull Long patronId) {
     }
 
+    /** A bulk grade as the screen submits it: the selected people by id, the grade, and the date it
+     *  is in force from (null: the sheet's today). */
+    public record BulkGradeForm(
+            @NotNull @Size(min = 1, max = 10000) List<@NotNull Long> ids,
+            @NotNull @Pattern(regexp = "[ABC]") String grade,
+            LocalDate from) {
+    }
+
+    /** A bulk grade's result: how many people were given the grade. */
+    public record BulkGradeView(int changed) {
+    }
+
     private final PersonService service;
     private final HistoryService history;
 
@@ -151,6 +163,14 @@ public class PersonController {
             @Valid @RequestBody PersonForm body) {
         return view(sheetId, user, service.update(sheetId, user.trim(), id, body.version(), body.name(), body.grade(),
                 body.gradeFrom(), body.termsDays()));
+    }
+
+    @PostMapping("/bulk-grade")
+    public BulkGradeView bulkGrade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkGradeForm body) {
+        return new BulkGradeView(service.grade(sheetId, user.trim(), body.ids(), body.grade(), body.from()));
     }
 
     @PostMapping("/{id}/retire")

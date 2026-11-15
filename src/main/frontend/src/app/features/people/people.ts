@@ -9,7 +9,7 @@ import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
-import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
+import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap) and its excess over the cap, their overdue claims, and their patrons and backing (their patrons' recent settled figures); the sheet's claimed-total,
@@ -96,13 +96,34 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
       @if (bulkSettleError(); as err) {
         <p role="alert" data-testid="bulk-settle-error">{{ err }}</p>
       }
+      <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade selected people">
+        <label for="bulk-grade">Grade selected people</label>
+        <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
+          @for (g of grades; track g) {
+            <option [value]="g">{{ g }}</option>
+          }
+        </select>
+        <label for="bulk-grade-from">From</label>
+        <input id="bulk-grade-from" type="date" data-testid="bulk-grade-from" formControlName="from" />
+        <button type="submit" data-testid="bulk-grade-apply">Grade selected</button>
+        @if (bulkGraded() !== null) {
+          <p role="status">Changed <strong data-testid="bulk-graded">{{ bulkGraded() }}</strong></p>
+        }
+        @if (bulkGradeErr(); as err) {
+          <p role="alert" data-testid="person-error">{{ err }}</p>
+        }
+      </form>
       <table data-testid="people-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col"><span class="visually-hidden">Select</span></th><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of shownPeople(); track p.id) {
             <tr [attr.data-testid]="'person-row-' + p.id">
+              <td>
+                <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
+                  (change)="personToggled(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
+              </td>
               <td data-testid="person-name">{{ p.name }}</td>
               <td data-testid="person-grade">{{ gradeOf(p) }}</td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
@@ -393,6 +414,17 @@ export class People {
   protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
   protected readonly bulkSettleError = signal<string | null>(null);
   private bulkSettling = false;
+  /** The ids of the people selected for a bulk grade. */
+  protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+  /** The bulk grade bar: a grade and the date it is in force from (blank: the sheet's today). */
+  protected readonly bulkGradeForm = new FormGroup({
+    grade: new FormControl<string>('A', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
+  });
+  /** How many people the last bulk grade changed; null while one runs or before the first. */
+  protected readonly bulkGraded = signal<number | null>(null);
+  protected readonly bulkGradeErr = signal<string | null>(null);
+  private bulkGrading = false;
   protected readonly editingId = signal<number | null>(null);
   /** The version of the person the open editor loaded. */
   private editingVersion = 0;
@@ -437,6 +469,7 @@ export class People {
     this.form.valueChanges.subscribe(() => this.error.set(null));
     this.quickForm.valueChanges.subscribe(() => this.quickError.set(null));
     this.pasteForm.valueChanges.subscribe(() => this.pasteErr.set(null));
+    this.bulkGradeForm.valueChanges.subscribe(() => this.bulkGradeErr.set(null));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
@@ -454,6 +487,10 @@ export class People {
         this.bulkError.set(null);
         this.bulkSettleResult.set(null);
         this.bulkSettleError.set(null);
+        this.selectedPeople.set(new Set());
+        this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
+        this.bulkGraded.set(null);
+        this.bulkGradeErr.set(null);
         this.people.set([]);
         this.claims.set([]);
         this.rates.set([]);
@@ -697,6 +734,48 @@ export class People {
       this.bulkSettleError.set('Something went wrong settling the claims; try again.');
     } finally {
       this.bulkSettling = false;
+    }
+  }
+
+  /** Select a person for a bulk grade, or take them out of the selection. */
+  protected personToggled(id: number, on: boolean): void {
+    this.bulkGradeErr.set(null);
+    this.selectedPeople.update((ids) => {
+      const next = new Set(ids);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  /** Give every selected person the grade from the date entered (blank: the sheet's today), in
+   *  list order, as the person form would; then show how many were changed and the people as the
+   *  store now holds them. */
+  protected async bulkGrade(): Promise<void> {
+    if (this.bulkGrading) return;
+    this.bulkGraded.set(null);
+    this.bulkGradeErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const ids = [...this.selectedPeople()];
+    if (ids.length === 0) {
+      this.bulkGradeErr.set('Select at least one person.');
+      return;
+    }
+    const value = this.bulkGradeForm.getRawValue();
+    this.bulkGrading = true;
+    try {
+      const result = await this.api.bulkGrade(sheetId, ids, value.grade, value.from.trim());
+      const people = await this.api.list(sheetId);
+      if (this.session.sheetId() !== sheetId) return;
+      this.people.set(people);
+      this.selectedPeople.set(new Set());
+      this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
+      this.bulkGraded.set(result.changed);
+    } catch (e) {
+      this.bulkGradeErr.set(bulkGradeError(e));
+    } finally {
+      this.bulkGrading = false;
     }
   }
 

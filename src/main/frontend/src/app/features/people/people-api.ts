@@ -121,6 +121,14 @@ export class PeopleApi {
     );
   }
 
+  /** Give the people of the ids, in list order, a grade from a date (blank: the sheet's today); how many were changed. */
+  bulkGrade(sheetId: string, ids: number[], grade: string, from: string): Promise<{ changed: number }> {
+    return firstValueFrom(
+      this.http.post<{ changed: number }>(`${this.url(sheetId)}/bulk-grade`, { ids, grade, from: from || null },
+        { headers: this.headers() }),
+    );
+  }
+
   /** Retire a person from a date; a blank one takes the sheet's today. */
   retire(sheetId: string, id: number, from: string): Promise<Person> {
     return firstValueFrom(
@@ -163,6 +171,13 @@ export function personError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name, choose a grade, enter a from-date as yyyy-mm-dd or none and terms as whole days or none.';
   if (isStale(e)) return 'Someone else saved this person since you opened it; the form now shows their values.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That name is already in use on this sheet.';
+  return otherError(e);
+}
+
+export function bulkGradeError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Select people, choose a grade and enter a from-date as yyyy-mm-dd or none.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'A selected person is no longer on this sheet; reload it.';
+  if (isStale(e)) return 'Someone else saved a selected person at the same moment; try again.';
   return otherError(e);
 }
 
