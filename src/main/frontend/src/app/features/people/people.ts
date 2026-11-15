@@ -32,7 +32,7 @@ import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasEr
       [myCrewDueTotal]="myCrewDueTotal()" [watchedDueTotal]="watchedDueTotal()" [dashboard]="dashboard()"
       [user]="session.user()" />
     <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" />
-    <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" (replaced)="periods.set($event)" />
+    <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" [claimCounts]="claimCountByPeriod()" (saved)="periodSaved($event)" (replaced)="periods.set($event)" />
     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
     <app-classic-summary [periods]="periods()" [dueTotals]="classicDueByPeriod()" [dueTotal]="classicDueTotal()" />
     <app-pools [people]="people()" [crews]="crews()" (cutTotals)="cutTotals.set($event)" />
@@ -927,6 +927,16 @@ export class People {
     const out = new Map<number, number>();
     for (const period of this.periods()) {
       out.set(period.id, this.people().reduce((sum, p) => sum + this.periodDueOf(p.id, period), 0));
+    }
+    return out;
+  });
+  /** How many claims belong to each period, by period id: those whose due-by falls in it, VOID and DELETED ones
+   *  left out. */
+  protected readonly claimCountByPeriod = computed(() => {
+    const out = new Map<number, number>();
+    const claims = this.claims().filter((c) => c.status !== 'VOID' && c.status !== 'DELETED');
+    for (const period of this.periods()) {
+      out.set(period.id, claims.filter((c) => periodOn([period], c.dueBy) !== null).length);
     }
     return out;
   });

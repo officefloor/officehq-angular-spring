@@ -73,7 +73,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       </form>
       <table data-testid="periods-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col">Locked</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -86,6 +86,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-fy">{{ session.fiscalYearOf(p.from) }}</td>
               <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
               <td data-testid="period-locked">{{ p.locked ? 'yes' : 'no' }}</td>
+              <td data-testid="period-claims-count">{{ claimCounts().get(p.id) ?? 0 }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                   [attr.aria-label]="'Close period ' + p.name">Close</button>
@@ -116,6 +117,8 @@ export class Periods {
   readonly periods = input.required<Period[]>();
   /** Each period's due-total in cents, by period id. */
   readonly dueTotals = input.required<Map<number, number>>();
+  /** How many claims belong to each period (due inside it, VOID and DELETED ones left out), by period id. */
+  readonly claimCounts = input.required<Map<number, number>>();
   /** A period just added or closed, for the sheet to take in. */
   readonly saved = output<Period>();
   /** The sheet's periods after a change that removed some, by from-date. */
