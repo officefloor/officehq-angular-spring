@@ -1,0 +1,148 @@
+diff --git a/src/main/frontend/src/app/features/crews/crews.ts b/src/main/frontend/src/app/features/crews/crews.ts
+index 8f6eb4a85..f464592ea 100644
+--- a/src/main/frontend/src/app/features/crews/crews.ts
++++ b/src/main/frontend/src/app/features/crews/crews.ts
+@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { FigurePipe } from '../../core/figure.pipe';
+ import { Session } from '../../core/session';
+ import { money } from '../claims/claims-api';
+-import { type Person } from '../people/people-api';
++import { type Person, gradeOn } from '../people/people-api';
+ import { Crew, CrewsApi, crewError, crewIds, crewMemberError } from './crews-api';
+ 
+ // One crew's row: its lead, its due-total, its members, and the form that adds a member to it.
+@@ -13,7 +13,7 @@ import { Crew, CrewsApi, crewError, crewIds, crewMemberError } from './crews-api
+   host: { '[attr.data-testid]': "'crew-row-' + crew().name" },
+   template: `
+       <h3 data-testid="crew-name">{{ crew().name }}</h3>
+-      <p>Lead <strong data-testid="crew-lead">{{ nameOf(crew().leadId) }}</strong>
++      <p>Lead <strong data-testid="crew-lead">{{ leadName() }}</strong>
+         Due-total <strong data-testid="crew-due-total">{{ dueTotal() | figure }}</strong></p>
+       <ul [attr.aria-label]="'Members of crew ' + crew().name">
+         @for (id of crew().memberIds; track id) {
+@@ -65,6 +65,13 @@ export class CrewRow {
+     this.form.valueChanges.subscribe(() => this.error.set(null));
+   }
+ 
++  /** The lead as <name> (<grade in force on the sheet's today>); blank when the crew has none. */
++  protected readonly leadName = computed(() => {
++    const leadId = this.crew().leadId;
++    const lead = leadId === null ? undefined : this.byId().get(leadId);
++    return lead?.name ? `${lead.name} (${gradeOn(lead.grades, this.session.today())})` : '';
++  });
++
+   protected nameOf(personId: number | null): string {
+     return (personId !== null && this.byId().get(personId)?.name) || '';
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 1c162b236..4e066f6db 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -284,7 +284,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+                 <input type="checkbox" data-testid="person-select" [checked]="selectedPeople().has(p.id)"
+                   (change)="personToggled(p.id, $any($event.target).checked)" [attr.aria-label]="'Select ' + p.name" />
+               </td>
+-              <td data-testid="person-name">{{ p.name }}</td>
++              <td data-testid="person-name">{{ p.name }} ({{ gradeOf(p) }})</td>
+               <td data-testid="person-origin">{{ p.origin ?? '' }}</td>
+               @if (shows('aliases')) {
+                 <td data-testid="person-aliases">{{ p.aliases.join(', ') }}</td>
+@@ -826,7 +826,7 @@ export class People {
+       active: active.has(p.id) }));
+   });
+   /** The names of the people on the sheet, by person id (retired ones too). */
+-  private readonly namesById = computed(() => new Map(this.people().map((p) => [p.id, p.name])));
++  private readonly peopleById = computed(() => new Map(this.people().map((p) => [p.id, p])));
+   /** Everyone's due-total added up, skipping n/a, trimmed. */
+   protected readonly dueTotal = computed(() =>
+     money(trimmedSum([...this.dueByPerson().values()].filter((d): d is number => d !== null))));
+@@ -1169,15 +1169,16 @@ export class People {
+     return due === null || due === undefined ? 'n/a' : money(due);
+   }
+ 
+-  /** The person's patrons as <name> <share>, sorted by name, comma and space separated. */
++  /** The person's patrons as <name> (<grade today>) <share>, sorted by name, comma and space separated. */
+   protected patronNamesOf(p: Person): string {
+-    const names = this.namesById();
++    const byId = this.peopleById();
+     const shares = patronShares(p.patronIds.length);
+     return p.patronIds
+-      .map((id, i) => ({ name: names.get(id) ?? '', share: shares[i] }))
+-      .filter((o) => o.name)
++      .map((id, i) => ({ patron: byId.get(id), share: shares[i] }))
++      .filter((o): o is { patron: Person; share: number } => !!o.patron?.name)
++      .map((o) => ({ name: o.patron.name, grade: this.gradeOf(o.patron), share: o.share }))
+       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+-      .map((o) => `${o.name} ${money(o.share)}`)
++      .map((o) => `${o.name} (${o.grade}) ${money(o.share)}`)
+       .join(', ');
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/search/search-api.ts b/src/main/frontend/src/app/features/search/search-api.ts
+index 0d440f01c..01751c2a7 100644
+--- a/src/main/frontend/src/app/features/search/search-api.ts
++++ b/src/main/frontend/src/app/features/search/search-api.ts
+@@ -3,11 +3,13 @@ import { Injectable, inject } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
+ import { Session } from '../../core/session';
+ 
+-/** A person found: the sheet they are on, their name and their due-total as the lists show it. */
++/** A person found: the sheet they are on, their name, their due-total as the lists show it and
++ *  their grade in force on that sheet's today. */
+ export interface Found {
+   sheetId: string;
+   name: string;
+   dueTotal: string;
++  grade: string;
+ }
+ 
+ // People found by name or alias over a sheet's tree.
+diff --git a/src/main/frontend/src/app/features/search/search.ts b/src/main/frontend/src/app/features/search/search.ts
+index 025bbeeb2..976dafaf8 100644
+--- a/src/main/frontend/src/app/features/search/search.ts
++++ b/src/main/frontend/src/app/features/search/search.ts
+@@ -21,7 +21,7 @@ import { Found, SearchApi } from './search-api';
+       </form>
+       <ul aria-label="People found">
+         @for (f of found() ?? []; track $index) {
+-          <li data-testid="search-line">{{ f.sheetId }} {{ f.name }} {{ f.dueTotal }}</li>
++          <li data-testid="search-line">{{ f.sheetId }} {{ f.name }} ({{ f.grade }}) {{ f.dueTotal }}</li>
+         }
+       </ul>
+     </section>
+diff --git a/src/main/java/net/officefloor/hq/app/search/SearchService.java b/src/main/java/net/officefloor/hq/app/search/SearchService.java
+index a2f8a35b3..1d7f32136 100644
+--- a/src/main/java/net/officefloor/hq/app/search/SearchService.java
++++ b/src/main/java/net/officefloor/hq/app/search/SearchService.java
+@@ -1,5 +1,6 @@
+ package net.officefloor.hq.app.search;
+ 
++import java.time.LocalDate;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Locale;
+@@ -15,8 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
+ @Service
+ public class SearchService {
+ 
+-    /** A person found: the sheet they are on, their name and their due-total as the screen shows it. */
+-    public record Found(String sheetId, String name, String dueTotal) {
++    /** A person found: the sheet they are on, their name, their due-total as the screen shows it and
++     *  their grade in force on that sheet's today. */
++    public record Found(String sheetId, String name, String dueTotal, String grade) {
+     }
+ 
+     private final SheetService sheets;
+@@ -45,9 +47,11 @@ public class SearchService {
+                 continue;
+             }
+             Map<Long, RollupService.Figures> figures = rollup.snapshot(id).people();
++            LocalDate today = sheets.today(id);
+             for (Person p : matching) {
+                 RollupService.Figures f = figures.get(p.getId());
+-                out.add(new Found(id, p.getName(), RollupService.text(f == null ? null : f.dueTotal())));
++                out.add(new Found(id, p.getName(), RollupService.text(f == null ? null : f.dueTotal()),
++                        p.gradeOn(today)));
+             }
+         }
+         return out;
