@@ -16,6 +16,10 @@ export interface Plan {
   day: number | null;
   end: string;
   generated: number;
+  /** The sheet's today the plan was paused on; null while it runs. */
+  pausedOn: string | null;
+  /** Its past pauses: from the day it was paused (inclusive) to the day it was resumed (exclusive). */
+  pauses: { from: string; to: string }[];
 }
 
 /** A plan as the form submits it: a blank start takes the sheet's today; one of every and day. */
@@ -47,6 +51,11 @@ export class PlansApi {
     return firstValueFrom(this.http.post<Plan>(`${this.url(sheetId)}/people/${personId}/plans`, form, { headers: this.headers() }));
   }
 
+  /** Pause the plan (or, with `on` false, resume it) on the sheet's today. */
+  setPaused(sheetId: string, planId: number, on: boolean): Promise<Plan> {
+    return firstValueFrom(this.http.post<Plan>(`${this.url(sheetId)}/plans/${planId}/${on ? 'pause' : 'resume'}`, null, { headers: this.headers() }));
+  }
+
   /** Make the claims every plan on the sheet is due by the sheet's today. */
   generate(sheetId: string): Promise<Generated> {
     return firstValueFrom(this.http.post<Generated>(`${this.url(sheetId)}/plans/generate`, null, { headers: this.headers() }));
@@ -72,9 +81,23 @@ export function planError(e: unknown): string {
   return otherError(e);
 }
 
+export function pauseError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a running plan can be paused, and only a paused one resumed.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That plan is no longer on the sheet.';
+  return otherError(e);
+}
+
+/** Whether the plan skips a date: it falls on or after the day a pause began and before the day
+ *  it was resumed, or on or after the day of the pause still in force. */
+export function skips(plan: Plan, date: string): boolean {
+  if (plan.pausedOn !== null && date >= plan.pausedOn) return true;
+  return plan.pauses.some((p) => date >= p.from && date < p.to);
+}
+
 /** The plan's first `count` dates after the date given and on or before its end, in order: its
  *  start and then every so many days; or its day of the month (on the month's last day when the
- *  month is shorter) in every month from the start's, leaving out those before the start. */
+ *  month is shorter) in every month from the start's, leaving out those before the start and
+ *  those it skips for a pause. */
 export function nextDates(plan: Plan, after: string, count = 5): string[] {
   const out: string[] = [];
   if (plan.day !== null) {
@@ -85,7 +108,7 @@ export function nextDates(plan: Plan, after: string, count = 5): string[] {
       if (first > plan.end) break;
       const length = new Date(Date.UTC(year, month, 0)).getUTCDate();
       const d = `${year}-${pad(month)}-${pad(Math.min(plan.day, length))}`;
-      if (d >= plan.start && d > after && d <= plan.end) out.push(d);
+      if (d >= plan.start && d > after && d <= plan.end && !skips(plan, d)) out.push(d);
       month += 1;
       if (month > 12) {
         month = 1;
@@ -100,7 +123,9 @@ export function nextDates(plan: Plan, after: string, count = 5): string[] {
     const gap = Math.round((Date.parse(after) - Date.parse(d)) / 86_400_000);
     d = plusDays(d, (Math.floor(gap / every) + 1) * every);
   }
-  for (; out.length < count && d <= plan.end; d = plusDays(d, every)) out.push(d);
+  for (; out.length < count && d <= plan.end; d = plusDays(d, every)) {
+    if (!skips(plan, d)) out.push(d);
+  }
   return out;
 }
 

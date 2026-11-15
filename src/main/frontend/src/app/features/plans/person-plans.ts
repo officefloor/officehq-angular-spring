@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { AMOUNT_PATTERN } from '../claims/claims-api';
-import { PlansApi, nextDates, planError, type Plan } from './plans-api';
+import { PlansApi, nextDates, pauseError, planError, type Plan } from './plans-api';
 
 // One person's plans, in the order they were added, and the form that adds one.
 @Component({
@@ -39,7 +39,13 @@ import { PlansApi, nextDates, planError, type Plan } from './plans-api';
             }
             to <span data-testid="plan-end">{{ pl.end }}</span>;
             made <span data-testid="plan-generated">{{ pl.generated }}</span>;
-            next <span data-testid="plan-next-dates">{{ next(pl) }}</span>
+            next <span data-testid="plan-next-dates">{{ next(pl) }}</span>;
+            paused <span data-testid="plan-paused">{{ pl.pausedOn !== null ? 'yes' : 'no' }}</span>
+            <button type="button" data-testid="plan-pause" (click)="setPaused(pl, true)">Pause</button>
+            <button type="button" data-testid="plan-resume" (click)="setPaused(pl, false)">Resume</button>
+            @if (rowErrors()[pl.id]; as err) {
+              <span role="alert" data-testid="plan-error">{{ err }}</span>
+            }
           </li>
         }
       </ul>
@@ -55,6 +61,8 @@ export class PersonPlans {
 
   protected readonly plans = computed(() => this.session.plans().filter((p) => p.personId === this.personId()));
   protected readonly error = signal<string | null>(null);
+  /** Each plan's refused action, by plan id; removed when the next action on it is taken. */
+  protected readonly rowErrors = signal<Record<number, string>>({});
   private submitting = false;
 
   protected readonly form = new FormGroup({
@@ -72,6 +80,7 @@ export class PersonPlans {
       this.session.loads();
       untracked(() => {
         this.error.set(null);
+        this.rowErrors.set({});
         this.form.reset({ amount: '', start: '', every: '', day: '', end: '' }, { emitEvent: false });
       });
     });
@@ -81,6 +90,30 @@ export class PersonPlans {
   protected next(plan: Plan): string {
     const today = this.session.today();
     return today === null ? '' : nextDates(plan, today).join(', ');
+  }
+
+  /** Pause the plan (or, with `on` false, resume it) on the sheet's today. */
+  protected async setPaused(plan: Plan, on: boolean): Promise<void> {
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.setRowError(plan.id, null);
+    try {
+      const saved = await this.api.setPaused(sheetId, plan.id, on);
+      if (this.session.sheetId() === sheetId) {
+        this.session.plans.update((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
+      }
+    } catch (e) {
+      if (this.session.sheetId() === sheetId) this.setRowError(plan.id, pauseError(e));
+    }
+  }
+
+  private setRowError(planId: number, err: string | null): void {
+    this.rowErrors.update((all) => {
+      const next = { ...all };
+      if (err === null) delete next[planId];
+      else next[planId] = err;
+      return next;
+    });
   }
 
   protected fieldId(name: string): string {

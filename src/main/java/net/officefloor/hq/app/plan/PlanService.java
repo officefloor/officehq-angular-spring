@@ -88,9 +88,35 @@ public class PlanService {
         return plan;
     }
 
+    /** Pause (or, with {@code on} false, resume) one of the sheet's plans on the sheet's today.
+     *  Refused (404) when the sheet has no such plan, and (409) when pausing a paused plan or
+     *  resuming a running one. */
+    @Transactional
+    public Plan setPaused(String sheetId, String user, long planId, boolean on) {
+        sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        Plan plan = plans.findByIdAndSheetId(planId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan"));
+        if (plan.isPaused() == on) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    on ? "The plan is paused already" : "The plan is not paused");
+        }
+        LocalDate today = sheets.today(sheetId);
+        if (on) {
+            plan.pause(today);
+        } else {
+            plan.resume(today);
+        }
+        plans.saveAndFlush(plan);
+        String name = people.findById(plan.getPersonId()).map(Person::getName).orElse("");
+        audit.recordOnCommit((on ? "PLAN_PAUSED" : "PLAN_RESUMED") + " sheet=" + sheetId + " by=" + user
+                + " name=" + name + " start=" + plan.getStart());
+        return plan;
+    }
+
     /** For each of the sheet's plans in the order they were added, add a DRAFT claim of its amount
      *  with an empty note for each of its dates up to its end and the sheet's today that has none
-     *  yet, dated that day, by the claim form's rules. Each claim is its own change: a date the
+     *  yet and that it does not skip for a pause, dated that day, by the claim form's rules. Each claim is its own change: a date the
      *  claim form refuses is skipped (and tried again on the next generate). Resolves to the
      *  claims made, in the order they were made. */
     public List<Claim> generate(String sheetId, String user) {

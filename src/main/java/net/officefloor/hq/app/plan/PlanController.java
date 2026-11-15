@@ -34,13 +34,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class PlanController {
 
     /** A plan as the screen shows it: its amount with two decimals, its dates, its interval in days
-     *  or its day of the month (the other null) and how many claims it has made so far. */
+     *  or its day of the month (the other null), how many claims it has made so far, the day it was
+     *  paused on (null while it runs) and its past pauses. */
     public record PlanView(long id, long personId, String amount, LocalDate start, Integer every, Integer day,
-            LocalDate end, long generated) {
+            LocalDate end, long generated, LocalDate pausedOn, List<PauseView> pauses) {
         static PlanView of(Plan p, Map<Long, Long> made) {
             return new PlanView(p.getId(), p.getPersonId(), p.getAmount().setScale(2).toPlainString(), p.getStart(),
-                    p.getEvery(), p.getDay(), p.getEnd(), made.getOrDefault(p.getId(), 0L));
+                    p.getEvery(), p.getDay(), p.getEnd(), made.getOrDefault(p.getId(), 0L), p.getPausedOn(),
+                    p.getPauses().stream().map(x -> new PauseView(x.from(), x.to())).toList());
         }
+    }
+
+    /** A past pause: from the day the plan was paused (inclusive) to the day it was resumed (exclusive). */
+    public record PauseView(LocalDate from, LocalDate to) {
     }
 
     /** A plan as the form submits it: an amount the claim form takes for a new claim (0.00 or
@@ -88,6 +94,22 @@ public class PlanController {
         Plan plan = service.add(sheetId, user.trim(), personId, new BigDecimal(body.amount()), body.start(), body.every(),
                 body.day(), body.end());
         return PlanView.of(plan, Map.of());
+    }
+
+    @PostMapping("/plans/{planId}/pause")
+    public PlanView pause(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long planId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return PlanView.of(service.setPaused(sheetId, user.trim(), planId, true), service.madeCounts(sheetId));
+    }
+
+    @PostMapping("/plans/{planId}/resume")
+    public PlanView resume(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long planId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return PlanView.of(service.setPaused(sheetId, user.trim(), planId, false), service.madeCounts(sheetId));
     }
 
     /** Generate the plans' claims; resolves to the claims made and the sheet's plans with their
