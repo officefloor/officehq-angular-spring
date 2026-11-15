@@ -1,0 +1,798 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 87d94d7df..472c6ab85 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -23,6 +23,9 @@ export type ClaimAction = 'open' | 'settle' | 'void' | 'approve' | 'review' | 'r
+ 
+ export interface Claim {
+   id: number;
++  /** What the claim was added as against a forward-only rate's mark: its own id, or for a copy in a
++   *  clone the claim it copies was added as. */
++  added: number;
+   personId: number;
+   /** Always with two decimals, as the server formats it. */
+   amount: string;
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 82f94c9f5..69632ed63 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -4,7 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Session } from '../../core/session';
+ import { Period, periodOn } from '../periods/periods-api';
+ import { DatedGrade, gradeOn } from '../people/people-api';
+-import { Rate, claimDueCents } from '../rates/rates-api';
++import { RateLevels, claimDueCents } from '../rates/rates-api';
+ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
+ 
+ // One person's claims, newest first, and the one form that adds a claim or, with a claim's
+@@ -189,8 +189,8 @@ export class PersonClaims {
+   readonly personName = input.required<string>();
+   /** This person's claims, newest first. */
+   readonly claims = input.required<Claim[]>();
+-  /** Every rate the sheet has, each for a grade from its from-date. */
+-  readonly rates = input.required<Rate[]>();
++  /** Every rate the sheet has, each for a grade from its from-date, as each claim applies them. */
++  readonly rates = input.required<RateLevels>();
+   /** Every grade this person has been given, each from its from-date. */
+   readonly grades = input.required<DatedGrade[]>();
+   /** The other people on the sheet, whom a claim may be reassigned to. */
+@@ -264,13 +264,14 @@ export class PersonClaims {
+     });
+   }
+ 
+-  /** The claim's figure (its amount times the rate in force on the claim's date for the person's grade then, divided by 100, rounded
++  /** The claim's figure (its amount times the rate in force on the claim's date for the person's grade then (not a forward-only
++   *  one saved after the claim was added), divided by 100, rounded
+    *  by the claim's rounding policy (half up before the sheet's policy date, else half to even), or the figure a statement
+    *  bound it to), with its late charge on top when it is an overdue open (OPEN or PENDING) claim, then raised to the
+    *  sheet's floor in force on its date; n/a with no rate in force then. A claim settled with a due shows the due fixed then. */
+   protected dueOf(c: Claim): string {
+     const grade = gradeOn(this.grades(), c.date);
+-    const due = claimDueCents(this.rates().filter((r) => r.grade === grade), c, cents(this.session.floorOn(c.date)), {
++    const due = claimDueCents(this.rates().forClaim(c.added).filter((r) => r.grade === grade), c, cents(this.session.floorOn(c.date)), {
+       today: this.session.today(), latePctOn: (d) => this.session.latePctOn(d), graceOf: (o) => this.graceOf(o),
+     }, roundsHalfUp(c, this.claims(), this.session.policyDate(), this.session.today(), (d) => this.session.roundingOn(d)));
+     return due === null ? 'n/a' : money(due);
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index e1de65956..8c639b6f3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -12,7 +12,7 @@ import { Rates } from '../rates/rates';
+ import { Summary, SummaryPerson } from '../summary/summary';
+ import { ClassicSummary } from '../summary/classic-summary';
+ import { Header } from '../header/header';
+-import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, effectiveRates, pctOn, plusDays } from '../rates/rates-api';
++import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
+ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, retireError, statementError, transferError, unretireError, watchError } from './people-api';
+ 
+ // The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
+@@ -348,7 +348,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+               </td>
+               <td>
+                 <app-person-plans [personId]="p.id" [personName]="p.name" />
+-                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="effectiveRates()" [grades]="p.grades" [others]="patronChoicesFor(p)" [periods]="periods()"
++                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rateLevels()" [grades]="p.grades" [others]="patronChoicesFor(p)" [periods]="periods()"
+                   [selected]="selectedClaims()" (toggled)="claimToggled($event)" (saved)="claimSaved($event)" />
+               </td>
+               <td>
+@@ -456,8 +456,10 @@ export class People {
+   protected readonly rates = signal<Rate[]>([]);
+   /** The rates of each of the sheet's ancestors, its parent's first. */
+   private readonly inherited = signal<Rate[][]>([]);
++  /** The sheet's own rates and those it inherits, as the rates panel and each claim apply them. */
++  protected readonly rateLevels = computed(() => new RateLevels(this.rates(), this.inherited()));
+   /** The rates in force on the sheet: its own, else (for a grade and date with none) its ancestors'. */
+-  protected readonly effectiveRates = computed(() => effectiveRates(this.rates(), this.inherited()));
++  protected readonly effectiveRates = computed(() => this.rateLevels().inForce);
+   /** What every late charge follows: the sheet's today and late percent. */
+   private readonly lateness = computed<Lateness>(() => ({
+     today: this.session.today(), latePctOn: (d) => this.session.latePctOn(d),
+@@ -937,10 +939,12 @@ export class People {
+     return { count, cents: diff };
+   };
+ 
+-  /** A claim's due in cents, at the rate of the person's grade in force on the claim's date (or at
+-   *  the given rates in its place). */
++  /** A claim's due in cents, at the rate of the person's grade in force on the claim's date as the
++   *  claim applies the rates (not a forward-only one saved after it was added), or at the given
++   *  rates in their place. */
+   private claimDueCents(p: Person, c: Claim, late: Lateness, rates?: Rate[]): number | null {
+-    return claimDueCents(rates ?? this.ratesOf(gradeOn(p.grades, c.date)), c, cents(this.session.floorOn(c.date)),
++    const grade = gradeOn(p.grades, c.date);
++    return claimDueCents(rates ?? this.rateLevels().forClaim(c.added).filter((r) => r.grade === grade), c, cents(this.session.floorOn(c.date)),
+       { ...late, graceOf: (o) => this.graceOf(p, o) },
+       roundsHalfUp(c, this.claimsOf(p.id), this.session.policyDate(), late.today, (d) => this.session.roundingOn(d)));
+   }
+diff --git a/src/main/frontend/src/app/features/rates/rates-api.ts b/src/main/frontend/src/app/features/rates/rates-api.ts
+index f23c8b178..14eae5a4b 100644
+--- a/src/main/frontend/src/app/features/rates/rates-api.ts
++++ b/src/main/frontend/src/app/features/rates/rates-api.ts
+@@ -20,6 +20,68 @@ export interface Rate {
+   /** How many versions the rate has, the one shown (its newest) being in force; absent on a rate
+    *  worked out on the screen rather than read from the server. */
+   version?: number;
++  /** For a forward-only newest version (saved with a from-date on or after the sheet's today then),
++   *  the highest claim id there was when it was saved: only claims added after it apply it; null or
++   *  absent when it applies to every claim. */
++  afterClaim?: number | null;
++  /** The versions a claim added before the newest one applies instead, newest first. */
++  earlier?: EarlierRate[];
++}
++
++/** An earlier version of a rate as a claim added before its later forward-only one applies it. */
++export interface EarlierRate {
++  pct: string;
++  to: string | null;
++  afterClaim: number | null;
++}
++
++/** Of rates, each as it applies to a claim added as `added` (its own id, or for a copy in a clone
++ *  the claim it copies was added as): a forward-only version saved after it was added gives way to
++ *  the newest earlier one that applies to it; a rate none of whose versions does is left out. */
++export function ratesForClaim(rates: readonly Rate[], added: number): Rate[] {
++  const out: Rate[] = [];
++  for (const r of rates) {
++    if (r.afterClaim == null || added > r.afterClaim) {
++      out.push(r);
++      continue;
++    }
++    const e = (r.earlier ?? []).find((v) => v.afterClaim === null || added > v.afterClaim);
++    if (e) out.push({ grade: r.grade, from: r.from, to: e.to, pct: e.pct, version: r.version });
++  }
++  return out;
++}
++
++/** A sheet's own rates and those of each of its ancestors (its parent's first): `inForce` the rates
++ *  in force on it as one list, as the rates panel shows them, and `forClaim` the ones a claim
++ *  applies, leaving out the forward-only versions saved after it was added. */
++export class RateLevels {
++  readonly inForce: Rate[];
++  /** Every forward-only mark the rates have, lowest first. */
++  private readonly marks: number[];
++  /** The rates claims apply, by how many of the marks they were added after. */
++  private readonly byMark = new Map<number, Rate[]>();
++
++  constructor(private readonly own: readonly Rate[], private readonly inherited: readonly (readonly Rate[])[]) {
++    this.inForce = effectiveRates(own, inherited);
++    const marks = new Set<number>();
++    for (const r of [...own, ...inherited.flat()]) {
++      if (r.afterClaim != null) marks.add(r.afterClaim);
++      for (const e of r.earlier ?? []) if (e.afterClaim !== null) marks.add(e.afterClaim);
++    }
++    this.marks = [...marks].sort((a, b) => a - b);
++  }
++
++  /** The rates, with what the sheet inherits, as one list, as a claim added as `added` applies them. */
++  forClaim(added: number): Rate[] {
++    const passed = this.marks.filter((m) => m < added).length;
++    if (passed === this.marks.length) return this.inForce;
++    let rates = this.byMark.get(passed);
++    if (!rates) {
++      rates = effectiveRates(ratesForClaim(this.own, added), this.inherited.map((l) => ratesForClaim(l, added)));
++      this.byMark.set(passed, rates);
++    }
++    return rates;
++  }
+ }
+ 
+ /** Of one grade's rates, the one in force on a date (yyyy-mm-dd): the one with the latest from-date
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index f32fd7450..99cf928c7 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -137,9 +137,26 @@ public class Claim {
+     @Column(name = "void_reason")
+     private String voidReason;
+ 
++    /** The claim a copy in a clone of a sheet was copied from was added as; none for a claim added
++     *  on its sheet (added as its own id). */
++    @Column(name = "added")
++    private Long added;
++
+     protected Claim() {
+     }
+ 
++    /** What the claim was added as, against a forward-only rate's mark: its own id, or for a copy in
++     *  a clone the claim it copies was added as; null for one not yet stored or rebuilt from history
++     *  without it. */
++    public Long getAdded() {
++        return added != null ? added : id;
++    }
++
++    /** Set what the claim was added as: for a copy in a clone, or a version rebuilt from history. */
++    public void setAdded(Long added) {
++        this.added = added;
++    }
++
+     public Claim(String sheetId, Long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, String note) {
+         this.sheetId = sheetId;
+         this.personId = personId;
+@@ -378,6 +395,7 @@ public class Claim {
+         copy.ref = ref;
+         copy.batch = batch;
+         copy.listed = listed;
++        copy.added = getAdded();
+         return copy;
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 755fc63cb..e62036fc8 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -50,13 +50,14 @@ public class ClaimController {
+      *  tags, lower-case, sorted and comma separated (null when none); the reason it was voided with
+      *  (null when none); its comments, oldest first; who last edited it (null when never edited);
+      *  the number of the bulk settle batch that settled it (null when settled one at a time); its
+-     *  lines, in the order added. */
++     *  lines, in the order added; and what it was added as against a forward-only rate's mark (its
++     *  own id, or for a copy in a clone the claim it copies was added as). */
+     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
+             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
+             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
+             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
+             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason,
+-            List<CommentView> comments, String editedBy, Integer batch, List<LineView> lines) {
++            List<CommentView> comments, String editedBy, Integer batch, List<LineView> lines, long added) {
+         static ClaimView of(Claim c, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines) {
+             return of(c.getId(), c, log, comments, lines);
+         }
+@@ -69,7 +70,7 @@ public class ClaimController {
+                     log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLockedBy(),
+                     c.isLateEntry(), c.getReminded(), c.getRef(), c.getTags(), c.getVoidReason(),
+                     comments.stream().map(CommentView::of).toList(), c.getEditedBy(), c.getBatch(),
+-                    lines.stream().map(LineView::of).toList());
++                    lines.stream().map(LineView::of).toList(), c.getAdded() != null ? c.getAdded() : id);
+         }
+ 
+         private static String money(BigDecimal value) {
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+index 523e7a3d7..ada79568a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimRepository.java
+@@ -20,6 +20,10 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
+     @Query("select coalesce(max(c.listed), 0) from Claim c where c.sheetId = :sheetId")
+     long findLastListed(String sheetId);
+ 
++    /** The highest id a claim on any sheet has; 0 with none. A claim added later has a higher one. */
++    @Query("select coalesce(max(c.id), 0) from Claim c")
++    long findLastId();
++
+     /** The number of the sheet's last bulk settle batch; 0 with none. */
+     @Query("select coalesce(max(c.batch), 0) from Claim c where c.sheetId = :sheetId")
+     int findLastBatch(String sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 0bdc2586d..9472a6e17 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -996,7 +996,7 @@ public class ClaimService {
+         List<Claim> theirs = claims.findByPersonForUpdate(personId, sheetId);
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         RollupService.Stated stated = RollupService.statedOn(then.sheet(), was, personId,
+-                List.copyOf(then.claims().values()), RateChain.flatten(sheetId, then.rates(),
++                List.copyOf(then.claims().values()), new RateChain.Levels(sheetId, then.rates(),
+                         rateChain.ancestors(sheetId).stream().map(a -> history.asOf(a, asOf).rates()).toList()));
+         Map<Long, BigDecimal> bound = new HashMap<>();
+         then.claims().forEach((id, c) -> {
+@@ -1255,10 +1255,11 @@ public class ClaimService {
+         return dues.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+     }
+ 
+-    /** The claim's amount times the rate, in force on the claim's date, of its person's grade then, divided by
++    /** The claim's amount times the rate, in force on the claim's date, of its person's grade then (as
++     *  the claim applies the rates: not a forward-only one saved after it was added), divided by
+      *  100, rounded as its rounding policy has it; null with no rate in force then. */
+     private BigDecimal rateFigureOf(Claim claim, Person person) {
+-        return rateChain.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
++        return rateChain.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate(), claim.getAdded())
+                 .map(Rate::getPct)
+                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, roundingOf(claim)))
+                 .orElse(null);
+diff --git a/src/main/java/net/officefloor/hq/app/history/HistoryService.java b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+index fb2600e88..9f4b70c35 100644
+--- a/src/main/java/net/officefloor/hq/app/history/HistoryService.java
++++ b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+@@ -72,15 +72,17 @@ public class HistoryService {
+             String originSheetId, List<HoldState> retirements, String tags) {
+     }
+ 
+-    /** A rate's state; its version is null in states written before rates were kept as versions (version 1). */
+-    record RateState(String grade, BigDecimal pct, LocalDate from, LocalDate to, Integer version) {
++    /** A rate's state; its version is null in states written before rates were kept as versions
++     *  (version 1), its earlier versions null in those written before rates could be forward-only. */
++    record RateState(String grade, BigDecimal pct, LocalDate from, LocalDate to, Integer version, Long afterClaim,
++            List<Rate.Earlier> earlier) {
+     }
+ 
+     record ClaimState(long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, ClaimStatus status,
+             String number, BigDecimal settledDue, boolean stated, BigDecimal statedDue, String corrects,
+             LocalDate deferredUntil, String note, String openedBy, long listed, int proofs, String splitFrom,
+             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason, String editedBy,
+-            Integer batch) {
++            Integer batch, Long added) {
+     }
+ 
+     record PeriodState(String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
+@@ -139,7 +141,7 @@ public class HistoryService {
+                     c.getDate(), c.getDueBy(), c.getStatus(), c.getNumber(), c.getSettledDue(), c.isStated(),
+                     c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getNote(), c.getOpenedBy(),
+                     c.getListed(), c.getProofs(), c.getSplitFrom(), c.isLateEntry(), c.getReminded(),
+-                    c.getRef(), c.getTags(), c.getVoidReason(), c.getEditedBy(), c.getBatch()));
++                    c.getRef(), c.getTags(), c.getVoidReason(), c.getEditedBy(), c.getBatch(), c.getAdded()));
+         } else if (entity instanceof Person p) {
+             List<Person.DatedGrade> all = p.getGrades();
+             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
+@@ -149,7 +151,8 @@ public class HistoryService {
+                     p.getRetirements().stream().map(r -> new HoldState(r.from(), r.to())).toList(), p.getTags()));
+         } else if (entity instanceof Rate r) {
+             write(r.getSheetId(), RATE, String.valueOf(r.getId()),
+-                    new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo(), r.getVersion()));
++                    new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo(), r.getVersion(),
++                            r.getAfterClaim(), r.getEarlier()));
+         } else if (entity instanceof Sheet s) {
+             recordSheet(s);
+         } else if (entity instanceof Period p) {
+@@ -257,9 +260,10 @@ public class HistoryService {
+                 case PERSON -> people.put(Long.valueOf(id), personOf(sheetId, Long.parseLong(id), json.readValue(state, PersonState.class)));
+                 case RATE -> {
+                     RateState r = json.readValue(state, RateState.class);
+-                    rates.add(new Rate(sheetId, r.grade(), r.from(), r.to(), r.pct(), r.version() == null ? 1 : r.version()));
++                    rates.add(new Rate(sheetId, r.grade(), r.from(), r.to(), r.pct(), r.version() == null ? 1 : r.version(),
++                            r.afterClaim(), r.earlier() == null ? List.of() : r.earlier()));
+                 }
+-                case CLAIM -> claims.put(Long.valueOf(id), claimOf(sheetId, json.readValue(state, ClaimState.class)));
++                case CLAIM -> claims.put(Long.valueOf(id), claimOf(sheetId, Long.parseLong(id), json.readValue(state, ClaimState.class)));
+                 case PERIOD -> {
+                     PeriodState p = json.readValue(state, PeriodState.class);
+                     Period period = new Period(sheetId, p.name(), p.from(), p.to());
+@@ -332,8 +336,10 @@ public class HistoryService {
+         return p;
+     }
+ 
+-    private static Claim claimOf(String sheetId, ClaimState s) {
++    private static Claim claimOf(String sheetId, long id, ClaimState s) {
+         Claim c = new Claim(sheetId, s.personId(), s.amount(), s.date(), s.dueBy(), "");
++        // a version written before claims kept what they were added as was added as its own id
++        c.setAdded(s.added() != null ? s.added() : id);
+         c.setStatus(s.status());
+         c.setNumber(s.number());
+         c.setSettledDue(s.settledDue());
+diff --git a/src/main/java/net/officefloor/hq/app/rate/Rate.java b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+index 77cc44e5e..2a30ae5d3 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/Rate.java
++++ b/src/main/java/net/officefloor/hq/app/rate/Rate.java
+@@ -1,18 +1,29 @@
+ package net.officefloor.hq.app.rate;
+ 
++import jakarta.persistence.CollectionTable;
+ import jakarta.persistence.Column;
++import jakarta.persistence.ElementCollection;
++import jakarta.persistence.Embeddable;
+ import jakarta.persistence.Entity;
+ import jakarta.persistence.EntityListeners;
+ import jakarta.persistence.GeneratedValue;
+ import jakarta.persistence.GenerationType;
++import jakarta.persistence.FetchType;
+ import jakarta.persistence.Id;
++import jakarta.persistence.JoinColumn;
++import jakarta.persistence.OrderColumn;
+ import jakarta.persistence.Table;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Optional;
+ import net.officefloor.hq.app.history.HistoryListener;
+ 
+ /** One of the sheet's rates for a grade: a percent with two decimals, in force from its from-date
+- *  (from the beginning of time when it has none) through its to-date (for good when it has none). */
++ *  (from the beginning of time when it has none) through its to-date (for good when it has none).
++ *  A version saved forward-only (its from-date on or after the sheet's today then) applies only to
++ *  claims added after it was saved; a claim added before falls back to the earlier versions. */
+ @Entity
+ @EntityListeners(HistoryListener.class)
+ @Table(name = "rate")
+@@ -40,6 +51,34 @@ public class Rate {
+     @Column(name = "version", nullable = false)
+     private int version = 1;
+ 
++    /** For a forward-only newest version, the highest claim id there was when it was saved: only
++     *  claims added after that apply it. Null: it applies to every claim. */
++    @Column(name = "after_claim")
++    private Long afterClaim;
++
++    /** The versions a claim added before the newest (forward-only) one applies instead, newest
++     *  first, up to and including the first that applies to every claim; empty when the newest
++     *  applies to every claim. */
++    @ElementCollection(fetch = FetchType.EAGER)
++    @CollectionTable(name = "rate_earlier", joinColumns = @JoinColumn(name = "rate_id"))
++    @OrderColumn(name = "position")
++    private List<Earlier> earlier = new ArrayList<>();
++
++    /** An earlier version of a rate as a claim added before a later forward-only one applies it:
++     *  its percent and to-date, and (when it was itself forward-only) the highest claim id there was
++     *  when it was saved. */
++    @Embeddable
++    public record Earlier(
++            @Column(name = "pct", nullable = false, precision = 5, scale = 2) BigDecimal pct,
++            @Column(name = "to_date") LocalDate to,
++            @Column(name = "after_claim") Long afterClaim) {
++
++        /** Whether the version applies to a claim added as {@code added} (null: one added now). */
++        public boolean appliesTo(Long added) {
++            return afterClaim == null || added == null || added > afterClaim;
++        }
++    }
++
+     protected Rate() {
+     }
+ 
+@@ -56,6 +95,15 @@ public class Rate {
+         this.version = version;
+     }
+ 
++    /** A rate with its forward-only mark and earlier versions, as a copy or a version rebuilt from
++     *  history carries them. */
++    public Rate(String sheetId, String grade, LocalDate from, LocalDate to, BigDecimal pct, int version,
++            Long afterClaim, List<Earlier> earlier) {
++        this(sheetId, grade, from, to, pct, version);
++        this.afterClaim = afterClaim;
++        this.earlier = new ArrayList<>(earlier);
++    }
++
+     public Long getId() {
+         return id;
+     }
+@@ -105,10 +153,52 @@ public class Rate {
+         return version;
+     }
+ 
+-    /** Replace the rate's percent and to-date with a new version, its version count going up by one. */
+-    public void newVersion(BigDecimal pct, LocalDate to) {
++    /** For a forward-only newest version, the highest claim id there was when it was saved; null
++     *  when it applies to every claim. */
++    public Long getAfterClaim() {
++        return afterClaim;
++    }
++
++    /** The versions a claim added before the newest one applies instead, newest first. */
++    public List<Earlier> getEarlier() {
++        return List.copyOf(earlier);
++    }
++
++    /** Replace the rate's percent and to-date with a new version, its version count going up by
++     *  one: forward-only when {@code afterClaim} (the highest claim id there is now) is given, the
++     *  version it replaces then kept for the claims added before it. */
++    public void newVersion(BigDecimal pct, LocalDate to, Long afterClaim) {
++        if (afterClaim == null) {
++            earlier.clear();
++        } else {
++            if (this.afterClaim == null) {
++                earlier.clear();
++            }
++            earlier.add(0, new Earlier(this.pct, this.to, this.afterClaim));
++        }
+         this.pct = pct;
+         this.to = to;
++        this.afterClaim = afterClaim;
+         this.version++;
+     }
++
++    /** The rate as it applies to a claim added as {@code added} (null: one added now): the newest
++     *  version, else the newest earlier one that applies to it; none when no version does. */
++    public Optional<Rate> forClaim(Long added) {
++        if (afterClaim == null || added == null || added > afterClaim) {
++            return Optional.of(this);
++        }
++        return earlier.stream()
++                .filter(e -> e.appliesTo(added))
++                .findFirst()
++                .map(e -> new Rate(sheetId, grade, from, e.to(), e.pct(), version));
++    }
++
++    /** Of rates, each as it applies to a claim added as {@code added}, leaving out those that do not. */
++    public static List<Rate> forClaim(List<Rate> rates, Long added) {
++        if (rates.stream().allMatch(r -> r.afterClaim == null)) {
++            return rates;
++        }
++        return rates.stream().flatMap(r -> r.forClaim(added).stream()).toList();
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateChain.java b/src/main/java/net/officefloor/hq/app/rate/RateChain.java
+index f7555639c..218cd13c0 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateChain.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateChain.java
+@@ -2,9 +2,12 @@ package net.officefloor.hq.app.rate;
+ 
+ import java.time.LocalDate;
+ import java.util.ArrayList;
++import java.util.Collections;
+ import java.util.Comparator;
++import java.util.HashMap;
+ import java.util.HashSet;
+ import java.util.List;
++import java.util.Map;
+ import java.util.Optional;
+ import java.util.Set;
+ import java.util.TreeSet;
+@@ -65,6 +68,86 @@ public class RateChain {
+         return flatten(sheetId, own, inherited(sheetId));
+     }
+ 
++    /** The sheet's own rates and those it inherits, to apply to its claims. */
++    @Transactional(readOnly = true)
++    public Levels levels(String sheetId) {
++        return new Levels(sheetId, rates.findBySheetIdOrderByGradeAsc(sheetId), inherited(sheetId));
++    }
++
++    /** A sheet's own rates and those of each of its ancestors (its parent's first): {@link #inForce}
++     *  the rates in force on it as one list, as the rates panel shows them, and {@link #forClaim} the
++     *  ones a claim applies, leaving out the forward-only versions saved after it was added. */
++    public static final class Levels {
++
++        private final String sheetId;
++        private final List<Rate> own;
++        private final List<List<Rate>> inherited;
++        private final List<Rate> inForce;
++        /** Every forward-only mark the rates have, lowest first. */
++        private final List<Long> marks;
++        /** The rates claims apply, by how many of the marks they were added after. */
++        private final Map<Integer, List<Rate>> byMark = new HashMap<>();
++
++        public Levels(String sheetId, List<Rate> own, List<List<Rate>> inherited) {
++            this.sheetId = sheetId;
++            this.own = own;
++            this.inherited = inherited;
++            this.inForce = flatten(sheetId, own, inherited);
++            TreeSet<Long> all = new TreeSet<>();
++            List<List<Rate>> levels = new ArrayList<>(inherited);
++            levels.add(own);
++            levels.forEach(l -> l.forEach(r -> {
++                if (r.getAfterClaim() != null) {
++                    all.add(r.getAfterClaim());
++                }
++                r.getEarlier().forEach(e -> {
++                    if (e.afterClaim() != null) {
++                        all.add(e.afterClaim());
++                    }
++                });
++            }));
++            this.marks = List.copyOf(all);
++        }
++
++        /** The rates in force on the sheet, with what it inherits, as one list. */
++        public List<Rate> inForce() {
++            return inForce;
++        }
++
++        /** The rates, with what the sheet inherits, as one list, as a claim added as {@code added}
++         *  (null: one added now) applies them. */
++        public List<Rate> forClaim(Long added) {
++            if (marks.isEmpty() || added == null) {
++                return inForce;
++            }
++            // how many marks it was added after (one added as a mark itself was there when it was saved)
++            int at = Collections.binarySearch(marks, added);
++            int passed = at >= 0 ? at : -at - 1;
++            if (passed == marks.size()) {
++                return inForce;
++            }
++            return byMark.computeIfAbsent(passed, k -> flatten(sheetId, Rate.forClaim(own, added),
++                    inherited.stream().map(l -> Rate.forClaim(l, added)).toList()));
++        }
++    }
++
++    /** The grade's rate on a date on the sheet, as a claim added as {@code added} (null: one added
++     *  now) applies it: its own, else the nearest ancestor's. */
++    @Transactional(readOnly = true)
++    public Optional<Rate> findInForce(String sheetId, String grade, LocalDate on, Long added) {
++        Optional<Rate> own = inForce(Rate.forClaim(rates.findBySheetIdAndGrade(sheetId, grade), added), grade, on);
++        if (own.isPresent()) {
++            return own;
++        }
++        for (String ancestor : ancestors(sheetId)) {
++            Optional<Rate> found = inForce(Rate.forClaim(rates.findBySheetIdAndGrade(ancestor, grade), added), grade, on);
++            if (found.isPresent()) {
++                return found;
++            }
++        }
++        return Optional.empty();
++    }
++
+     /** The grade's rate in force on a date on the sheet: its own, else the nearest ancestor's. */
+     @Transactional(readOnly = true)
+     public Optional<Rate> findInForce(String sheetId, String grade, LocalDate on) {
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateController.java b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+index 8667b5f94..6df55a7fe 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateController.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateController.java
+@@ -30,10 +30,21 @@ public class RateController {
+ 
+     /** A grade's rate as the screen shows it: the percent always with two decimals, and its
+      *  from-date (null when it applies from the beginning of time), to-date (null: for good) and how
+-     *  many versions it has (the one shown, its newest, being in force). */
+-    public record RateView(String grade, LocalDate from, LocalDate to, String pct, int version) {
++     *  many versions it has (the one shown, its newest, being in force); for a forward-only newest
++     *  version the highest claim id there was when it was saved (only claims added after it apply
++     *  it), and the earlier versions claims added before it apply instead, newest first. */
++    public record RateView(String grade, LocalDate from, LocalDate to, String pct, int version, Long afterClaim,
++            List<EarlierView> earlier) {
+         static RateView of(Rate r) {
+-            return new RateView(r.getGrade(), r.getFrom(), r.getTo(), r.getPct().setScale(2).toPlainString(), r.getVersion());
++            return new RateView(r.getGrade(), r.getFrom(), r.getTo(), r.getPct().setScale(2).toPlainString(), r.getVersion(),
++                    r.getAfterClaim(), r.getEarlier().stream().map(EarlierView::of).toList());
++        }
++    }
++
++    /** An earlier version of a rate as a claim added before its later forward-only one applies it. */
++    public record EarlierView(String pct, LocalDate to, Long afterClaim) {
++        static EarlierView of(Rate.Earlier e) {
++            return new EarlierView(e.pct().setScale(2).toPlainString(), e.to(), e.afterClaim());
+         }
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateService.java b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+index 3dea6f5ee..9b403c5df 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateService.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateService.java
+@@ -7,6 +7,7 @@ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.regex.Pattern;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.ClaimRepository;
+ import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.dao.DataIntegrityViolationException;
+@@ -30,12 +31,14 @@ public class RateService {
+     private final RateRepository rates;
+     private final RateVersionRepository versions;
+     private final SheetService sheets;
++    private final ClaimRepository claims;
+     private final RollupService rollup;
+     private final Audit audit;
+ 
+     public RateService(RateRepository rates, RateVersionRepository versions, SheetService sheets,
+-            RollupService rollup, Audit audit) {
++            ClaimRepository claims, RollupService rollup, Audit audit) {
+         this.rates = rates;
++        this.claims = claims;
+         this.versions = versions;
+         this.sheets = sheets;
+         this.rollup = rollup;
+@@ -49,19 +52,22 @@ public class RateService {
+ 
+     /** Set a grade's rate from a date (null: from the beginning of time) through a date (null: for
+      *  good) on the sheet: a grade and from-date that already have a rate keep the value it replaces as
+-     *  an older version and take the new one as their newest, the one in force (the sheet is created first if it was never loaded). */
++     *  an older version and take the new one as their newest, the one in force (the sheet is created first if it was never loaded).
++     *  One with a from-date on or after the sheet's today is forward-only: it applies only to claims
++     *  added after it is saved, those already on any sheet keeping the rates that applied to them. */
+     @Transactional
+     public Rate set(String sheetId, String user, String grade, LocalDate from, LocalDate to, BigDecimal pct) {
+-        sheets.load(sheetId, user);
++        LocalDate today = sheets.load(sheetId, user).getToday();
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         BigDecimal scaled = pct.setScale(2);
++        Long afterClaim = from != null && !from.isBefore(today) ? claims.findLastId() : null;
+         Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from).orElse(null);
+         try {
+             if (rate == null) {
+-                rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, scaled));
++                rate = rates.saveAndFlush(new Rate(sheetId, grade, from, to, scaled, 1, afterClaim, List.of()));
+             } else {
+                 versions.save(new RateVersion(rate.getId(), rate.getVersion(), rate.getPct(), rate.getTo()));
+-                rate.newVersion(scaled, to);
++                rate.newVersion(scaled, to, afterClaim);
+                 rates.flush();
+             }
+         } catch (DataIntegrityViolationException e) {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 460132459..7ccdea008 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -106,7 +106,7 @@ public class RollupService {
+         Function<LocalDate, BigDecimal> floor = floorOf(sheet);
+         BigDecimal cap = sheet.map(Sheet::getCap).orElse(null);
+         LateCharge late = LateCharge.of(sheet);
+-        List<Rate> sheetRates = rateChain.effective(sheetId);
++        RateChain.Levels sheetRates = rateChain.levels(sheetId);
+         List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+         Map<Long, Person> held = heldPeople(sheetPeople);
+         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
+@@ -178,7 +178,7 @@ public class RollupService {
+         LocalDate today = sheet.map(Sheet::getToday).orElseGet(LocalDate::now);
+         Function<LocalDate, BigDecimal> floor = floorOf(sheet);
+         LateCharge late = LateCharge.of(sheet);
+-        List<Rate> sheetRates = rateChain.effective(sheetId);
++        RateChain.Levels sheetRates = rateChain.levels(sheetId);
+         List<Person> sheetPeople = people.findBySheetIdOrderByPositionAscIdAsc(sheetId);
+         Map<Long, Person> held = heldPeople(sheetPeople);
+         Map<Long, Person> byId = sheetPeople.stream().collect(Collectors.toMap(Person::getId, p -> p));
+@@ -213,7 +213,7 @@ public class RollupService {
+      *  floor, late charge and cap of the sheet and the person's holds and retirement, as the live
+      *  totals do. */
+     public static Stated statedOn(Sheet sheet, Person person, Long personId, List<Claim> sheetClaims,
+-            List<Rate> sheetRates) {
++            RateChain.Levels sheetRates) {
+         Optional<Sheet> held = Optional.of(sheet);
+         LocalDate today = sheet.getToday();
+         Function<LocalDate, BigDecimal> floor = floorOf(held);
+@@ -352,13 +352,13 @@ public class RollupService {
+     /** A person's due-total: the sum of the dues their counting claims show (n/a ones skipped);
+      *  null (n/a) when their grade in force on the sheet's today has no rate then, unless a claim
+      *  shows a due (a fixed or bound one, or one at the rate of the grade they had on its date). */
+-    private static BigDecimal dueTotalOf(List<Claim> counted, Person person, List<Rate> sheetRates, LocalDate today,
++    private static BigDecimal dueTotalOf(List<Claim> counted, Person person, RateChain.Levels sheetRates, LocalDate today,
+             Function<LocalDate, BigDecimal> floor, LateCharge late, Function<Claim, RoundingMode> rounding) {
+         List<BigDecimal> dues = counted.stream()
+                 .map(c -> shownDueOf(c, person, sheetRates, floor, late, rounding))
+                 .filter(Objects::nonNull)
+                 .toList();
+-        if (inForce(person, sheetRates, today).isEmpty() && dues.isEmpty()) {
++        if (inForce(person, sheetRates.inForce(), today).isEmpty() && dues.isEmpty()) {
+             return null;
+         }
+         return dues.stream().reduce(zero(), BigDecimal::add);
+@@ -366,9 +366,9 @@ public class RollupService {
+ 
+     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it
+      *  to (null: n/a), else its amount times the rate in force on its date of its person's grade
+-     *  then, rounded as its rounding policy has it; an unsettled one with its late charge on top, then raised to the
++     *  then (as the claim applies the rates: not a forward-only one saved after it was added), rounded as its rounding policy has it; an unsettled one with its late charge on top, then raised to the
+      *  sheet's floor in force on its date (a correction's never is). */
+-    private static BigDecimal shownDueOf(Claim c, Person person, List<Rate> sheetRates, Function<LocalDate, BigDecimal> floor,
++    private static BigDecimal shownDueOf(Claim c, Person person, RateChain.Levels sheetRates, Function<LocalDate, BigDecimal> floor,
+             LateCharge late, Function<Claim, RoundingMode> rounding) {
+         if (c.getSettledDue() != null) {
+             return c.getSettledDue();
+@@ -380,11 +380,11 @@ public class RollupService {
+ 
+     /** A claim's figure before any late charge or floor: the one a statement bound it to (null: n/a),
+      *  else its rate figure. */
+-    private static BigDecimal figureOf(Claim c, Person person, List<Rate> sheetRates, RoundingMode mode) {
++    private static BigDecimal figureOf(Claim c, Person person, RateChain.Levels sheetRates, RoundingMode mode) {
+         if (c.isBound()) {
+             return c.getStatedDue();
+         }
+-        return inForce(person, sheetRates, c.getDate())
++        return inForce(person, sheetRates.forClaim(c.getAdded()), c.getDate())
+                 .map(r -> c.getAmount().multiply(r.getPct()).divide(BigDecimal.valueOf(100), 2, mode))
+                 .orElse(null);
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+index 1d637b9f1..e2dc089fd 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetCloneService.java
+@@ -139,7 +139,8 @@ public class SheetCloneService {
+         permissions.findBySheetId(sheetId)
+                 .forEach(p -> permissions.save(new SheetPermission(target, p.getAction(), p.getRoles())));
+         for (Rate r : rates.findBySheetIdOrderByGradeAsc(sheetId)) {
+-            Rate copy = rates.save(new Rate(target, r.getGrade(), r.getFrom(), r.getTo(), r.getPct(), r.getVersion()));
++            Rate copy = rates.save(new Rate(target, r.getGrade(), r.getFrom(), r.getTo(), r.getPct(), r.getVersion(),
++                    r.getAfterClaim(), r.getEarlier()));
+             for (RateVersion v : rateVersions.findByRateIdOrderByVersionAsc(r.getId())) {
+                 rateVersions.save(new RateVersion(copy.getId(), v.getVersion(), v.getPct(), v.getTo()));
+             }
+diff --git a/src/main/resources/db/migration/V85__rate_forward_only.sql b/src/main/resources/db/migration/V85__rate_forward_only.sql
+new file mode 100644
+index 000000000..1af959904
+--- /dev/null
++++ b/src/main/resources/db/migration/V85__rate_forward_only.sql
+@@ -0,0 +1,18 @@
++-- A rate saved with a from-date on or after the sheet's today is forward-only: it applies only to
++-- claims added after it was saved. Such a rate (version) keeps the highest claim id there was when
++-- it was saved; a claim applies it only when it was added after that (by its own id, or for a copy
++-- in a clone of a sheet the id of the claim it copies). Null: the rate applies to every claim.
++ALTER TABLE rate ADD COLUMN after_claim BIGINT;
++-- The claim a copy in a clone was copied from was added as; null for a claim added on its sheet
++-- (it was added as its own id).
++ALTER TABLE claim ADD COLUMN added BIGINT;
++-- The versions a claim added before a forward-only rate's newest version falls back to, newest
++-- first: each forward-only one, up to and including the first that applies to every claim.
++CREATE TABLE rate_earlier (
++    rate_id     BIGINT        NOT NULL REFERENCES rate (id),
++    position    INTEGER       NOT NULL,
++    pct         DECIMAL(5, 2) NOT NULL,
++    to_date     DATE,
++    after_claim BIGINT,
++    PRIMARY KEY (rate_id, position)
++);
