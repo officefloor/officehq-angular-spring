@@ -1,0 +1,127 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 7260b0ec6..ebd46dbb5 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -8,7 +8,7 @@ import { Period, PeriodsApi, periodOn, personPeriodDueCents } from '../periods/p
+ import { Rates } from '../rates/rates';
+ import { Summary, SummaryPerson } from '../summary/summary';
+ import { Header } from '../header/header';
+-import { Lateness, Rate, RatesApi, claimDueCents, pctOn } from '../rates/rates-api';
++import { Lateness, Rate, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
+ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, retireError, statementError, watchError } from './people-api';
+ 
+ // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
+@@ -98,7 +98,7 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
+       }
+       <table data-testid="people-list">
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Name</th><th scope="col">Grade</th><th scope="col">Terms</th><th scope="col">Claimed</th><th scope="col">Due</th><th scope="col">By period</th><th scope="col">Overdue</th><th scope="col">Statements</th><th scope="col">Retired</th><th scope="col">Active</th><th scope="col">Hold</th><th scope="col">Watched</th><th scope="col">Patrons</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of shownPeople(); track p.id) {
+@@ -136,6 +136,7 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
+                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
+                   [attr.aria-label]="'Retire ' + p.name">Retire</button>
+               </td>
++              <td data-testid="person-active">{{ activeIds().has(p.id) ? 'yes' : 'no' }}</td>
+               <td>
+                 <span data-testid="person-hold">{{ p.held ? 'yes' : 'no' }}</span>
+                 <ul>
+@@ -216,6 +217,19 @@ export class People {
+     const today = this.session.today();
+     return (c: Claim) => counts(c, today) && !(isOpen(c) && !isBound(c) && heldOn(holds.get(c.personId) ?? [], c.date));
+   });
++  /** The ids of the people who are active: with an open (OPEN or PENDING) claim that counts in the
++   *  live totals, dated within the 30 days up to and including the sheet's today. */
++  protected readonly activeIds = computed(() => {
++    const today = this.session.today();
++    const out = new Set<number>();
++    if (today === null) return out;
++    const since = plusDays(today, -29);
++    const live = this.countsLive();
++    for (const c of this.claims()) {
++      if (isOpen(c) && live(c) && since <= c.date && c.date <= today) out.add(c.personId);
++    }
++    return out;
++  });
+   /** Each person's claims (newest first) and claimed in cents (counting claims only), by person id. */
+   private readonly byPerson = computed(() => {
+     const out = new Map<number, { claims: Claim[]; cents: number }>();
+@@ -334,10 +348,12 @@ export class People {
+     }
+     return out;
+   });
+-  /** Each person as the summary counts them: grade today, whether retired (as the list hides them), due-total. */
++  /** Each person as the summary counts them: grade today, whether retired (as the list hides them), due-total, whether active. */
+   protected readonly summaryPeople = computed<SummaryPerson[]>(() => {
+     const dues = this.dueByPerson();
+-    return this.people().map((p) => ({ grade: this.gradeOf(p), retired: p.retiredFrom !== null, due: dues.get(p.id) ?? null }));
++    const active = this.activeIds();
++    return this.people().map((p) => ({ grade: this.gradeOf(p), retired: p.retiredFrom !== null, due: dues.get(p.id) ?? null,
++      active: active.has(p.id) }));
+   });
+   /** The names of the people on the sheet, by person id (retired ones too). */
+   private readonly namesById = computed(() => new Map(this.people().map((p) => [p.id, p.name])));
+diff --git a/src/main/frontend/src/app/features/rates/rates-api.ts b/src/main/frontend/src/app/features/rates/rates-api.ts
+index 4b6c7e62d..e45087f07 100644
+--- a/src/main/frontend/src/app/features/rates/rates-api.ts
++++ b/src/main/frontend/src/app/features/rates/rates-api.ts
+@@ -114,6 +114,6 @@ function lateChargeCents(c: Claim, figure: number, late: Lateness, halfUp: boole
+ }
+ 
+ /** A date (yyyy-mm-dd) moved on by whole days. */
+-function plusDays(date: string, days: number): string {
++export function plusDays(date: string, days: number): string {
+   return new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
+ }
+diff --git a/src/main/frontend/src/app/features/summary/summary.ts b/src/main/frontend/src/app/features/summary/summary.ts
+index ba99ce248..58b6c2e91 100644
+--- a/src/main/frontend/src/app/features/summary/summary.ts
++++ b/src/main/frontend/src/app/features/summary/summary.ts
+@@ -12,15 +12,16 @@ export function statusCounts(claims: Claim[]): { status: string; count: number }
+ }
+ 
+ /** A person as the summary counts them: their grade in force on the sheet's today, whether they
+- *  are retired, and their due-total in cents (null: n/a). */
++ *  are retired, their due-total in cents (null: n/a), and whether they are active. */
+ export interface SummaryPerson {
+   grade: string;
+   retired: boolean;
+   due: number | null;
++  active: boolean;
+ }
+ 
+ // The sheet in figures, each as the lists show it: per grade, how many people not retired are on it
+-// today and their due-totals added up (n/a skipped); per period, its due-total; per status, how
++// today, their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total; per status, how
+ // many claims have it.
+ @Component({
+   selector: 'app-summary',
+@@ -30,7 +31,7 @@ export interface SummaryPerson {
+       <table data-testid="summary-grades">
+         <caption>By grade</caption>
+         <thead>
+-          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th></tr>
++          <tr><th scope="col">Grade</th><th scope="col">People</th><th scope="col">Due</th><th scope="col">Active</th></tr>
+         </thead>
+         <tbody>
+           @for (g of byGrade(); track g.grade) {
+@@ -38,6 +39,7 @@ export interface SummaryPerson {
+               <th scope="row">{{ g.grade }}</th>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
+               <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ money(g.cents) }}</td>
++              <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
+             </tr>
+           }
+         </tbody>
+@@ -84,7 +86,8 @@ export class Summary {
+ 
+   protected readonly byGrade = computed(() => GRADES.map((grade) => {
+     const on = this.people().filter((p) => !p.retired && p.grade === grade);
+-    return { grade, count: on.length, cents: on.reduce((sum, p) => sum + (p.due ?? 0), 0) };
++    return { grade, count: on.length, cents: on.reduce((sum, p) => sum + (p.due ?? 0), 0),
++      active: on.filter((p) => p.active).length };
+   }));
+ 
+   protected readonly byStatus = computed(() => statusCounts(this.claims()));
