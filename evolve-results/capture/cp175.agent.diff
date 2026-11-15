@@ -1,0 +1,189 @@
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index 51de448c1..f108d56e6 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -279,6 +279,13 @@ export class PeopleApi {
+     );
+   }
+ 
++  /** Undo the transfer that brought the person here; resolves to the person as they arrived back. */
++  undoTransfer(sheetId: string, id: number): Promise<Person> {
++    return firstValueFrom(
++      this.http.post<Person>(`${this.url(sheetId)}/${id}/transfer-undo`, {}, { headers: this.headers() }),
++    );
++  }
++
+   /** The figures of the sheet's descendants (its children, theirs, and so on), each as it is now
+    *  (or, while the screen shows the sheet as of a date, as it stood then), added up. */
+   descendantFigures(sheetId: string): Promise<DescendantFigures> {
+@@ -406,6 +413,14 @@ export function transferError(e: unknown): string {
+   return otherError(e);
+ }
+ 
++export function transferUndoError(e: unknown): string {
++  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may undo a transfer, and neither sheet may be archived.';
++  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
++  if (e instanceof HttpErrorResponse && e.status === 409) return 'Their name, an alias or their contact is already in use on the sheet they came from.';
++  if (e instanceof HttpErrorResponse && e.status === 422) return 'Only a transfer that brought the person here can be undone, and only on the day they arrived.';
++  return otherError(e);
++}
++
+ export function patronError(e: unknown): string {
+   if (e instanceof HttpErrorResponse && e.status === 400) return 'Choose a patron.';
+   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 90620df2e..ea73b0570 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -16,7 +16,7 @@ import { Summary, SummaryPerson } from '../summary/summary';
+ import { ClassicSummary } from '../summary/classic-summary';
+ import { Header } from '../header/header';
+ import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
+-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, unretireError, watchError } from './people-api';
++import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
+ 
+ // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
+ // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
+@@ -453,6 +453,8 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+                   placeholder="Sheet id" (input)="clearRowError(p.id)" />
+                 <button type="button" data-testid="person-transfer" (click)="transfer(p, transferTo.value)"
+                   [attr.aria-label]="'Transfer ' + p.name">Transfer</button>
++                <button type="button" data-testid="person-transfer-undo" (click)="undoTransfer(p)"
++                  [attr.aria-label]="'Undo the transfer of ' + p.name">Undo transfer</button>
+                 @if (rowErrors()[p.id]; as err) {
+                   <p role="alert" data-testid="person-error">{{ err }}</p>
+                 }
+@@ -1197,6 +1199,22 @@ export class People {
+     }
+   }
+ 
++  /** Undo the transfer that brought a person here; the row then leaves the list, and the sheet's
++   *  people and claims are read again. */
++  protected async undoTransfer(p: Person): Promise<void> {
++    this.clearRowError(p.id);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    try {
++      await this.api.undoTransfer(sheetId, p.id);
++      if (this.session.sheetId() !== sheetId) return;
++      this.people.update((ps) => ps.filter((o) => o.id !== p.id));
++      await this.read(sheetId);
++    } catch (e) {
++      this.rowErrors.update((errs) => ({ ...errs, [p.id]: transferUndoError(e) }));
++    }
++  }
++
+   /** The last statement's due-total: blank with none, n/a when it was n/a. */
+   protected statedTotalOf(p: Person): string {
+     return p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a');
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index 5b63dadc6..d73121b55 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -120,6 +120,11 @@ public class Person {
+     @Column(name = "origin_sheet_id")
+     private String originSheetId;
+ 
++    /** The sheet's today on which a transfer brought the person here; null for anyone not
++     *  transferred here. */
++    @Column(name = "arrived_on")
++    private LocalDate arrivedOn;
++
+     /** Raised on every save, so an edit of a version someone else has since saved is refused. */
+     @Version
+     @Column(name = "version", nullable = false)
+@@ -368,6 +373,14 @@ public class Person {
+         return holds.stream().anyMatch(h -> h.covers(date));
+     }
+ 
++    public LocalDate getArrivedOn() {
++        return arrivedOn;
++    }
++
++    public void setArrivedOn(LocalDate arrivedOn) {
++        this.arrivedOn = arrivedOn;
++    }
++
+     public String getOriginSheetId() {
+         return originSheetId;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 7b0d27e06..d932ced42 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -367,6 +367,17 @@ public class PersonController {
+                 service.clashing(arrived));
+     }
+ 
++    /** Undo the transfer that brought the person here; answers with the person as they arrived back. */
++    @PostMapping("/{id}/transfer-undo")
++    public PersonView undoTransfer(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @PathVariable long id,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
++        Person back = service.undoTransfer(sheetId, user.trim(), id);
++        return PersonView.of(back, service.today(back.getSheetId()), service.statementSummary(back.getId()), List.of(), false,
++                service.clashing(back));
++    }
++
+     /** Start or stop watching the person as the signed-in user; refused for a viewer, who may change nothing. */
+     @PostMapping("/{id}/watch")
+     public PersonView watch(
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 9b6e314a4..233f5632e 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -614,6 +614,7 @@ public class PersonService {
+         } else {
+             try {
+                 Person copy = person.transferredTo(target);
++                copy.setArrivedOn(sheets.today(target));
+                 copy.setPosition(people.nextPosition(target));
+                 arrived = people.saveAndFlush(copy);
+             } catch (DataIntegrityViolationException e) {
+@@ -730,6 +731,36 @@ public class PersonService {
+         return arrived;
+     }
+ 
++    /** Undo the transfer that brought a person to this sheet, as a steward, on the sheet's today
++     *  they arrived: they are transferred back to the sheet they came from exactly as
++     *  {@link #transfer} transfers them, and PERSON_TRANSFER_UNDONE is recorded here. Refused (404)
++     *  for a person not on the sheet, (403) unless the user acts as a steward, and (422) for a
++     *  person who did not arrive by transfer or on a later day than they arrived; answers with the
++     *  person as they arrived back. */
++    @Transactional
++    public Person undoTransfer(String sheetId, String user, long id) {
++        Person person = people.findForUpdate(id, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may undo a transfer");
++        }
++        if (person.getOriginSheetId() == null || person.getArrivedOn() == null) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "The person did not arrive by transfer");
++        }
++        if (!person.getArrivedOn().equals(sheets.today(sheetId))) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
++                    "A transfer may be undone only on the day the person arrived");
++        }
++        String name = person.getName();
++        String origin = person.getOriginSheetId();
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        Person back = transfer(sheetId, user, id, origin);
++        audit.recordOnCommit("PERSON_TRANSFER_UNDONE sheet=" + sheetId + " by=" + user
++                + " name=" + name + " to=" + origin);
++        rollup.recordChanges(sheetId, user, before);
++        return back;
++    }
++
+     /** Carry a person's statements to {@code into} on {@code sheetId}: they are taken again for
+      *  {@code into} ahead of their own, so {@code into}'s count is their own plus these, and their
+      *  last statement stays theirs (or, having none, becomes the last of these). */
+diff --git a/src/main/resources/db/migration/V96__person_arrived_on.sql b/src/main/resources/db/migration/V96__person_arrived_on.sql
+new file mode 100644
+index 000000000..026bf0d00
+--- /dev/null
++++ b/src/main/resources/db/migration/V96__person_arrived_on.sql
+@@ -0,0 +1,3 @@
++-- The sheet's today on which a transfer brought the person to the sheet: their transfer may be
++-- undone on that day only. Null for anyone who did not arrive by transfer.
++ALTER TABLE person ADD COLUMN arrived_on DATE;
