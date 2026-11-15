@@ -103,6 +103,11 @@ public class Claim {
     @Column(name = "late_entry", nullable = false)
     private boolean lateEntry;
 
+    /** The last day (the sheet's today then) a reminder was written for the claim; none when never
+     *  reminded. */
+    @Column(name = "reminded")
+    private LocalDate reminded;
+
     protected Claim() {
     }
 
@@ -251,6 +256,14 @@ public class Claim {
 
     public void setLateEntry(boolean lateEntry) {
         this.lateEntry = lateEntry;
+    }
+
+    public LocalDate getReminded() {
+        return reminded;
+    }
+
+    public void setReminded(LocalDate reminded) {
+        this.reminded = reminded;
     }
 
     /** Whether another user than this one holds the claim's editor open. */

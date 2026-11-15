@@ -43,12 +43,13 @@ public class ClaimController {
      *  claim a correction corrects (null for other claims); its status log, oldest first; the date
      *  it was deferred until (null when never deferred); how many proofs it has; the number of the
      *  claim it was split from (null when not made by a split); the user whose open editor locks
-     *  it (null while unlocked); whether it was added while its period was soft-closed. */
+     *  it (null while unlocked); whether it was added while its period was soft-closed; the last
+     *  day it was reminded (null when never reminded). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
-            boolean lateEntry) {
+            boolean lateEntry, LocalDate reminded) {
         static ClaimView of(Claim c, List<ClaimLog> log) {
             return of(c.getId(), c, log);
         }
@@ -59,7 +60,7 @@ public class ClaimController {
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
                     c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
                     log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLockedBy(),
-                    c.isLateEntry());
+                    c.isLateEntry(), c.getReminded());
         }
 
         private static String money(BigDecimal value) {
@@ -281,6 +282,14 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody DeferForm body) {
         return view(service.defer(sheetId, user.trim(), id, body.until()));
+    }
+
+    @PostMapping("/claims/{id}/remind")
+    public ClaimView remind(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return view(service.remind(sheetId, user.trim(), id));
     }
 
     @PostMapping("/claims/{id}/redate")

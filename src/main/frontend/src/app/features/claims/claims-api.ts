@@ -59,6 +59,8 @@ export interface Claim {
   lockedBy: string | null;
   /** Whether the claim was added while its period was soft-closed. */
   lateEntry: boolean;
+  /** yyyy-mm-dd: the last day (the sheet's today then) the claim was reminded; null when never reminded. */
+  reminded: string | null;
 }
 
 /** A line of a claim's status log: the status, who moved the claim there, the sheet's today then
@@ -213,6 +215,13 @@ export class ClaimsApi {
     );
   }
 
+  /** Remind an OPEN or PENDING claim, once per sheet-today. */
+  remind(sheetId: string, id: number): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/remind`, null, { headers: this.headers() }),
+    );
+  }
+
   /** Re-date an OPEN or PENDING claim (a steward only). */
   redate(sheetId: string, id: number, date: string): Promise<Claim> {
     return firstValueFrom(
@@ -334,6 +343,13 @@ export function proofError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'A settled or void claim takes no more proofs.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
+  return otherError(e);
+}
+
+/** Why a reminder was refused. */
+export function remindError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 409) return "Only an open or pending claim not yet reminded on the sheet's today can be reminded.";
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   return otherError(e);
 }
 

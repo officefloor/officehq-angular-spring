@@ -354,6 +354,29 @@ public class ClaimService {
         return claim;
     }
 
+    /** Remind an OPEN or PENDING claim: REMIND is written and the claim's reminded date becomes
+     *  the sheet's today. Refused (404) when missing, (409) unless OPEN or PENDING, and (409) when
+     *  it was already reminded on the sheet's today. */
+    @Transactional
+    public Claim remind(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only an OPEN or PENDING claim is reminded, not a " + claim.getStatus() + " one");
+        }
+        LocalDate today = sheets.today(sheetId);
+        if (today.equals(claim.getReminded())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim was already reminded on " + today);
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        claim.setReminded(today);
+        claims.flush();
+        record("REMIND", user, person, claim, claim.getNumber());
+        return claim;
+    }
+
     /** A steward re-dates an OPEN or PENDING claim: its due-by stays as it was fixed, a figure a
      *  statement bound it to stays bound, and so does its period (that of its due-by) and its
      *  number. Refused (404) when missing, (403) for anyone but a steward, (423) when its due-by
