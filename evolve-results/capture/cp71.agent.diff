@@ -1,0 +1,164 @@
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index dfa40f18b..73ee70f67 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -112,6 +112,14 @@ export class PeopleApi {
+     );
+   }
+ 
++  /** Cancel a person's last statement (a steward only): the claims it bound are live again. */
++  cancelStatement(sheetId: string, id: number): Promise<Statement> {
++    return firstValueFrom(
++      this.http.post<Statement>(`/api/sheets/${encodeURIComponent(sheetId)}/people/${id}/statement/cancel`, null,
++        { headers: this.headers() }),
++    );
++  }
++
+   /** Retire a person from a date; a blank one takes the sheet's today. */
+   retire(sheetId: string, id: number, from: string): Promise<Person> {
+     return firstValueFrom(
+@@ -162,6 +170,12 @@ export function statementError(e: unknown): string {
+   return otherError(e);
+ }
+ 
++export function cancelStatementError(e: unknown): string {
++  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may cancel a statement.';
++  if (e instanceof HttpErrorResponse && e.status === 409) return 'This person has no statement to cancel.';
++  return statementError(e);
++}
++
+ export function retireError(e: unknown): string {
+   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a date as yyyy-mm-dd.';
+   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 325ef4084..ad29fa9ad 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -9,7 +9,7 @@ import { Rates } from '../rates/rates';
+ import { Summary, SummaryPerson } from '../summary/summary';
+ import { Header } from '../header/header';
+ import { Lateness, Rate, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
+-import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, retireError, statementError, watchError } from './people-api';
++import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
+ 
+ // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
+ // claims, what they have claimed, their due-total (held to the sheet's cap) and its excess over the cap, their overdue claims, and their patrons and backing (their patrons' recent settled figures); the sheet's claimed-total,
+@@ -126,6 +126,8 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
+                 <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
+                 <button type="button" data-testid="person-statement" (click)="statement(p)"
+                   [attr.aria-label]="'Take statement of ' + p.name">Statement</button>
++                <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)"
++                  [attr.aria-label]="'Cancel last statement of ' + p.name">Cancel statement</button>
+               </td>
+               <td>
+                 <span data-testid="person-retired">{{ p.retiredFrom === null ? 'no' : 'yes' }}</span>
+@@ -542,6 +544,21 @@ export class People {
+     }
+   }
+ 
++  /** Cancel a person's last statement; the row then shows the one before it and their claims live again. */
++  protected async cancelStatement(p: Person): Promise<void> {
++    this.clearRowError(p.id);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    try {
++      const cancelled = await this.api.cancelStatement(sheetId, p.id);
++      if (this.session.sheetId() !== sheetId) return;
++      this.taken(cancelled.person);
++      this.claims.update((cs) => [...cs.filter((c) => c.personId !== p.id), ...cancelled.claims].sort(byListed));
++    } catch (e) {
++      this.rowErrors.update((errs) => ({ ...errs, [p.id]: cancelStatementError(e) }));
++    }
++  }
++
+   /** Retire a person from a date (blank: the sheet's today); the row then shows them retired. */
+   protected async retire(p: Person, from: string): Promise<void> {
+     this.clearRowError(p.id);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 7361db605..6eb8a86d6 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -335,9 +335,20 @@ public class ClaimController {
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+             @PathVariable long personId,
+             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+-        ClaimService.Statement s = service.statement(sheetId, user.trim(), personId);
++        return statementView(sheetId, service.statement(sheetId, user.trim(), personId), user.trim());
++    }
++
++    @PostMapping("/people/{personId}/statement/cancel")
++    public StatementView cancelStatement(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @PathVariable long personId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
++        return statementView(sheetId, service.cancelStatement(sheetId, user.trim(), personId), user.trim());
++    }
++
++    private StatementView statementView(String sheetId, ClaimService.Statement s, String user) {
+         return new StatementView(PersonView.of(s.person(), people.today(sheetId), s.summary(), people.patronIds(s.person().getId()),
+-                people.isWatching(s.person().getId(), user.trim())),
++                people.isWatching(s.person().getId(), user)),
+                 s.claims().stream().map(this::view).toList());
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index bc8e1d5ea..1c551f080 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -639,6 +639,34 @@ public class ClaimService {
+         return new Statement(person, StatementSummary.of(statements.findByPersonIdOrderByIdAsc(personId)), theirs);
+     }
+ 
++    /** A steward cancels a person's last statement: it is removed, and every claim it bound is
++     *  live again (a figure an earlier statement bound is not restored). Refused (404) when the
++     *  person is missing, (403) for anyone but a steward, and (409) when the person has no
++     *  statement. */
++    @Transactional
++    public Statement cancelStatement(String sheetId, String user, long personId) {
++        Person person = people.findForUpdate(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward cancels a statement");
++        }
++        List<PersonStatement> taken = statements.findByPersonIdOrderByIdAsc(personId);
++        if (taken.isEmpty()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The person has no statement to cancel");
++        }
++        PersonStatement last = taken.get(taken.size() - 1);
++        List<Claim> theirs = claims.findByPersonForUpdate(personId, sheetId);
++        RollupService.Snapshot before = rollup.snapshot(sheetId);
++        theirs.forEach(Claim::unbind);
++        claims.flush();
++        statements.delete(last);
++        statements.flush();
++        audit.recordOnCommit("STATEMENT_CANCELLED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                + " due-total=" + (last.getDueTotal() == null ? "n/a" : last.getDueTotal().toPlainString()));
++        rollup.recordChanges(sheetId, user, before);
++        return new Statement(person, StatementSummary.of(statements.findByPersonIdOrderByIdAsc(personId)), theirs);
++    }
++
+     /** The number a claim dated {@code date} takes as it is opened: under period numbering (set,
+      *  and the sheet's today on or after it) the next within the period containing the date
+      *  (<period name>-<n>), or X-<n> when none does; otherwise the sheet's next number. */
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index 2ca526dff..643c268a2 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -143,7 +143,7 @@ public class PeriodService {
+ 
+     /** Once the sheet's today changes, close every open period whose to-date plus the sheet's
+      *  grace days (when set) is before the new today, in order of their to-dates, each as a close
+-     *  by hand would. */
++     *  by hand would; a soft-closed one keeps the figures it fixed. */
+     @EventListener
+     @Transactional
+     public void closePastGrace(TodayChanged change) {
+@@ -152,7 +152,7 @@ public class PeriodService {
+             return;
+         }
+         periods.findBySheetIdOrderByFromAsc(change.sheetId()).stream()
+-                .filter(p -> !p.isClosed() && p.getTo().plusDays(graceDays).isBefore(change.today()))
++                .filter(p -> !p.isClosed() && !p.isSoftClosed() && p.getTo().plusDays(graceDays).isBefore(change.today()))
+                 .sorted(Comparator.comparing(Period::getTo))
+                 .forEach(p -> closeNow(change.sheetId(), change.user(), p, " auto=yes"));
+     }
