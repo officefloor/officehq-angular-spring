@@ -70,6 +70,8 @@ export interface Claim {
   lateEntry: boolean;
   /** yyyy-mm-dd: the last day (the sheet's today then) the claim was reminded; null when never reminded. */
   reminded: string | null;
+  /** Whether a steward waived the claim's late charge: it bears none from then on. */
+  waived: boolean;
   /** yyyy-mm-dd: the claim's review day (the sheet's today when it went to REVIEW); null when it never did. */
   reviewOn: string | null;
   /** The claim's external reference, unique on its sheet without regard to case; null when none. */
@@ -316,6 +318,13 @@ export class ClaimsApi {
     );
   }
 
+  /** A steward waives an OPEN or PENDING claim's late charge, once. */
+  waive(sheetId: string, id: number): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/waive`, null, { headers: this.headers() }),
+    );
+  }
+
   /** The claim's timeline: the audit lines about it, newest first, as the file holds them. */
   timeline(sheetId: string, id: number): Promise<string[]> {
     return firstValueFrom(
@@ -508,6 +517,14 @@ export function proofError(e: unknown): string {
 /** Why a reminder was refused. */
 export function remindError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return "Only an open or pending claim not yet reminded on the sheet's today can be reminded.";
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  return otherError(e);
+}
+
+/** Why waiving a claim's late charge was refused. */
+export function waiveError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return "Only a steward can waive a claim's late charge.";
+  if (e instanceof HttpErrorResponse && e.status === 409) return "Only an open or pending claim not already waived can have its late charge waived.";
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   return otherError(e);
 }

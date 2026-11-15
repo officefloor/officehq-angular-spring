@@ -638,6 +638,33 @@ public class ClaimService {
         return claim;
     }
 
+    /** A steward waives an OPEN or PENDING claim's late charge: it bears none from then on, whatever
+     *  its overdue state, and CLAIM_WAIVED is written. Refused (404) when missing, (403) for anyone
+     *  but a steward, (409) unless OPEN or PENDING, and (409) when it is already waived. */
+    @Transactional
+    public Claim waive(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward waives a claim's late charge");
+        }
+        if (!claim.getStatus().isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only an OPEN or PENDING claim is waived, not a " + claim.getStatus() + " one");
+        }
+        if (claim.isWaived()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim's late charge is already waived");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        claim.setWaived(true);
+        claims.flush();
+        record("CLAIM_WAIVED", user, person, claim, claim.getNumber());
+        rollup.recordChanges(sheetId, user, before);
+        return claim;
+    }
+
     /** A steward re-dates an OPEN or PENDING claim: its due-by stays as it was fixed, a figure a
      *  statement bound it to stays bound, and so does its period (that of its due-by) and its
      *  number. Refused (404) when missing, (403) for anyone but a steward, (423) when its due-by

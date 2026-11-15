@@ -85,7 +85,8 @@ public class HistoryService {
             String number, BigDecimal settledDue, boolean stated, BigDecimal statedDue, String corrects,
             LocalDate deferredUntil, String note, String openedBy, long listed, int proofs, String splitFrom,
             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason, String editedBy,
-            Integer batch, Long added, Boolean escalated, LocalDate reviewOn) {
+            Integer batch, Long added, Boolean escalated, LocalDate reviewOn,
+            Boolean waived) {
     }
 
     record PeriodState(String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
@@ -147,7 +148,7 @@ public class HistoryService {
                     c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getNote(), c.getOpenedBy(),
                     c.getListed(), c.getProofs(), c.getSplitFrom(), c.isLateEntry(), c.getReminded(),
                     c.getRef(), c.getTags(), c.getVoidReason(), c.getEditedBy(), c.getBatch(), c.getAdded(),
-                    c.isEscalated(), c.getReviewOn()));
+                    c.isEscalated(), c.getReviewOn(), c.isWaived()));
         } else if (entity instanceof Person p) {
             List<Person.DatedGrade> all = p.getGrades();
             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
@@ -369,6 +370,7 @@ public class HistoryService {
         c.setLateEntry(s.lateEntry());
         c.setReminded(s.reminded());
         c.setEscalated(Boolean.TRUE.equals(s.escalated()));
+        c.setWaived(Boolean.TRUE.equals(s.waived()));
         c.setReviewOn(s.reviewOn());
         c.setRef(s.ref());
         c.setTags(s.tags());

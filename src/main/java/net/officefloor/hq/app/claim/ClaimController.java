@@ -52,14 +52,15 @@ public class ClaimController {
      *  the number of the bulk settle batch that settled it (null when settled one at a time); its
      *  lines, in the order added; and what it was added as against a forward-only rate's mark (its
      *  own id, or for a copy in a clone the claim it copies was added as); and its review day, the
-     *  sheet's today when it went to REVIEW (null when it never did). */
+     *  sheet's today when it went to REVIEW (null when it never did); and whether a steward waived
+     *  its late charge. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason,
             List<CommentView> comments, String editedBy, Integer batch, List<LineView> lines, long added,
-            LocalDate reviewOn) {
+            LocalDate reviewOn, boolean waived) {
         static ClaimView of(Claim c, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines) {
             return of(c.getId(), c, log, comments, lines);
         }
@@ -73,7 +74,7 @@ public class ClaimController {
                     c.isLateEntry(), c.getReminded(), c.getRef(), c.getTags(), c.getVoidReason(),
                     comments.stream().map(CommentView::of).toList(), c.getEditedBy(), c.getBatch(),
                     lines.stream().map(LineView::of).toList(), c.getAdded() != null ? c.getAdded() : id,
-                    c.getReviewOn());
+                    c.getReviewOn(), c.isWaived());
         }
 
         private static String money(BigDecimal value) {
@@ -379,6 +380,14 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         return view(service.remind(sheetId, user.trim(), id));
+    }
+
+    @PostMapping("/claims/{id}/waive")
+    public ClaimView waive(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return view(service.waive(sheetId, user.trim(), id));
     }
 
     @PostMapping("/claims/{id}/comments")

@@ -231,10 +231,10 @@ function figureCents(rates: readonly Rate[], c: Claim, halfUp: boolean): number 
 /** An overdue claim's late charge in cents: for every full 30 days past its due-by plus its grace days, the late percent
  *  in force on that boundary date (that date plus 30, 60, 90 ... days) of its figure plus the charges of the
  *  boundaries before it (compounding), each rounded by
- *  the claim's rounding policy, added up; 0 when it is not overdue. */
+ *  the claim's rounding policy, added up; 0 when it is not overdue or its late charge is waived. */
 function lateChargeCents(c: Claim, figure: number, late: Lateness, halfUp: boolean): number {
   const grace = late.graceOf?.(c) ?? 0;
-  if (late.today === null || isCorrection(c) || !overdue(c, late.today, grace)) return 0;
+  if (late.today === null || isCorrection(c) || c.waived || !overdue(c, late.today, grace)) return 0;
   const from = lateFrom(c, grace);
   const days = Math.round((Date.parse(late.today) - Date.parse(from)) / 86_400_000);
   let charge = 0;
