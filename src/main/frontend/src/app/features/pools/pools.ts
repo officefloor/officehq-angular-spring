@@ -3,6 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { cents, money } from '../claims/claims-api';
 import type { Person } from '../people/people-api';
+import { dueCents } from '../rates/rates-api';
 import { Pool, PoolsApi, SHARE_PATTERN, memberError, poolError } from './pools-api';
 
 // One pool's row: its total share and whether it is balanced, its members each with their share,
@@ -20,6 +21,7 @@ import { Pool, PoolsApi, SHARE_PATTERN, memberError, poolError } from './pools-a
           <li [attr.data-testid]="'pool-member-' + pool().name + '-' + m.personId">
             <span data-testid="pool-member-name">{{ nameOf(m.personId) }}</span>
             <span data-testid="pool-share">{{ m.share }}</span>
+            <span data-testid="pool-cut">{{ cuts().get(m.personId) ?? '' }}</span>
             @if (retired(m.personId)) {
               <span>(retired)</span>
             }
@@ -69,6 +71,26 @@ export class PoolRow {
   protected readonly totalShare = computed(() => money(this.totalCents()));
   /** Balanced when the shares total exactly 100.00. */
   protected readonly balanced = computed(() => this.totalCents() === 10000);
+  /** Each member's cut of the sheet's pot, by person: the pot times their share divided by 100,
+   *  rounded half to even (a retired member's 0.00), the remainder going to the member with the
+   *  largest share (the earliest added on a tie) so the cuts total the pot; none unless the pool
+   *  is balanced and the sheet has a pot. */
+  protected readonly cuts = computed(() => {
+    const pot = this.session.pot();
+    const cutsOf = new Map<number, string>();
+    if (pot === null || !this.balanced()) return cutsOf;
+    const potCents = cents(pot);
+    const members = this.pool().members.map((m) => ({
+      personId: m.personId,
+      share: this.retired(m.personId) ? 0 : cents(m.share),
+    }));
+    const raw = members.map((m) => (m.share === 0 ? 0 : dueCents(potCents, m.share)));
+    let largest = 0;
+    members.forEach((m, i) => { if (m.share > members[largest].share) largest = i; });
+    raw[largest] += potCents - raw.reduce((sum, c) => sum + c, 0);
+    members.forEach((m, i) => cutsOf.set(m.personId, money(raw[i])));
+    return cutsOf;
+  });
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(null));

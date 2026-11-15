@@ -57,7 +57,7 @@ public class HistoryService {
     }
 
     record SheetState(LocalDate policyDate, List<SettingState> settings, LocalDate periodNumberingFrom,
-            Integer graceDays, boolean archived, LocalDate entryDate) {
+            Integer graceDays, boolean archived, LocalDate entryDate, BigDecimal pot) {
     }
 
     record GradeState(LocalDate from, String grade) {
@@ -125,7 +125,8 @@ public class HistoryService {
                 .map(d -> new SettingState(d.getKey(), d.getFrom(), d.getValue()))
                 .toList();
         write(sheet.getId(), SHEET, sheet.getId(), new SheetState(sheet.getPolicyDate(), settings,
-                sheet.getPeriodNumberingFrom(), sheet.getGraceDays(), sheet.isArchived(), sheet.getEntryDate()));
+                sheet.getPeriodNumberingFrom(), sheet.getGraceDays(), sheet.isArchived(), sheet.getEntryDate(),
+                sheet.getPot()));
     }
 
     /** Write the version of an entity of the sheet now, if it differs from the last one. */
@@ -238,6 +239,7 @@ public class HistoryService {
                     sheet.setPeriodNumberingFrom(s.periodNumberingFrom());
                     sheet.setGraceDays(s.graceDays());
                     sheet.setEntryDate(s.entryDate());
+                    sheet.setPot(s.pot());
                     if (s.archived()) {
                         sheet.archive();
                     }

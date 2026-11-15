@@ -35,6 +35,9 @@ export class Session {
   /** The active sheet's note threshold (two decimals) in force on its today, null when there is
    *  none: a claim whose due is above the one in force on its date is opened only with a note. */
   readonly noteThreshold = computed(() => valueOn(this.dated(), 'note-threshold', this.today())?.value ?? null);
+  /** The active sheet's pot (two decimals), null when blank (none): each balanced pool's members
+   *  cut it by their shares. Not dated. */
+  readonly pot = signal<string | null>(null);
   /** The active sheet's void reasons, in the order they were added: while there are any, a claim
    *  is voided only with one of them. */
   readonly voidReasons = signal<string[]>([]);

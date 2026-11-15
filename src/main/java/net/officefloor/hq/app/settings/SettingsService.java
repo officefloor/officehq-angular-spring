@@ -46,6 +46,9 @@ public class SettingsService {
     /** The key the grace days are audited under. */
     public static final String GRACE_DAYS = "grace-days";
 
+    /** The key the pot is audited under. */
+    public static final String POT = "pot";
+
     /** The key the cap is audited under. */
     public static final String CAP = Sheet.CAP;
 
@@ -284,6 +287,25 @@ public class SettingsService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + GRACE_DAYS + " value=" + (graceDays == null ? "" : graceDays));
         return graceDays;
+    }
+
+    /** The sheet's pot; null when blank (none). */
+    @Transactional(readOnly = true)
+    public BigDecimal pot(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getPot).orElse(null);
+    }
+
+    /** Set the sheet's pot (null: none), the sheet created first if it was never loaded; not dated. */
+    @Transactional
+    public BigDecimal setPot(String sheetId, String user, BigDecimal pot) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        BigDecimal scaled = pot == null ? null : pot.setScale(2);
+        sheet.setPot(scaled);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + POT + " value=" + (scaled == null ? "" : scaled.toPlainString()));
+        return scaled;
     }
 
     /** The sheet's cap in force on its today; null when there is none. */
