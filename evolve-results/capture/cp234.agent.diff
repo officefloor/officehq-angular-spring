@@ -1,0 +1,145 @@
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index 6d1c8e8fc..90f68ea51 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -152,6 +152,14 @@ export interface DescendantFigures {
+   overdueCount: number;
+ }
+ 
++/** A person of a sheet's tree: the sheet they are on, their name, grade today and due-total (n/a: none). */
++export interface TreePerson {
++  sheet: string;
++  name: string;
++  grade: string;
++  dueTotal: string;
++}
++
+ /** A person as the consolidated figures take them. */
+ export interface FigureMember {
+   names: string[];
+@@ -314,6 +322,13 @@ export class PeopleApi {
+       `/api/sheets/${encodeURIComponent(sheetId)}/figures`, { headers: this.headers() }));
+   }
+ 
++  /** The people of the sheet's whole tree: the sheet's first in list order, then the other sheets' by
++   *  sheet id, each as it is now (or, while the screen shows the sheet as of a date, as it stood then). */
++  treePeople(sheetId: string): Promise<TreePerson[]> {
++    return firstValueFrom(this.http.get<TreePerson[]>(
++      `/api/sheets/${encodeURIComponent(sheetId)}/tree/people`, { headers: this.headers() }));
++  }
++
+   /** The sheet compared with another, one line per grade: the grade, the sheet's summary due-total
+    *  for it and the other sheet's; no lines when the other sheet does not exist. */
+   compare(sheetId: string, other: string): Promise<string[]> {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index b52ac21f7..2484603ff 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -187,6 +187,7 @@ import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasEr
+       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
+       <button type="button" data-testid="export-periods" (click)="exportPeriods()">Export period figures (CSV)</button>
++      <button type="button" data-testid="export-tree" (click)="exportTree()">Export people of the tree (CSV)</button>
+       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
+       @if (bulkResult(); as r) {
+         <p role="status">Opened <strong data-testid="bulk-opened">{{ r.opened }}</strong>,
+@@ -1918,6 +1919,17 @@ export class People {
+     this.download(lines.join(''), `periods-${this.session.sheetId()}.csv`);
+   }
+ 
++  /** Download the people of the sheet's whole tree as CSV: sheet, name, grade today and due-total, this
++   *  sheet's people first in list order, then the other sheets' by sheet id. */
++  protected async exportTree(): Promise<void> {
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    const people = await this.api.treePeople(sheetId);
++    const lines = [csvLine(['sheet', 'name', 'grade', 'due-total']),
++      ...people.map((p) => csvLine([p.sheet, p.name, p.grade, p.dueTotal]))];
++    this.download(lines.join(''), `tree-${sheetId}.csv`);
++  }
++
+   /** Download a person's statement as CSV: their claims bound by their last statement, oldest first, with
+    *  number, date, amount, the bound figure as the claim shows it, and status. */
+   protected exportStatement(p: Person): void {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+index b2658f672..8dfb602a7 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+@@ -10,6 +10,7 @@ import java.util.TreeMap;
+ import java.util.stream.Collectors;
+ import net.officefloor.hq.app.history.AsOfGuard;
+ import net.officefloor.hq.app.session.CurrentUser;
++import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.format.annotation.DateTimeFormat;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -37,10 +38,30 @@ public class RollupController {
+     public record MemberView(List<String> names, String dueTotal, String overdueTotal) {
+     }
+ 
++    /** A person of the sheet's tree: the sheet they are on, their name, their grade today and
++     *  their due-total with two decimals (n/a: none). */
++    public record TreePersonView(String sheet, String name, String grade, String dueTotal) {
++    }
++
+     private final RollupService service;
++    private final SheetService sheets;
+ 
+-    public RollupController(RollupService service) {
++    public RollupController(RollupService service, SheetService sheets) {
+         this.service = service;
++        this.sheets = sheets;
++    }
++
++    /** The people of the sheet's whole tree (its ancestors and descendants): the sheet's first in
++     *  list order, then the other sheets' by sheet id, each as it is now, or as it stood at the end
++     *  of the date the sheet is shown as of. */
++    @GetMapping("/tree/people")
++    public List<TreePersonView> treePeople(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        return service.treePeople(sheetId, sheets.tree(sheetId), asOf).stream()
++                .map(p -> new TreePersonView(p.sheet(), p.name(), p.grade(), RollupService.text(p.dueTotal())))
++                .toList();
+     }
+ 
+     /** The figures of the sheet's descendants, each as it is now, or as it stood at the end of the
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index f9e1a460f..d96593a39 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -5,6 +5,7 @@ import java.math.RoundingMode;
+ import java.time.LocalDate;
+ import java.util.ArrayDeque;
+ import java.util.ArrayList;
++import java.util.Collection;
+ import java.util.Comparator;
+ import java.util.HashSet;
+ import java.util.LinkedHashMap;
+@@ -344,6 +345,25 @@ public class RollupService {
+         return new Consolidated(count, due, overdue, grades, statuses, members, overdueCount);
+     }
+ 
++    /** A person of a sheet's tree as its export takes them: the sheet they are on, their name, their
++     *  grade on that sheet's today, and their due-total held to the cap (null: n/a). */
++    public record TreePerson(String sheet, String name, String grade, BigDecimal dueTotal) {
++    }
++
++    /** The people of the sheet and of the other sheets given, the sheet's first in list order, then
++     *  each other sheet's in id order, each in list order; each sheet as it is now, or as it stood at
++     *  the end of {@code asOf} when given. */
++    public List<TreePerson> treePeople(String sheetId, Collection<String> others, LocalDate asOf) {
++        List<String> ids = new ArrayList<>(List.of(sheetId));
++        others.stream().filter(id -> !id.equals(sheetId)).sorted().forEach(ids::add);
++        List<TreePerson> out = new ArrayList<>();
++        for (String id : ids) {
++            Snapshot figures = asOf == null ? snapshot(id) : snapshotAsOf(id, asOf);
++            figures.people().values().forEach(f -> out.add(new TreePerson(id, f.name(), f.grade(), f.dueTotal())));
++        }
++        return out;
++    }
++
+     /** Each person's due-total for the period from {@code from} to {@code to}, inclusive, by person
+      *  id, for everyone on the sheet: the dues (n/a ones skipped) their claims due inside it show
+      *  now, counting each by the status its log gives it at the end of {@code to} (OPEN and SETTLED
