@@ -10,6 +10,7 @@ import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn, personPeriodDueCents } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
+import { ClassicSummary } from '../summary/classic-summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, effectiveRates, pctOn, plusDays } from '../rates/rates-api';
 import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, retireError, statementError, transferError, unretireError, watchError } from './people-api';
@@ -21,13 +22,14 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
 // person's editor open, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, Header, PersonClaims, PersonPlans, Periods, Pools, Rates, Summary],
+  imports: [ReactiveFormsModule, Header, PersonClaims, PersonPlans, Periods, Pools, Rates, Summary, ClassicSummary],
   template: `
     <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()"
       [myDueTotal]="myFigures()?.dueTotal ?? null" [myOverdueTotal]="myFigures()?.overdueTotal ?? null" />
     <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
+    <app-classic-summary [periods]="periods()" [dueTotals]="classicDueByPeriod()" [dueTotal]="classicDueTotal()" />
     <app-pools [people]="people()" (cutTotals)="cutTotals.set($event)" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
@@ -615,6 +617,31 @@ export class People {
     }
     return out;
   });
+  /** Each period's classic due-total in cents, by period id: a closed or soft-closed one's figures
+   *  fixed then (the people's added up), else the dues (n/a ones skipped) of the claims whose due-by
+   *  falls in it, each counted by its status now as the live totals count it. */
+  protected readonly classicDueByPeriod = computed(() => {
+    const out = new Map<number, number>();
+    const late = this.lateness();
+    const live = this.countsLive();
+    for (const period of this.periods()) {
+      if (period.closed || period.softClosed) {
+        out.set(period.id, this.people().reduce((sum, p) => sum + this.periodDueOf(p.id, period), 0));
+        continue;
+      }
+      let total = 0;
+      for (const p of this.people()) {
+        for (const c of this.claimsOf(p.id)) {
+          if (live(c) && periodOn([period], c.dueBy) !== null) total += this.claimDueCents(p, c, late) ?? 0;
+        }
+      }
+      out.set(period.id, total);
+    }
+    return out;
+  });
+  /** Everyone's due-total added up, skipping n/a, not trimmed. */
+  protected readonly classicDueTotal = computed(() =>
+    [...this.dueByPerson().values()].reduce((sum: number, d) => sum + (d ?? 0), 0));
   /** Each person as the summary counts them: grade today, whether retired (as the list hides them), due-total, whether active. */
   protected readonly summaryPeople = computed<SummaryPerson[]>(() => {
     const dues = this.dueByPerson();
