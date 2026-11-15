@@ -1,0 +1,191 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index bd1e0f234..12bf46f18 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -1043,10 +1043,11 @@ public class ClaimService {
+ 
+     /** The number a claim due by {@code date} takes as it is opened: under period numbering (set,
+      *  and the sheet's today on or after it) the next within the period containing the due-by
+-     *  (<period name>-<n>), or X-<n> when none does; otherwise the sheet's next number. */
++     *  (<period name>-<n>), or X-<n> when none does; otherwise the sheet's next number within the
++     *  fiscal year of the due-by (FY<yyyy>-<n>). */
+     public String nextNumber(String sheetId, LocalDate date) {
+         if (!sheets.periodNumberingOn(sheetId)) {
+-            return String.valueOf(sheets.nextClaimNumber(sheetId));
++            return sheets.nextFiscalClaimNumber(sheetId, date);
+         }
+         // held until the transaction ends, so two claims opened at once are numbered one after the other
+         sheets.lock(sheetId);
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 39033c69f..3edadfd9d 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -372,19 +372,8 @@ public class Sheet {
+         return dueTotal == null || cap == null ? dueTotal : dueTotal.min(cap);
+     }
+ 
+-    /** Take the sheet's next claim number. */
+-    public int nextClaimNumber() {
+-        return ++lastClaimNumber;
+-    }
+-
+     /** The last claim number the sheet gave (0 when none). */
+     public int getLastClaimNumber() {
+         return lastClaimNumber;
+     }
+-
+-    /** Take the next claim number after {@code last}, the last given anywhere in the sheet's tree. */
+-    public int nextClaimNumberAfter(int last) {
+-        lastClaimNumber = Math.max(lastClaimNumber, last) + 1;
+-        return lastClaimNumber;
+-    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetFiscalNumber.java b/src/main/java/net/officefloor/hq/app/sheet/SheetFiscalNumber.java
+new file mode 100644
+index 000000000..63e6a7bf2
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetFiscalNumber.java
+@@ -0,0 +1,46 @@
++package net.officefloor.hq.app.sheet;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++/** The last claim number a sheet gave within a fiscal year (named by the calendar year its first
++ *  day falls in). */
++@Entity
++@Table(name = "sheet_fiscal_number")
++public class SheetFiscalNumber {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "fiscal_year", nullable = false)
++    private int fiscalYear;
++
++    @Column(name = "last_number", nullable = false)
++    private int lastNumber;
++
++    protected SheetFiscalNumber() {
++    }
++
++    public SheetFiscalNumber(String sheetId, int fiscalYear) {
++        this.sheetId = sheetId;
++        this.fiscalYear = fiscalYear;
++    }
++
++    public int getLastNumber() {
++        return lastNumber;
++    }
++
++    /** Take the next number after {@code last}, the last given in the fiscal year anywhere in the sheet's tree. */
++    public int nextNumberAfter(int last) {
++        lastNumber = Math.max(lastNumber, last) + 1;
++        return lastNumber;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetFiscalNumberRepository.java b/src/main/java/net/officefloor/hq/app/sheet/SheetFiscalNumberRepository.java
+new file mode 100644
+index 000000000..670b58854
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetFiscalNumberRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.sheet;
++
++import java.util.Optional;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface SheetFiscalNumberRepository extends JpaRepository<SheetFiscalNumber, Long> {
++
++    /** The last number the sheet gave in the fiscal year, if it gave any. */
++    Optional<SheetFiscalNumber> findBySheetIdAndFiscalYear(String sheetId, int fiscalYear);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 087ce48cc..a1ff2d145 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -17,11 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
+ public class SheetService {
+ 
+     private final SheetRepository sheets;
++    private final SheetFiscalNumberRepository fiscalNumbers;
+     private final RollupService rollup;
+     private final ApplicationEventPublisher events;
+ 
+-    public SheetService(SheetRepository sheets, RollupService rollup, ApplicationEventPublisher events) {
++    public SheetService(SheetRepository sheets, SheetFiscalNumberRepository fiscalNumbers, RollupService rollup, ApplicationEventPublisher events) {
+         this.sheets = sheets;
++        this.fiscalNumbers = fiscalNumbers;
+         this.rollup = rollup;
+         this.events = events;
+     }
+@@ -162,21 +164,33 @@ public class SheetService {
+         return sheets.findById(id).map(Sheet::isPeriodNumberingOn).orElse(false);
+     }
+ 
+-    /** Take the sheet's next claim number: the sheets of a tree share one sequence, so it is the
+-     *  next after the last number given on any sheet of the tree (1 for the first), holding the
+-     *  sheets locked until the transaction ends so numbers are never shared and, if it rolls back,
+-     *  never skipped. */
++    /** Take the sheet's next claim number for a claim due by {@code date}: FY&lt;yyyy&gt;-&lt;n&gt;, counting
++     *  from 1 within the fiscal year the date falls in (by the sheet's fiscal start month, named by
++     *  the calendar year its first day falls in). The sheets of a tree share one sequence per fiscal
++     *  year, so it is the next after the last given in that year on any sheet of the tree, holding
++     *  the sheets locked until the transaction ends so numbers are never shared and, if it rolls
++     *  back, never skipped. */
+     @Transactional
+-    public int nextClaimNumber(String id) {
++    public String nextFiscalClaimNumber(String id, LocalDate date) {
+         Sheet sheet = sheets.findForUpdate(id).orElseThrow();
+-        int last = tree(id).stream().sorted()
+-                .map(sheets::findForUpdate)
++        int year = fiscalYear(date, sheet.getFiscalStartMonth());
++        List<String> tree = tree(id).stream().sorted().toList();
++        tree.forEach(sheets::findForUpdate);
++        int last = tree.stream()
++                .map(s -> fiscalNumbers.findBySheetIdAndFiscalYear(s, year))
+                 .flatMap(Optional::stream)
+-                .mapToInt(Sheet::getLastClaimNumber)
++                .mapToInt(SheetFiscalNumber::getLastNumber)
+                 .max().orElse(0);
+-        int number = sheet.nextClaimNumberAfter(last);
+-        sheets.flush();
+-        return number;
++        SheetFiscalNumber counter = fiscalNumbers.findBySheetIdAndFiscalYear(id, year)
++                .orElseGet(() -> new SheetFiscalNumber(id, year));
++        int number = counter.nextNumberAfter(last);
++        fiscalNumbers.saveAndFlush(counter);
++        return "FY" + year + "-" + number;
++    }
++
++    /** The fiscal year a date falls in, named by the calendar year its first day falls in. */
++    static int fiscalYear(LocalDate date, int startMonth) {
++        return date.getMonthValue() >= startMonth ? date.getYear() : date.getYear() - 1;
+     }
+ 
+     /** Hold the sheet locked until the transaction ends, so changes checked against the rest of
+diff --git a/src/main/resources/db/migration/V79__sheet_fiscal_number.sql b/src/main/resources/db/migration/V79__sheet_fiscal_number.sql
+new file mode 100644
+index 000000000..39b77de14
+--- /dev/null
++++ b/src/main/resources/db/migration/V79__sheet_fiscal_number.sql
+@@ -0,0 +1,11 @@
++-- Sheet-wide numbering restarts each fiscal year: a claim opened takes FY<yyyy>-<n>, counting
++-- from 1 within the fiscal year of its due-by (by the sheet's fiscal start month), the sequence
++-- shared across the sheet's tree. Each sheet keeps the last number it gave in each fiscal year;
++-- numbers given before stay as they are.
++CREATE TABLE sheet_fiscal_number (
++    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id     VARCHAR(100) NOT NULL REFERENCES sheet (id),
++    fiscal_year  INT          NOT NULL,
++    last_number  INT          NOT NULL,
++    CONSTRAINT sheet_fiscal_number_unique UNIQUE (sheet_id, fiscal_year)
++);
