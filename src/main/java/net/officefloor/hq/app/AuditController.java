@@ -9,6 +9,7 @@ import java.util.Objects;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.session.CurrentUser;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,14 +26,17 @@ public class AuditController {
 
     private final Audit audit;
     private final PersonRepository people;
+    private final SheetService sheets;
 
-    public AuditController(Audit audit, PersonRepository people) {
+    public AuditController(Audit audit, PersonRepository people, SheetService sheets) {
         this.audit = audit;
         this.people = people;
+        this.sheets = sheets;
     }
 
-    /** The sheet's audit lines, newest first; with a name, only those about that person, followed,
-     *  when that person was transferred here, by the lines about them on the sheet they came from
+    /** The sheet's audit lines, newest first; with a name, only those about that person, followed
+     *  by those about them on each of the sheet's descendants (sheets by id, each newest first),
+     *  then, when that person was transferred here, by the lines about them on the sheet they came from
      *  (newest first, as that sheet's file holds them). */
     @GetMapping("/{id}/audit")
     public List<String> lines(
@@ -42,6 +46,7 @@ public class AuditController {
         List<String> lines = new ArrayList<>(audit.lines(id, name));
         String who = name.trim();
         if (!who.isEmpty()) {
+            sheets.descendants(id).forEach(d -> lines.addAll(audit.lines(d, who)));
             people.findBySheetIdAndNameIgnoreCase(id, who).stream()
                     .map(Person::getOriginSheetId).filter(Objects::nonNull).findFirst()
                     .ifPresent(origin -> lines.addAll(audit.lines(origin, who)));

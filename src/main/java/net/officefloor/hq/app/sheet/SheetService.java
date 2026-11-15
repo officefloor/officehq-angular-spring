@@ -133,6 +133,23 @@ public class SheetService {
         return seen;
     }
 
+    /** The ids of the sheet's descendants among those that exist (its children, theirs, and so
+     *  on), in id order. */
+    @Transactional(readOnly = true)
+    public List<String> descendants(String id) {
+        Set<String> seen = new LinkedHashSet<>(Set.of(id));
+        ArrayDeque<String> todo = new ArrayDeque<>(List.of(id));
+        while (!todo.isEmpty()) {
+            for (Sheet child : sheets.findByParentOrderByIdAsc(todo.poll())) {
+                if (seen.add(child.getId())) {
+                    todo.add(child.getId());
+                }
+            }
+        }
+        seen.remove(id);
+        return seen.stream().sorted().toList();
+    }
+
     /** Whether the sheet is archived: every change on it is refused. */
     @Transactional(readOnly = true)
     public boolean archived(String id) {
