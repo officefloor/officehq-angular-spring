@@ -71,6 +71,9 @@ export class Session {
   /** The id of the active sheet's parent, null when none: a grade with no rate of its own in force
    *  on a date takes the parent's (then its parent's, up to three levels up). Not dated. */
   readonly parent = signal<string | null>(null);
+  /** The active sheet's proof kinds, comma separated, null when none: while set, a claim whose due
+   *  is above the proof threshold needs a proof of each to be settled or approved. Not dated. */
+  readonly proofKinds = signal<string | null>(null);
   /** Whether the people list shows retired people too: off at first, and kept as it is when a
    *  sheet is loaded. */
   readonly showRetired = signal(false);
@@ -186,6 +189,7 @@ export class Session {
       this.policyDate.set(res.policyDate);
       this.archived.set(res.archived);
       this.parent.set(res.parent);
+      this.proofKinds.set(res.proofKinds);
       this.shownAsOf.set(asOf);
       this.loads.update((n) => n + 1);
       return null;
@@ -308,6 +312,7 @@ interface SheetView {
   dated: DatedSettings;
   archived: boolean;
   parent: string | null;
+  proofKinds: string | null;
 }
 
 /** A value recorded for a dated setting: in force from its from-date (yyyy-mm-dd) until the next

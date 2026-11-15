@@ -724,10 +724,14 @@ public class ClaimService {
         return claim;
     }
 
-    /** Add a proof to a claim, raising its proofs count by one. Refused (404) when missing, (423)
-     *  when due in a closed period, and (409) when SETTLED or VOID. */
+    /** Add a proof of a kind (null: none chosen, a receipt) to a claim, raising its proofs count by
+     *  one. Refused (404) when missing, (422) when the kind is neither receipt nor photo, (423) when
+     *  due in a closed period, and (409) when SETTLED or VOID. */
     @Transactional
-    public Claim addProof(String sheetId, String user, long id) {
+    public Claim addProof(String sheetId, String user, long id, String kind) {
+        ProofKind proofKind = kind == null ? ProofKind.RECEIPT : ProofKind.of(kind)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                        "A proof is a receipt or a photo"));
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         refuseIfClosed(sheetId, claim.getDueBy());
@@ -738,23 +742,29 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        claim.addProof();
+        claim.addProof(proofKind);
         claims.flush();
-        record("CLAIM_PROOF_ADDED", user, person, claim, claim.getNumber(), " proofs=" + claim.getProofs());
+        record("CLAIM_PROOF_ADDED", user, person, claim, claim.getNumber(), " proofs=" + claim.getProofs()
+                + (kind == null ? "" : " kind=" + proofKind.text()));
         return claim;
     }
 
     /** Refuse (422) settling or approving a claim at a due (null: n/a) above the proof threshold in
      *  force on its date (its person's grade's then when one is set, else the sheet's) while it has
-     *  no proof. */
+     *  no proof, or, while the sheet has proof kinds, without a proof of each of them. */
     private void refuseIfUnproven(Claim claim, Person person, BigDecimal due) {
-        if (claim.getProofs() > 0 || due == null) {
+        if (due == null) {
+            return;
+        }
+        List<ProofKind> kinds = sheets.proofKinds(claim.getSheetId());
+        boolean proven = claim.getProofs() > 0 && kinds.stream().allMatch(k -> claim.proofsOf(k) > 0);
+        if (proven) {
             return;
         }
         BigDecimal threshold = sheets.proofThresholdFor(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate());
         if (threshold != null && due.compareTo(threshold) > 0) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
-                    "A claim whose due is above the proof threshold needs a proof first");
+                    "A claim whose due is above the proof threshold needs a proof (of each proof kind) first");
         }
     }
 

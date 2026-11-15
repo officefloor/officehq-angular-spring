@@ -2,12 +2,14 @@ package net.officefloor.hq.app.settings;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.ProofKind;
 import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.DatedSetting;
@@ -61,6 +63,9 @@ public class SettingsService {
     public static final String ALERT_THRESHOLD = "alert-threshold";
     /** The key the fiscal year's start month is audited under. */
     public static final String FISCAL_START_MONTH = "fiscal-start-month";
+
+    /** The key the proof kinds are audited under. */
+    public static final String PROOF_KINDS = "proof-kinds";
 
     /** The key the parent sheet is audited under. */
     public static final String PARENT = "parent";
@@ -422,6 +427,30 @@ public class SettingsService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + ALERT_THRESHOLD + " value=" + (scaled == null ? "" : scaled.toPlainString()));
         return scaled;
+    }
+
+    /** Set the sheet's proof kinds (blank: none), the sheet created first if it was never loaded;
+     *  not dated. Each is trimmed, blanks and repeats dropped; while any is set, a claim whose due
+     *  is above the proof threshold needs a proof of each to be settled or approved. Refused (422)
+     *  when one is neither receipt nor photo. Resolves to the kinds as set, comma separated (null: none). */
+    @Transactional
+    public String setProofKinds(String sheetId, String user, String kinds) {
+        List<String> each = Arrays.stream(kinds.split(",")).map(String::trim).filter(k -> !k.isEmpty())
+                .distinct().toList();
+        for (String k : each) {
+            if (ProofKind.of(k).isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                        "A proof kind is receipt or photo, not " + k);
+            }
+        }
+        String value = each.isEmpty() ? null : String.join(",", each);
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        sheet.setProofKinds(value);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + PROOF_KINDS + " value=" + (value == null ? "" : value));
+        return value;
     }
 
     /** The id of the sheet's parent; null when blank (none). */

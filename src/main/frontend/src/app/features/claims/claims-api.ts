@@ -62,6 +62,10 @@ export interface Claim {
   deferredUntil: string | null;
   /** How many proofs the claim has. */
   proofs: number;
+  /** Of the claim's proofs, how many are receipts. */
+  receiptProofs: number;
+  /** Of the claim's proofs, how many are photos. */
+  photoProofs: number;
   /** The number of the claim this one was split from; null when not made by a split. */
   splitFrom: string | null;
   /** The user whose open editor locks the claim for everyone else; null while unlocked. */
@@ -353,10 +357,10 @@ export class ClaimsApi {
     );
   }
 
-  /** Add a proof to a claim that is neither SETTLED nor VOID. */
-  addProof(sheetId: string, id: number): Promise<Claim> {
+  /** Add a proof of a kind (blank: none chosen, a receipt) to a claim that is neither SETTLED nor VOID. */
+  addProof(sheetId: string, id: number, kind = ''): Promise<Claim> {
     return firstValueFrom(
-      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/proofs`, null, { headers: this.headers() }),
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/proofs`, { kind }, { headers: this.headers() }),
     );
   }
 
@@ -501,14 +505,18 @@ export function statusError(e: unknown, opener: boolean): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
   if (e instanceof HttpErrorResponse && e.status === 422) {
-    return 'This claim\'s due is above a threshold: it needs a note to be opened, or a proof to be settled or approved.';
+    return 'This claim\'s due is above a threshold: it needs a note to be opened, or a proof (one of each proof kind, while the sheet has any) to be settled or approved.';
   }
   return otherError(e);
 }
 
+/** The kinds a proof is: a receipt (when none is chosen) or a photo. */
+export const PROOF_KINDS = ['receipt', 'photo'] as const;
+
 /** Why adding a proof was refused. */
 export function proofError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'A settled or void claim takes no more proofs.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'A proof is a receipt or a photo.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is due in a closed period.';
   return otherError(e);

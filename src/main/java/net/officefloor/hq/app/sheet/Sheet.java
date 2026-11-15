@@ -130,6 +130,12 @@ public class Sheet {
     @Column(name = "parent")
     private String parent;
 
+    /** The sheet's proof kinds, comma separated: while set, a claim whose due is above the proof
+     *  threshold needs at least one proof of each to be settled or approved; null when blank (none).
+     *  Not dated. */
+    @Column(name = "proof_kinds")
+    private String proofKinds;
+
     /** Whether a steward has archived the sheet: every change on it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -159,6 +165,7 @@ public class Sheet {
         copy.pot = pot;
         copy.alertThreshold = alertThreshold;
         copy.parent = parent;
+        copy.proofKinds = proofKinds;
         return copy;
     }
 
@@ -355,6 +362,14 @@ public class Sheet {
 
     public void setAlertThreshold(BigDecimal alertThreshold) {
         this.alertThreshold = alertThreshold;
+    }
+
+    public String getProofKinds() {
+        return proofKinds;
+    }
+
+    public void setProofKinds(String proofKinds) {
+        this.proofKinds = proofKinds;
     }
 
     public String getParent() {

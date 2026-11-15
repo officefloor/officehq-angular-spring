@@ -6,7 +6,7 @@ import { Session, otherError } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { RateLevels, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, waiveError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, reviewLate, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, waiveError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, reviewLate, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -71,6 +71,8 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment,
             <span>Deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span></span>
             <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
             <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+            <span>Receipts <span data-testid="claim-proofs-receipt">{{ c.receiptProofs }}</span></span>
+            <span>Photos <span data-testid="claim-proofs-photo">{{ c.photoProofs }}</span></span>
             <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
             <span>Reminded <span data-testid="claim-reminded">{{ c.reminded ?? '' }}</span></span>
             <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
@@ -117,6 +119,14 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment,
               [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
             <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'settle')"
               [attr.aria-label]="'Settle claim of ' + c.amount + ' on ' + c.date">Settle</button>
+            <label [for]="'claim-proof-kind-' + c.id">Proof kind (none chosen: receipt)</label>
+            <select [id]="'claim-proof-kind-' + c.id" data-testid="claim-proof-kind"
+              [value]="proofKinds()[c.id] ?? ''" (change)="proofKindChanged(c.id, $any($event.target).value)">
+              <option value="">(none chosen)</option>
+              @for (k of PROOF_KINDS; track k) {
+                <option [value]="k">{{ k }}</option>
+              }
+            </select>
             <button type="button" data-testid="claim-proof" (click)="addProof(c)"
               [attr.aria-label]="'Add a proof to claim of ' + c.amount + ' on ' + c.date">Add proof</button>
             <button type="button" data-testid="claim-remind" (click)="remind(c)"
@@ -236,6 +246,10 @@ export class PersonClaims {
   /** Each claim's timeline as last shown, by claim id. */
   protected readonly timelines = signal<Record<number, string[]>>({});
   protected readonly commentTexts = signal<Record<number, string>>({});
+  /** The proof kinds a proof is chosen as. */
+  protected readonly PROOF_KINDS = PROOF_KINDS;
+  /** The kind chosen for the next proof of each claim, by claim id ('' or absent: none chosen). */
+  protected readonly proofKinds = signal<Record<number, string>>({});
   /** The line typed for adding to each DRAFT claim, by claim id. */
   protected readonly lineDrafts = signal<Record<number, { label: string; qty: string; unit: string }>>({});
   /** The amount typed for splitting off each OPEN claim, by claim id. */
@@ -634,11 +648,17 @@ export class PersonClaims {
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
     try {
-      const claim = await this.api.addProof(sheetId, c.id);
+      const claim = await this.api.addProof(sheetId, c.id, this.proofKinds()[c.id] ?? '');
+      this.proofKinds.update(({ [c.id]: _, ...rest }) => rest);
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: proofError(e) }));
     }
+  }
+
+  protected proofKindChanged(id: number, kind: string): void {
+    this.clearRowError(id);
+    this.proofKinds.update((ks) => ({ ...ks, [id]: kind }));
   }
 
   protected reasonChanged(id: number, reason: string): void {

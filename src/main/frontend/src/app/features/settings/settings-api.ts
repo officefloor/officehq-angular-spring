@@ -247,6 +247,13 @@ export class SettingsApi {
     );
   }
 
+  /** Set the sheet's proof kinds (receipt and/or photo, comma separated; blank: none); resolves to the kinds as set. */
+  setProofKinds(sheetId: string, value: string): Promise<{ proofKinds: string | null }> {
+    return firstValueFrom(
+      this.http.put<{ proofKinds: string | null }>(`${this.url(sheetId)}/settings/proof-kinds`, { value }, { headers: this.headers() }),
+    );
+  }
+
   /** Set the sheet's parent (blank: none); resolves to the parent as set. */
   setParent(sheetId: string, value: string): Promise<{ parent: string | null }> {
     return firstValueFrom(
@@ -315,7 +322,7 @@ export class SettingsApi {
 }
 
 export const SETTINGS_INVALID =
-  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of business days (blank: 14) and terms for each grade of a whole number of business days (blank: the sheet\'s terms) and grace days for each grade of a whole number of days (blank: none) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off) and an entry date as yyyy-mm-dd (blank: off) and a cap of 0.00 or more with up to two decimals (blank: none) and a proof threshold of 0.00 or more with up to two decimals (blank: none) and grace days of a whole number of days (blank: off) and a pot of 0.00 or more with up to two decimals (blank: none) and an alert threshold of 0.00 or more with up to two decimals (blank: off) and a fiscal start month from 1 to 12 and a parent sheet id without spaces (blank: none) and the roles for each action as clerk and/or steward, comma separated (blank: the standing rule), each from-date as yyyy-mm-dd (blank: the sheet\'s today).';
+  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of business days (blank: 14) and terms for each grade of a whole number of business days (blank: the sheet\'s terms) and grace days for each grade of a whole number of days (blank: none) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off) and an entry date as yyyy-mm-dd (blank: off) and a cap of 0.00 or more with up to two decimals (blank: none) and a proof threshold of 0.00 or more with up to two decimals (blank: none) and grace days of a whole number of days (blank: off) and a pot of 0.00 or more with up to two decimals (blank: none) and an alert threshold of 0.00 or more with up to two decimals (blank: off) and a fiscal start month from 1 to 12 and a parent sheet id without spaces (blank: none) and proof kinds as receipt and/or photo, comma separated (blank: none) and the roles for each action as clerk and/or steward, comma separated (blank: the standing rule), each from-date as yyyy-mm-dd (blank: the sheet\'s today).';
 
 export function settingsError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return SETTINGS_INVALID;

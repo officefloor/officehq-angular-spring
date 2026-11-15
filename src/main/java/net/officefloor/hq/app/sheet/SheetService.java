@@ -3,10 +3,12 @@ package net.officefloor.hq.app.sheet;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import net.officefloor.hq.app.claim.ProofKind;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -99,6 +101,15 @@ public class SheetService {
     @Transactional(readOnly = true)
     public BigDecimal proofThresholdOn(String id, LocalDate on) {
         return sheets.findById(id).map(s -> s.proofThresholdOn(on)).orElse(null);
+    }
+
+    /** The sheet's proof kinds, each of which a claim above the proof threshold needs a proof of;
+     *  none when blank. */
+    @Transactional(readOnly = true)
+    public List<ProofKind> proofKinds(String id) {
+        String kinds = sheets.findById(id).map(Sheet::getProofKinds).orElse(null);
+        return kinds == null ? List.of() : Arrays.stream(kinds.split(","))
+                .map(k -> ProofKind.of(k).orElseThrow()).toList();
     }
 
     /** The proof threshold in force on a date for a grade: the grade's own when one is set, else

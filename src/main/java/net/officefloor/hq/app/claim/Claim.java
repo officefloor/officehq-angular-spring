@@ -106,6 +106,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** Of the claim's proofs, how many are photos; the rest are receipts. */
+    @Column(name = "photo_proofs", nullable = false)
+    private int photoProofs;
+
     /** The number of the claim this one was split from; none for a claim not made by a split. */
     @Column(name = "split_from")
     private String splitFrom;
@@ -415,6 +419,7 @@ public class Claim {
         copy.corrects = corrects;
         copy.deferredUntil = deferredUntil;
         copy.proofs = proofs;
+        copy.photoProofs = photoProofs;
         copy.splitFrom = splitFrom;
         copy.lateEntry = lateEntry;
         copy.reminded = reminded;
@@ -452,9 +457,32 @@ public class Claim {
         this.proofs = proofs;
     }
 
-    /** Add a proof to the claim. */
-    public void addProof() {
+    /** Of the claim's proofs, how many are photos. */
+    public int getPhotoProofs() {
+        return photoProofs;
+    }
+
+    /** Of the claim's proofs, how many are receipts. */
+    public int getReceiptProofs() {
+        return proofs - photoProofs;
+    }
+
+    /** Set how many of the claim's proofs are photos: only for a version rebuilt from the sheet's history. */
+    public void setPhotoProofs(int photoProofs) {
+        this.photoProofs = photoProofs;
+    }
+
+    /** How many of the claim's proofs are of a kind. */
+    public int proofsOf(ProofKind kind) {
+        return kind == ProofKind.PHOTO ? getPhotoProofs() : getReceiptProofs();
+    }
+
+    /** Add a proof of a kind to the claim. */
+    public void addProof(ProofKind kind) {
         proofs++;
+        if (kind == ProofKind.PHOTO) {
+            photoProofs++;
+        }
     }
 
     /** Whether the claim is deferred on a date: OPEN, deferred until a date after it. Until then it

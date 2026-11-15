@@ -168,6 +168,14 @@ public class SettingsController {
     public record AlertThresholdForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value) {
     }
 
+    /** The proof kinds as the form submits them: receipt and/or photo, comma separated, blank for none. */
+    public record ProofKindsForm(@NotNull @Size(max = 100) String value) {
+    }
+
+    /** The proof kinds as they are set, comma separated; null when none. */
+    public record ProofKindsView(String proofKinds) {
+    }
+
     /** The parent as the form submits it: a sheet id without spaces, blank for none. */
     public record ParentForm(@NotNull @Size(max = 100) @Pattern(regexp = "(\\S+)?") String value) {
     }
@@ -465,6 +473,14 @@ public class SettingsController {
         BigDecimal threshold = body.value().isEmpty() ? null : new BigDecimal(body.value());
         service.setAlertThreshold(sheetId, user.trim(), threshold);
         return view(sheetId);
+    }
+
+    @PutMapping("/settings/proof-kinds")
+    public ProofKindsView setProofKinds(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ProofKindsForm body) {
+        return new ProofKindsView(service.setProofKinds(sheetId, user.trim(), body.value()));
     }
 
     @PutMapping("/settings/parent")
