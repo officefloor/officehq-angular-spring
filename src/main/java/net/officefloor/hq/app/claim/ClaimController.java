@@ -48,23 +48,25 @@ public class ClaimController {
      *  it (null while unlocked); whether it was added while its period was soft-closed; the last
      *  day it was reminded (null when never reminded); its external reference (null when none); its
      *  tags, lower-case, sorted and comma separated (null when none); the reason it was voided with
-     *  (null when none). */
+     *  (null when none); its comments, oldest first. */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
-            boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason) {
-        static ClaimView of(Claim c, List<ClaimLog> log) {
-            return of(c.getId(), c, log);
+            boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason,
+            List<CommentView> comments) {
+        static ClaimView of(Claim c, List<ClaimLog> log, List<ClaimComment> comments) {
+            return of(c.getId(), c, log, comments);
         }
 
         /** The claim of the id, which a version rebuilt from the sheet's history does not carry. */
-        static ClaimView of(long id, Claim c, List<ClaimLog> log) {
+        static ClaimView of(long id, Claim c, List<ClaimLog> log, List<ClaimComment> comments) {
             return new ClaimView(id, c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
                     c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
                     log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLockedBy(),
-                    c.isLateEntry(), c.getReminded(), c.getRef(), c.getTags(), c.getVoidReason());
+                    c.isLateEntry(), c.getReminded(), c.getRef(), c.getTags(), c.getVoidReason(),
+                    comments.stream().map(CommentView::of).toList());
         }
 
         private static String money(BigDecimal value) {
@@ -78,6 +80,17 @@ public class ClaimController {
         static LogLineView of(ClaimLog line) {
             return new LogLineView(line.getStatus(), line.getBy(), line.getOn(), ClaimView.money(line.getDue()));
         }
+    }
+
+    /** A comment on a claim: who wrote it, the sheet's today then, and its text. */
+    public record CommentView(String by, LocalDate on, String text) {
+        static CommentView of(ClaimComment c) {
+            return new CommentView(c.getBy(), c.getOn(), c.getText());
+        }
+    }
+
+    /** A comment as the claim submits it: its text, which must not be blank. */
+    public record CommentForm(@Size(max = 1000) String text) {
     }
 
     /** A statement as the row submits it: the date it is taken as of; missing, it is taken now. */
@@ -148,7 +161,7 @@ public class ClaimController {
 
     /** The claim as the screen shows it, with its status log. */
     ClaimView view(Claim c) {
-        return ClaimView.of(c, service.logOf(c.getId()));
+        return ClaimView.of(c, service.logOf(c.getId()), service.commentsOf(c.getId()));
     }
 
     private final ClaimService service;
@@ -172,13 +185,17 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         Map<Long, List<ClaimLog>> logs = service.logs(sheetId);
+        Map<Long, List<ClaimComment>> comments = service.comments(sheetId);
         if (asOf != null) {
             return history.asOf(sheetId, asOf).claims().entrySet().stream()
                     .map(e -> ClaimView.of(e.getKey(), e.getValue(), logs.getOrDefault(e.getKey(), List.of()).stream()
-                            .filter(l -> !l.getOn().isAfter(asOf)).toList()))
+                            .filter(l -> !l.getOn().isAfter(asOf)).toList(),
+                            comments.getOrDefault(e.getKey(), List.of()).stream()
+                                    .filter(c -> !c.getOn().isAfter(asOf)).toList()))
                     .toList();
         }
-        return service.list(sheetId).stream().map(c -> ClaimView.of(c, logs.getOrDefault(c.getId(), List.of()))).toList();
+        return service.list(sheetId).stream().map(c -> ClaimView.of(c, logs.getOrDefault(c.getId(), List.of()),
+                comments.getOrDefault(c.getId(), List.of()))).toList();
     }
 
     /** Every tag ever used on the sheet, in order; as of a date, those its claims carried then. */
@@ -321,6 +338,15 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         return view(service.remind(sheetId, user.trim(), id));
+    }
+
+    @PostMapping("/claims/{id}/comments")
+    public ClaimView comment(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody CommentForm body) {
+        return view(service.comment(sheetId, user.trim(), id, body.text()));
     }
 
     @PostMapping("/claims/{id}/redate")

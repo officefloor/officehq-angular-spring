@@ -55,6 +55,6 @@ public class QuickAddController {
         QuickAddService.QuickAdd q = service.add(sheetId, user.trim(), body.name(), new BigDecimal(body.amount()));
         return new QuickAddView(PersonView.of(q.person(), people.today(sheetId), people.statementSummary(q.person().getId()),
                 people.patronIds(q.person().getId()), people.isWatching(q.person().getId(), user.trim())),
-                q.personAdded(), ClaimView.of(q.claim(), claims.logOf(q.claim().getId())));
+                q.personAdded(), ClaimView.of(q.claim(), claims.logOf(q.claim().getId()), claims.commentsOf(q.claim().getId())));
     }
 }

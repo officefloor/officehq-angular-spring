@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, deferError, deferred, remindError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment, ClaimLogLine, ClaimsApi, cents, claimError, commentError, commentText, deferError, deferred, remindError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -65,6 +65,16 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine,
                 <li data-testid="claim-log-line">{{ logText(l) }}</li>
               }
             </ol>
+            <ol [attr.aria-label]="'Comments on claim of ' + c.amount + ' on ' + c.date">
+              @for (m of c.comments; track $index) {
+                <li data-testid="claim-comments-line">{{ commentText(m) }}</li>
+              }
+            </ol>
+            <label [for]="'claim-comment-text-' + c.id">Comment</label>
+            <input [id]="'claim-comment-text-' + c.id" data-testid="claim-comment-text" autocomplete="off"
+              [value]="commentTexts()[c.id] ?? ''" (input)="commentChanged(c.id, $any($event.target).value)" />
+            <button type="button" data-testid="claim-comment-add" (click)="comment(c)"
+              [attr.aria-label]="'Comment on claim of ' + c.amount + ' on ' + c.date">Add comment</button>
             <button type="button" data-testid="claim-open" (click)="changeStatus(c, 'open')"
               [attr.aria-label]="'Open claim of ' + c.amount + ' on ' + c.date">Open</button>
             <button type="button" data-testid="claim-settle" (click)="changeStatus(c, 'settle')"
@@ -176,6 +186,8 @@ export class PersonClaims {
   protected readonly deferDates = signal<Record<number, string>>({});
   /** The new date typed for re-dating each claim, by claim id. */
   protected readonly redates = signal<Record<number, string>>({});
+  /** The comment typed on each claim, by claim id. */
+  protected readonly commentTexts = signal<Record<number, string>>({});
   /** The amount typed for splitting off each OPEN claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The amount typed for changing each DRAFT claim's amount in its row, by claim id. */
@@ -394,6 +406,37 @@ export class PersonClaims {
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: deferError(e) }));
+    }
+  }
+
+  /** A comment as the screen shows it. */
+  protected commentText(m: ClaimComment): string {
+    return commentText(m);
+  }
+
+  protected commentChanged(id: number, text: string): void {
+    this.clearRowError(id);
+    this.commentTexts.update((ts) => ({ ...ts, [id]: text }));
+  }
+
+  /** Comment on the claim with the text typed for it; a refusal shows an error on the claim. */
+  protected async comment(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const text = (this.commentTexts()[c.id] ?? '').trim();
+    if (text === '') {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Enter some text to comment.' }));
+      return;
+    }
+    try {
+      const claim = await this.api.comment(sheetId, c.id, text);
+      if (this.session.sheetId() === sheetId) {
+        this.commentTexts.update(({ [c.id]: _, ...rest }) => rest);
+        this.saved.emit(claim);
+      }
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: commentError(e) }));
     }
   }
 

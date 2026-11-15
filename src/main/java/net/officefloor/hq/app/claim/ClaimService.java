@@ -47,6 +47,7 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final ClaimLogRepository log;
+    private final ClaimCommentRepository comments;
     private final SheetTagRepository tagsUsed;
     private final RetiredNumberRepository retired;
     private final PersonRepository people;
@@ -68,10 +69,11 @@ public class ClaimService {
     public record Split(Claim original, Claim split) {
     }
 
-    public ClaimService(ClaimRepository claims, ClaimLogRepository log, SheetTagRepository tagsUsed, RetiredNumberRepository retired, PersonRepository people, PersonStatementRepository statements,
+    public ClaimService(ClaimRepository claims, ClaimLogRepository log, ClaimCommentRepository comments, SheetTagRepository tagsUsed, RetiredNumberRepository retired, PersonRepository people, PersonStatementRepository statements,
             PersonWatchRepository watches, RateRepository rates, SheetService sheets, RollupService rollup, PeriodService periods, SettingsService settings, HistoryService history, Audit audit) {
         this.claims = claims;
         this.log = log;
+        this.comments = comments;
         this.tagsUsed = tagsUsed;
         this.retired = retired;
         this.people = people;
@@ -111,6 +113,39 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public List<ClaimLog> logOf(long claimId) {
         return log.findByClaimIdOrderByIdAsc(claimId);
+    }
+
+    /** The comments on the sheet's claims, each oldest first, by claim id. */
+    @Transactional(readOnly = true)
+    public Map<Long, List<ClaimComment>> comments(String sheetId) {
+        Map<Long, List<ClaimComment>> byClaim = new HashMap<>();
+        for (ClaimComment c : comments.findBySheetIdOrderByIdAsc(sheetId)) {
+            byClaim.computeIfAbsent(c.getClaimId(), k -> new ArrayList<>()).add(c);
+        }
+        return byClaim;
+    }
+
+    /** A claim's comments, oldest first. */
+    @Transactional(readOnly = true)
+    public List<ClaimComment> commentsOf(long claimId) {
+        return comments.findByClaimIdOrderByIdAsc(claimId);
+    }
+
+    /** Comment on a claim in any status: the comment is kept with the user and the sheet's today,
+     *  and COMMENT_ADDED is written. Refused (404) when missing and (422) when the text is blank. */
+    @Transactional
+    public Claim comment(String sheetId, String user, long id, String text) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        if (text == null || text.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "A comment needs some text");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        String trimmed = text.trim();
+        comments.save(new ClaimComment(sheetId, claim.getId(), user, sheets.today(sheetId), trimmed));
+        record("COMMENT_ADDED", user, person, claim, claim.getNumber(), " text=" + trimmed);
+        return claim;
     }
 
     /** The claims of the ids on the sheet in list order: the people in the order they were added,

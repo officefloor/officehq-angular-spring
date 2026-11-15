@@ -67,6 +67,20 @@ export interface Claim {
   tags: string | null;
   /** The reason a VOID claim was voided with, from the sheet's list; null when none. */
   voidReason: string | null;
+  /** The comments on the claim, oldest first. */
+  comments: ClaimComment[];
+}
+
+/** A comment on a claim: who wrote it, the sheet's today then (yyyy-mm-dd), and its text. */
+export interface ClaimComment {
+  by: string;
+  on: string;
+  text: string;
+}
+
+/** A comment as the screen shows it: <user> on <date>: <text>. */
+export function commentText(c: ClaimComment): string {
+  return `${c.by} on ${c.on}: ${c.text}`;
 }
 
 /** A line of a claim's status log: the status, who moved the claim there, the sheet's today then
@@ -256,6 +270,13 @@ export class ClaimsApi {
     );
   }
 
+  /** Comment on a claim. */
+  comment(sheetId: string, id: number, text: string): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/comments`, { text }, { headers: this.headers() }),
+    );
+  }
+
   /** Re-date an OPEN or PENDING claim (a steward only). */
   redate(sheetId: string, id: number, date: string): Promise<Claim> {
     return firstValueFrom(
@@ -399,6 +420,13 @@ export function proofError(e: unknown): string {
 /** Why a reminder was refused. */
 export function remindError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return "Only an open or pending claim not yet reminded on the sheet's today can be reminded.";
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  return otherError(e);
+}
+
+/** Why a comment was refused. */
+export function commentError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && (e.status === 400 || e.status === 422)) return 'Enter some text to comment.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   return otherError(e);
 }
