@@ -153,6 +153,11 @@ export class ClaimsApi {
     return firstValueFrom(this.http.post<QuickAdd>(`${this.url(sheetId)}/quick-add`, form, { headers: this.headers() }));
   }
 
+  /** Add a DRAFT claim for each pasted line of name,amount,date,note, in order; all or none. */
+  paste(sheetId: string, text: string): Promise<Claim[]> {
+    return firstValueFrom(this.http.post<Claim[]>(`${this.url(sheetId)}/paste-claims`, { text }, { headers: this.headers() }));
+  }
+
   update(sheetId: string, id: number, form: ClaimForm): Promise<Claim> {
     return firstValueFrom(this.http.put<Claim>(`${this.url(sheetId)}/claims/${id}`, form, { headers: this.headers() }));
   }
@@ -217,6 +222,18 @@ export function quickAddError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That name was just added by someone else; try again.';
   if (e instanceof HttpErrorResponse && e.status === 423) return "The sheet's today is in a closed period.";
   if (e instanceof HttpErrorResponse && e.status === 422) return "The sheet's today is after that person's retirement date.";
+  return 'Something went wrong; try again.';
+}
+
+/** Why a paste of claims was refused: nothing was added. */
+export function pasteError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) {
+    return 'Paste lines of name,amount,date,note: an amount with up to two decimals and a date as yyyy-mm-dd or blank.';
+  }
+  if (e instanceof HttpErrorResponse && e.status === 422) {
+    return "Every name must be on the sheet, and every date by that person's retirement date; an amount below zero is a correction, which the paste does not take.";
+  }
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'A date is in a closed period.';
   return 'Something went wrong; try again.';
 }
 

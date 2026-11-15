@@ -1,7 +1,7 @@
 import { DOCUMENT, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
-import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, isBound, isOpen, money, overdue, quickAddError, roundsHalfUp } from '../claims/claims-api';
+import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn, personPeriodDueCents } from '../periods/periods-api';
@@ -55,6 +55,17 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
         <button type="submit" data-testid="quick-submit">Quick add</button>
         @if (quickError(); as err) {
           <p role="alert" data-testid="quick-error">{{ err }}</p>
+        }
+      </form>
+      <form [formGroup]="pasteForm" (ngSubmit)="paste()" aria-label="Paste claims">
+        <label for="paste-claims">Paste claims (name,amount,date,note per line)</label>
+        <textarea id="paste-claims" data-testid="paste-claims" formControlName="text" rows="4"></textarea>
+        <button type="submit" data-testid="paste-submit">Add pasted claims</button>
+        @if (pasted() !== null) {
+          <p role="status">Added <strong data-testid="paste-added">{{ pasted() }}</strong></p>
+        }
+        @if (pasteErr(); as err) {
+          <p role="alert" data-testid="paste-error">{{ err }}</p>
         }
       </form>
       <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
@@ -346,12 +357,22 @@ export class People {
   protected readonly quickError = signal<string | null>(null);
   private quickAdding = false;
 
+  /** The paste box: lines of name,amount,date,note, each a DRAFT claim. */
+  protected readonly pasteForm = new FormGroup({
+    text: new FormControl('', { nonNullable: true }),
+  });
+  /** How many claims the last paste added; null while one runs or before the first. */
+  protected readonly pasted = signal<number | null>(null);
+  protected readonly pasteErr = signal<string | null>(null);
+  private pasting = false;
+
   /** Guards against a slower, older read landing over a newer one. */
   private readSeq = 0;
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(null));
     this.quickForm.valueChanges.subscribe(() => this.quickError.set(null));
+    this.pasteForm.valueChanges.subscribe(() => this.pasteErr.set(null));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
@@ -361,6 +382,9 @@ export class People {
         this.patronErrors.set({});
         this.quickForm.reset({ name: '', amount: '' });
         this.quickError.set(null);
+        this.pasteForm.reset({ text: '' });
+        this.pasted.set(null);
+        this.pasteErr.set(null);
         this.selectedClaims.set(new Set());
         this.bulkResult.set(null);
         this.bulkError.set(null);
@@ -653,6 +677,32 @@ export class People {
       this.quickError.set(quickAddError(e));
     } finally {
       this.quickAdding = false;
+    }
+  }
+
+  /** Add a DRAFT claim per pasted line, all or none; then show how many were added. */
+  protected async paste(): Promise<void> {
+    if (this.pasting) return;
+    this.pasted.set(null);
+    this.pasteErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const text = this.pasteForm.getRawValue().text;
+    if (!text.trim()) {
+      this.pasteErr.set('Paste at least one line of name,amount,date,note.');
+      return;
+    }
+    this.pasting = true;
+    try {
+      const added = await this.claimsApi.paste(sheetId, text);
+      if (this.session.sheetId() !== sheetId) return;
+      for (const claim of added) this.claimSaved(claim);
+      this.pasteForm.reset({ text: '' }, { emitEvent: false });
+      this.pasted.set(added.length);
+    } catch (e) {
+      this.pasteErr.set(pasteError(e));
+    } finally {
+      this.pasting = false;
     }
   }
 
