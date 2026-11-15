@@ -48,13 +48,14 @@ public class ClaimController {
      *  it (null while unlocked); whether it was added while its period was soft-closed; the last
      *  day it was reminded (null when never reminded); its external reference (null when none); its
      *  tags, lower-case, sorted and comma separated (null when none); the reason it was voided with
-     *  (null when none); its comments, oldest first; who last edited it (null when never edited). */
+     *  (null when none); its comments, oldest first; who last edited it (null when never edited);
+     *  the number of the bulk settle batch that settled it (null when settled one at a time). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason,
-            List<CommentView> comments, String editedBy) {
+            List<CommentView> comments, String editedBy, Integer batch) {
         static ClaimView of(Claim c, List<ClaimLog> log, List<ClaimComment> comments) {
             return of(c.getId(), c, log, comments);
         }
@@ -66,7 +67,7 @@ public class ClaimController {
                     c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
                     log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLockedBy(),
                     c.isLateEntry(), c.getReminded(), c.getRef(), c.getTags(), c.getVoidReason(),
-                    comments.stream().map(CommentView::of).toList(), c.getEditedBy());
+                    comments.stream().map(CommentView::of).toList(), c.getEditedBy(), c.getBatch());
         }
 
         private static String money(BigDecimal value) {
@@ -307,7 +308,8 @@ public class ClaimController {
 
     /** Settle each selected claim in list order (people in the order added, newest claim first),
      *  each on its own by the rules of settling one; a claim sent to PENDING counts as settled, and
-     *  a claim that cannot be settled is left as it is. */
+     *  a claim that cannot be settled is left as it is. A bulk settle that settles any is the
+     *  sheet's next batch, and each claim it settles carries that batch's number. */
     @PostMapping("/claims/bulk-settle")
     @ViewerAllowed
     public BulkSettleView bulkSettle(
@@ -320,9 +322,10 @@ public class ClaimController {
         }
         List<Long> ordered = service.inListOrder(sheetId, body.ids());
         int settled = 0;
+        Integer batch = null;
         for (long id : ordered) {
             try {
-                service.changeStatus(sheetId, user.trim(), id, ClaimStatus.SETTLED);
+                batch = service.settleInBatch(sheetId, user.trim(), id, batch).getBatch();
                 settled++;
             } catch (ResponseStatusException e) {
                 // refused: left as it is

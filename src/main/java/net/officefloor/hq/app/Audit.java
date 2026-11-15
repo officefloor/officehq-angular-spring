@@ -30,8 +30,9 @@ public class Audit {
      *  every record of the change it makes then ends with {@code for=} that steward. */
     public static final String FOR = Audit.class.getName() + ".for";
 
-    /** Records that only report figures, which never carry {@code for=}. */
-    private static final Set<String> FIGURES = Set.of("ROLLUP", "TOTALS", "ALERT", "SNAPSHOT");
+    /** Records that only report figures, which never carry {@code for=}. A SNAPSHOT is the
+     *  record of the today change its user made, so it carries it. */
+    private static final Set<String> FIGURES = Set.of("ROLLUP", "TOTALS", "ALERT");
 
     private final Path file;
 

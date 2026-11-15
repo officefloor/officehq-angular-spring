@@ -298,6 +298,17 @@ public class ClaimService {
         return changeStatus(sheetId, user, id, to, null);
     }
 
+    /** Settle a claim as {@link #changeStatus} does, as part of a bulk settle's batch of the
+     *  number (null: the bulk settle has settled none yet, so this claim starts the sheet's next
+     *  batch); the claim carries the batch's number. */
+    @Transactional
+    public Claim settleInBatch(String sheetId, String user, long id, Integer batch) {
+        int number = batch != null ? batch : claims.findLastBatch(sheetId) + 1;
+        Claim claim = changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null);
+        claim.setBatch(number);
+        return claims.save(claim);
+    }
+
     /** Void a claim as {@link #changeStatus} does, with a reason from the sheet's list of void
      *  reasons (null: none): while the list is not empty, a void without one of them is refused
      *  (422), and a reason given while it is empty is refused too. The VOIDED record ends with it. */

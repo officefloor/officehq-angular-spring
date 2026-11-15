@@ -72,6 +72,9 @@ export interface Claim {
   voidReason: string | null;
   /** The comments on the claim, oldest first. */
   comments: ClaimComment[];
+  /** The number of the bulk settle batch that settled the claim (or sent it to PENDING); null
+   *  when it was settled one at a time or not at all. */
+  batch: number | null;
 }
 
 /** A comment on a claim: who wrote it, the sheet's today then (yyyy-mm-dd), and its text. */

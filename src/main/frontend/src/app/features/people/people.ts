@@ -111,6 +111,7 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
         <p role="alert" data-testid="bulk-error">{{ err }}</p>
       }
       <button type="button" data-testid="bulk-settle" (click)="bulkSettle()">Settle selected claims</button>
+      <span>Last batch <span data-testid="bulk-settle-batch">{{ lastBatch() ?? '' }}</span></span>
       @if (bulkSettleResult(); as r) {
         <p role="status">Settled <strong data-testid="bulk-settled">{{ r.settled }}</strong>,
           refused <strong data-testid="bulk-settle-refused">{{ r.refused }}</strong></p>
@@ -538,6 +539,9 @@ export class People {
   /** The last bulk settle's counts; gone while one runs. */
   protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
   protected readonly bulkSettleError = signal<string | null>(null);
+  /** The number of the sheet's last bulk settle batch (the highest any claim carries); null with none. */
+  protected readonly lastBatch = computed(() =>
+    this.claims().reduce<number | null>((last, c) => c.batch !== null && (last === null || c.batch > last) ? c.batch : last, null));
   private bulkSettling = false;
   /** The last bulk reassign's counts; gone while one runs. */
   protected readonly bulkReassignResult = signal<{ reassigned: number; refused: number } | null>(null);

@@ -76,7 +76,8 @@ public class HistoryService {
     record ClaimState(long personId, BigDecimal amount, LocalDate date, LocalDate dueBy, ClaimStatus status,
             String number, BigDecimal settledDue, boolean stated, BigDecimal statedDue, String corrects,
             LocalDate deferredUntil, String note, String openedBy, long listed, int proofs, String splitFrom,
-            boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason, String editedBy) {
+            boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason, String editedBy,
+            Integer batch) {
     }
 
     record PeriodState(String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
@@ -134,7 +135,7 @@ public class HistoryService {
                     c.getDate(), c.getDueBy(), c.getStatus(), c.getNumber(), c.getSettledDue(), c.isStated(),
                     c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getNote(), c.getOpenedBy(),
                     c.getListed(), c.getProofs(), c.getSplitFrom(), c.isLateEntry(), c.getReminded(),
-                    c.getRef(), c.getTags(), c.getVoidReason(), c.getEditedBy()));
+                    c.getRef(), c.getTags(), c.getVoidReason(), c.getEditedBy(), c.getBatch()));
         } else if (entity instanceof Person p) {
             List<Person.DatedGrade> all = p.getGrades();
             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
@@ -319,6 +320,7 @@ public class HistoryService {
         c.setTags(s.tags());
         c.setVoidReason(s.voidReason());
         c.setEditedBy(s.editedBy());
+        c.setBatch(s.batch());
         if (s.stated()) {
             c.bind(s.statedDue());
         }
