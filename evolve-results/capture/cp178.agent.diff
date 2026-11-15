@@ -1,0 +1,167 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 6d9cd264c..ca326eb8d 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -9,7 +9,15 @@ import { statusCounts } from '../summary/summary';
+ // the sheet's totals show them); and the same figures consolidated over the sheet and all its
+ // descendants (each sheet's totals as that sheet shows them, added up); and the signed-in user's own
+ // due-total and overdue-total, when a person on the sheet goes by their name, and their crew total,
+-// when that person leads a crew.
++// when that person leads a crew; and, for a steward, their dashboard: how many claims are PENDING,
++// how many in REVIEW and how many counting ones are overdue (the cells empty for anyone else).
++/** A steward's dashboard: the sheet's PENDING claims, REVIEW claims and counting overdue claims. */
++export interface Dashboard {
++  pending: number;
++  review: number;
++  overdue: number;
++}
++
+ @Component({
+   selector: 'app-header',
+   imports: [FigurePipe],
+@@ -26,6 +34,9 @@ import { statusCounts } from '../summary/summary';
+       <p>My due total <strong data-testid="my-due-total">{{ myDueTotal() | figure }}</strong>,
+         my overdue total <strong data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</strong></p>
+       <p>My crew total <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
++      <p>Steward's dashboard: pending <strong data-testid="dash-pending-count">{{ dashboard()?.pending ?? '' }}</strong>,
++        in review <strong data-testid="dash-review-count">{{ dashboard()?.review ?? '' }}</strong>,
++        overdue <strong data-testid="dash-overdue-count">{{ dashboard()?.overdue ?? '' }}</strong></p>
+       <p>With its descendants: people <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong>,
+         due total <strong data-testid="consolidated-due-total">{{ consolidated().dueTotal | figure }}</strong>,
+         overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal | figure }}</strong></p>
+@@ -43,6 +54,8 @@ export class Header {
+   readonly myOverdueTotal = input<string | null>(null);
+   /** The due-totals of the crews the signed-in user's person leads, added up; null when they lead none. */
+   readonly myCrewDueTotal = input<string | null>(null);
++  /** The steward's dashboard counts; null when the signed-in user is not a steward. */
++  readonly dashboard = input<Dashboard | null>(null);
+ 
+   protected readonly byStatus = computed(() => statusCounts(this.claims()));
+ }
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index f108d56e6..9885c9b12 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -272,6 +272,13 @@ export class PeopleApi {
+       `/api/sheets/${encodeURIComponent(sheetId)}/figures`, { headers: this.headers() }));
+   }
+ 
++  /** The role the signed-in user acts in on the sheet now (or, while the screen shows the sheet as of
++   *  a date, the role they had then). */
++  myRole(sheetId: string): Promise<string> {
++    return firstValueFrom(this.http.get<{ role: string }>(
++      `/api/sheets/${encodeURIComponent(sheetId)}/my-role`, { headers: this.headers() })).then((r) => r.role);
++  }
++
+   /** Transfer the person to another sheet; resolves to the person as they arrived there. */
+   transfer(sheetId: string, id: number, toSheetId: string): Promise<Person> {
+     return firstValueFrom(
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ea73b0570..d385c7f07 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -14,8 +14,8 @@ import { Period, PeriodsApi, periodOn, personPeriodCarriedCents, personPeriodDue
+ import { Rates } from '../rates/rates';
+ import { Summary, SummaryPerson } from '../summary/summary';
+ import { ClassicSummary } from '../summary/classic-summary';
+-import { Header } from '../header/header';
+ import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
++import { Dashboard, Header } from '../header/header';
+ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
+ 
+ // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
+@@ -29,7 +29,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+   template: `
+     <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()"
+       [myDueTotal]="myFigures()?.dueTotal ?? null" [myOverdueTotal]="myFigures()?.overdueTotal ?? null"
+-      [myCrewDueTotal]="myCrewDueTotal()" />
++      [myCrewDueTotal]="myCrewDueTotal()" [dashboard]="dashboard()" />
+     <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
+     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
+@@ -649,6 +649,19 @@ export class People {
+   protected agedOf(personId: number): Aged {
+     return this.agedByPerson().get(personId) ?? { upTo30: 0, upTo60: 0, over60: 0 };
+   }
++  /** The role the signed-in user acts in on the sheet (as it stood then, under an as-of date), as last read. */
++  private readonly myRole = signal<string | null>(null);
++  /** The steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that
++   *  count; null unless the signed-in user is a steward. */
++  protected readonly dashboard = computed<Dashboard | null>(() => {
++    if (this.myRole() !== 'steward') return null;
++    const claims = this.claims();
++    return {
++      pending: claims.filter((c) => c.status === 'PENDING').length,
++      review: claims.filter((c) => c.status === 'REVIEW').length,
++      overdue: this.overdueCount(),
++    };
++  });
+   protected readonly overdueCount = computed(() =>
+     [...this.overdueByPerson().values()].reduce((sum, o) => sum + o.count, 0));
+   protected readonly overdueTotal = computed(() =>
+@@ -1005,6 +1018,7 @@ export class People {
+         this.inherited.set([]);
+         this.descendants.set({ people: 0, dueTotal: '0.00', overdueTotal: '0.00' });
+         this.ownLive.set(null);
++        this.myRole.set(null);
+         this.periods.set([]);
+         if (id) void this.read(id);
+       });
+@@ -1789,12 +1803,14 @@ export class People {
+     const seq = ++this.readSeq;
+     try {
+       const asOf = this.session.asOf() !== null;
+-      const [people, claims, rates, inherited, periods, tags, descendants, own, plans] = await Promise.all([
++      const [people, claims, rates, inherited, periods, tags, descendants, own, plans, role] = await Promise.all([
+         this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId), this.ratesApi.inherited(sheetId),
+         this.periodsApi.list(sheetId), this.claimsApi.tags(sheetId), this.api.descendantFigures(sheetId),
+-        asOf ? this.api.ownFigures(sheetId) : Promise.resolve(null), this.plansApi.list(sheetId)]);
++        asOf ? this.api.ownFigures(sheetId) : Promise.resolve(null), this.plansApi.list(sheetId),
++        this.api.myRole(sheetId)]);
+       if (seq === this.readSeq) {
+         this.session.plans.set(plans);
++        this.myRole.set(role);
+         this.descendants.set(descendants);
+         this.ownLive.set(own);
+         this.tagsUsed.set(tags);
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 3291bf04e..417b64870 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -191,6 +191,10 @@ public class SettingsController {
+     }
+ 
+     /** A user name's role on the sheet. */
++    /** The role the signed-in user acts in. */
++    public record MyRoleView(String role) {
++    }
++
+     public record RoleView(String user, String role) {
+         static RoleView of(SheetRole r) {
+             return new RoleView(r.getUser(), r.getRole().key());
+@@ -558,6 +562,25 @@ public class SettingsController {
+         return roles.stream().map(RoleView::of).toList();
+     }
+ 
++    /** The role the signed-in user acts in on the sheet: under an as-of date, the role it held then
++     *  (a steward while a steward's delegation to it covered that date). */
++    @GetMapping("/my-role")
++    public MyRoleView myRole(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        String name = user.trim();
++        if (asOf == null) {
++            return new MyRoleView(service.roleOf(sheetId, name).key());
++        }
++        HistoryService.AsOf then = history.asOf(sheetId, asOf);
++        Role held = then.roles().stream().filter(r -> r.getUser().equals(name)).map(SheetRole::getRole)
++                .findFirst().orElse(Role.CLERK);
++        boolean delegated = then.delegations().values().stream()
++                .anyMatch(d -> d.getUser().equals(name) && d.covers(asOf));
++        return new MyRoleView((held != Role.STEWARD && delegated ? Role.STEWARD : held).key());
++    }
++
+     @PutMapping("/roles")
+     public RoleView setRole(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,

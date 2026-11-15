@@ -1,0 +1,64 @@
+{
+  "checkpoint": 178,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp178_steward-dashboard",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The screen shows a steward's dashboard: the count of PENDING claims, of REVIEW claims and of overdue\nclaims that count, over the sheet. A user who is not a steward sees the three cells empty. Under an\nas-of date the cells show the counts as they stood then, for the role the user had then.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe screen shows a steward's dashboard: the count of PENDING claims, of REVIEW claims and of overdue\nclaims that count, over the sheet. A user who is not a steward sees the three cells empty. Under an\nas-of date the cells show the counts as they stood then, for the role the user had then.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "c1737e612190409cb026685923bf5dd3acd63359",
+  "reset_sha": "",
+  "preagent_sha": "942d7f60f33dc5a82ce425855af87cdcf2353165",
+  "prev_sha": "942d7f60f33dc5a82ce425855af87cdcf2353165",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.3334525999999995,
+    "input_tokens": 66,
+    "output_tokens": 14062,
+    "cache_read_tokens": 2079103,
+    "cache_creation_tokens": 79516,
+    "num_turns": 34,
+    "duration_ms": 470521,
+    "duration_api_ms": 161749,
+    "model": "claude-opus-5-5",
+    "session_id": "4ed78656-2af6-4f50-bd4e-b417d82987f3",
+    "stop_reason": "success",
+    "result_text": "The steward's dashboard is in place. Three of the four Playwright tests pass. The fourth, scenario 3, fails at a line before any of its dashboard checks. The cause is the machine's real date, not this change.\n\n**What I changed**\n- **Server** (`SettingsController.java`): a new `GET /api/sheets/{id}/my-role` returns the role the signed-in user acts in.\n  - Normally it uses the existing role rules: the role they hold, or steward while a steward's delegation to them covers the sheet's today.\n  - Under an as-of date it rebuilds the role from the sheet's history: the role they held then, or steward if a delegation covered that date.\n  - No database schema change was needed, because roles and delegations were already kept in that history.\n- **Front end**:\n  - `people-api.ts` gets a `myRole()` call, which the people screen reads with the rest of the sheet each time it loads.\n  - `people.ts` works out the dashboard figures:\n    - **Pending:** the sheet's PENDING claims.\n    - **Review:** its REVIEW claims.\n    - **Overdue:** the same count as the existing `rollup-overdue-count`, which leaves out claims that don't count, such as those under a hold.\n    - If the user isn't a steward, there are no figures.\n  - `header.ts` shows them in `dash-pending-count`, `dash-review-count` and `dash-overdue-count`, and leaves the cells empty for anyone who isn't a steward.\n\n\"That count\" in the request could be read as applying only to overdue claims or to all three counts. I applied it only to overdue claims, so pending and review count every claim in that status, as the header's status counts do. The tests pass either way.\n\n**Test results**\n- \"steward dashboard\" and scenarios 1 and 2 pass, including both as-of checks: in scenario 1 wes sees empty cells as of 2026-04-02, before he was made steward, and in scenario 2 a non-steward sees empty cells.\n- Scenario 3 fails at line 1171: as of 2026-03-20 it expects `rate-current-A` to be `12.50`, and the screen shows `n/a`.\n\n**Why scenario 3 fails**\n- The test sets rates on a new parent sheet `${sheet}-p` without ever giving it a date. A new sheet's today is the real date, which is 2026-11-15 on this machine. The history stamps that sheet's rates with that date, so as of 2026-03-20 the parent has no rates yet.\n- I checked this against the running app. The same inherited rate comes back as of 2026-11-15 and is missing as of 2026-03-20.\n- The expected values only work if the real date is on or before 2026-03-20, so the test was presumably recorded then. Rate inheritance and history are untouched by this change.\n- The two dashboard checks the failure keeps the test from reaching expect empty cells for uma, who is a clerk throughout, and the new code gives empty cells there.\n\nI didn't change how a new sheet sets its date to force the test through. That rule is existing, documented behaviour, and changing it would affect far more than this feature. The test should pass if run with the clock set on or before 2026-03-20, but `faketime` isn't installed, so I couldn't confirm that.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.3334525999999995,
+        "num_turns": 34,
+        "duration_ms": 470521,
+        "duration_api_ms": 161749,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp178.agent.jsonl",
+  "agent_diff_file": "cp178.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
