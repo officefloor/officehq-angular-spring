@@ -63,9 +63,10 @@ export interface PersonThen {
   holds: Hold[];
 }
 
-/** A period whose to-date is on or before the sheet's today, with what its cuts are worked from as
- *  it all stood at the end of that to-date (the day the cuts are taken on): the pot then (null when
- *  none), the pools and crews then, and the people then. */
+/** A period whose to-date is on or before the sheet's today, or that is closed, with what its cuts
+ *  are worked from as it all stood at the end of that to-date, or when it was closed (the cuts fixed
+ *  then): the day the cuts are taken on (its to-date, or the sheet's today when it was closed), the
+ *  pot then (null when none), the pools and crews then, and the people then. */
 export interface PeriodThen {
   period: string;
   to: string;

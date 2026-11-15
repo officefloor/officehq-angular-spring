@@ -27,8 +27,9 @@ public class PoolService {
     public record PoolWithMembers(Pool pool, List<PoolMember> members) {
     }
 
-    /** A period and the sheet as it stood at the end of its to-date. */
-    public record PeriodThen(Period period, HistoryService.AsOf then) {
+    /** A period, the sheet its cuts are worked from (as it stood at the end of its to-date, or when
+     *  it was closed) and the day they are taken on (its to-date, or the sheet's today when it was closed). */
+    public record PeriodThen(Period period, HistoryService.AsOf then, LocalDate day) {
     }
 
     private final PoolRepository pools;
@@ -63,7 +64,8 @@ public class PoolService {
 
     /** Each of the sheet's periods (by from-date) whose to-date is on or before the day (the sheet's
      *  today when none is given; the periods then as they stood at the end of it), with the sheet as
-     *  it stood at the end of that to-date. */
+     *  it stood at the end of that to-date; and each closed or soft-closed one, with the sheet as it
+     *  stood when it was closed, its today then the day its cuts are taken on. */
     @Transactional(readOnly = true)
     public List<PeriodThen> history(String sheetId, LocalDate asOf) {
         LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
@@ -71,8 +73,11 @@ public class PoolService {
                 ? history.asOf(sheetId, asOf).periods().values().stream()
                         .sorted(Comparator.comparing(Period::getFrom)).toList()
                 : periods.findBySheetIdOrderByFromAsc(sheetId);
-        return all.stream().filter(p -> !p.getTo().isAfter(today))
-                .map(p -> new PeriodThen(p, history.asOf(sheetId, p.getTo()))).toList();
+        return all.stream().filter(p -> p.getCutsAt() != null || !p.getTo().isAfter(today))
+                .map(p -> p.getCutsAt() != null
+                        ? new PeriodThen(p, history.asOfVersion(sheetId, p.getCutsAt(), p.getCutsOn()), p.getCutsOn())
+                        : new PeriodThen(p, history.asOf(sheetId, p.getTo()), p.getTo()))
+                .toList();
     }
 
     /** Add a pool to the sheet, the sheet created first if it was never loaded; refused (409) when

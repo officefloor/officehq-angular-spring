@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -37,15 +38,17 @@ public class PeriodService {
     private final SheetService sheets;
     private final RollupService rollup;
     private final SettingsService settings;
+    private final HistoryService history;
     private final Audit audit;
 
     public PeriodService(PeriodRepository periods, PersonRepository people, SheetService sheets, RollupService rollup,
-            SettingsService settings, Audit audit) {
+            SettingsService settings, HistoryService history, Audit audit) {
         this.periods = periods;
         this.people = people;
         this.sheets = sheets;
         this.rollup = rollup;
         this.settings = settings;
+        this.history = history;
         this.audit = audit;
     }
 
@@ -299,6 +302,7 @@ public class PeriodService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed");
         }
         period.softClose(rollup.dueByPersonBetween(sheetId, period.getFrom(), period.getTo()), carriedInto(sheetId, period));
+        fixCuts(sheetId, period);
         periods.flush();
         audit.recordOnCommit("PERIOD_SOFT_CLOSED sheet=" + sheetId + " by=" + user
                 + " period=" + period.getName() + " total=" + period.getClosedTotal().toPlainString());
@@ -324,10 +328,16 @@ public class PeriodService {
     /** Fix the period's figures as they show now and audit it, with any trailing fields. */
     private void closeNow(String sheetId, String user, Period period, String trailing) {
         period.close(rollup.dueByPersonBetween(sheetId, period.getFrom(), period.getTo()), carriedInto(sheetId, period));
+        fixCuts(sheetId, period);
         periods.flush();
         BigDecimal total = period.getClosedTotal();
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user
                 + " period=" + period.getName() + " total=" + total.toPlainString() + trailing);
+    }
+
+    /** Fix the period's pool members' cuts as the sheet stands now, taken on the sheet's today. */
+    private void fixCuts(String sheetId, Period period) {
+        period.fixCuts(history.lastVersion(sheetId), sheets.today(sheetId));
     }
 
     /** Each person's carried figure into the period as it shows now, by person id: what their
@@ -340,7 +350,7 @@ public class PeriodService {
         return carried;
     }
 
-    /** Reopen a closed or soft-closed period, its due-total and carried figures live again; refused (403) unless the
+    /** Reopen a closed or soft-closed period, its due-total, carried figures and cuts live again; refused (403) unless the
      *  user's role may reopen by the sheet's permission matrix (by default a steward), and (409)
      *  when it is neither closed nor soft-closed, or it is locked. */
     @Transactional

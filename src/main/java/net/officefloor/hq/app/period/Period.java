@@ -78,6 +78,12 @@ public class Period {
     @Column(name = "amount", nullable = false)
     private Map<Long, BigDecimal> openings = new LinkedHashMap<>();
 
+    @Column(name = "cuts_at")
+    private Long cutsAt;
+
+    @Column(name = "cuts_on")
+    private LocalDate cutsOn;
+
     protected Period() {
     }
 
@@ -194,8 +200,28 @@ public class Period {
         }
     }
 
-    /** Reopen the period, its due-totals live again. */
+    /** The last version of the sheet's history when the period was closed, its pool members' cuts
+     *  for it fixed as the sheet then stood; null while open. */
+    public Long getCutsAt() {
+        return cutsAt;
+    }
+
+    /** The sheet's today when the period was closed, the day its fixed cuts are taken on; null while open. */
+    public LocalDate getCutsOn() {
+        return cutsOn;
+    }
+
+    /** Fix the pool members' cuts for the period as the sheet stood at history version {@code at},
+     *  taken on {@code on}. */
+    public void fixCuts(Long at, LocalDate on) {
+        this.cutsAt = at;
+        this.cutsOn = on;
+    }
+
+    /** Reopen the period, its due-totals and cuts live again. */
     public void reopen() {
+        this.cutsAt = null;
+        this.cutsOn = null;
         this.closed = false;
         this.softClosed = false;
         this.closedTotal = null;

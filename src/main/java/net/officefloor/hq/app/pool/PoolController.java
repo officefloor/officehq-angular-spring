@@ -68,8 +68,9 @@ public class PoolController {
         }
     }
 
-    /** A period whose to-date has come, with what its cuts are worked from as they stood at the end
-     *  of it: the period's name and to-date (the day the cuts are taken on), the pot then (two
+    /** A period whose to-date has come, or that is closed, with what its cuts are worked from as
+     *  they stood at the end of its to-date (or when it was closed): the period's name and the day
+     *  the cuts are taken on (its to-date, or the sheet's today when it was closed), the pot then (two
      *  decimals, null when none), the pools and crews then and the people then. */
     public record PeriodCutsView(String period, String to, String pot, List<PoolView> pools,
             List<CrewController.CrewView> crews, List<PersonThen> people) {
@@ -92,7 +93,7 @@ public class PoolController {
                             then.crewMembers().values().stream().filter(m -> m.crewId() == e.getKey())
                                     .map(HistoryService.CrewMemberState::personId).toList()))
                     .toList();
-            return new PeriodCutsView(p.period().getName(), p.period().getTo().toString(),
+            return new PeriodCutsView(p.period().getName(), p.day().toString(),
                     then.sheet().getPot() == null ? null : then.sheet().getPot().setScale(2).toPlainString(),
                     pools, crews,
                     then.people().entrySet().stream().map(e -> PersonThen.of(e.getKey(), e.getValue())).toList());
@@ -131,8 +132,9 @@ public class PoolController {
         return all.stream().map(p -> PoolView.of(p, poolNames)).toList();
     }
 
-    /** Each period whose to-date is on or before the sheet's today (or the as-of date), by from-date,
-     *  with the pools, crews, pot and people as they stood at the end of its to-date. */
+    /** Each period whose to-date is on or before the sheet's today (or the as-of date), or that is
+     *  closed, by from-date, with the pools, crews, pot and people as they stood at the end of its
+     *  to-date (as they stood when it was closed, for a closed one). */
     @GetMapping("/history")
     public List<PeriodCutsView> history(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,

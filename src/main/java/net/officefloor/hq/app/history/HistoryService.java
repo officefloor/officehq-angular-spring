@@ -101,7 +101,7 @@ public class HistoryService {
 
     record PeriodState(String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
             Map<Long, BigDecimal> personTotals, Integer cap, Map<Long, BigDecimal> personCarried,
-            Map<Long, BigDecimal> openings, Boolean locked) {
+            Map<Long, BigDecimal> openings, Boolean locked, Long cutsAt, LocalDate cutsOn) {
     }
 
     record StatementState(long personId, BigDecimal dueTotal, int claims, LocalDate takenOn, LocalDate asOf,
@@ -198,7 +198,8 @@ public class HistoryService {
         } else if (entity instanceof Period p) {
             write(p.getSheetId(), PERIOD, String.valueOf(p.getId()), new PeriodState(p.getName(), p.getFrom(), p.getTo(),
                     p.isClosed(), p.isSoftClosed(), new TreeMap<>(p.getClosedPersonTotals()), p.getCap(),
-                    p.isCarriedFixed() ? new TreeMap<>(p.getClosedPersonCarried()) : null, new TreeMap<>(p.getOpenings()), p.isLocked()));
+                    p.isCarriedFixed() ? new TreeMap<>(p.getClosedPersonCarried()) : null, new TreeMap<>(p.getOpenings()), p.isLocked(),
+                    p.getCutsAt(), p.getCutsOn()));
         } else if (entity instanceof PersonStatement st) {
             write(st.getSheetId(), STATEMENT, String.valueOf(st.getId()), new StatementState(st.getPersonId(),
                     st.getDueTotal(), st.getClaims(), st.getTakenOn(), st.getAsOf(), st.getTakenBy()));
@@ -275,14 +276,31 @@ public class HistoryService {
                 sheetId, kind, entityId, Date.valueOf(madeOn), text);
     }
 
+    /** The last version of the sheet's history written so far (0 when none). */
+    public long lastVersion(String sheetId) {
+        Long last = jdbc.queryForObject("SELECT MAX(id) FROM history WHERE sheet_id = ?", Long.class, sheetId);
+        return last == null ? 0 : last;
+    }
+
     /** The sheet as it stood at the end of {@code on}: each of its entities and its settings in the
      *  last version a change made while the sheet's today was on or before it left (one with none,
      *  or removed then, was not there), and {@code on} as its today. */
     public AsOf asOf(String sheetId, LocalDate on) {
+        return asOf(sheetId, on, null);
+    }
+
+    /** The sheet as it stood just after history version {@code version} was written (as
+     *  {@link #asOf(String, LocalDate)} rebuilds it, from the versions up to it), with {@code on}
+     *  as its today. */
+    public AsOf asOfVersion(String sheetId, long version, LocalDate on) {
+        return asOf(sheetId, on, version);
+    }
+
+    private AsOf asOf(String sheetId, LocalDate on, Long version) {
         Map<String, String> latest = new LinkedHashMap<>();
-        jdbc.query("SELECT kind, entity_id, made_on, state FROM history WHERE sheet_id = ? ORDER BY id",
+        jdbc.query("SELECT id, kind, entity_id, made_on, state FROM history WHERE sheet_id = ? ORDER BY id",
                 rs -> {
-                    if (!rs.getDate("made_on").toLocalDate().isAfter(on)) {
+                    if (version != null ? rs.getLong("id") <= version : !rs.getDate("made_on").toLocalDate().isAfter(on)) {
                         latest.put(rs.getString("kind") + "/" + rs.getString("entity_id"), rs.getString("state"));
                     }
                 }, sheetId);
@@ -350,6 +368,8 @@ public class HistoryService {
                     } else if (p.softClosed()) {
                         period.softClose(p.personTotals(), p.personCarried());
                     }
+                    // a version written before cuts were fixed at a close has none
+                    period.fixCuts(p.cutsAt(), p.cutsOn());
                     periods.put(Long.valueOf(id), period);
                 }
                 case STATEMENT -> {
