@@ -1,0 +1,161 @@
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index a50b0937e..67bcdec48 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -155,10 +155,10 @@ export class PersonClaims {
+     this.form.valueChanges.subscribe(() => this.error.set(null));
+   }
+ 
+-  /** The claim's amount times the rate in force on the claim's date for the person's grade then, divided by 100, rounded
+-   *  by the claim's rounding policy (half up before the sheet's policy date, else half to even), at least the sheet's floor; n/a with no rate in force then. A claim settled with a
+-   *  due shows the due fixed then, and one bound by a statement the due bound; an overdue open
+-   *  (OPEN or PENDING) claim gains its late charge on top. */
++  /** The claim's figure (its amount times the rate in force on the claim's date for the person's grade then, divided by 100, rounded
++   *  by the claim's rounding policy (half up before the sheet's policy date, else half to even), or the figure a statement
++   *  bound it to), with its late charge on top when it is an overdue open (OPEN or PENDING) claim, then raised to the
++   *  sheet's floor in force on its date; n/a with no rate in force then. A claim settled with a due shows the due fixed then. */
+   protected dueOf(c: Claim): string {
+     const grade = gradeOn(this.grades(), c.date);
+     const due = claimDueCents(this.rates().filter((r) => r.grade === grade), c, cents(this.session.floorOn(c.date)), {
+diff --git a/src/main/frontend/src/app/features/rates/rates-api.ts b/src/main/frontend/src/app/features/rates/rates-api.ts
+index 2b5c8b2fd..4b6c7e62d 100644
+--- a/src/main/frontend/src/app/features/rates/rates-api.ts
++++ b/src/main/frontend/src/app/features/rates/rates-api.ts
+@@ -80,23 +80,23 @@ export interface Lateness {
+   latePctOn: (date: string) => string;
+ }
+ 
+-/** A claim's due in cents: the due fixed when it was settled, else its figure (the due a statement
+- *  bound it to (unless PENDING), else its amount times its grade's rate in force on its date, rounded half up when
+- *  `halfUp` (the claim's rounding policy) else half to even, and raised to the sheet's floor in force on its date) with
+- *  its late charge, rounded the same way, on top (a correction is neither raised to the floor nor
+- *  charged late); null (n/a) with no figure. */
++/** A claim's due in cents: the due fixed when it was settled, else the greater of the sheet's floor in
++ *  force on its date and its figure (the rate figure a statement bound it to (unless PENDING), else its
++ *  amount times its grade's rate in force on its date, rounded half up when `halfUp` (the claim's rounding
++ *  policy) else half to even) with its late charge, rounded the same way, on top (a correction is neither
++ *  raised to the floor nor charged late); null (n/a) with no figure. */
+ export function claimDueCents(rates: readonly Rate[], c: Claim, floorCents: number, late: Lateness, halfUp: boolean): number | null {
+   if (c.settledDue !== null) return cents(c.settledDue);
+-  const figure = figureCents(rates, c, floorCents, halfUp);
+-  return figure === null ? null : figure + lateChargeCents(c, figure, late, halfUp);
++  const figure = figureCents(rates, c, halfUp);
++  if (figure === null) return null;
++  const charged = figure + lateChargeCents(c, figure, late, halfUp);
++  return isCorrection(c) ? charged : Math.max(charged, floorCents);
+ }
+ 
+-function figureCents(rates: readonly Rate[], c: Claim, floorCents: number, halfUp: boolean): number | null {
++function figureCents(rates: readonly Rate[], c: Claim, halfUp: boolean): number | null {
+   if (isBound(c)) return c.statedDue === null ? null : cents(c.statedDue);
+   const pct = pctOn(rates, c.date);
+-  if (pct === null) return null;
+-  const due = dueCents(cents(c.amount), cents(pct), halfUp);
+-  return isCorrection(c) ? due : Math.max(due, floorCents);
++  return pct === null ? null : dueCents(cents(c.amount), cents(pct), halfUp);
+ }
+ 
+ /** An overdue claim's late charge in cents: for every full 30 days past its due-by, the late percent
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 4999bb5be..b5081bc02 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -350,7 +350,8 @@ public class ClaimService {
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         BigDecimal old = claim.getSettledDue();
+-        BigDecimal due = LateCharge.of(sheets.find(sheetId)).addToOpen(claim, dueOf(claim, person), roundingOf(claim));
++        BigDecimal due = flooredOf(claim,
++                LateCharge.of(sheets.find(sheetId)).addToOpen(claim, rateFigureOf(claim, person), roundingOf(claim)));
+         claim.setSettledDue(due);
+         claims.flush();
+         logStatus(user, person, claim);
+@@ -574,18 +575,28 @@ public class ClaimService {
+     }
+ 
+     /** The due a claim shows: the due fixed when it was settled, else its figure with its late
+-     *  charge on top. */
++     *  charge on top, raised to the floor in force on its date. */
+     private BigDecimal shownDueOf(Claim claim, Person person) {
+         if (claim.getSettledDue() != null) {
+             return claim.getSettledDue();
+         }
+-        return LateCharge.of(sheets.find(claim.getSheetId())).addTo(claim, figureOf(claim, person), roundingOf(claim));
++        return flooredOf(claim,
++                LateCharge.of(sheets.find(claim.getSheetId())).addTo(claim, figureOf(claim, person), roundingOf(claim)));
+     }
+ 
+-    /** A claim's figure before any late charge: the one a statement bound it to (null: n/a), else
+-     *  (unbound, or PENDING) its live due. */
++    /** A due (null: n/a, which stays n/a) raised to the sheet's floor in force on the claim's date; a
++     *  correction's never is. */
++    private BigDecimal flooredOf(Claim claim, BigDecimal due) {
++        if (due == null || claim.isCorrection()) {
++            return due;
++        }
++        return due.max(sheets.floorOn(claim.getSheetId(), claim.getDate()));
++    }
++
++    /** A claim's figure before any late charge or floor: the one a statement bound it to (null: n/a),
++     *  else (unbound, or PENDING) its rate figure. */
+     private BigDecimal figureOf(Claim claim, Person person) {
+-        return claim.isBound() ? claim.getStatedDue() : dueOf(claim, person);
++        return claim.isBound() ? claim.getStatedDue() : rateFigureOf(claim, person);
+     }
+ 
+     /** A person's due-total: the sum of the dues their counting claims show (n/a ones skipped);
+@@ -600,13 +611,11 @@ public class ClaimService {
+     }
+ 
+     /** The claim's amount times the rate, in force on the claim's date, of its person's grade then, divided by
+-     *  100, rounded as its rounding policy has it, raised to the sheet's floor in force on its date (a correction's never is); null with no rate in force then. */
+-    private BigDecimal dueOf(Claim claim, Person person) {
+-        BigDecimal floor = sheets.floorOn(claim.getSheetId(), claim.getDate());
++     *  100, rounded as its rounding policy has it; null with no rate in force then. */
++    private BigDecimal rateFigureOf(Claim claim, Person person) {
+         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
+                 .map(Rate::getPct)
+                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, roundingOf(claim)))
+-                .map(due -> claim.isCorrection() ? due : due.max(floor))
+                 .orElse(null);
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 3e615c73c..c5c6f1707 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -245,27 +245,26 @@ public class RollupService {
+ 
+     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it
+      *  to (null: n/a), else its amount times the rate in force on its date of its person's grade
+-     *  then, rounded as its rounding policy has it,
+-     *  raised to the sheet's floor in force on its date (a correction's never is); an unsettled one with its late charge on top. */
++     *  then, rounded as its rounding policy has it; an unsettled one with its late charge on top, then raised to the
++     *  sheet's floor in force on its date (a correction's never is). */
+     private static BigDecimal shownDueOf(Claim c, Person person, List<Rate> sheetRates, Function<LocalDate, BigDecimal> floor,
+             LateCharge late, Function<Claim, RoundingMode> rounding) {
+         if (c.getSettledDue() != null) {
+             return c.getSettledDue();
+         }
+         RoundingMode mode = rounding.apply(c);
+-        return late.addTo(c, figureOf(c, person, sheetRates, floor, mode), mode);
++        BigDecimal due = late.addTo(c, figureOf(c, person, sheetRates, mode), mode);
++        return due == null || c.isCorrection() ? due : due.max(floor.apply(c.getDate()));
+     }
+ 
+-    /** A claim's figure before any late charge: the one a statement bound it to (null: n/a), else
+-     *  its live due. */
+-    private static BigDecimal figureOf(Claim c, Person person, List<Rate> sheetRates, Function<LocalDate, BigDecimal> floor,
+-            RoundingMode mode) {
++    /** A claim's figure before any late charge or floor: the one a statement bound it to (null: n/a),
++     *  else its rate figure. */
++    private static BigDecimal figureOf(Claim c, Person person, List<Rate> sheetRates, RoundingMode mode) {
+         if (c.isBound()) {
+             return c.getStatedDue();
+         }
+         return inForce(person, sheetRates, c.getDate())
+                 .map(r -> c.getAmount().multiply(r.getPct()).divide(BigDecimal.valueOf(100), 2, mode))
+-                .map(due -> c.isCorrection() ? due : due.max(floor.apply(c.getDate())))
+                 .orElse(null);
+     }
+ 
