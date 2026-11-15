@@ -1,0 +1,778 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 60878f443..82d3727ab 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -1,6 +1,7 @@
+ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+ import { Injectable, computed, inject, signal } from '@angular/core';
+ import { firstValueFrom } from 'rxjs';
++import type { Plan } from '../features/plans/plans-api';
+ import type { ClaimTemplate } from '../features/templates/templates-api';
+ 
+ // Who is signed in and which sheet is active. Everything else in the app is kept per sheet.
+@@ -43,6 +44,8 @@ export class Session {
+   readonly voidReasons = signal<string[]>([]);
+   /** The active sheet's claim templates, by name. */
+   readonly templates = signal<ClaimTemplate[]>([]);
++  /** The active sheet's plans, in the order they were added, each with how many claims it has made. */
++  readonly plans = signal<Plan[]>([]);
+   /** Whether the active sheet is archived: everything stays visible and every change is refused. */
+   readonly archived = signal(false);
+   /** The id of the active sheet's parent, null when none: a grade with no rate of its own in force
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 05c0e6e03..280da7b4e 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -1,8 +1,10 @@
+ import { DOCUMENT, Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+-import { Session } from '../../core/session';
++import { Session, otherError } from '../../core/session';
+ import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, deferred, dueBy, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp, statusOn, tagsOf } from '../claims/claims-api';
+ import { PersonClaims } from '../claims/person-claims';
++import { PersonPlans } from '../plans/person-plans';
++import { PlansApi } from '../plans/plans-api';
+ import { Pools } from '../pools/pools';
+ import { Periods } from '../periods/periods';
+ import { Period, PeriodsApi, periodOn, personPeriodDueCents } from '../periods/periods-api';
+@@ -19,7 +21,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+ // person's editor open, saves that person.
+ @Component({
+   selector: 'app-people',
+-  imports: [ReactiveFormsModule, Header, PersonClaims, Periods, Pools, Rates, Summary],
++  imports: [ReactiveFormsModule, Header, PersonClaims, PersonPlans, Periods, Pools, Rates, Summary],
+   template: `
+     <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()"
+       [myDueTotal]="myFigures()?.dueTotal ?? null" [myOverdueTotal]="myFigures()?.overdueTotal ?? null" />
+@@ -54,6 +56,15 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+           <p role="alert" data-testid="person-form-error">{{ err }}</p>
+         }
+       </form>
++      <p>
++        <button type="button" data-testid="plan-generate" (click)="generatePlans()">Generate plan claims</button>
++        @if (planGenerated() !== null) {
++          <span role="status">Made <strong data-testid="plan-generated-count">{{ planGenerated() }}</strong></span>
++        }
++        @if (planGenerateErr(); as err) {
++          <span role="alert" data-testid="plan-generate-error">{{ err }}</span>
++        }
++      </p>
+       <form [formGroup]="quickForm" (ngSubmit)="quickAdd()" aria-label="Quick add claim">
+         <label for="quick-name">Name</label>
+         <input id="quick-name" data-testid="quick-name" formControlName="name" autocomplete="off" />
+@@ -295,6 +306,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+                 }
+               </td>
+               <td>
++                <app-person-plans [personId]="p.id" [personName]="p.name" />
+                 <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="effectiveRates()" [grades]="p.grades" [others]="patronChoicesFor(p)" [periods]="periods()"
+                   [selected]="selectedClaims()" (toggled)="claimToggled($event)" (saved)="claimSaved($event)" />
+               </td>
+@@ -335,6 +347,7 @@ export class People {
+   protected readonly session = inject(Session);
+   private readonly api = inject(PeopleApi);
+   private readonly claimsApi = inject(ClaimsApi);
++  private readonly plansApi = inject(PlansApi);
+   private readonly ratesApi = inject(RatesApi);
+   private readonly periodsApi = inject(PeriodsApi);
+   private readonly document = inject(DOCUMENT);
+@@ -706,6 +719,11 @@ export class People {
+   protected readonly pasteErr = signal<string | null>(null);
+   private pasting = false;
+ 
++  /** How many claims the last generate of the plans made; null while one runs or before the first. */
++  protected readonly planGenerated = signal<number | null>(null);
++  protected readonly planGenerateErr = signal<string | null>(null);
++  private generating = false;
++
+   /** The import box: lines of name,grade,terms,contact, each a person as the form adds them. */
+   protected readonly importForm = new FormGroup({
+     text: new FormControl('', { nonNullable: true }),
+@@ -737,6 +755,9 @@ export class People {
+         this.pasteForm.reset({ text: '' });
+         this.pasted.set(null);
+         this.pasteErr.set(null);
++        this.planGenerated.set(null);
++        this.planGenerateErr.set(null);
++        this.session.plans.set([]);
+         this.importForm.reset({ text: '' });
+         this.imported.set(null);
+         this.importErr.set(null);
+@@ -1375,6 +1396,27 @@ export class People {
+     }
+   }
+ 
++  /** Make the claims every plan on the sheet is due by the sheet's today; then show how many were made. */
++  protected async generatePlans(): Promise<void> {
++    if (this.generating) return;
++    this.planGenerated.set(null);
++    this.planGenerateErr.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    this.generating = true;
++    try {
++      const { claims, plans } = await this.plansApi.generate(sheetId);
++      if (this.session.sheetId() !== sheetId) return;
++      for (const claim of claims) this.claimSaved(claim);
++      this.session.plans.set(plans);
++      this.planGenerated.set(claims.length);
++    } catch (e) {
++      this.planGenerateErr.set(otherError(e));
++    } finally {
++      this.generating = false;
++    }
++  }
++
+   /** Add or update a person per imported line, all or none; then show how many were added and updated. */
+   protected async importPeople(): Promise<void> {
+     if (this.importing) return;
+@@ -1443,11 +1485,12 @@ export class People {
+     const seq = ++this.readSeq;
+     try {
+       const asOf = this.session.asOf() !== null;
+-      const [people, claims, rates, inherited, periods, tags, descendants, own] = await Promise.all([
++      const [people, claims, rates, inherited, periods, tags, descendants, own, plans] = await Promise.all([
+         this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId), this.ratesApi.inherited(sheetId),
+         this.periodsApi.list(sheetId), this.claimsApi.tags(sheetId), this.api.descendantFigures(sheetId),
+-        asOf ? this.api.ownFigures(sheetId) : Promise.resolve(null)]);
++        asOf ? this.api.ownFigures(sheetId) : Promise.resolve(null), this.plansApi.list(sheetId)]);
+       if (seq === this.readSeq) {
++        this.session.plans.set(plans);
+         this.descendants.set(descendants);
+         this.ownLive.set(own);
+         this.tagsUsed.set(tags);
+diff --git a/src/main/frontend/src/app/features/plans/person-plans.ts b/src/main/frontend/src/app/features/plans/person-plans.ts
+new file mode 100644
+index 000000000..f21ed7032
+--- /dev/null
++++ b/src/main/frontend/src/app/features/plans/person-plans.ts
+@@ -0,0 +1,115 @@
++import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { Session } from '../../core/session';
++import { AMOUNT_PATTERN } from '../claims/claims-api';
++import { PlansApi, planError } from './plans-api';
++
++// One person's plans, in the order they were added, and the form that adds one.
++@Component({
++  selector: 'app-person-plans',
++  imports: [ReactiveFormsModule],
++  template: `
++    <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="'Add plan for ' + personName()">
++      <label [for]="fieldId('amount')">Plan amount</label>
++      <input [id]="fieldId('amount')" data-testid="plan-form-amount" formControlName="amount" inputmode="decimal" autocomplete="off" />
++      <label [for]="fieldId('start')">Start</label>
++      <input [id]="fieldId('start')" type="date" data-testid="plan-form-start" formControlName="start" />
++      <label [for]="fieldId('every')">Every (days)</label>
++      <input [id]="fieldId('every')" data-testid="plan-form-every" formControlName="every" inputmode="numeric" autocomplete="off" />
++      <label [for]="fieldId('end')">End</label>
++      <input [id]="fieldId('end')" type="date" data-testid="plan-form-end" formControlName="end" />
++      <button type="submit" data-testid="plan-form-submit">Add plan</button>
++      @if (error(); as err) {
++        <p role="alert" data-testid="plan-error">{{ err }}</p>
++      }
++    </form>
++    @if (plans().length > 0) {
++      <ul [attr.aria-label]="'Plans of ' + personName()">
++        @for (pl of plans(); track pl.id) {
++          <li [attr.data-testid]="'plan-row-' + pl.id">
++            <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
++            from <span data-testid="plan-start">{{ pl.start }}</span>
++            every <span data-testid="plan-every">{{ pl.every }}</span> days
++            to <span data-testid="plan-end">{{ pl.end }}</span>;
++            made <span data-testid="plan-generated">{{ pl.generated }}</span>
++          </li>
++        }
++      </ul>
++    }
++  `,
++})
++export class PersonPlans {
++  readonly personId = input.required<number>();
++  readonly personName = input.required<string>();
++
++  protected readonly session = inject(Session);
++  private readonly api = inject(PlansApi);
++
++  protected readonly plans = computed(() => this.session.plans().filter((p) => p.personId === this.personId()));
++  protected readonly error = signal<string | null>(null);
++  private submitting = false;
++
++  protected readonly form = new FormGroup({
++    amount: new FormControl('', { nonNullable: true }),
++    start: new FormControl('', { nonNullable: true }),
++    every: new FormControl('', { nonNullable: true }),
++    end: new FormControl('', { nonNullable: true }),
++  });
++
++  constructor() {
++    this.form.valueChanges.subscribe(() => this.error.set(null));
++    effect(() => {
++      this.session.sheetId();
++      this.session.loads();
++      untracked(() => {
++        this.error.set(null);
++        this.form.reset({ amount: '', start: '', every: '', end: '' }, { emitEvent: false });
++      });
++    });
++  }
++
++  protected fieldId(name: string): string {
++    return `plan-form-${name}-${this.personId()}`;
++  }
++
++  protected async submit(): Promise<void> {
++    if (this.submitting) return;
++    this.error.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    const value = this.form.getRawValue();
++    const amount = value.amount.trim();
++    const start = value.start.trim();
++    const every = value.every.trim();
++    const end = value.end.trim();
++    if (!AMOUNT_PATTERN.test(amount)) {
++      this.error.set('Enter an amount of 0.00 or more with up to two decimals.');
++      return;
++    }
++    if (!/^\d{1,9}$/.test(every) || Number(every) < 1) {
++      this.error.set('Repeat every whole number of days, 1 or more.');
++      return;
++    }
++    if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) {
++      this.error.set('Enter an end date.');
++      return;
++    }
++    const from = start === '' ? this.session.today() : start;
++    if (from !== null && end < from) {
++      this.error.set('The end cannot be before the start.');
++      return;
++    }
++    this.submitting = true;
++    try {
++      const plan = await this.api.add(sheetId, this.personId(), { amount, start: start === '' ? null : start, every: Number(every), end });
++      if (this.session.sheetId() === sheetId) {
++        this.session.plans.update((ps) => [...ps.filter((p) => p.id !== plan.id), plan].sort((a, b) => a.id - b.id));
++      }
++      this.form.reset({ amount: '', start: '', every: '', end: '' }, { emitEvent: false });
++    } catch (e) {
++      this.error.set(planError(e));
++    } finally {
++      this.submitting = false;
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/plans/plans-api.ts b/src/main/frontend/src/app/features/plans/plans-api.ts
+new file mode 100644
+index 000000000..c8f834434
+--- /dev/null
++++ b/src/main/frontend/src/app/features/plans/plans-api.ts
+@@ -0,0 +1,68 @@
++import { HttpClient, HttpErrorResponse } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session, otherError } from '../../core/session';
++import type { Claim } from '../claims/claims-api';
++
++/** A person's plan: a DRAFT claim of its amount (two decimals) for each plan date, its start and
++ *  then every so many days, up to its end; with how many claims it has made so far. */
++export interface Plan {
++  id: number;
++  personId: number;
++  amount: string;
++  start: string;
++  every: number;
++  end: string;
++  generated: number;
++}
++
++/** A plan as the form submits it: a blank start takes the sheet's today. */
++export interface PlanForm {
++  amount: string;
++  start: string | null;
++  every: number;
++  end: string;
++}
++
++/** A generate's result: the claims made, in the order they were made, and the sheet's plans now. */
++export interface Generated {
++  claims: Claim[];
++  plans: Plan[];
++}
++
++@Injectable({ providedIn: 'root' })
++export class PlansApi {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  /** The sheet's plans, in the order they were added. */
++  list(sheetId: string): Promise<Plan[]> {
++    return firstValueFrom(this.http.get<Plan[]>(`${this.url(sheetId)}/plans`, { headers: this.headers() }));
++  }
++
++  add(sheetId: string, personId: number, form: PlanForm): Promise<Plan> {
++    return firstValueFrom(this.http.post<Plan>(`${this.url(sheetId)}/people/${personId}/plans`, form, { headers: this.headers() }));
++  }
++
++  /** Make the claims every plan on the sheet is due by the sheet's today. */
++  generate(sheetId: string): Promise<Generated> {
++    return firstValueFrom(this.http.post<Generated>(`${this.url(sheetId)}/plans/generate`, null, { headers: this.headers() }));
++  }
++
++  private url(sheetId: string): string {
++    return `/api/sheets/${encodeURIComponent(sheetId)}`;
++  }
++
++  private headers(): Record<string, string> {
++    return { 'X-User': this.session.user() ?? '' };
++  }
++}
++
++export function planError(e: unknown): string {
++  if (e instanceof HttpErrorResponse && e.status === 400) {
++    return 'Enter an amount of 0.00 or more with up to two decimals, a whole number of days of 1 or more and an end date.';
++  }
++  if (e instanceof HttpErrorResponse && e.status === 422) return 'Give an end on or after the start and repeat every 1 day or more.';
++  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on the sheet.';
++  return otherError(e);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/Plan.java b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+new file mode 100644
+index 000000000..155c56d8e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/Plan.java
+@@ -0,0 +1,91 @@
++package net.officefloor.hq.app.plan;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.List;
++
++/** A person's plan: a DRAFT claim of its amount for each plan date, its start and then every so
++ *  many days, up to its end. */
++@Entity
++@Table(name = "plan")
++public class Plan {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(name = "sheet_id", nullable = false)
++    private String sheetId;
++
++    @Column(name = "person_id", nullable = false)
++    private long personId;
++
++    @Column(name = "amount", nullable = false, precision = 15, scale = 2)
++    private BigDecimal amount;
++
++    @Column(name = "start_date", nullable = false)
++    private LocalDate start;
++
++    @Column(name = "every_days", nullable = false)
++    private int every;
++
++    @Column(name = "end_date", nullable = false)
++    private LocalDate end;
++
++    protected Plan() {
++    }
++
++    public Plan(String sheetId, long personId, BigDecimal amount, LocalDate start, int every, LocalDate end) {
++        this.sheetId = sheetId;
++        this.personId = personId;
++        this.amount = amount;
++        this.start = start;
++        this.every = every;
++        this.end = end;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getSheetId() {
++        return sheetId;
++    }
++
++    public long getPersonId() {
++        return personId;
++    }
++
++    public BigDecimal getAmount() {
++        return amount;
++    }
++
++    public LocalDate getStart() {
++        return start;
++    }
++
++    public int getEvery() {
++        return every;
++    }
++
++    public LocalDate getEnd() {
++        return end;
++    }
++
++    /** The plan's dates up to its end and the date given, in order. */
++    public List<LocalDate> datesUpTo(LocalDate until) {
++        LocalDate last = end.isBefore(until) ? end : until;
++        List<LocalDate> out = new ArrayList<>();
++        for (LocalDate d = start; !d.isAfter(last); d = d.plusDays(every)) {
++            out.add(d);
++        }
++        return out;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanClaim.java b/src/main/java/net/officefloor/hq/app/plan/PlanClaim.java
+new file mode 100644
+index 000000000..33ba00d78
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanClaim.java
+@@ -0,0 +1,54 @@
++package net.officefloor.hq.app.plan;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Id;
++import jakarta.persistence.IdClass;
++import jakarta.persistence.Table;
++import java.io.Serializable;
++import java.time.LocalDate;
++
++/** A plan date a plan has made its claim for. */
++@Entity
++@Table(name = "plan_claim")
++@IdClass(PlanClaim.Key.class)
++public class PlanClaim {
++
++    public record Key(Long planId, LocalDate onDate) implements Serializable {
++        public Key() {
++            this(null, null);
++        }
++    }
++
++    @Id
++    @Column(name = "plan_id", nullable = false)
++    private Long planId;
++
++    @Id
++    @Column(name = "on_date", nullable = false)
++    private LocalDate onDate;
++
++    @Column(name = "claim_id", nullable = false)
++    private long claimId;
++
++    protected PlanClaim() {
++    }
++
++    public PlanClaim(long planId, LocalDate onDate, long claimId) {
++        this.planId = planId;
++        this.onDate = onDate;
++        this.claimId = claimId;
++    }
++
++    public Long getPlanId() {
++        return planId;
++    }
++
++    public LocalDate getOnDate() {
++        return onDate;
++    }
++
++    public long getClaimId() {
++        return claimId;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanClaimRepository.java b/src/main/java/net/officefloor/hq/app/plan/PlanClaimRepository.java
+new file mode 100644
+index 000000000..01b438c09
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanClaimRepository.java
+@@ -0,0 +1,15 @@
++package net.officefloor.hq.app.plan;
++
++import java.time.LocalDate;
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
++
++public interface PlanClaimRepository extends JpaRepository<PlanClaim, PlanClaim.Key> {
++
++    boolean existsByPlanIdAndOnDate(long planId, LocalDate onDate);
++
++    /** How many claims each of the sheet's plans has made: rows of plan id and count. */
++    @Query("select pc.planId, count(pc) from PlanClaim pc, Plan p where p.id = pc.planId and p.sheetId = ?1 group by pc.planId")
++    List<Object[]> countsBySheet(String sheetId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+new file mode 100644
+index 000000000..97833d3cc
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -0,0 +1,90 @@
++package net.officefloor.hq.app.plan;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Min;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.List;
++import java.util.Map;
++import net.officefloor.hq.app.claim.ClaimController;
++import net.officefloor.hq.app.claim.ClaimController.ClaimView;
++import net.officefloor.hq.app.session.CurrentUser;
++import org.springframework.http.HttpStatus;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.ResponseStatus;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/sheets/{sheetId}")
++@Validated
++public class PlanController {
++
++    /** A plan as the screen shows it: its amount with two decimals, its dates, its interval in days
++     *  and how many claims it has made so far. */
++    public record PlanView(long id, long personId, String amount, LocalDate start, int every, LocalDate end, long generated) {
++        static PlanView of(Plan p, Map<Long, Long> made) {
++            return new PlanView(p.getId(), p.getPersonId(), p.getAmount().setScale(2).toPlainString(), p.getStart(),
++                    p.getEvery(), p.getEnd(), made.getOrDefault(p.getId(), 0L));
++        }
++    }
++
++    /** A plan as the form submits it: an amount the claim form takes for a new claim (0.00 or
++     *  more, up to two decimals), a start (null: the sheet's today), an interval of whole days (at
++     *  least 1) and an end. */
++    public record PlanForm(
++            @NotNull @Pattern(regexp = "\\d{1,13}(\\.\\d{1,2})?") String amount,
++            LocalDate start,
++            @NotNull @Min(1) Integer every,
++            @NotNull LocalDate end) {
++    }
++
++    /** A generate's result: the claims made, in the order they were made, and the sheet's plans now. */
++    public record GenerateView(List<ClaimView> claims, List<PlanView> plans) {
++    }
++
++    private final PlanService service;
++    private final ClaimController claims;
++
++    public PlanController(PlanService service, ClaimController claims) {
++        this.service = service;
++        this.claims = claims;
++    }
++
++    @GetMapping("/plans")
++    public List<PlanView> list(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
++        Map<Long, Long> made = service.madeCounts(sheetId);
++        return service.list(sheetId).stream().map(p -> PlanView.of(p, made)).toList();
++    }
++
++    @PostMapping("/people/{personId}/plans")
++    @ResponseStatus(HttpStatus.CREATED)
++    public PlanView add(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @PathVariable long personId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody PlanForm body) {
++        Plan plan = service.add(sheetId, user.trim(), personId, new BigDecimal(body.amount()), body.start(), body.every(), body.end());
++        return PlanView.of(plan, Map.of());
++    }
++
++    /** Generate the plans' claims; resolves to the claims made and the sheet's plans with their counts. */
++    @PostMapping("/plans/generate")
++    public GenerateView generate(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
++        List<ClaimView> made = service.generate(sheetId, user.trim()).stream().map(claims::view).toList();
++        return new GenerateView(made, list(sheetId, user));
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanRepository.java b/src/main/java/net/officefloor/hq/app/plan/PlanRepository.java
+new file mode 100644
+index 000000000..d03b6a154
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanRepository.java
+@@ -0,0 +1,10 @@
++package net.officefloor.hq.app.plan;
++
++import java.util.List;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++public interface PlanRepository extends JpaRepository<Plan, Long> {
++
++    /** The sheet's plans, in the order they were added. */
++    List<Plan> findBySheetIdOrderByIdAsc(String sheetId);
++}
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+new file mode 100644
+index 000000000..fed3ba052
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -0,0 +1,117 @@
++package net.officefloor.hq.app.plan;
++
++import java.math.BigDecimal;
++import java.time.LocalDate;
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.person.Person;
++import net.officefloor.hq.app.person.PersonRepository;
++import net.officefloor.hq.app.sheet.SheetService;
++import org.springframework.http.HttpStatus;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.PlatformTransactionManager;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.transaction.support.TransactionTemplate;
++import org.springframework.web.server.ResponseStatusException;
++
++@Service
++public class PlanService {
++
++    private final PlanRepository plans;
++    private final PlanClaimRepository made;
++    private final PersonRepository people;
++    private final ClaimService claims;
++    private final SheetService sheets;
++    private final Audit audit;
++    private final TransactionTemplate eachClaim;
++
++    public PlanService(PlanRepository plans, PlanClaimRepository made, PersonRepository people, ClaimService claims,
++            SheetService sheets, Audit audit, PlatformTransactionManager transactions) {
++        this.plans = plans;
++        this.made = made;
++        this.people = people;
++        this.claims = claims;
++        this.sheets = sheets;
++        this.audit = audit;
++        this.eachClaim = new TransactionTemplate(transactions);
++    }
++
++    /** The sheet's plans, in the order they were added. */
++    @Transactional(readOnly = true)
++    public List<Plan> list(String sheetId) {
++        return plans.findBySheetIdOrderByIdAsc(sheetId);
++    }
++
++    /** How many claims each of the sheet's plans has made so far, by plan id (none: absent). */
++    @Transactional(readOnly = true)
++    public Map<Long, Long> madeCounts(String sheetId) {
++        Map<Long, Long> out = new HashMap<>();
++        for (Object[] row : made.countsBySheet(sheetId)) {
++            out.put((Long) row[0], (Long) row[1]);
++        }
++        return out;
++    }
++
++    /** Add a plan for a person on the sheet; a missing start takes the sheet's today. Refused (404)
++     *  when the sheet has no such person, and (422) when the end is before the start or the
++     *  interval is under one day. */
++    @Transactional
++    public Plan add(String sheetId, String user, long personId, BigDecimal amount, LocalDate start, int every, LocalDate end) {
++        sheets.load(sheetId, user);
++        sheets.lock(sheetId);
++        Person person = people.findByIdAndSheetId(personId, sheetId)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
++        LocalDate from = start != null ? start : sheets.today(sheetId);
++        if (every < 1) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A plan repeats every 1 day or more");
++        }
++        if (end.isBefore(from)) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A plan cannot end before it starts");
++        }
++        Plan plan = plans.saveAndFlush(new Plan(sheetId, personId, amount, from, every, end));
++        audit.recordOnCommit("PLAN_ADDED sheet=" + sheetId + " by=" + user + " name=" + person.getName()
++                + " amount=" + amount.setScale(2).toPlainString() + " start=" + from + " every=" + every + " end=" + end);
++        return plan;
++    }
++
++    /** For each of the sheet's plans in the order they were added, add a DRAFT claim of its amount
++     *  with an empty note for each of its dates up to its end and the sheet's today that has none
++     *  yet, dated that day, by the claim form's rules. Each claim is its own change: a date the
++     *  claim form refuses is skipped (and tried again on the next generate). Resolves to the
++     *  claims made, in the order they were made. */
++    public List<Claim> generate(String sheetId, String user) {
++        sheets.load(sheetId, user);
++        LocalDate today = sheets.today(sheetId);
++        List<Claim> out = new ArrayList<>();
++        for (Plan plan : list(sheetId)) {
++            for (LocalDate on : plan.datesUpTo(today)) {
++                Claim claim;
++                try {
++                    claim = eachClaim.execute(status -> makeClaim(plan, user, on));
++                } catch (ResponseStatusException refused) {
++                    continue;
++                }
++                if (claim != null) {
++                    out.add(claim);
++                }
++            }
++        }
++        return out;
++    }
++
++    /** The plan's claim for a date, in the transaction under way; null when it has one already. */
++    private Claim makeClaim(Plan plan, String user, LocalDate on) {
++        sheets.lock(plan.getSheetId());
++        if (made.existsByPlanIdAndOnDate(plan.getId(), on)) {
++            return null;
++        }
++        Claim claim = claims.add(plan.getSheetId(), user, plan.getPersonId(), plan.getAmount(), on, "", null, null, null);
++        made.saveAndFlush(new PlanClaim(plan.getId(), on, claim.getId()));
++        return claim;
++    }
++}
+diff --git a/src/main/resources/db/migration/V74__plan.sql b/src/main/resources/db/migration/V74__plan.sql
+new file mode 100644
+index 000000000..83022d036
+--- /dev/null
++++ b/src/main/resources/db/migration/V74__plan.sql
+@@ -0,0 +1,21 @@
++-- A person's plan: a DRAFT claim of its amount is generated for each plan date (its start, then
++-- every so many days) up to its end and the sheet's today. A person who is later merged or moved
++-- away leaves their plans behind, so the person is not a reference.
++CREATE TABLE plan (
++    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
++    sheet_id    VARCHAR(100)   NOT NULL REFERENCES sheet (id),
++    person_id   BIGINT         NOT NULL,
++    amount      DECIMAL(15, 2) NOT NULL,
++    start_date  DATE           NOT NULL,
++    every_days  INT            NOT NULL,
++    end_date    DATE           NOT NULL
++);
++
++-- Each plan date a plan has made its claim for; a date with none yet is tried again on the next
++-- generate. The claim itself may later go its own way, so it is not a reference.
++CREATE TABLE plan_claim (
++    plan_id  BIGINT NOT NULL REFERENCES plan (id),
++    on_date  DATE   NOT NULL,
++    claim_id BIGINT NOT NULL,
++    PRIMARY KEY (plan_id, on_date)
++);
