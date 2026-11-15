@@ -1,0 +1,64 @@
+{
+  "checkpoint": 183,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp183_period-lock",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can lock and unlock a period (buttons on the period; PERIOD_LOCKED and PERIOD_UNLOCKED\nperiod=<name>; anyone else, or locking a locked period, is refused with an error on the period).\nA locked period cannot be reopened. Show locked yes/no.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can lock and unlock a period (buttons on the period; PERIOD_LOCKED and PERIOD_UNLOCKED\nperiod=<name>; anyone else, or locking a locked period, is refused with an error on the period).\nA locked period cannot be reopened. Show locked yes/no.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "f85df4b28d61c7c6cf6c96baee124dd6a02e2ed7",
+  "reset_sha": "",
+  "preagent_sha": "ea230beb21e7b9f61f44f95f2cedd7f9832b0ba9",
+  "prev_sha": "ea230beb21e7b9f61f44f95f2cedd7f9832b0ba9",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6970476,
+    "input_tokens": 36,
+    "output_tokens": 6799,
+    "cache_read_tokens": 699338,
+    "cache_creation_tokens": 52632,
+    "num_turns": 18,
+    "duration_ms": 295127,
+    "duration_api_ms": 71179,
+    "model": "claude-opus-5-5",
+    "session_id": "02479b98-0940-47c0-ba58-55bcd5c671cd",
+    "stop_reason": "success",
+    "result_text": "Stewards can now lock and unlock a period, and a locked period can't be reopened. All 4 Playwright tests pass in `bin/e2e`.\n\n**How it behaves**\n- Each period row has **Lock** and **Unlock** buttons and a \"Locked\" column showing `yes` or `no`.\n- Only a steward can lock or unlock. Anyone else is refused, and so is locking a period that is already locked or unlocking one that isn't. A refusal shows the error on that period and changes nothing.\n- Reopening a locked period is refused until it is unlocked.\n- Each successful lock or unlock writes `PERIOD_LOCKED` or `PERIOD_UNLOCKED` with `sheet=`, `by=` and `period=<name>` to the audit file.\n\n**Changes**\n- **Stored data:** a new migration, `V101__period_locked.sql`, adds a `locked` flag to the `period` table, defaulting to no. The sheet's history also records the flag, so looking at a past date shows whether the period was locked then. History written before this change counts as unlocked.\n- **Server:** `PeriodService.lock(...)` covers both lock and unlock, and is called from the new endpoints `POST \u2026/periods/{id}/lock` and `POST \u2026/periods/{id}/unlock`. `reopen` now refuses a locked period, and the period view sent to the screen includes `locked`.\n- **Front end:** in `periods.ts` and `periods-api.ts`, the new buttons, the `period-locked` column, the API calls and the error messages.\n\n**Choices the request didn't settle**\n- **Who counts as a steward:** I used the same role check that archiving a sheet uses, so a user acting under a steward's delegation can also lock. I didn't add lock as an entry in the sheet's permission settings.\n- **Open periods:** a period doesn't have to be closed before it can be locked. Locking an open period only stops a later reopen; it doesn't block closing it.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6970476,
+        "num_turns": 18,
+        "duration_ms": 295127,
+        "duration_api_ms": 71179,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp183.agent.jsonl",
+  "agent_diff_file": "cp183.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
