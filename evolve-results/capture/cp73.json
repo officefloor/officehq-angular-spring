@@ -1,0 +1,64 @@
+{
+  "checkpoint": 73,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp73_statement-as-of",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A statement can be taken as of a date on or before the sheet's today (a date entry beside the\nstatement button; blank takes the statement now). It binds the person's claims that counted at the\nend of that date to their figures as they stood then: every change made while the sheet's today\nwas on or before that date counts, every later change does not, and that date stands in for the\nsheet's today in every figure (the grade and rate in force, the floor, late charges, holds,\nretirements, closed periods). Every other claim of theirs is unstated, as a statement does. The\nrow shows that date as the statement date and that day's due-total as the stated total; STATEMENT\ngains asof=<date> at its end when a date was given. A date after the sheet's today is refused with\nan error on the person.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA statement can be taken as of a date on or before the sheet's today (a date entry beside the\nstatement button; blank takes the statement now). It binds the person's claims that counted at the\nend of that date to their figures as they stood then: every change made while the sheet's today\nwas on or before that date counts, every later change does not, and that date stands in for the\nsheet's today in every figure (the grade and rate in force, the floor, late charges, holds,\nretirements, closed periods). Every other claim of theirs is unstated, as a statement does. The\nrow shows that date as the statement date and that day's due-total as the stated total; STATEMENT\ngains asof=<date> at its end when a date was given. A date after the sheet's today is refused with\nan error on the person.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e82c0f1ddc68e26a1132f462228dd8b9f4fc1859",
+  "reset_sha": "",
+  "preagent_sha": "92872465bc34a25a177755b61cb75e962c2a3cba",
+  "prev_sha": "92872465bc34a25a177755b61cb75e962c2a3cba",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 2.5088332,
+    "input_tokens": 60,
+    "output_tokens": 37511,
+    "cache_read_tokens": 3026066,
+    "cache_creation_tokens": 144145,
+    "num_turns": 32,
+    "duration_ms": 729738,
+    "duration_api_ms": 365222,
+    "model": "claude-opus-5-5",
+    "session_id": "d543a1c5-c15a-42e2-8b4f-976371309f30",
+    "stop_reason": "success",
+    "result_text": "A statement can now be taken as of a date. All 4 tests in `e2e/specs/acceptance.spec.ts` pass with `bin/e2e`, including a final run after the last tidy-up.\n\n**How it works.** The app didn't keep any record of how things stood earlier, so I added one:\n- **History store** (`V49__history.sql`, `history/HistoryService.java`, `history/HistoryListener.java`): whenever a claim, person, rate or the sheet's settings change, a copy of the new state is saved with the sheet's today at that moment. A copy is only saved when something actually changed. It's saved in the same transaction as the change, so a refused change saves nothing.\n- **Settings:** the sheet's dated settings (floor, late percent, cap, terms and so on) don't trigger that automatic save, so `SettingsService` now saves them itself when one is set.\n- **Rebuilding a past date:** `HistoryService.asOf` takes the latest saved copy of everything made while the sheet's today was on or before the date, and uses that date as today. That covers grades and rates in force, the floor, late charges, the cap, holds and retirements.\n- **The statement** (`ClaimService.statement` with an `asOf` date, and a new `RollupService.statedOn`): it counts the person's claims in that rebuilt state, using the same counting rules as the live totals. It binds the claims that counted to their figures as they were then and unbinds all the others. The STATEMENT audit line gets ` asof=<date>` at the end.\n- **What the row shows:** statements now store their as-of date, so the statement date shown is that date and the stated total is that day's due-total.\n- **Front end:** there's a `person-statement-asof` date box beside the Statement button. A date after the sheet's today is refused with the `person-error` message on the person.\n\n**Choices the request didn't spell out:**\n- **Person not yet added on that date:** the statement is refused. Scenarios 1\u20133 expect exactly this, because each person there was added after the requested date.\n- **Bindings from earlier statements count too.** A statement's own bindings are saved like any other change, so a later as-of statement sees them as they stood. The test depends on this: Ada's 4.00 as of 2026-03-05 comes from the earlier statement's binding.\n- **The date box is cleared after every press.** Otherwise a date left in it would carry into a plain statement; the test expects a plain STATEMENT line with no `asof` straight after an as-of one.\n\n**Limitations:**\n- **Today moved backwards:** each item uses its own latest copy saved on or before the date. If the sheet's today was moved back and forth, that is close to \"only the changes made on or before that date count\" but not exact, because a change that depended on earlier state isn't replayed.\n- **Data from before this change has no history.** That doesn't matter here, since the database is in memory and starts empty on every run.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 2.5088332,
+        "num_turns": 32,
+        "duration_ms": 729738,
+        "duration_api_ms": 365222,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp73.agent.jsonl",
+  "agent_diff_file": "cp73.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
