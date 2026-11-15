@@ -372,6 +372,8 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
                   [attr.aria-label]="'Take statement of ' + p.name">Statement</button>
                 <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)"
                   [attr.aria-label]="'Cancel last statement of ' + p.name">Cancel statement</button>
+                <button type="button" data-testid="person-export-statement" (click)="exportStatement(p)"
+                  [attr.aria-label]="'Download statement of ' + p.name + ' (CSV)'">Statement (CSV)</button>
               </td>
               <td>
                 <ul aria-label="Snapshots">
@@ -1702,6 +1704,19 @@ export class People {
       }
     }
     this.download(lines.join(''), `claims-${this.session.sheetId()}.csv`);
+  }
+
+  /** Download a person's statement as CSV: their claims bound by their last statement, oldest first, with
+   *  number, date, amount, the bound figure as the claim shows it, and status. */
+  protected exportStatement(p: Person): void {
+    this.clearRowError(p.id);
+    const late = this.lateness();
+    const lines = [csvLine(['number', 'date', 'amount', 'figure', 'status'])];
+    for (const c of [...this.claimsOf(p.id)].reverse().filter(isBound)) {
+      const figure = this.claimDueCents(p, c, late);
+      lines.push(csvLine([c.number ?? '', c.date, c.amount, figure === null ? 'n/a' : money(figure), c.status]));
+    }
+    this.download(lines.join(''), `statement-${this.session.sheetId()}-${p.id}.csv`);
   }
 
   /** Hand the browser a CSV file to download. */
