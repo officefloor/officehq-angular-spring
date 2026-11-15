@@ -1,0 +1,64 @@
+{
+  "checkpoint": 77,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp77_note-required",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a note threshold (settings, dated like the floor; SETTING_CHANGED\nkey=note-threshold value=<amount>; blank means none). A claim whose due is above the threshold in\nforce on its date cannot be opened with an empty note: opening it, alone or by the bulk button, is\nrefused with an error on the claim.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a note threshold (settings, dated like the floor; SETTING_CHANGED\nkey=note-threshold value=<amount>; blank means none). A claim whose due is above the threshold in\nforce on its date cannot be opened with an empty note: opening it, alone or by the bulk button, is\nrefused with an error on the claim.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "86bb284e36a0d76fd3a87bc38187c3dbaeccfcbd",
+  "reset_sha": "",
+  "preagent_sha": "50de2afcec4ff49a27e485323a3f3fdd7a22cb0b",
+  "prev_sha": "50de2afcec4ff49a27e485323a3f3fdd7a22cb0b",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8283182,
+    "input_tokens": 8,
+    "output_tokens": 809,
+    "cache_read_tokens": 193109,
+    "cache_creation_tokens": 1454,
+    "num_turns": 3,
+    "duration_ms": 9590,
+    "duration_api_ms": 90599,
+    "model": "claude-opus-5-5",
+    "session_id": "ed9ff1a5-637b-48a6-b15e-80f78d321a17",
+    "stop_reason": "success",
+    "result_text": "The note threshold is in place, and `bin/e2e` passes all 4 tests in `e2e/specs/acceptance.spec.ts`.\n\n**What it does:** the sheet has a new \"note threshold\" setting. It can start from a date like the floor, and leaving it blank means there's no threshold. If a claim has an empty note and its due is above the threshold in force on the claim's date, opening it is refused with an error on that claim. Bulk open counts such claims as refused and leaves them as they are. Saving the setting writes `SETTING_CHANGED ... key=note-threshold value=<amount>`, with `from=<date>` added when a date is given.\n\n**Server**\n- `Sheet.java` and `SheetService.java` look up the threshold in force on a given date.\n- `SettingsService.setNoteThreshold` saves it and writes the audit line, and `SettingsController` has a new `PUT /settings/note-threshold` that accepts the same kinds of values as the proof threshold.\n- `ClaimService.changeStatus` now refuses an open (422) when the note is empty and the claim's shown due is above the threshold for its date. Single and bulk open both go through this one method.\n- No database migration was needed: the value goes in the existing store for dated settings.\n\n**Front end**\n- The settings screen has the field, its from-date and the value in force (`setting-note-threshold`, `setting-note-threshold-from`, `setting-note-threshold-current`).\n- The claim's error message for a 422 refusal now names both thresholds. That refusal can mean a missing note (when opening) or a missing proof (when settling or approving), and the message can't tell which, because the error formatter isn't given the action.\n\nA claim whose due shows as n/a is never refused, because there's no due to compare with the threshold.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8283182,
+        "num_turns": 3,
+        "duration_ms": 9590,
+        "duration_api_ms": 90599,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp77.agent.jsonl",
+  "agent_diff_file": "cp77.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
