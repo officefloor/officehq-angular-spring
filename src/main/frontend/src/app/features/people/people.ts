@@ -1,7 +1,7 @@
 import { DOCUMENT, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
-import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, deferred, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp, statusOn, tagsOf } from '../claims/claims-api';
+import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, deferred, dueBy, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp, statusOn, tagsOf } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Pools } from '../pools/pools';
 import { Periods } from '../periods/periods';
@@ -120,6 +120,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
         Show retired
       </label>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
+      <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
       @if (bulkResult(); as r) {
         <p role="status">Opened <strong data-testid="bulk-opened">{{ r.opened }}</strong>,
@@ -1242,10 +1243,31 @@ export class People {
   protected exportCsv(): void {
     const lines = [csvLine(['name', 'grade', 'retired-from', 'due-total']),
       ...this.people().map((p) => csvLine([p.name, this.gradeOf(p), p.retiredFrom ?? '', this.dueOf(p)]))];
-    const url = URL.createObjectURL(new Blob([lines.join('')], { type: 'text/csv' }));
+    this.download(lines.join(''), `people-${this.session.sheetId()}.csv`);
+  }
+
+  /** Download the claims as CSV: people in list order (retired ones too), each one's claims oldest first, with
+   *  person, number, date, amount, due, status and period as the claim's row shows them. */
+  protected exportClaims(): void {
+    const late = this.lateness();
+    const periods = this.periods();
+    const lines = [csvLine(['person', 'number', 'date', 'amount', 'due', 'status', 'period'])];
+    for (const p of this.people()) {
+      for (const c of [...this.claimsOf(p.id)].reverse()) {
+        const due = this.claimDueCents(p, c, late);
+        lines.push(csvLine([p.name, c.number ?? '', c.date, c.amount,
+          due === null ? 'n/a' : money(due), c.status, periodOn(periods, dueBy(c))?.name ?? '']));
+      }
+    }
+    this.download(lines.join(''), `claims-${this.session.sheetId()}.csv`);
+  }
+
+  /** Hand the browser a CSV file to download. */
+  private download(text: string, name: string): void {
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
     const link = this.document.createElement('a');
     link.href = url;
-    link.download = `people-${this.session.sheetId()}.csv`;
+    link.download = name;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url));
   }
