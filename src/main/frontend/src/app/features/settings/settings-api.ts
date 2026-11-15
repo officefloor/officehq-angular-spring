@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Session } from '../../core/session';
+import { DatedSettings, Session } from '../../core/session';
 
 /** The roles a user name can hold on a sheet; a name without one is a clerk. */
 export const ROLES = ['clerk', 'steward'] as const;
@@ -40,6 +40,8 @@ export interface Settings {
   gradeTerms: Record<string, number>;
   /** Two decimals, as the server formats it: a person's due-total is at most it; null when there is none. */
   cap: string | null;
+  /** Every value recorded for the dated settings, by key, each key's by from-date. */
+  dated: DatedSettings;
 }
 
 export interface RoleGrant {
@@ -57,39 +59,45 @@ export class SettingsApi {
     return firstValueFrom(this.http.get<Settings>(`${this.url(sheetId)}/settings`, { headers: this.headers() }));
   }
 
-  setClerkLimit(sheetId: string, value: string): Promise<Settings> {
+  /** Save the value from a date (blank: the sheet's today). */
+  setClerkLimit(sheetId: string, value: string, from = ''): Promise<Settings> {
     return firstValueFrom(
-      this.http.put<Settings>(`${this.url(sheetId)}/settings/clerk-limit`, { value }, { headers: this.headers() }),
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/clerk-limit`, { value, from }, { headers: this.headers() }),
     );
   }
 
-  setFloor(sheetId: string, value: string): Promise<Settings> {
+  /** Save the value from a date (blank: the sheet's today). */
+  setFloor(sheetId: string, value: string, from = ''): Promise<Settings> {
     return firstValueFrom(
-      this.http.put<Settings>(`${this.url(sheetId)}/settings/floor`, { value }, { headers: this.headers() }),
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/floor`, { value, from }, { headers: this.headers() }),
     );
   }
 
-  setTerms(sheetId: string, value: string): Promise<Settings> {
+  /** Save the value from a date (blank: the sheet's today). */
+  setTerms(sheetId: string, value: string, from = ''): Promise<Settings> {
     return firstValueFrom(
-      this.http.put<Settings>(`${this.url(sheetId)}/settings/terms`, { value }, { headers: this.headers() }),
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/terms`, { value, from }, { headers: this.headers() }),
     );
   }
 
-  setGradeTerms(sheetId: string, grade: string, value: string): Promise<Settings> {
+  /** Save the grade's own terms from a date (blank: the sheet's today). */
+  setGradeTerms(sheetId: string, grade: string, value: string, from = ''): Promise<Settings> {
     return firstValueFrom(
-      this.http.put<Settings>(`${this.url(sheetId)}/settings/terms/${encodeURIComponent(grade)}`, { value }, { headers: this.headers() }),
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/terms/${encodeURIComponent(grade)}`, { value, from }, { headers: this.headers() }),
     );
   }
 
-  setLatePct(sheetId: string, value: string): Promise<Settings> {
+  /** Save the value from a date (blank: the sheet's today). */
+  setLatePct(sheetId: string, value: string, from = ''): Promise<Settings> {
     return firstValueFrom(
-      this.http.put<Settings>(`${this.url(sheetId)}/settings/late-pct`, { value }, { headers: this.headers() }),
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/late-pct`, { value, from }, { headers: this.headers() }),
     );
   }
 
-  setCap(sheetId: string, value: string): Promise<Settings> {
+  /** Save the value from a date (blank: the sheet's today). */
+  setCap(sheetId: string, value: string, from = ''): Promise<Settings> {
     return firstValueFrom(
-      this.http.put<Settings>(`${this.url(sheetId)}/settings/cap`, { value }, { headers: this.headers() }),
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/cap`, { value, from }, { headers: this.headers() }),
     );
   }
 
@@ -123,7 +131,7 @@ export class SettingsApi {
 }
 
 export const SETTINGS_INVALID =
-  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of days (blank: 14) and terms for each grade of a whole number of days (blank: the sheet\'s terms) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off) and a cap of 0.00 or more with up to two decimals (blank: none).';
+  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of days (blank: 14) and terms for each grade of a whole number of days (blank: the sheet\'s terms) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off) and a cap of 0.00 or more with up to two decimals (blank: none), each from-date as yyyy-mm-dd (blank: the sheet\'s today).';
 
 export function settingsError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return SETTINGS_INVALID;

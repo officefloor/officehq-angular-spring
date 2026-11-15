@@ -50,25 +50,31 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(LocalDate::now);
     }
 
-    /** The sheet's floor: a claim's live due is at least it. */
+    /** The sheet's floor in force on its today. */
     @Transactional(readOnly = true)
     public BigDecimal floor(String id) {
         return sheets.findById(id).map(Sheet::getFloor).orElse(Sheet.DEFAULT_FLOOR);
     }
 
-    /** The sheet's terms: a claim is due by its date plus this many days. */
+    /** The sheet's floor in force on a date: a live due of a claim dated then is at least it. */
+    @Transactional(readOnly = true)
+    public BigDecimal floorOn(String id, LocalDate on) {
+        return sheets.findById(id).map(s -> s.floorOn(on)).orElse(Sheet.DEFAULT_FLOOR);
+    }
+
+    /** The sheet's terms in force on its today. */
     @Transactional(readOnly = true)
     public int terms(String id) {
         return sheets.findById(id).map(Sheet::getTerms).orElse(Sheet.DEFAULT_TERMS);
     }
 
-    /** The sheet's late percent: an overdue claim's due gains it for every full 30 days overdue. */
+    /** The sheet's late percent in force on its today. */
     @Transactional(readOnly = true)
     public BigDecimal latePct(String id) {
         return sheets.findById(id).map(Sheet::getLatePct).orElse(Sheet.DEFAULT_LATE_PCT);
     }
 
-    /** The sheet's cap: a person's due-total is at most it; null when there is none. */
+    /** The sheet's cap in force on its today: a person's due-total is at most it; null when there is none. */
     @Transactional(readOnly = true)
     public BigDecimal cap(String id) {
         return sheets.findById(id).map(Sheet::getCap).orElse(null);

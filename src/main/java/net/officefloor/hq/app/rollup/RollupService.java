@@ -82,7 +82,7 @@ public class RollupService {
     public Snapshot snapshot(String sheetId) {
         Optional<Sheet> sheet = sheets.findById(sheetId);
         LocalDate today = sheet.map(Sheet::getToday).orElseGet(LocalDate::now);
-        BigDecimal floor = floorOf(sheet);
+        Function<LocalDate, BigDecimal> floor = floorOf(sheet);
         BigDecimal cap = sheet.map(Sheet::getCap).orElse(null);
         LateCharge late = LateCharge.of(sheet);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
@@ -116,7 +116,7 @@ public class RollupService {
      *  inside it show now (OPEN ones within a hold of their person, unbound, left out). */
     public Map<Long, BigDecimal> dueByPersonBetween(String sheetId, LocalDate from, LocalDate to) {
         Optional<Sheet> sheet = sheets.findById(sheetId);
-        BigDecimal floor = floorOf(sheet);
+        Function<LocalDate, BigDecimal> floor = floorOf(sheet);
         LateCharge late = LateCharge.of(sheet);
         List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
@@ -182,7 +182,7 @@ public class RollupService {
      *  null (n/a) when their grade in force on the sheet's today has no rate then, unless a claim
      *  shows a due (a fixed or bound one, or one at the rate of the grade they had on its date). */
     private static BigDecimal dueTotalOf(List<Claim> counted, Person person, List<Rate> sheetRates, LocalDate today,
-            BigDecimal floor, LateCharge late, Function<Claim, RoundingMode> rounding) {
+            Function<LocalDate, BigDecimal> floor, LateCharge late, Function<Claim, RoundingMode> rounding) {
         List<BigDecimal> dues = counted.stream()
                 .map(c -> shownDueOf(c, person, sheetRates, floor, late, rounding))
                 .filter(Objects::nonNull)
@@ -196,8 +196,8 @@ public class RollupService {
     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it
      *  to (null: n/a), else its amount times the rate in force on its date of its person's grade
      *  then, rounded as its rounding policy has it,
-     *  raised to the sheet's floor (a correction's never is); an unsettled one with its late charge on top. */
-    private static BigDecimal shownDueOf(Claim c, Person person, List<Rate> sheetRates, BigDecimal floor,
+     *  raised to the sheet's floor in force on its date (a correction's never is); an unsettled one with its late charge on top. */
+    private static BigDecimal shownDueOf(Claim c, Person person, List<Rate> sheetRates, Function<LocalDate, BigDecimal> floor,
             LateCharge late, Function<Claim, RoundingMode> rounding) {
         if (c.getSettledDue() != null) {
             return c.getSettledDue();
@@ -208,14 +208,14 @@ public class RollupService {
 
     /** A claim's figure before any late charge: the one a statement bound it to (null: n/a), else
      *  its live due. */
-    private static BigDecimal figureOf(Claim c, Person person, List<Rate> sheetRates, BigDecimal floor,
+    private static BigDecimal figureOf(Claim c, Person person, List<Rate> sheetRates, Function<LocalDate, BigDecimal> floor,
             RoundingMode mode) {
         if (c.isBound()) {
             return c.getStatedDue();
         }
         return inForce(person, sheetRates, c.getDate())
                 .map(r -> c.getAmount().multiply(r.getPct()).divide(BigDecimal.valueOf(100), 2, mode))
-                .map(due -> c.isCorrection() ? due : due.max(floor))
+                .map(due -> c.isCorrection() ? due : due.max(floor.apply(c.getDate())))
                 .orElse(null);
     }
 
@@ -243,8 +243,9 @@ public class RollupService {
                 .filter(r -> r.runsThrough(on));
     }
 
-    private static BigDecimal floorOf(Optional<Sheet> sheet) {
-        return sheet.map(Sheet::getFloor).orElse(Sheet.DEFAULT_FLOOR);
+    /** The sheet's floor in force on each date. */
+    private static Function<LocalDate, BigDecimal> floorOf(Optional<Sheet> sheet) {
+        return on -> sheet.map(s -> s.floorOn(on)).orElse(Sheet.DEFAULT_FLOOR);
     }
 
     private static BigDecimal zero() {

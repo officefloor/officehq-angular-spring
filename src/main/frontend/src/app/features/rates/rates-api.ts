@@ -73,16 +73,16 @@ export function dueCents(cents: number, pctHundredths: number, halfUp = false): 
   return Number(product < 0n ? -rounded : rounded);
 }
 
-/** What a claim's late charge follows: the sheet's today and late percent. */
+/** What a claim's late charge follows: the sheet's today and the late percent in force on the claim's date. */
 export interface Lateness {
   today: string | null;
-  /** The late percent with two decimals. */
-  latePct: string;
+  /** The late percent with two decimals in force on a date. */
+  latePctOn: (date: string) => string;
 }
 
 /** A claim's due in cents: the due fixed when it was settled, else its figure (the due a statement
  *  bound it to (unless PENDING), else its amount times its grade's rate in force on its date, rounded half up when
- *  `halfUp` (the claim's rounding policy) else half to even, and raised to the sheet's floor) with
+ *  `halfUp` (the claim's rounding policy) else half to even, and raised to the sheet's floor in force on its date) with
  *  its late charge, rounded the same way, on top (a correction is neither raised to the floor nor
  *  charged late); null (n/a) with no figure. */
 export function claimDueCents(rates: readonly Rate[], c: Claim, floorCents: number, late: Lateness, halfUp: boolean): number | null {
@@ -104,5 +104,5 @@ function figureCents(rates: readonly Rate[], c: Claim, floorCents: number, halfU
 function lateChargeCents(c: Claim, figure: number, late: Lateness, halfUp: boolean): number {
   if (late.today === null || isCorrection(c) || !overdue(c, late.today)) return 0;
   const days = Math.round((Date.parse(late.today) - Date.parse(dueBy(c))) / 86_400_000);
-  return dueCents(figure, cents(late.latePct) * Math.floor(days / 30), halfUp);
+  return dueCents(figure, cents(late.latePctOn(c.date)) * Math.floor(days / 30), halfUp);
 }

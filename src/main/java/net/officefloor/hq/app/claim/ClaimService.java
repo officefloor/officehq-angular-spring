@@ -118,7 +118,7 @@ public class ClaimService {
         refuseIfRetired(person, on);
         String corrected = correctedBy(sheetId, personId, amount, corrects);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
-        int terms = sheets.find(sheetId).map(s -> s.termsFor(person.gradeOn(on))).orElse(Sheet.DEFAULT_TERMS);
+        int terms = sheets.find(sheetId).map(s -> s.termsFor(person.gradeOn(on), on)).orElse(Sheet.DEFAULT_TERMS);
         Claim fresh = new Claim(sheetId, personId, amount, on, on.plusDays(terms), noteOf(note));
         fresh.setCorrects(corrected);
         // the sheet is locked (refuseIfClosed), so two claims added at once are listed one after the other
@@ -463,9 +463,9 @@ public class ClaimService {
     }
 
     /** The claim's amount times the rate, in force on the claim's date, of its person's grade then, divided by
-     *  100, rounded as its rounding policy has it, raised to the sheet's floor (a correction's never is); null with no rate in force then. */
+     *  100, rounded as its rounding policy has it, raised to the sheet's floor in force on its date (a correction's never is); null with no rate in force then. */
     private BigDecimal dueOf(Claim claim, Person person) {
-        BigDecimal floor = sheets.floor(claim.getSheetId());
+        BigDecimal floor = sheets.floorOn(claim.getSheetId(), claim.getDate());
         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, roundingOf(claim)))

@@ -6,7 +6,10 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 import net.officefloor.hq.app.session.CurrentUser;
+import net.officefloor.hq.app.settings.SettingsController.DatedValue;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,13 +25,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class SheetController {
 
     /** A sheet as the screen takes it: its id, its today, its floor with two decimals, its
-     *  terms in days, its late percent with two decimals, its policy date (null when blank), and its cap with two decimals (null when none). */
+     *  terms in days, its late percent with two decimals, its policy date (null when blank), and its cap with two decimals (null when none),
+     *  the dated ones as in force on its today; and every value recorded for its dated settings,
+     *  by key, each key's by from-date. */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
-            String cap) {
+            String cap, Map<String, List<DatedValue>> dated) {
         static SheetView of(Sheet sheet) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
                     sheet.getLatePct().setScale(2).toPlainString(), sheet.getPolicyDate(),
-                    sheet.getCap() == null ? null : sheet.getCap().setScale(2).toPlainString());
+                    sheet.getCap() == null ? null : sheet.getCap().setScale(2).toPlainString(),
+                    DatedValue.of(sheet.getDatedSettings()));
         }
     }
 

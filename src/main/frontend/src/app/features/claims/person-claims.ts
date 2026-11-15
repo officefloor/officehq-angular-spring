@@ -141,8 +141,8 @@ export class PersonClaims {
    *  (OPEN or PENDING) claim gains its late charge on top. */
   protected dueOf(c: Claim): string {
     const grade = gradeOn(this.grades(), c.date);
-    const due = claimDueCents(this.rates().filter((r) => r.grade === grade), c, cents(this.session.floor()), {
-      today: this.session.today(), latePct: this.session.latePct(),
+    const due = claimDueCents(this.rates().filter((r) => r.grade === grade), c, cents(this.session.floorOn(c.date)), {
+      today: this.session.today(), latePctOn: (d) => this.session.latePctOn(d),
     }, roundsHalfUp(c, this.claims(), this.session.policyDate(), this.session.today()));
     return due === null ? 'n/a' : money(due);
   }

@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.session.CurrentUser;
+import net.officefloor.hq.app.sheet.DatedSetting;
 import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -33,35 +34,63 @@ public class SettingsController {
      *  none, the floor with two decimals, the terms in days, the late percent with two decimals,
      *  the policy date, null when blank, the period numbering from-date, null when blank (off),
      *  the terms each grade has of its own, a grade without them left out, and the cap with two
-     *  decimals, null for none. */
+     *  decimals, null for none, each of the dated ones as in force on the sheet's today; and every
+     *  value recorded for the dated settings, by key, each key's by from-date. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
-            LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap) {
+            LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap,
+            Map<String, List<DatedValue>> dated) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct, LocalDate policyDate,
-                LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, BigDecimal cap) {
+                LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, BigDecimal cap,
+                Map<String, List<DatedSetting>> dated) {
             return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms,
                     latePct.setScale(2).toPlainString(), policyDate, periodNumberingFrom, gradeTerms,
-                    cap == null ? null : cap.setScale(2).toPlainString());
+                    cap == null ? null : cap.setScale(2).toPlainString(), DatedValue.of(dated));
         }
     }
 
-    /** The clerk limit as the form submits it: 0.00 or more with up to two decimals, blank for no limit. */
-    public record ClerkLimitForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value) {
+    /** A value recorded for a dated setting: in force from its from-date until the next one of its
+     *  key; null for none. */
+    public record DatedValue(LocalDate from, String value) {
+        /** Every value recorded, by key, each key's by from-date. */
+        public static Map<String, List<DatedValue>> of(Map<String, List<DatedSetting>> dated) {
+            Map<String, List<DatedValue>> out = new TreeMap<>();
+            dated.forEach((key, values) -> out.put(key,
+                    values.stream().map(d -> new DatedValue(d.getFrom(), d.getValue())).toList()));
+            return out;
+        }
     }
 
-    /** The floor as the form submits it: 0.00 or more with up to two decimals, blank for the default. */
-    public record FloorForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value) {
+    /** A from-date as a form submits it: a date as yyyy-mm-dd, blank or left out for the sheet's today. */
+    private static final String FROM = "(\\d{4}-\\d{2}-\\d{2})?";
+
+    /** The clerk limit as the form submits it: 0.00 or more with up to two decimals, blank for no
+     *  limit, from a date (blank: the sheet's today). */
+    public record ClerkLimitForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value,
+            @Pattern(regexp = FROM) String from) {
     }
 
-    /** The terms as the form submits them: a whole number of days, blank for the default. */
-    public record TermsForm(@NotNull @Pattern(regexp = "(\\d{1,4})?") String value) {
+    /** The floor as the form submits it: 0.00 or more with up to two decimals, blank for the
+     *  default, from a date (blank: the sheet's today). */
+    public record FloorForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value,
+            @Pattern(regexp = FROM) String from) {
     }
 
-    /** The late percent as the form submits it: 0.00 or more with up to two decimals, blank for the default. */
-    public record LatePctForm(@NotNull @Pattern(regexp = "(\\d{1,3}(\\.\\d{1,2})?)?") String value) {
+    /** The terms as the form submits them: a whole number of days, blank for the default, from a
+     *  date (blank: the sheet's today). */
+    public record TermsForm(@NotNull @Pattern(regexp = "(\\d{1,4})?") String value,
+            @Pattern(regexp = FROM) String from) {
     }
 
-    /** The cap as the form submits it: 0.00 or more with up to two decimals, blank for none. */
-    public record CapForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value) {
+    /** The late percent as the form submits it: 0.00 or more with up to two decimals, blank for
+     *  the default, from a date (blank: the sheet's today). */
+    public record LatePctForm(@NotNull @Pattern(regexp = "(\\d{1,3}(\\.\\d{1,2})?)?") String value,
+            @Pattern(regexp = FROM) String from) {
+    }
+
+    /** The cap as the form submits it: 0.00 or more with up to two decimals, blank for none, from
+     *  a date (blank: the sheet's today). */
+    public record CapForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value,
+            @Pattern(regexp = FROM) String from) {
     }
 
     /** The policy date as the form submits it: a date as yyyy-mm-dd, blank for none (the sheet's today). */
@@ -107,7 +136,7 @@ public class SettingsController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClerkLimitForm body) {
         BigDecimal limit = body.value().isEmpty() ? null : new BigDecimal(body.value());
-        service.setClerkLimit(sheetId, user.trim(), limit);
+        service.setClerkLimit(sheetId, user.trim(), limit, fromOf(body.from()));
         return view(sheetId);
     }
 
@@ -117,7 +146,7 @@ public class SettingsController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody FloorForm body) {
         BigDecimal floor = body.value().isEmpty() ? Sheet.DEFAULT_FLOOR : new BigDecimal(body.value());
-        service.setFloor(sheetId, user.trim(), floor);
+        service.setFloor(sheetId, user.trim(), floor, fromOf(body.from()));
         return view(sheetId);
     }
 
@@ -127,7 +156,7 @@ public class SettingsController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody TermsForm body) {
         int terms = body.value().isEmpty() ? Sheet.DEFAULT_TERMS : Integer.parseInt(body.value());
-        service.setTerms(sheetId, user.trim(), terms);
+        service.setTerms(sheetId, user.trim(), terms, fromOf(body.from()));
         return view(sheetId);
     }
 
@@ -138,7 +167,7 @@ public class SettingsController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody TermsForm body) {
         Integer terms = body.value().isEmpty() ? null : Integer.valueOf(body.value());
-        service.setGradeTerms(sheetId, user.trim(), grade, terms);
+        service.setGradeTerms(sheetId, user.trim(), grade, terms, fromOf(body.from()));
         return view(sheetId);
     }
 
@@ -148,7 +177,7 @@ public class SettingsController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody LatePctForm body) {
         BigDecimal latePct = body.value().isEmpty() ? Sheet.DEFAULT_LATE_PCT : new BigDecimal(body.value());
-        service.setLatePct(sheetId, user.trim(), latePct);
+        service.setLatePct(sheetId, user.trim(), latePct, fromOf(body.from()));
         return view(sheetId);
     }
 
@@ -158,7 +187,7 @@ public class SettingsController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody CapForm body) {
         BigDecimal cap = body.value().isEmpty() ? null : new BigDecimal(body.value());
-        service.setCap(sheetId, user.trim(), cap);
+        service.setCap(sheetId, user.trim(), cap, fromOf(body.from()));
         return view(sheetId);
     }
 
@@ -195,7 +224,19 @@ public class SettingsController {
     private SettingsView view(String sheetId) {
         return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId),
                 service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId),
-                gradeTerms(sheetId), service.cap(sheetId));
+                gradeTerms(sheetId), service.cap(sheetId), service.datedSettings(sheetId));
+    }
+
+    /** A from-date as the form submits it; null when blank or left out (the sheet's today). */
+    private static LocalDate fromOf(String from) {
+        if (from == null || from.isEmpty()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(from);
+        } catch (DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date");
+        }
     }
 
     private Map<String, Integer> gradeTerms(String sheetId) {
