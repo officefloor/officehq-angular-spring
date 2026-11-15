@@ -1,0 +1,155 @@
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonController.java b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+index 83a5cbf4d..bef80470c 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonController.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonController.java
+@@ -328,7 +328,7 @@ public class PersonController {
+             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody TransferForm body) {
+         Person arrived = service.transfer(sheetId, user.trim(), id, body.toSheetId());
+-        return PersonView.of(arrived, service.today(arrived.getSheetId()), StatementSummary.NONE, List.of(), false,
++        return PersonView.of(arrived, service.today(arrived.getSheetId()), service.statementSummary(arrived.getId()), List.of(), false,
+                 service.clashing(arrived));
+     }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index a1bafb2a0..8f73eb4ef 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -433,11 +433,13 @@ public class PersonService {
+ 
+     /** Merge a person into another person on the sheet, as a steward: the merged person's claims
+      *  move to the other (numbers and dates kept, listed after the other's in the order they were
+-     *  added, each unbound from any statement), their name and aliases become the other's aliases,
++     *  added, each keeping the figure a statement bound it to), their name and aliases become the other's aliases,
+      *  their patrons are added to the other's (not the other themselves, no repeats), anyone naming
+      *  them as patron names the other instead (no repeats), and their pool memberships move to the
+-     *  other (shares added where the other is a member already). Their statements, holds, watchers
+-     *  and contact go with them. Refused (404) for a person not on the sheet, (403) unless the user
++     *  other (shares added where the other is a member already). Their statements are carried to
++     *  the other, whose statement count becomes their own plus the merged person's, the other's
++     *  last statement staying theirs (or, having none, becoming the merged person's). Their holds,
++     *  watchers and contact go with them. Refused (404) for a person not on the sheet, (403) unless the user
+      *  acts as a steward, (422) for the same person, either of them retired, or a pool share added
+      *  past 100.00. */
+     @Transactional
+@@ -474,14 +476,13 @@ public class PersonService {
+         }
+         poolMembers.flush();
+ 
+-        // claims: moved, listed after the other's in the order they were added, unbound
++        // claims: moved, listed after the other's in the order they were added, their bindings kept
+         long listed = claims.findLastListed(sheetId);
+         List<Claim> moved = claims.findByPersonForUpdate(from.getId(), sheetId).stream()
+                 .sorted(Comparator.comparing(Claim::getId)).toList();
+         for (Claim claim : moved) {
+             claim.setPersonId(into.getId());
+             claim.setListed(++listed);
+-            claim.unbind();
+         }
+         claims.flush();
+ 
+@@ -505,8 +506,8 @@ public class PersonService {
+         patrons.deleteAll(namingThem);
+         patrons.flush();
+ 
+-        // statements and watchers go with them
+-        statements.deleteAll(statements.findByPersonIdOrderByIdAsc(from.getId()));
++        // statements carried to the other; watchers go with them
++        carryStatements(sheetId, statements.findByPersonIdOrderByIdAsc(from.getId()), into);
+         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+         statements.flush();
+         watches.flush();
+@@ -534,17 +535,18 @@ public class PersonService {
+      *  dates, notes, tags, frozen settled figures,
+      *  logs and comments, listed there in the order this sheet lists them; each claim that had a number
+      *  takes the other sheet's next one, in the order the claims were opened (by the sheet's today
+-     *  when each was opened, then by the order they were added). Figures a statement bound, batches
+-     *  and references are not carried, and their statement count starts at 0. They leave this sheet
+-     *  entirely: their statements, patron links (both ways), pool memberships and watches are
++     *  when each was opened, then by the order they were added), each keeping the figure a statement
++     *  bound it to; batches and references are not carried. Their statements are carried with them.
++     *  They leave this sheet entirely: their patron links (both ways), pool memberships and watches are
+      *  dropped, and the numbers their claims had are never given here again. Refused (404) for a
+      *  person not on the sheet, (403) unless the user acts as a steward or when either sheet is
+      *  archived, (422) for a retired person or this sheet's own id, and (409) when their name or an
+      *  alias is a name or alias on another sheet of the other sheet's tree, or when their contact is
+      *  already on the other sheet. When someone on the other sheet goes by their name or an alias
+      *  they are merged into them there instead, as a merge does: their claims are listed after
+-     *  that person's, unbound, and their name and aliases join that person's aliases; answers with
+-     *  that person. Refused (409) when more than one person there goes by them, and (422) when that
++     *  that person's, and their name and aliases join that person's aliases, that person's
++     *  statement count becoming their own plus the transferred person's (their last statement staying
++     *  theirs, or having none, becoming the transferred person's); answers with that person. Refused (409) when more than one person there goes by them, and (422) when that
+      *  person is retired. */
+     @Transactional
+     public Person transfer(String sheetId, String user, long id, String toSheetId) {
+@@ -610,8 +612,8 @@ public class PersonService {
+         for (Claim claim : theirs) {
+             Claim copy = claim.transferredTo(target, arrived.getId());
+             copy.setListed(++listed);
+-            if (into != null) {
+-                copy.unbind();
++            if (claim.isStated()) {
++                copy.bind(claim.getStatedDue());
+             }
+             copies.put(claim, claims.saveAndFlush(copy));
+         }
+@@ -653,6 +655,7 @@ public class PersonService {
+         }
+         claimLog.flush();
+         claimComments.flush();
++        carryStatements(target, statements.findByPersonIdOrderByIdAsc(person.getId()), arrived);
+ 
+         // leaving this sheet entirely; the numbers their claims had are never given here again
+         for (Claim claim : theirs) {
+@@ -670,11 +673,9 @@ public class PersonService {
+         patrons.deleteAll(patrons.findByPersonIdOrderByIdAsc(person.getId()));
+         patrons.deleteAll(patrons.findByPatronIdOrderByIdAsc(person.getId()));
+         poolMembers.deleteAll(poolMembers.findByPersonIdOrderByIdAsc(person.getId()));
+-        statements.deleteAll(statements.findByPersonIdOrderByIdAsc(person.getId()));
+         watches.deleteAll(watches.findByPersonIdOrderByIdAsc(person.getId()));
+         patrons.flush();
+         poolMembers.flush();
+-        statements.flush();
+         watches.flush();
+         people.delete(person);
+         try {
+@@ -705,6 +706,21 @@ public class PersonService {
+         return arrived;
+     }
+ 
++    /** Carry a person's statements to {@code into} on {@code sheetId}: they are taken again for
++     *  {@code into} ahead of their own, so {@code into}'s count is their own plus these, and their
++     *  last statement stays theirs (or, having none, becomes the last of these). */
++    private void carryStatements(String sheetId, List<PersonStatement> theirs, Person into) {
++        List<PersonStatement> own = statements.findByPersonIdOrderByIdAsc(into.getId());
++        List<PersonStatement> carried = new ArrayList<>();
++        theirs.forEach(st -> carried.add(st.carriedTo(sheetId, into.getId())));
++        own.forEach(st -> carried.add(st.carriedTo(sheetId, into.getId())));
++        statements.deleteAll(theirs);
++        statements.deleteAll(own);
++        statements.flush();
++        statements.saveAll(carried);
++        statements.flush();
++    }
++
+     /** The sheet's today when the claim was opened: its first OPEN log line's, else its first
+      *  line's, else its date. */
+     private static LocalDate openedOn(Claim claim, List<ClaimLog> log) {
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonStatement.java b/src/main/java/net/officefloor/hq/app/person/PersonStatement.java
+index 797ecb0bc..63d31a421 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonStatement.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonStatement.java
+@@ -58,6 +58,12 @@ public class PersonStatement {
+         this.takenBy = takenBy;
+     }
+ 
++    /** A copy of the statement for a person it is carried to by a merge or a transfer: its figures,
++     *  dates and taker kept. */
++    public PersonStatement carriedTo(String sheetId, Long personId) {
++        return new PersonStatement(sheetId, personId, dueTotal, claims, takenOn, asOf, takenBy);
++    }
++
+     public Long getId() {
+         return id;
+     }
