@@ -49,6 +49,7 @@ public class SettingsService {
 
     /** The key the grace days are audited under. */
     public static final String GRACE_DAYS = "grace-days";
+    public static final String ESCALATE_AFTER = "escalate-after";
 
     /** The key the pot is audited under. */
     public static final String POT = "pot";
@@ -322,6 +323,25 @@ public class SettingsService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + GRACE_DAYS + " value=" + (graceDays == null ? "" : graceDays));
         return graceDays;
+    }
+
+    /** The sheet's escalation gap in days; null when blank (off). */
+    @Transactional(readOnly = true)
+    public Integer escalateAfter(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getEscalateAfter).orElse(null);
+    }
+
+    /** Set the sheet's escalation gap (null: off), the sheet created first if it was never loaded;
+     *  not dated, it applies from the next reminder. */
+    @Transactional
+    public Integer setEscalateAfter(String sheetId, String user, Integer escalateAfter) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        sheet.setEscalateAfter(escalateAfter);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + ESCALATE_AFTER + " value=" + (escalateAfter == null ? "" : escalateAfter));
+        return escalateAfter;
     }
 
     /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. */

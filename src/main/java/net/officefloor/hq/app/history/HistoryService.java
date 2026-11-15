@@ -58,7 +58,7 @@ public class HistoryService {
 
     record SheetState(LocalDate policyDate, List<SettingState> settings, LocalDate periodNumberingFrom,
             Integer graceDays, boolean archived, LocalDate entryDate, BigDecimal pot, Integer fiscalStartMonth,
-            BigDecimal alertThreshold) {
+            BigDecimal alertThreshold, Integer escalateAfter) {
     }
 
     record GradeState(LocalDate from, String grade) {
@@ -82,7 +82,7 @@ public class HistoryService {
             String number, BigDecimal settledDue, boolean stated, BigDecimal statedDue, String corrects,
             LocalDate deferredUntil, String note, String openedBy, long listed, int proofs, String splitFrom,
             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason, String editedBy,
-            Integer batch, Long added) {
+            Integer batch, Long added, Boolean escalated) {
     }
 
     record PeriodState(String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
@@ -131,7 +131,7 @@ public class HistoryService {
                 .toList();
         write(sheet.getId(), SHEET, sheet.getId(), new SheetState(sheet.getPolicyDate(), settings,
                 sheet.getPeriodNumberingFrom(), sheet.getGraceDays(), sheet.isArchived(), sheet.getEntryDate(),
-                sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold()));
+                sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(), sheet.getEscalateAfter()));
     }
 
     /** Write the version of an entity of the sheet now, if it differs from the last one. */
@@ -141,7 +141,8 @@ public class HistoryService {
                     c.getDate(), c.getDueBy(), c.getStatus(), c.getNumber(), c.getSettledDue(), c.isStated(),
                     c.getStatedDue(), c.getCorrects(), c.getDeferredUntil(), c.getNote(), c.getOpenedBy(),
                     c.getListed(), c.getProofs(), c.getSplitFrom(), c.isLateEntry(), c.getReminded(),
-                    c.getRef(), c.getTags(), c.getVoidReason(), c.getEditedBy(), c.getBatch(), c.getAdded()));
+                    c.getRef(), c.getTags(), c.getVoidReason(), c.getEditedBy(), c.getBatch(), c.getAdded(),
+                    c.isEscalated()));
         } else if (entity instanceof Person p) {
             List<Person.DatedGrade> all = p.getGrades();
             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
@@ -250,6 +251,7 @@ public class HistoryService {
                     s.settings().forEach(d -> sheet.recordSetting(d.key(), d.from(), d.value()));
                     sheet.setPeriodNumberingFrom(s.periodNumberingFrom());
                     sheet.setGraceDays(s.graceDays());
+                    sheet.setEscalateAfter(s.escalateAfter());
                     sheet.setEntryDate(s.entryDate());
                     sheet.setPot(s.pot());
                     sheet.setAlertThreshold(s.alertThreshold());
@@ -353,6 +355,7 @@ public class HistoryService {
         c.setSplitFrom(s.splitFrom());
         c.setLateEntry(s.lateEntry());
         c.setReminded(s.reminded());
+        c.setEscalated(Boolean.TRUE.equals(s.escalated()));
         c.setRef(s.ref());
         c.setTags(s.tags());
         c.setVoidReason(s.voidReason());

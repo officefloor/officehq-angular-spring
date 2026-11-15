@@ -34,6 +34,7 @@ import { FISCAL_START_MONTH_PATTERN, GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PE
       <p>Note threshold in force (blank: none) <strong data-testid="setting-note-threshold-current">{{ (session.noteThreshold() ?? '') | figure }}</strong></p>
       <p>Review threshold in force (blank: none) <strong data-testid="setting-review-threshold-current">{{ (session.reviewThreshold() ?? '') | figure }}</strong></p>
       <p>Grace days (blank: off) <strong data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</strong></p>
+      <p>Escalation gap in days (blank: off) <strong data-testid="setting-escalate-after-current">{{ escalateAfter() ?? '' }}</strong></p>
       <p>Pot (blank: none) <strong data-testid="setting-pot-current">{{ (session.pot() ?? '') | figure }}</strong></p>
       <p>Alert threshold (blank: off) <strong data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</strong></p>
       <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</strong></p>
@@ -104,6 +105,8 @@ import { FISCAL_START_MONTH_PATTERN, GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PE
         <input id="setting-review-threshold-from" type="date" data-testid="setting-review-threshold-from" formControlName="reviewThresholdFrom" />
         <label for="setting-grace-days">Grace days: when the sheet's today changes, open periods ended more than this many days before it are closed (blank: off)</label>
         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric" autocomplete="off" />
+        <label for="setting-escalate-after">Escalation gap: reminding a claim whose previous reminder was at least this many days before the sheet's today escalates it (blank: off)</label>
+        <input id="setting-escalate-after" data-testid="setting-escalate-after" formControlName="escalateAfter" inputmode="numeric" autocomplete="off" />
         <label for="setting-pot">Pot: each balanced pool's members cut it by their shares (blank: none)</label>
         <input id="setting-pot" data-testid="setting-pot" formControlName="pot" inputmode="decimal" autocomplete="off" />
         <label for="setting-alert-threshold">Alert threshold: a change that takes a person's due-total above it alerts (blank: off)</label>
@@ -208,6 +211,8 @@ export class Settings {
   protected readonly entryDate = signal<string | null>(null);
   /** The sheet's grace days; null when blank (off). */
   protected readonly graceDays = signal<number | null>(null);
+  /** The sheet's escalation gap in days; null when blank (off). */
+  protected readonly escalateAfter = signal<number | null>(null);
   /** The sheet's alert threshold (two decimals); null when blank (off). */
   protected readonly alertThreshold = signal<string | null>(null);
   protected readonly grades = GRADES;
@@ -260,6 +265,7 @@ export class Settings {
     reviewThreshold: new FormControl('', { nonNullable: true }),
     reviewThresholdFrom: new FormControl('', { nonNullable: true }),
     graceDays: new FormControl('', { nonNullable: true }),
+    escalateAfter: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
     alertThreshold: new FormControl('', { nonNullable: true }),
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
@@ -349,6 +355,7 @@ export class Settings {
         this.periodNumberingFrom.set(null);
         this.entryDate.set(null);
         this.graceDays.set(null);
+        this.escalateAfter.set(null);
         this.alertThreshold.set(null);
         this.session.pot.set(null);
         this.session.fiscalStartMonth.set(1);
@@ -367,7 +374,7 @@ export class Settings {
         this.voidReasonForm.reset({ reason: '' }, { emitEvent: false });
         this.settingsForm.reset({
           clerkLimit: '', clerkLimitFrom: '', floor: '', floorFrom: '', terms: '', termsFrom: '', latePct: '', latePctFrom: '',
-          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', rounding: '', roundingFrom: '', noteThreshold: '', noteThresholdFrom: '', reviewThreshold: '', reviewThresholdFrom: '', graceDays: '', pot: '', alertThreshold: '', fiscalStartMonth: '', parent: '',
+          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', rounding: '', roundingFrom: '', noteThreshold: '', noteThresholdFrom: '', reviewThreshold: '', reviewThresholdFrom: '', graceDays: '', escalateAfter: '', pot: '', alertThreshold: '', fiscalStartMonth: '', parent: '',
         }, { emitEvent: false });
         this.gradeTermsForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.gradeTermsFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
@@ -395,7 +402,7 @@ export class Settings {
     this.settingsErr.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, rounding, roundingFrom, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, pot, alertThreshold, fiscalStartMonth, parent } = this.settingsForm.controls;
+    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, rounding, roundingFrom, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, escalateAfter, pot, alertThreshold, fiscalStartMonth, parent } = this.settingsForm.controls;
     // only the settings typed into (or entered and left, as when one already blank is cleared),
     // or whose from-date was, since the last save are saved (the clerk limit when none is)
     const typed = (c: AbstractControl) => c.dirty || c.touched;
@@ -411,6 +418,7 @@ export class Settings {
     const saveNoteThreshold = typed(noteThreshold) || typed(noteThresholdFrom);
     const saveReviewThreshold = typed(reviewThreshold) || typed(reviewThresholdFrom);
     const saveGraceDays = typed(graceDays);
+    const saveEscalateAfter = typed(escalateAfter);
     const savePot = typed(pot);
     const saveAlertThreshold = typed(alertThreshold);
     const saveFiscalStartMonth = typed(fiscalStartMonth);
@@ -441,7 +449,7 @@ export class Settings {
         typed: this.permissionsForm.controls[p.action].value.trim(),
       }));
     const saveLimit = typed(clerkLimit) || typed(clerkLimitFrom)
-      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveRounding || saveNoteThreshold || saveReviewThreshold || saveGraceDays || savePot || saveAlertThreshold || saveFiscalStartMonth || saveParent);
+      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveRounding || saveNoteThreshold || saveReviewThreshold || saveGraceDays || saveEscalateAfter || savePot || saveAlertThreshold || saveFiscalStartMonth || saveParent);
     const limitFrom = clerkLimitFrom.value.trim();
     const floorFromValue = floorFrom.value.trim();
     const termsFromValue = termsFrom.value.trim();
@@ -465,6 +473,7 @@ export class Settings {
     const noteThresholdValue = noteThreshold.value.trim();
     const reviewThresholdValue = reviewThreshold.value.trim();
     const graceDaysValue = graceDays.value.trim();
+    const escalateAfterValue = escalateAfter.value.trim();
     const potValue = pot.value.trim();
     const alertThresholdValue = alertThreshold.value.trim();
     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
@@ -485,6 +494,7 @@ export class Settings {
         || (saveNoteThreshold && noteThresholdValue !== '' && !LIMIT_PATTERN.test(noteThresholdValue))
         || (saveReviewThreshold && reviewThresholdValue !== '' && !LIMIT_PATTERN.test(reviewThresholdValue))
         || (saveGraceDays && graceDaysValue !== '' && !TERMS_PATTERN.test(graceDaysValue))
+        || (saveEscalateAfter && escalateAfterValue !== '' && !TERMS_PATTERN.test(escalateAfterValue))
         || (savePot && potValue !== '' && !LIMIT_PATTERN.test(potValue))
         || (saveAlertThreshold && alertThresholdValue !== '' && !LIMIT_PATTERN.test(alertThresholdValue))
         || (saveFiscalStartMonth && !FISCAL_START_MONTH_PATTERN.test(fiscalStartMonthValue))
@@ -594,6 +604,11 @@ export class Settings {
         const saved = await this.api.setGraceDays(sheetId, graceDaysValue);
         settled(graceDays, graceDaysValue);
         if (this.session.sheetId() === sheetId) this.graceDays.set(saved.graceDays);
+      }
+      if (saveEscalateAfter) {
+        const saved = await this.api.setEscalateAfter(sheetId, escalateAfterValue);
+        settled(escalateAfter, escalateAfterValue);
+        if (this.session.sheetId() === sheetId) this.escalateAfter.set(saved.escalateAfter);
       }
       if (savePot) {
         const saved = await this.api.setPot(sheetId, potValue);
@@ -747,6 +762,7 @@ export class Settings {
         this.periodNumberingFrom.set(settings.periodNumberingFrom);
         this.entryDate.set(settings.entryDate);
         this.graceDays.set(settings.graceDays);
+        this.escalateAfter.set(settings.escalateAfter);
         this.session.pot.set(settings.pot);
         this.alertThreshold.set(settings.alertThreshold);
         this.session.fiscalStartMonth.set(settings.fiscalStartMonth);

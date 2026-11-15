@@ -101,6 +101,11 @@ public class Sheet {
     @Column(name = "grace_days")
     private Integer graceDays;
 
+    /** Reminding a claim whose previous reminder was at least this many days before the sheet's
+     *  today escalates it; null when blank (off). Not dated. */
+    @Column(name = "escalate_after")
+    private Integer escalateAfter;
+
     /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. Not dated. */
     @Column(name = "fiscal_start_month", nullable = false)
     private int fiscalStartMonth = 1;
@@ -134,7 +139,7 @@ public class Sheet {
     }
 
     /** A clone of the sheet under another id, created by a user: its today and every setting (its
-     *  dated settings, policy date, period numbering, entry date, grace days, fiscal start month, pot, alert threshold and parent). It is
+     *  dated settings, policy date, period numbering, entry date, grace days, escalation gap, fiscal start month, pot, alert threshold and parent). It is
      *  not archived and has given no claim number yet. */
     public Sheet clonedTo(String id, String createdBy) {
         Sheet copy = new Sheet(id, createdBy, today);
@@ -143,6 +148,7 @@ public class Sheet {
         copy.periodNumberingFrom = periodNumberingFrom;
         copy.entryDate = entryDate;
         copy.graceDays = graceDays;
+        copy.escalateAfter = escalateAfter;
         copy.fiscalStartMonth = fiscalStartMonth;
         copy.pot = pot;
         copy.alertThreshold = alertThreshold;
@@ -303,6 +309,14 @@ public class Sheet {
 
     public void setGraceDays(Integer graceDays) {
         this.graceDays = graceDays;
+    }
+
+    public Integer getEscalateAfter() {
+        return escalateAfter;
+    }
+
+    public void setEscalateAfter(Integer escalateAfter) {
+        this.escalateAfter = escalateAfter;
     }
 
     public int getFiscalStartMonth() {

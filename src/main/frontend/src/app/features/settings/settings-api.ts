@@ -63,6 +63,9 @@ export interface Settings {
   entryDate: string | null;
   /** Days: when the sheet's today changes, every open period whose to-date plus them is before it is closed; null when blank (off). */
   graceDays: number | null;
+  /** Days: reminding a claim whose previous reminder was at least this many days before the
+   *  sheet's today escalates it; null when blank (off). Not dated. */
+  escalateAfter: number | null;
   /** Two decimals, as the server formats it: each balanced pool's members cut it by their shares;
    *  null when blank (none). Not dated. */
   pot: string | null;
@@ -208,6 +211,12 @@ export class SettingsApi {
   setGraceDays(sheetId: string, value: string): Promise<Settings> {
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/grace-days`, { value }, { headers: this.headers() }),
+    );
+  }
+
+  setEscalateAfter(sheetId: string, value: string): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/escalate-after`, { value }, { headers: this.headers() }),
     );
   }
 

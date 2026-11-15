@@ -123,6 +123,10 @@ public class Claim {
     @Column(name = "reminded")
     private LocalDate reminded;
 
+    /** Whether a reminder has escalated the claim; it is escalated once ever. */
+    @Column(name = "escalated", nullable = false)
+    private boolean escalated;
+
     /** The claim's external reference, unique on its sheet without regard to case; none when not
      *  given. */
     @Column(name = "ref")
@@ -340,6 +344,14 @@ public class Claim {
         this.reminded = reminded;
     }
 
+    public boolean isEscalated() {
+        return escalated;
+    }
+
+    public void setEscalated(boolean escalated) {
+        this.escalated = escalated;
+    }
+
     public String getRef() {
         return ref;
     }
@@ -382,6 +394,7 @@ public class Claim {
         copy.splitFrom = splitFrom;
         copy.lateEntry = lateEntry;
         copy.reminded = reminded;
+        copy.escalated = escalated;
         copy.tags = tags;
         copy.voidReason = voidReason;
         return copy;

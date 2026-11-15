@@ -604,7 +604,9 @@ public class ClaimService {
 
     /** Remind an OPEN or PENDING claim: REMIND is written and the claim's reminded date becomes
      *  the sheet's today. Refused (404) when missing, (409) unless OPEN or PENDING, and (409) when
-     *  it was already reminded on the sheet's today. */
+     *  it was already reminded on the sheet's today. When the sheet has an escalation gap and the
+     *  previous reminder was at least that many days before today, the claim is escalated (once
+     *  ever): ESCALATE is written after the REMIND. */
     @Transactional
     public Claim remind(String sheetId, String user, long id) {
         Claim claim = claims.findForUpdate(id, sheetId)
@@ -619,9 +621,19 @@ public class ClaimService {
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        LocalDate previous = claim.getReminded();
+        Integer escalateAfter = sheets.find(sheetId).map(Sheet::getEscalateAfter).orElse(null);
+        boolean escalate = escalateAfter != null && previous != null && !claim.isEscalated()
+                && !previous.plusDays(escalateAfter).isAfter(today);
         claim.setReminded(today);
+        if (escalate) {
+            claim.setEscalated(true);
+        }
         claims.flush();
         record("REMIND", user, person, claim, claim.getNumber());
+        if (escalate) {
+            record("ESCALATE", user, person, claim, claim.getNumber());
+        }
         return claim;
     }
 

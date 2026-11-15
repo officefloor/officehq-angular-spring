@@ -41,13 +41,16 @@ public class SettingsController {
      *  the terms each grade has of its own, a grade without them left out, the cap with two
      *  decimals, null for none, and the proof threshold with two decimals, null for none, the grace days, null when blank (off), the entry date, null when blank (off), the pot with two decimals, null for none, the alert threshold with two decimals, null for none, the month (1 to 12) the fiscal year starts in, each of the dated ones as in force on the sheet's today; and every
      *  value recorded for the dated settings, by key, each key's by from-date; and the permission
-     *  matrix: the roles set for each action, comma separated, an action left blank left out. */
+     *  matrix: the roles set for each action, comma separated, an action left blank left out; and the
+     *  escalation gap in days, null when blank (off). */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
-            Integer graceDays, LocalDate entryDate, String pot, String alertThreshold, int fiscalStartMonth, Map<String, List<DatedValue>> dated, Map<String, String> permissions) {
+            Integer graceDays, LocalDate entryDate, String pot, String alertThreshold, int fiscalStartMonth, Map<String, List<DatedValue>> dated, Map<String, String> permissions,
+            Integer escalateAfter) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct, LocalDate policyDate,
                 LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, BigDecimal cap, BigDecimal proofThreshold,
-                Integer graceDays, LocalDate entryDate, BigDecimal pot, BigDecimal alertThreshold, int fiscalStartMonth, Map<String, List<DatedSetting>> dated, Map<Permission, String> permissions) {
+                Integer graceDays, LocalDate entryDate, BigDecimal pot, BigDecimal alertThreshold, int fiscalStartMonth, Map<String, List<DatedSetting>> dated, Map<Permission, String> permissions,
+                Integer escalateAfter) {
             Map<String, String> perms = new TreeMap<>();
             permissions.forEach((action, roles) -> perms.put(action.key(), roles));
             return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms,
@@ -55,7 +58,8 @@ public class SettingsController {
                     cap == null ? null : cap.setScale(2).toPlainString(),
                     proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), graceDays, entryDate,
                     pot == null ? null : pot.setScale(2).toPlainString(),
-                    alertThreshold == null ? null : alertThreshold.setScale(2).toPlainString(), fiscalStartMonth, DatedValue.of(dated), perms);
+                    alertThreshold == null ? null : alertThreshold.setScale(2).toPlainString(), fiscalStartMonth, DatedValue.of(dated), perms,
+                    escalateAfter);
         }
     }
 
@@ -142,6 +146,10 @@ public class SettingsController {
 
     /** The grace days as the form submits them: a whole number of days, blank for off. */
     public record GraceDaysForm(@NotNull @Pattern(regexp = "(\\d{1,4})?") String value) {
+    }
+
+    /** The escalation gap as the form submits it: a whole number of days, blank for off. */
+    public record EscalateAfterForm(@NotNull @Pattern(regexp = "(\\d{1,4})?") String value) {
     }
 
     /** The fiscal year's start month as the form submits it: a month from 1 to 12. */
@@ -406,6 +414,16 @@ public class SettingsController {
         return view(sheetId);
     }
 
+    @PutMapping("/settings/escalate-after")
+    public SettingsView setEscalateAfter(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody EscalateAfterForm body) {
+        Integer escalateAfter = body.value().isEmpty() ? null : Integer.valueOf(body.value());
+        service.setEscalateAfter(sheetId, user.trim(), escalateAfter);
+        return view(sheetId);
+    }
+
     @PutMapping("/settings/fiscal-start-month")
     public SettingsView setFiscalStartMonth(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
@@ -459,7 +477,7 @@ public class SettingsController {
         return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId),
                 service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId),
                 gradeTerms(sheetId), service.cap(sheetId), service.proofThreshold(sheetId), service.graceDays(sheetId), service.entryDate(sheetId), service.pot(sheetId), service.alertThreshold(sheetId), service.fiscalStartMonth(sheetId), service.datedSettings(sheetId),
-                service.permissions(sheetId));
+                service.permissions(sheetId), service.escalateAfter(sheetId));
     }
 
     /** The settings as they stood at the end of a date, that date the sheet's today. */
@@ -474,7 +492,8 @@ public class SettingsController {
         }
         return SettingsView.of(sheet.getClerkLimit(), sheet.getFloor(), sheet.getTerms(), sheet.getLatePct(),
                 sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(), gradeTerms, sheet.getCap(),
-                sheet.getProofThreshold(), sheet.getGraceDays(), sheet.getEntryDate(), sheet.getPot(), sheet.getAlertThreshold(), sheet.getFiscalStartMonth(), sheet.getDatedSettings(), then.permissions());
+                sheet.getProofThreshold(), sheet.getGraceDays(), sheet.getEntryDate(), sheet.getPot(), sheet.getAlertThreshold(), sheet.getFiscalStartMonth(), sheet.getDatedSettings(), then.permissions(),
+                sheet.getEscalateAfter());
     }
 
     /** A from-date as the form submits it; null when blank or left out (the sheet's today). */
