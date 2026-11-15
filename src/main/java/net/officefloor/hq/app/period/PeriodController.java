@@ -34,10 +34,11 @@ public class PeriodController {
     /** A period as the screen shows it: whether it is closed or soft-closed, the due-total fixed when it was
      *  closed (null while open), each person's due-total for it fixed then, by person id
      *  (empty while open), and each person's carried figure for it fixed then, by person id (null
-     *  while open, or when closed before carried figures were fixed). */
+     *  while open, or when closed before carried figures were fixed), and each person's opening
+     *  balance for it, by person id. */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
             String closedTotal, Integer cap,
-            Map<Long, String> closedPersonTotals, Map<Long, String> closedPersonCarried) {
+            Map<Long, String> closedPersonTotals, Map<Long, String> closedPersonCarried, Map<Long, String> openings) {
         static PeriodView of(Period p) {
             return of(p.getId(), p);
         }
@@ -52,9 +53,11 @@ public class PeriodController {
                 p.getClosedPersonCarried().forEach((personId, carried) -> fixed.put(personId, carried.setScale(2).toPlainString()));
                 personCarried = fixed;
             }
+            Map<Long, String> openings = new LinkedHashMap<>();
+            p.getOpenings().forEach((personId, amount) -> openings.put(personId, amount.setScale(2).toPlainString()));
             return new PeriodView(id, p.getName(), p.getFrom(), p.getTo(), p.isClosed(), p.isSoftClosed(),
                     p.getClosedTotal() == null ? null : p.getClosedTotal().setScale(2).toPlainString(), p.getCap(), personTotals,
-                    personCarried);
+                    personCarried, openings);
         }
     }
 
@@ -123,6 +126,23 @@ public class PeriodController {
             @Valid @RequestBody GenerateFiscalYearForm body) {
         return service.generateFiscalYear(sheetId, user.trim(), Integer.parseInt(body.year())).stream()
                 .map(PeriodView::of).toList();
+    }
+
+    /** Opening balances as the paste submits them: lines of name,period,amount. */
+    public record OpeningsForm(@NotNull @Size(max = 100_000) String text) {
+    }
+
+    /** The periods an opening paste changed and how many lines went through. */
+    public record OpeningsView(int imported, List<PeriodView> periods) {
+    }
+
+    @PostMapping("/openings")
+    public OpeningsView importOpenings(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody OpeningsForm body) {
+        PeriodService.Openings done = service.importOpenings(sheetId, user.trim(), body.text());
+        return new OpeningsView(done.count(), done.periods().stream().map(PeriodView::of).toList());
     }
 
     @PostMapping("/{id}/close")

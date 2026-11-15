@@ -694,7 +694,8 @@ export class People {
   });
   /** Each person's carried figure for each period in cents, by person id then period id: the dues
    *  (n/a ones skipped) of their claims whose due-by falls in a period ending before this one starts
-   *  and that were still OPEN or PENDING at its end by their log, counted as the period figures count. */
+   *  and that were still OPEN or PENDING at its end by their log, counted as the period figures count,
+   *  plus their opening balance for it. */
   private readonly carriedByPersonPeriod = computed(() => {
     const out = new Map<number, Map<number, number>>();
     const late = this.lateness();
@@ -711,6 +712,10 @@ export class People {
           if ((status !== 'OPEN' && status !== 'PENDING') || !countsAtEnd(c, period.to)) continue;
           theirs.set(period.id, (theirs.get(period.id) ?? 0) + (this.claimDueCents(p, c, late) ?? 0));
         }
+      }
+      for (const period of periods) {
+        const opening = period.openings?.[p.id];
+        if (opening !== undefined) theirs.set(period.id, (theirs.get(period.id) ?? 0) + cents(opening));
       }
       out.set(p.id, theirs);
     }

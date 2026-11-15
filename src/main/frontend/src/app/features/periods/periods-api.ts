@@ -24,6 +24,15 @@ export interface Period {
   /** Each person's carried figure for the period fixed when it was closed (two decimals), by
    *  person id; null while open, or when it was closed before carried figures were fixed. */
   closedPersonCarried: Record<string, string> | null;
+  /** Each person's opening balance for the period (two decimals), by person id: added to the
+   *  carried figure they show for it while it is open. */
+  openings: Record<string, string>;
+}
+
+/** What an opening-balance paste did: how many lines went through, and the periods it changed. */
+export interface OpeningsImported {
+  imported: number;
+  periods: Period[];
 }
 
 /** The period whose dates contain a date (yyyy-mm-dd), or null when none does. */
@@ -83,6 +92,12 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<Period[]>(`${this.url(sheetId)}/generate-fy`, { year }, { headers: this.headers() }));
   }
 
+  /** Add each pasted line of name,period,amount to the person's opening balance for the period;
+   *  all or none go through. */
+  importOpenings(sheetId: string, text: string): Promise<OpeningsImported> {
+    return firstValueFrom(this.http.post<OpeningsImported>(`${this.url(sheetId)}/openings`, { text }, { headers: this.headers() }));
+  }
+
   close(sheetId: string, id: number): Promise<Period> {
     return firstValueFrom(this.http.post<Period>(`${this.url(sheetId)}/${id}/close`, null, { headers: this.headers() }));
   }
@@ -118,6 +133,12 @@ export function generateError(e: unknown): string {
 
 export function generateFiscalYearError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a fiscal year as yyyy.';
+  return otherError(e);
+}
+
+export function openingsError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Give each line as name,period,amount, the amount with two decimals, 0.00 or more.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'A line names a person or period not on the sheet.';
   return otherError(e);
 }
 

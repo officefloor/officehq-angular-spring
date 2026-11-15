@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
-import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, periodDueCents, periodError, reopenError } from './periods-api';
+import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, openingsError, periodDueCents, periodError, reopenError } from './periods-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -43,6 +43,17 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
         @if (generateErr(); as err) {
           <p role="alert" data-testid="period-generate-error">{{ err }}</p>
+        }
+      </form>
+      <form [formGroup]="openingForm" (ngSubmit)="importOpenings()" aria-label="Paste opening balances">
+        <label for="opening-import">Opening balances (one name,period,amount per line)</label>
+        <textarea id="opening-import" data-testid="opening-import" formControlName="text" rows="3"></textarea>
+        <button type="submit" data-testid="opening-import-submit">Add opening balances</button>
+        @if (openingsDone() !== null) {
+          <p role="status">Added <strong data-testid="opening-import-done">{{ openingsDone() }}</strong></p>
+        }
+        @if (openingErr(); as err) {
+          <p role="alert" data-testid="opening-error">{{ err }}</p>
         }
       </form>
       <table data-testid="periods-list">
@@ -115,10 +126,20 @@ export class Periods {
   protected readonly generateErr = signal<string | null>(null);
   private generating = false;
 
+  /** The pasted opening balances, one name,period,amount per line. */
+  protected readonly openingForm = new FormGroup({
+    text: new FormControl('', { nonNullable: true }),
+  });
+  /** How many lines the last opening paste added; null while one runs or before the first. */
+  protected readonly openingsDone = signal<number | null>(null);
+  protected readonly openingErr = signal<string | null>(null);
+  private importing = false;
+
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(null));
     this.generateForm.valueChanges.subscribe(() => this.generateErr.set(null));
     this.fyForm.valueChanges.subscribe(() => this.generateErr.set(null));
+    this.openingForm.valueChanges.subscribe(() => this.openingErr.set(null));
     effect(() => {
       this.session.sheetId();
       this.session.loads();
@@ -127,6 +148,9 @@ export class Periods {
         this.fyForm.reset({ year: '' });
         this.generated.set(null);
         this.generateErr.set(null);
+        this.openingForm.reset({ text: '' });
+        this.openingsDone.set(null);
+        this.openingErr.set(null);
       });
     });
   }
@@ -184,6 +208,31 @@ export class Periods {
       this.generateErr.set(generateFiscalYearError(e));
     } finally {
       this.generating = false;
+    }
+  }
+
+  /** Add the pasted opening balances, all or none; then show how many lines went through. */
+  protected async importOpenings(): Promise<void> {
+    if (this.importing) return;
+    this.openingsDone.set(null);
+    this.openingErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const text = this.openingForm.controls.text.value;
+    if (text.trim() === '') {
+      this.openingErr.set('Paste at least one line of name,period,amount.');
+      return;
+    }
+    this.importing = true;
+    try {
+      const done = await this.api.importOpenings(sheetId, text);
+      if (this.session.sheetId() !== sheetId) return;
+      for (const period of done.periods) this.saved.emit(period);
+      this.openingsDone.set(done.imported);
+    } catch (e) {
+      this.openingErr.set(openingsError(e));
+    } finally {
+      this.importing = false;
     }
   }
 

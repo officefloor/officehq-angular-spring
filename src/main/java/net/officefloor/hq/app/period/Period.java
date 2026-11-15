@@ -69,6 +69,12 @@ public class Period {
     @Column(name = "carried", nullable = false)
     private Map<Long, BigDecimal> closedPersonCarried = new LinkedHashMap<>();
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "period_person_opening", joinColumns = @JoinColumn(name = "period_id"))
+    @MapKeyColumn(name = "person_id")
+    @Column(name = "amount", nullable = false)
+    private Map<Long, BigDecimal> openings = new LinkedHashMap<>();
+
     protected Period() {
     }
 
@@ -135,6 +141,17 @@ public class Period {
     /** Each person's carried figure for the period fixed when it was closed, by person id; empty while open. */
     public Map<Long, BigDecimal> getClosedPersonCarried() {
         return closedPersonCarried;
+    }
+
+    /** Each person's opening balance for the period, by person id: added to the carried figure
+     *  they show for it while it is open (a closed one keeps the figure it fixed). */
+    public Map<Long, BigDecimal> getOpenings() {
+        return openings;
+    }
+
+    /** Add {@code amount} to the person's opening balance for the period. */
+    public void addOpening(Long personId, BigDecimal amount) {
+        openings.merge(personId, amount, BigDecimal::add);
     }
 
     /** Close the period, fixing each person's due-total for it at {@code personTotals} and their
