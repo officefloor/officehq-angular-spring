@@ -1,0 +1,89 @@
+diff --git a/src/main/frontend/src/app/features/settings/settings-api.ts b/src/main/frontend/src/app/features/settings/settings-api.ts
+index 98cb85de9..9be8b557e 100644
+--- a/src/main/frontend/src/app/features/settings/settings-api.ts
++++ b/src/main/frontend/src/app/features/settings/settings-api.ts
+@@ -17,6 +17,7 @@ export const PERMISSIONS = [
+   { action: 'reassign', standing: 'steward' },
+   { action: 'close', standing: 'clerk,steward' },
+   { action: 'reopen', standing: 'steward' },
++  { action: 'today', standing: 'clerk,steward' },
+ ] as const;
+ 
+ export type PermissionAction = (typeof PERMISSIONS)[number]['action'];
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 903d99621..42bae48d5 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -5,7 +5,7 @@ import { Session } from '../../core/session';
+ import { FISCAL_START_MONTH_PATTERN, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTERN, POLICY_DATE_PATTERN, ROUNDING_PATTERN, PermissionAction, ROLES, TERMS_PATTERN, SCORE_PATTERN, Delegation, RoleGrant, SETTINGS_INVALID, SettingsApi, delegateError, holidayError, roleError, settingsError, voidReasonError } from './settings-api';
+ import { PROOF_KINDS } from '../claims/claims-api';
+ 
+-// The sheet's settings (its permission matrix: the roles that may open, settle, void, reassign, close or reopen, each blank for its standing rule; its clerk limit: a clerk settles only claims whose due is at or below it, or below their person's grade's own when one is in force;
++// The sheet's settings (its permission matrix: the roles that may open, settle, void, reassign, close, reopen or change the sheet's today, each blank for its standing rule; its clerk limit: a clerk settles only claims whose due is at or below it, or below their person's grade's own when one is in force;
+ // its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its rounding mode: a claim dated while one is in force rounds its live figures by it (half-up or half-even); its policy date: a claim dated with no rounding mode in force before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim settled is numbered within its period; its entry date: while set, a new claim left undated takes it; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed; its fiscal start month: each period shows the fiscal year its from-date falls in; its pot: each balanced pool's members cut it by their shares; its alert threshold: a change that takes a person's due-total above it alerts) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one, and the sheet's holidays (a claim's due-by, as it is created, is moved past them) with the form that adds one, and the sheet's void reasons (while there are any, a claim is voided only with one of them) with the form that adds one.
+ @Component({
+   selector: 'app-settings',
+@@ -340,6 +340,7 @@ export class Settings {
+     reassign: new FormControl('', { nonNullable: true }),
+     close: new FormControl('', { nonNullable: true }),
+     reopen: new FormControl('', { nonNullable: true }),
++    today: new FormControl('', { nonNullable: true }),
+   });
+   protected readonly roleForm = new FormGroup({
+     user: new FormControl('', { nonNullable: true }),
+@@ -417,7 +418,7 @@ export class Settings {
+         resetGrades(this.gradeGraceFromForm);
+         resetGrades(this.gradeProofThresholdForm);
+         resetGrades(this.gradeProofThresholdFromForm);
+-        this.permissionsForm.reset({ open: '', settle: '', void: '', reassign: '', close: '', reopen: '' }, { emitEvent: false });
++        this.permissionsForm.reset({ open: '', settle: '', void: '', reassign: '', close: '', reopen: '', today: '' }, { emitEvent: false });
+         this.roleForm.reset({ user: '', role: '' }, { emitEvent: false });
+         if (id) void this.read(id);
+       });
+diff --git a/src/main/java/net/officefloor/hq/app/settings/Permission.java b/src/main/java/net/officefloor/hq/app/settings/Permission.java
+index d3c1ae5c5..ed3c3b445 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/Permission.java
++++ b/src/main/java/net/officefloor/hq/app/settings/Permission.java
+@@ -10,7 +10,8 @@ public enum Permission {
+     VOID(Set.of(Role.CLERK, Role.STEWARD)),
+     REASSIGN(Set.of(Role.STEWARD)),
+     CLOSE(Set.of(Role.CLERK, Role.STEWARD)),
+-    REOPEN(Set.of(Role.STEWARD));
++    REOPEN(Set.of(Role.STEWARD)),
++    TODAY(Set.of(Role.CLERK, Role.STEWARD));
+ 
+     private final Set<Role> standing;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 7e0b8afc2..8996c4620 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -625,7 +625,7 @@ public class SettingsController {
+     @PutMapping("/settings/perm/{action}")
+     public SettingsView setPermission(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+-            @PathVariable @NotNull @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
++            @PathVariable @NotNull @Pattern(regexp = "open|settle|void|reassign|close|reopen|today") String action,
+             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody PermissionForm body) {
+         String roles = String.join(",", Arrays.stream(body.value().split(","))
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index 66180ea0e..e9dc329be 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -13,6 +13,7 @@ import net.officefloor.hq.app.history.AsOfGuard;
+ import net.officefloor.hq.app.history.HistoryService;
+ import net.officefloor.hq.app.session.CurrentUser;
+ import net.officefloor.hq.app.settings.SettingsController.DatedValue;
++import net.officefloor.hq.app.settings.Permission;
+ import net.officefloor.hq.app.settings.SettingsService;
+ import net.officefloor.hq.app.settings.ViewerAllowed;
+ import org.springframework.format.annotation.DateTimeFormat;
+@@ -90,6 +91,7 @@ public class SheetController {
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String id,
+             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody TodayChange body) {
++        settings.refuseUnlessAllowed(id, user.trim(), Permission.TODAY);
+         return SheetView.of(service.setToday(id, user.trim(), body.today()));
+     }
+ 
