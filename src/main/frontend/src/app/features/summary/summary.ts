@@ -1,4 +1,5 @@
 import { Component, computed, inject, input } from '@angular/core';
+import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { Claim, money } from '../claims/claims-api';
 import { GRADES } from '../people/people-api';
@@ -26,6 +27,7 @@ export interface SummaryPerson {
 // many claims have it; per void reason on the sheet's list, how many VOID claims were voided with it.
 @Component({
   selector: 'app-summary',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="summary-heading">
       <h2 id="summary-heading">Summary</h2>
@@ -39,7 +41,7 @@ export interface SummaryPerson {
             <tr>
               <th scope="row">{{ g.grade }}</th>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-count'">{{ g.count }}</td>
-              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ money(g.cents) }}</td>
+              <td [attr.data-testid]="'summary-grade-' + g.grade + '-due-total'">{{ money(g.cents) | figure }}</td>
               <td [attr.data-testid]="'summary-grade-' + g.grade + '-active'">{{ g.active }}</td>
             </tr>
           }
@@ -54,8 +56,8 @@ export interface SummaryPerson {
           @for (p of periods(); track p.id) {
             <tr>
               <th scope="row">{{ p.name }}</th>
-              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ money(periodDue(p)) }}</td>
-              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ changeText(p) }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ money(periodDue(p)) | figure }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ changeText(p) | figure }}</td>
             </tr>
           }
         </tbody>

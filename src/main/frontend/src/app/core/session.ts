@@ -76,6 +76,8 @@ export class Session {
   readonly asOf = signal<string | null>(null);
   /** The as-of date the sheet on screen was loaded with; null when it shows the sheet as it stands. */
   readonly shownAsOf = signal<string | null>(null);
+  /** The signed-in user's locale: how the screen shows figures. en unless chosen, kept per user. */
+  readonly locale = signal<UserLocale>('en');
   /** Bumped on every sheet load, so a load of the same id again re-reads what the sheet holds. */
   readonly loads = signal(0);
 
@@ -137,6 +139,7 @@ export class Session {
     try {
       const res = await firstValueFrom(this.http.post<{ name: string }>('/api/session', { name }));
       this.user.set(res.name);
+      await this.loadLocale();
       return null;
     } catch (e) {
       return message(e, 'Enter a name to sign in.');
@@ -154,6 +157,7 @@ export class Session {
           headers: { 'X-User': user },
         }),
       );
+      await this.loadLocale();
       this.sheetId.set(res.id);
       this.today.set(res.today);
       this.dated.set(res.dated);
@@ -165,6 +169,35 @@ export class Session {
       return null;
     } catch (e) {
       return message(e, 'Enter a sheet id without spaces.');
+    }
+  }
+
+  /** Re-read the signed-in user's locale (en when it cannot be read). */
+  private async loadLocale(): Promise<void> {
+    const user = this.user();
+    if (!user) return;
+    try {
+      const res = await firstValueFrom(
+        this.http.get<{ locale: UserLocale }>('/api/users/locale', { headers: { 'X-User': user } }),
+      );
+      this.locale.set(res.locale);
+    } catch {
+      this.locale.set('en');
+    }
+  }
+
+  /** Save the signed-in user's locale; resolves to an error message, or null. */
+  async setLocale(locale: UserLocale): Promise<string | null> {
+    const user = this.user();
+    if (!user) return 'Sign in first.';
+    try {
+      const res = await firstValueFrom(
+        this.http.put<{ locale: UserLocale }>('/api/users/locale', { locale }, { headers: { 'X-User': user } }),
+      );
+      this.locale.set(res.locale);
+      return null;
+    } catch (e) {
+      return message(e, 'Choose en or de.');
     }
   }
 
@@ -237,6 +270,10 @@ export class Session {
     }
   }
 }
+
+/** The locales a user may choose: en shows 1234.56, de shows 1.234,56. */
+export const LOCALES = ['en', 'de'] as const;
+export type UserLocale = (typeof LOCALES)[number];
 
 interface SheetView {
   id: string;

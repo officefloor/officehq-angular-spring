@@ -14,6 +14,9 @@ import java.util.Map;
 import net.officefloor.hq.app.claim.ClaimController;
 import net.officefloor.hq.app.claim.ClaimController.ClaimView;
 import net.officefloor.hq.app.session.CurrentUser;
+import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.settings.ViewerAllowed;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -57,10 +60,14 @@ public class PlanController {
 
     private final PlanService service;
     private final ClaimController claims;
+    private final SettingsService settings;
+    private final SheetService sheets;
 
-    public PlanController(PlanService service, ClaimController claims) {
+    public PlanController(PlanService service, ClaimController claims, SettingsService settings, SheetService sheets) {
         this.service = service;
         this.claims = claims;
+        this.settings = settings;
+        this.sheets = sheets;
     }
 
     @GetMapping("/plans")
@@ -83,11 +90,16 @@ public class PlanController {
         return PlanView.of(plan, Map.of());
     }
 
-    /** Generate the plans' claims; resolves to the claims made and the sheet's plans with their counts. */
+    /** Generate the plans' claims; resolves to the claims made and the sheet's plans with their
+     *  counts. Each claim is refused for a viewer and on an archived sheet, so it makes none. */
     @PostMapping("/plans/generate")
+    @ViewerAllowed
     public GenerateView generate(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        if (settings.isViewer(sheetId, user.trim()) || sheets.archived(sheetId)) {
+            return new GenerateView(List.of(), list(sheetId, user));
+        }
         List<ClaimView> made = service.generate(sheetId, user.trim()).stream().map(claims::view).toList();
         return new GenerateView(made, list(sheetId, user));
     }

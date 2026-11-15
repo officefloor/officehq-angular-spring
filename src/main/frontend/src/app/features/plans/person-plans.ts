@@ -1,5 +1,6 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { AMOUNT_PATTERN } from '../claims/claims-api';
 import { PlansApi, nextDates, planError, type Plan } from './plans-api';
@@ -7,7 +8,7 @@ import { PlansApi, nextDates, planError, type Plan } from './plans-api';
 // One person's plans, in the order they were added, and the form that adds one.
 @Component({
   selector: 'app-person-plans',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="'Add plan for ' + personName()">
       <label [for]="fieldId('amount')">Plan amount</label>
@@ -29,7 +30,7 @@ import { PlansApi, nextDates, planError, type Plan } from './plans-api';
       <ul [attr.aria-label]="'Plans of ' + personName()">
         @for (pl of plans(); track pl.id) {
           <li [attr.data-testid]="'plan-row-' + pl.id">
-            <span data-testid="plan-amount-shown">{{ pl.amount }}</span>
+            <span data-testid="plan-amount-shown">{{ pl.amount | figure }}</span>
             from <span data-testid="plan-start">{{ pl.start }}</span>
             @if (pl.day !== null) {
               monthly on day <span data-testid="plan-day">{{ pl.day }}</span>

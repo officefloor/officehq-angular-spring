@@ -1,4 +1,5 @@
 import { Component, input } from '@angular/core';
+import { FigurePipe } from '../../core/figure.pipe';
 import { money } from '../claims/claims-api';
 import { Period, periodDueCents } from '../periods/periods-api';
 
@@ -7,6 +8,7 @@ import { Period, periodDueCents } from '../periods/periods-api';
 // due-total untrimmed, everyone's due-total added up.
 @Component({
   selector: 'app-classic-summary',
+  imports: [FigurePipe],
   template: `
     <section aria-labelledby="classic-summary-heading">
       <h2 id="classic-summary-heading">Classic summary</h2>
@@ -19,12 +21,12 @@ import { Period, periodDueCents } from '../periods/periods-api';
           @for (p of periods(); track p.id) {
             <tr>
               <th scope="row">{{ p.name }}</th>
-              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ money(periodDue(p)) }}</td>
+              <td [attr.data-testid]="'classic-period-' + p.name + '-due-total'">{{ money(periodDue(p)) | figure }}</td>
             </tr>
           }
         </tbody>
       </table>
-      <p>Due-total <span data-testid="classic-due-total">{{ money(dueTotal()) }}</span></p>
+      <p>Due-total <span data-testid="classic-due-total">{{ money(dueTotal()) | figure }}</span></p>
     </section>
   `,
 })

@@ -1,5 +1,6 @@
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
 import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, periodDueCents, periodError, reopenError } from './periods-api';
@@ -10,7 +11,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 // buttons that close and reopen it), and the form that adds a period.
 @Component({
   selector: 'app-periods',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="periods-heading">
       <h2 id="periods-heading">Periods</h2>
@@ -54,10 +55,10 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <th scope="row" data-testid="period-name">{{ p.name }}</th>
               <td data-testid="period-from">{{ p.from }}</td>
               <td data-testid="period-to">{{ p.to }}</td>
-              <td data-testid="period-due-total">{{ dueOf(p) }}</td>
+              <td data-testid="period-due-total">{{ dueOf(p) | figure }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ session.fiscalYearOf(p.from) }}</td>
-              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
+              <td data-testid="period-cap">{{ (p.cap ?? '') | figure }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                   [attr.aria-label]="'Close period ' + p.name">Close</button>

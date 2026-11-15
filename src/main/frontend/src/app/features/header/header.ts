@@ -1,4 +1,5 @@
 import { Component, computed, input } from '@angular/core';
+import { FigurePipe } from '../../core/figure.pipe';
 import { Claim } from '../claims/claims-api';
 import { DescendantFigures } from '../people/people-api';
 import { statusCounts } from '../summary/summary';
@@ -10,6 +11,7 @@ import { statusCounts } from '../summary/summary';
 // due-total and overdue-total, when a person on the sheet goes by their name.
 @Component({
   selector: 'app-header',
+  imports: [FigurePipe],
   template: `
     <header aria-label="Sheet counters" data-testid="header">
       <p>People <strong data-testid="header-people-count">{{ peopleCount() }}</strong></p>
@@ -18,13 +20,13 @@ import { statusCounts } from '../summary/summary';
           {{ s.status }} <strong [attr.data-testid]="'header-claims-' + s.status + '-count'">{{ s.count }}</strong>
         }
       </p>
-      <p>Due total <strong data-testid="header-due-total">{{ dueTotal() }}</strong></p>
-      <p>Overdue total <strong data-testid="header-overdue-total">{{ overdueTotal() }}</strong></p>
-      <p>My due total <strong data-testid="my-due-total">{{ myDueTotal() }}</strong>,
-        my overdue total <strong data-testid="my-overdue-total">{{ myOverdueTotal() }}</strong></p>
+      <p>Due total <strong data-testid="header-due-total">{{ dueTotal() | figure }}</strong></p>
+      <p>Overdue total <strong data-testid="header-overdue-total">{{ overdueTotal() | figure }}</strong></p>
+      <p>My due total <strong data-testid="my-due-total">{{ myDueTotal() | figure }}</strong>,
+        my overdue total <strong data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</strong></p>
       <p>With its descendants: people <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong>,
-        due total <strong data-testid="consolidated-due-total">{{ consolidated().dueTotal }}</strong>,
-        overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal }}</strong></p>
+        due total <strong data-testid="consolidated-due-total">{{ consolidated().dueTotal | figure }}</strong>,
+        overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal | figure }}</strong></p>
     </header>
   `,
 })

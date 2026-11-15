@@ -1,5 +1,6 @@
 import { DOCUMENT, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FigurePipe } from '../../core/figure.pipe';
 import { Session, otherError } from '../../core/session';
 import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, deferred, dueBy, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp, statusOn, tagsOf } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
@@ -22,7 +23,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
 // person's editor open, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [ReactiveFormsModule, Header, PersonClaims, PersonPlans, Periods, Pools, Rates, Summary, ClassicSummary],
+  imports: [FigurePipe, ReactiveFormsModule, Header, PersonClaims, PersonPlans, Periods, Pools, Rates, Summary, ClassicSummary],
   template: `
     <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()"
       [myDueTotal]="myFigures()?.dueTotal ?? null" [myOverdueTotal]="myFigures()?.overdueTotal ?? null" />
@@ -102,19 +103,19 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
           <p role="alert" data-testid="import-error">{{ err }}</p>
         }
       </form>
-      <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() }}</strong></p>
-      <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() }}</strong></p>
+      <p>Claimed total <strong data-testid="rollup-claimed-total">{{ claimedTotal() | figure }}</strong></p>
+      <p>Due total <strong data-testid="rollup-due-total">{{ dueTotal() | figure }}</strong></p>
       <p>Overdue <strong data-testid="rollup-overdue-count">{{ overdueCount() }}</strong>
-        totalling <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
-      <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong>
-        open total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
-      <p>Cut total <strong data-testid="rollup-cut-total">{{ money(cutTotal()) }}</strong></p>
+        totalling <strong data-testid="rollup-overdue-total">{{ overdueTotal() | figure }}</strong></p>
+      <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() | figure }}</strong>
+        open total <strong data-testid="rollup-open-total">{{ openTotal() | figure }}</strong></p>
+      <p>Cut total <strong data-testid="rollup-cut-total">{{ money(cutTotal()) | figure }}</strong></p>
       @if (tagTotals().length > 0) {
         <table aria-label="Due total by tag">
           <thead><tr><th scope="col">Tag</th><th scope="col">Due total</th></tr></thead>
           <tbody>
             @for (t of tagTotals(); track t.tag) {
-              <tr><th scope="row">{{ t.tag }}</th><td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ money(t.cents) }}</td></tr>
+              <tr><th scope="row">{{ t.tag }}</th><td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ money(t.cents) | figure }}</td></tr>
             }
           </tbody>
         </table>
@@ -124,7 +125,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
           <thead><tr><th scope="col">Month</th><th scope="col">Due total</th></tr></thead>
           <tbody>
             @for (m of monthTotals(); track m.month) {
-              <tr><th scope="row">{{ m.month }}</th><td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ money(m.cents) }}</td></tr>
+              <tr><th scope="row">{{ m.month }}</th><td [attr.data-testid]="'month-' + m.month + '-due-total'">{{ money(m.cents) | figure }}</td></tr>
             }
           </tbody>
         </table>
@@ -250,31 +251,31 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-tags">{{ personTags(p).join(', ') }}</td>
-              <td data-testid="person-claimed">{{ claimedBy(p.id) }}</td>
+              <td data-testid="person-claimed">{{ claimedBy(p.id) | figure }}</td>
               <td>
-                <span data-testid="person-due-total">{{ dueOf(p) }}</span>
-                <span>excess <span data-testid="person-excess">{{ money(excessOf(p.id)) }}</span></span>
-                <span>settled <span data-testid="person-settled-total">{{ money(settledOpenOf(p.id).settled) }}</span></span>
-                <span>open <span data-testid="person-open-total">{{ money(settledOpenOf(p.id).open) }}</span></span>
+                <span data-testid="person-due-total">{{ dueOf(p) | figure }}</span>
+                <span>excess <span data-testid="person-excess">{{ money(excessOf(p.id)) | figure }}</span></span>
+                <span>settled <span data-testid="person-settled-total">{{ money(settledOpenOf(p.id).settled) | figure }}</span></span>
+                <span>open <span data-testid="person-open-total">{{ money(settledOpenOf(p.id).open) | figure }}</span></span>
               </td>
-              <td data-testid="person-cut-total">{{ money(cutTotals().get(p.id) ?? 0) }}</td>
+              <td data-testid="person-cut-total">{{ (money(cutTotals().get(p.id) ?? 0)) | figure }}</td>
               <td>
                 @for (period of periods(); track period.id) {
-                  <span>{{ period.name }} <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ money(periodDueOf(p.id, period)) }}</span></span>
+                  <span>{{ period.name }} <span [attr.data-testid]="'person-period-' + period.name + '-due-total'">{{ money(periodDueOf(p.id, period)) | figure }}</span></span>
                 }
               </td>
               <td>
                 <span data-testid="person-overdue-count">{{ overdueOf(p.id).count }}</span>
-                <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) }}</span></span>
+                <span>totalling <span data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) | figure }}</span></span>
               </td>
               <td>
-                <span>0–30 <span data-testid="person-aged-0-30">{{ money(agedOf(p.id).upTo30) }}</span></span>
-                <span>31–60 <span data-testid="person-aged-31-60">{{ money(agedOf(p.id).upTo60) }}</span></span>
-                <span>61+ <span data-testid="person-aged-61">{{ money(agedOf(p.id).over60) }}</span></span>
+                <span>0–30 <span data-testid="person-aged-0-30">{{ money(agedOf(p.id).upTo30) | figure }}</span></span>
+                <span>31–60 <span data-testid="person-aged-31-60">{{ money(agedOf(p.id).upTo60) | figure }}</span></span>
+                <span>61+ <span data-testid="person-aged-61">{{ money(agedOf(p.id).over60) | figure }}</span></span>
               </td>
               <td>
                 <span data-testid="person-statement-count">{{ p.statementCount }}</span>
-                <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) }}</span></span>
+                <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) | figure }}</span></span>
                 <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
                 <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Statement of {{ p.name }} as of</label>
                 <input [id]="'person-statement-asof-' + p.id" type="date" data-testid="person-statement-asof" #statementAsOf
@@ -331,7 +332,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
               </td>
               <td>
                 <span data-testid="person-patrons">{{ patronNamesOf(p) }}</span>
-                <span>backing <span data-testid="person-backing">{{ backingOf(p) }}</span></span>
+                <span>backing <span data-testid="person-backing">{{ backingOf(p) | figure }}</span></span>
                 <label [for]="'person-patron-select-' + p.id" class="visually-hidden">Patron for {{ p.name }}</label>
                 <select [id]="'person-patron-select-' + p.id" data-testid="person-patron-select" #patronSelect
                   (change)="clearRowError(p.id)">

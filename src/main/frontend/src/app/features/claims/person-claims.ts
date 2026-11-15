@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
@@ -11,7 +12,7 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment,
 // editor open, saves that claim.
 @Component({
   selector: 'app-person-claims',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <form [formGroup]="form" (ngSubmit)="submit()"
       [attr.aria-label]="(editingId() === null ? 'Add claim for ' : 'Edit claim for ') + personName()">
@@ -52,13 +53,13 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment,
               (change)="toggled.emit({ id: c.id, on: $any($event.target).checked })"
               [attr.aria-label]="'Select claim of ' + c.amount + ' on ' + c.date" />
             <span>No. <span data-testid="claim-number">{{ c.number ?? '' }}</span></span>
-            <span data-testid="claim-amount">{{ c.amount }}</span>
+            <span data-testid="claim-amount">{{ c.amount | figure }}</span>
             <span data-testid="claim-date">{{ c.date }}</span>
             <span data-testid="claim-note">{{ c.note }}</span>
             <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
             <span>Tags <span data-testid="claim-tags">{{ tagsOf(c).join(', ') }}</span></span>
             <span>Corrects No. <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
-            <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
+            <span>Due <span data-testid="claim-due">{{ dueOf(c) | figure }}</span></span>
             <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
             <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
             <span>Opened by <span data-testid="claim-opened-by">{{ c.openedBy ?? '' }}</span></span>

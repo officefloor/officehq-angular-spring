@@ -1,5 +1,6 @@
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
 import { GRADES } from '../people/people-api';
@@ -11,7 +12,7 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
 // (nothing is saved).
 @Component({
   selector: 'app-rates',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   template: `
     <section aria-labelledby="rates-heading">
       <h2 id="rates-heading">Rates</h2>
@@ -60,7 +61,7 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
         @if (previewed(); as r) {
           <p aria-live="polite">
             Claims changed: <span data-testid="rate-preview-count">{{ r.count }}</span>,
-            difference: <span data-testid="rate-preview-diff">{{ money(r.cents) }}</span>
+            difference: <span data-testid="rate-preview-diff">{{ money(r.cents) | figure }}</span>
           </p>
         }
       </form>
@@ -73,7 +74,7 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
           @for (g of grades; track g) {
             <tr>
               <th scope="row">{{ g }}</th>
-              <td [attr.data-testid]="'rate-current-' + g">{{ currentOf(g) ?? 'n/a' }}</td>
+              <td [attr.data-testid]="'rate-current-' + g">{{ (currentOf(g) ?? 'n/a') | figure }}</td>
             </tr>
           }
         </tbody>
@@ -89,7 +90,7 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
               <th scope="row" data-testid="rate-grade">{{ r.grade }}</th>
               <td data-testid="rate-from">{{ r.from ?? '' }}</td>
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
-              <td data-testid="rate-pct">{{ r.pct }}</td>
+              <td data-testid="rate-pct">{{ r.pct | figure }}</td>
               <td data-testid="rate-version">{{ r.version ?? 1 }}</td>
             </tr>
           }

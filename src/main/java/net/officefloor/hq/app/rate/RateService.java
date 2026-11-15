@@ -23,7 +23,7 @@ public class RateService {
     private static final Pattern GRADE = Pattern.compile("[ABC]");
 
     /** A percent as the rate form takes it: 0.00 or more with up to two decimals. */
-    private static final Pattern PCT = Pattern.compile("\\d{1,3}(\\.\\d{1,2})?");
+    private static final Pattern PCT = Pattern.compile("\\d{1,7}(\\.\\d{1,2})?");
 
     /** A date as the rate form takes it. */
     private static final Pattern DATE = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");

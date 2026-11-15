@@ -51,7 +51,7 @@ public class RateController {
     /** A rate as the form submits it: a percent of 0.00 or more with up to two decimals, and an
      *  optional from-date (absent: from the beginning of time) and to-date (absent: for good), not
      *  before the from-date. */
-    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,3}(\\.\\d{1,2})?") String pct, LocalDate from, LocalDate to) {
+    public record RateForm(@NotNull @Pattern(regexp = "\\d{1,7}(\\.\\d{1,2})?") String pct, LocalDate from, LocalDate to) {
         @AssertTrue(message = "to-date before from-date")
         public boolean isToNotBeforeFrom() {
             return from == null || to == null || !to.isBefore(from);

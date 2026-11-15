@@ -7,7 +7,7 @@ import { Claim, cents, isBound, isCorrection, lateFrom, overdue, plusDays } from
 export { plusDays };
 
 /** A percent of 0.00 or more with up to two decimals. */
-export const PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
+export const PCT_PATTERN = /^\d{1,7}(\.\d{1,2})?$/;
 
 export interface Rate {
   grade: string;

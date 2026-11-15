@@ -1,6 +1,7 @@
 import { DOCUMENT } from '@angular/common';
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { cents, money } from '../claims/claims-api';
 import { csvLine, heldOn, type Person } from '../people/people-api';
@@ -60,21 +61,21 @@ function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => b
 // and the form that adds a member to it.
 @Component({
   selector: 'li[appPoolRow]',
-  imports: [ReactiveFormsModule],
+  imports: [FigurePipe, ReactiveFormsModule],
   host: { '[attr.data-testid]': "'pool-row-' + pool().name" },
   template: `
       <h3 data-testid="pool-name">{{ pool().name }}</h3>
-      <p>Total share <strong data-testid="pool-total-share">{{ totalShare() }}</strong>
+      <p>Total share <strong data-testid="pool-total-share">{{ totalShare() | figure }}</strong>
         Balanced <strong data-testid="pool-balanced">{{ balanced() ? 'yes' : 'no' }}</strong></p>
       <ul [attr.aria-label]="'Members of pool ' + pool().name">
         @for (m of pool().members; track key(m)) {
           <li [attr.data-testid]="'pool-member-' + pool().name + '-' + key(m)">
             <span data-testid="pool-member-name">{{ nameOf(m) }}</span>
-            <span data-testid="pool-share">{{ m.share }}</span>
+            <span data-testid="pool-share">{{ m.share | figure }}</span>
             @if (m.from !== null || m.to !== null) {
               <span data-testid="pool-member-dates">{{ m.from ?? '' }} – {{ m.to ?? '' }}</span>
             }
-            <span data-testid="pool-cut">{{ cuts().get(key(m)) ?? '' }}</span>
+            <span data-testid="pool-cut">{{ (cuts().get(key(m)) ?? '') | figure }}</span>
             @if (m.personId !== null && retired(m.personId)) {
               <span>(retired)</span>
             }

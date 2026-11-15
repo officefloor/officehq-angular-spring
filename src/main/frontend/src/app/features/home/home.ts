@@ -1,6 +1,6 @@
 import { Component, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Session } from '../../core/session';
+import { LOCALES, Session, UserLocale } from '../../core/session';
 import { AuditViewer } from '../audit/audit-viewer';
 import { People } from '../people/people';
 import { Search } from '../search/search';
@@ -14,6 +14,19 @@ import { Templates } from '../templates/templates';
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+      <form [formGroup]="localeForm" (ngSubmit)="saveLocale()" aria-label="Locale">
+        <p>Locale <strong data-testid="user-locale-current">{{ session.locale() }}</strong></p>
+        <label for="user-locale">Show figures as</label>
+        <select id="user-locale" data-testid="user-locale" formControlName="locale">
+          @for (l of locales; track l) {
+            <option [value]="l">{{ l }}</option>
+          }
+        </select>
+        <button type="submit" data-testid="user-locale-save">Save locale</button>
+        @if (localeError(); as err) {
+          <p role="alert" data-testid="user-locale-error">{{ err }}</p>
+        }
+      </form>
       <form [formGroup]="sheetForm" (ngSubmit)="load()" aria-label="Load sheet">
         <label for="sheet-id">Sheet id</label>
         <input id="sheet-id" data-testid="sheet-id-input" formControlName="sheetId" autocomplete="off" />
@@ -85,6 +98,11 @@ export class Home {
   protected readonly asOfForm = new FormGroup({
     date: new FormControl('', { nonNullable: true, validators: Validators.required }),
   });
+  protected readonly locales = LOCALES;
+  protected readonly localeForm = new FormGroup({
+    locale: new FormControl<UserLocale>('en', { nonNullable: true }),
+  });
+  protected readonly localeError = signal<string | null>(null);
   protected readonly cloneForm = new FormGroup({
     toSheetId: new FormControl('', { nonNullable: true, validators: Validators.required }),
   });
@@ -100,6 +118,10 @@ export class Home {
     this.todayForm.valueChanges.subscribe(() => this.sheetError.set(null));
     this.asOfForm.valueChanges.subscribe(() => this.asOfError.set(null));
     this.cloneForm.valueChanges.subscribe(() => this.sheetError.set(null));
+    this.localeForm.valueChanges.subscribe(() => this.localeError.set(null));
+    effect(() => {
+      this.localeForm.controls.locale.setValue(this.session.locale(), { emitEvent: false });
+    });
     effect(() => {
       this.session.sheetId();
       this.clonedTo.set(null);
@@ -114,6 +136,11 @@ export class Home {
       return;
     }
     this.signinError.set(await this.session.signIn(name));
+  }
+
+  protected async saveLocale(): Promise<void> {
+    this.localeError.set(null);
+    this.localeError.set(await this.session.setLocale(this.localeForm.controls.locale.value));
   }
 
   protected async load(): Promise<void> {
