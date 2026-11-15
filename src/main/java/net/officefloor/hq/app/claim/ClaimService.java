@@ -709,6 +709,32 @@ public class ClaimService {
         return claim;
     }
 
+    /** A steward assigns a REVIEW claim's review to a user name: the claim shows it from then on,
+     *  and REVIEW_ASSIGNED is written ending with the user. Refused (404) when missing, (403) for
+     *  anyone but a steward, (409) unless REVIEW, and (422) when the user name is blank. */
+    @Transactional
+    public Claim assignReview(String sheetId, String user, long id, String assignee) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward assigns a review");
+        }
+        if (claim.getStatus() != ClaimStatus.REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only a REVIEW claim has its review assigned, not a " + claim.getStatus() + " one");
+        }
+        String name = assignee == null ? "" : assignee.trim();
+        if (name.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A review is assigned to a user");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        claim.setReviewAssignee(name);
+        claims.flush();
+        record("REVIEW_ASSIGNED", user, person, claim, null, " user=" + name);
+        return claim;
+    }
+
     /** Hold an OPEN or PENDING claim, or release a held one: a hold no
      *  longer leaves it out of any total. CLAIM_HELD or CLAIM_RELEASED is
      *  written. Refused (404) when missing and (409) unless OPEN or PENDING. */

@@ -144,6 +144,10 @@ public class Claim {
     @Column(name = "waived", nullable = false)
     private boolean waived;
 
+    /** The user name a steward assigned the claim's review to (null when never assigned). */
+    @Column(name = "review_assignee")
+    private String reviewAssignee;
+
     /** Whether the claim is held: a held open claim, unless bound by a statement, counts in no live
      *  total, as a held person's claims do. */
     @Column(name = "held", nullable = false)
@@ -392,6 +396,14 @@ public class Claim {
         this.waived = waived;
     }
 
+    public String getReviewAssignee() {
+        return reviewAssignee;
+    }
+
+    public void setReviewAssignee(String reviewAssignee) {
+        this.reviewAssignee = reviewAssignee;
+    }
+
     public boolean isHeld() {
         return held;
     }
@@ -453,6 +465,7 @@ public class Claim {
         copy.reminded = reminded;
         copy.escalated = escalated;
         copy.waived = waived;
+        copy.reviewAssignee = reviewAssignee;
         copy.held = held;
         copy.reviewOn = reviewOn;
         copy.tags = tags;

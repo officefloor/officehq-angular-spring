@@ -95,6 +95,8 @@ export interface Claim {
   batch: number | null;
   /** The people the claim is shared with, in the order added. */
   shares: ClaimShare[];
+  /** The user a steward assigned the claim's review to; null when never assigned. */
+  reviewAssignee: string | null;
 }
 
 /** A share of a claim: the person holding it and their share, a percent with two decimals. */
@@ -346,6 +348,13 @@ export class ClaimsApi {
     );
   }
 
+  /** A steward assigns a REVIEW claim's review to a user. */
+  assignReview(sheetId: string, id: number, user: string): Promise<Claim> {
+    return firstValueFrom(
+      this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/review-assignee`, { user }, { headers: this.headers() }),
+    );
+  }
+
   /** Hold an OPEN or PENDING claim, or release a held one. */
   toggleHold(sheetId: string, id: number): Promise<Claim> {
     return firstValueFrom(
@@ -578,6 +587,15 @@ export function proofError(e: unknown): string {
 /** Why a reminder was refused. */
 export function remindError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 409) return "Only an open or pending claim not yet reminded on the sheet's today can be reminded.";
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  return otherError(e);
+}
+
+/** Why assigning a claim's review was refused. */
+export function assignReviewError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can assign a review.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a claim in review can have its review assigned.';
+  if (e instanceof HttpErrorResponse && (e.status === 422 || e.status === 400)) return 'Enter the user to assign the review to.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
   return otherError(e);
 }

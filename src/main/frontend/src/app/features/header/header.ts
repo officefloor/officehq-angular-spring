@@ -11,7 +11,8 @@ import { STATUSES, statusCounts } from '../summary/summary';
 // of the people on it, retired ones left out, and per status how many claims are in it); and the signed-in user's own
 // due-total and overdue-total, when a person on the sheet goes by their name, and their crew total,
 // when that person leads a crew; and, for a steward, their dashboard: how many claims are PENDING,
-// how many in REVIEW and how many counting ones are overdue (the cells empty for anyone else).
+// how many in REVIEW and how many counting ones are overdue (the cells empty for anyone else); and
+// how many REVIEW claims are assigned to the signed-in user.
 /** A steward's dashboard: the sheet's PENDING claims, REVIEW claims and counting overdue claims. */
 export interface Dashboard {
   pending: number;
@@ -35,6 +36,7 @@ export interface Dashboard {
       <p>My due total <strong data-testid="my-due-total">{{ myDueTotal() | figure }}</strong>,
         my overdue total <strong data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</strong></p>
       <p>My crew total <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
+      <p>My reviews <strong data-testid="my-reviews-count">{{ myReviews() }}</strong></p>
       <p>Steward's dashboard: pending <strong data-testid="dash-pending-count">{{ dashboard()?.pending ?? '' }}</strong>,
         in review <strong data-testid="dash-review-count">{{ dashboard()?.review ?? '' }}</strong>,
         overdue <strong data-testid="dash-overdue-count">{{ dashboard()?.overdue ?? '' }}</strong></p>
@@ -70,5 +72,11 @@ export class Header {
   /** The steward's dashboard counts; null when the signed-in user is not a steward. */
   readonly dashboard = input<Dashboard | null>(null);
 
+  /** The signed-in user's name; null when no one is signed in. */
+  readonly user = input<string | null>(null);
+
+  /** How many REVIEW claims are assigned to the signed-in user. */
+  protected readonly myReviews = computed(() =>
+    this.claims().filter((c) => c.status === 'REVIEW' && c.reviewAssignee !== null && c.reviewAssignee === this.user()).length);
   protected readonly byStatus = computed(() => statusCounts(this.claims()));
 }

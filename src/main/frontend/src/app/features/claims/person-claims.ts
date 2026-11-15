@@ -6,7 +6,7 @@ import { Session, otherError } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { RateLevels, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, waiveError, holdClaimError, editError, proofError, redateError, shareError, dueBy, logLineText, money, overdue, reassignError, resettleError, reviewLate, roundsHalfUp, settleError, settlePartError, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, waiveError, assignReviewError, holdClaimError, editError, proofError, redateError, shareError, dueBy, logLineText, money, overdue, reassignError, resettleError, reviewLate, roundsHalfUp, settleError, settlePartError, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -77,6 +77,7 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, 
             <span>Late entry <span data-testid="claim-late-entry">{{ c.lateEntry ? 'yes' : 'no' }}</span></span>
             <span>Reminded <span data-testid="claim-reminded">{{ c.reminded ?? '' }}</span></span>
             <span>Waived <span data-testid="claim-waived">{{ c.waived ? 'yes' : 'no' }}</span></span>
+            <span>Review assigned to <span data-testid="claim-review-assigned">{{ c.reviewAssignee ?? '' }}</span></span>
             <span>Held <span data-testid="claim-held">{{ c.held ? 'yes' : 'no' }}</span></span>
             <span>Split from No. <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
             <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
@@ -138,6 +139,11 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, 
               [attr.aria-label]="'Remind claim of ' + c.amount + ' on ' + c.date">Remind</button>
             <button type="button" data-testid="claim-waive" (click)="waive(c)"
               [attr.aria-label]="'Waive the late charge of claim of ' + c.amount + ' on ' + c.date">Waive late charge</button>
+            <label [for]="'claim-review-user-' + c.id">Assign review to</label>
+            <input [id]="'claim-review-user-' + c.id" type="text" data-testid="claim-review-user" maxlength="100"
+              [value]="reviewUsers()[c.id] ?? ''" (input)="reviewUserChanged(c.id, $any($event.target).value)" />
+            <button type="button" data-testid="claim-review-assign" (click)="assignReview(c)"
+              [attr.aria-label]="'Assign the review of claim of ' + c.amount + ' on ' + c.date">Assign review</button>
             <button type="button" data-testid="claim-hold" (click)="toggleHold(c)"
               [attr.aria-label]="(c.held ? 'Release' : 'Hold') + ' claim of ' + c.amount + ' on ' + c.date">{{ c.held ? 'Release' : 'Hold' }}</button>
             <label [for]="'claim-defer-date-' + c.id">Defer until</label>
@@ -264,6 +270,8 @@ export class PersonClaims {
   protected readonly voidChoices = signal<Record<number, string>>({});
   /** The date typed for deferring each OPEN claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The user typed to assign each claim's review to, by claim id. */
+  protected readonly reviewUsers = signal<Record<number, string>>({});
   protected readonly settleDates = signal<Record<number, string>>({});
   /** The new date typed for re-dating each claim, by claim id. */
   protected readonly redates = signal<Record<number, string>>({});
@@ -645,6 +653,24 @@ export class PersonClaims {
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: waiveError(e) }));
+    }
+  }
+
+  protected reviewUserChanged(id: number, user: string): void {
+    this.clearRowError(id);
+    this.reviewUsers.update((us) => ({ ...us, [id]: user }));
+  }
+
+  /** A steward assigns a REVIEW claim's review to the user typed for it; a refusal shows an error on the claim. */
+  protected async assignReview(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const claim = await this.api.assignReview(sheetId, c.id, this.reviewUsers()[c.id] ?? '');
+      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: assignReviewError(e) }));
     }
   }
 

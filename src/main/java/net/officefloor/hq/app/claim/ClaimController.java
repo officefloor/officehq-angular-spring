@@ -54,7 +54,8 @@ public class ClaimController {
      *  own id, or for a copy in a clone the claim it copies was added as); and its review day, the
      *  sheet's today when it went to REVIEW (null when it never did); and whether a steward waived
      *  its late charge; and of its proofs, how many are receipts and how many photos; and whether it
-     *  is held; and the people it is shared with, in the order added, each with their share. */
+     *  is held; and the people it is shared with, in the order added, each with their share; and the
+     *  user its review is assigned to (null when never assigned). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
@@ -62,7 +63,7 @@ public class ClaimController {
             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason,
             List<CommentView> comments, String editedBy, Integer batch, List<LineView> lines, long added,
             LocalDate reviewOn, boolean waived, int receiptProofs, int photoProofs, boolean held,
-            List<ShareView> shares) {
+            List<ShareView> shares, String reviewAssignee) {
         static ClaimView of(Claim c, List<ClaimLog> log, List<ClaimComment> comments, List<ClaimLine> lines) {
             return of(c.getId(), c, log, comments, lines);
         }
@@ -77,7 +78,7 @@ public class ClaimController {
                     comments.stream().map(CommentView::of).toList(), c.getEditedBy(), c.getBatch(),
                     lines.stream().map(LineView::of).toList(), c.getAdded() != null ? c.getAdded() : id,
                     c.getReviewOn(), c.isWaived(), c.getReceiptProofs(), c.getPhotoProofs(), c.isHeld(),
-                    c.getShares().stream().map(ShareView::of).toList());
+                    c.getShares().stream().map(ShareView::of).toList(), c.getReviewAssignee());
         }
 
         private static String money(BigDecimal value) {
@@ -175,6 +176,10 @@ public class ClaimController {
 
     /** The new date a claim is re-dated to. */
     public record RedateForm(@NotNull LocalDate date) {
+    }
+
+    /** The user name a REVIEW claim's review is assigned to. */
+    public record AssignReviewForm(@NotNull @Size(max = 100) String user) {
     }
 
     /** The amount split off a claim: up to two decimals. */
@@ -418,6 +423,15 @@ public class ClaimController {
             @PathVariable long id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         return view(service.waive(sheetId, user.trim(), id));
+    }
+
+    @PostMapping("/claims/{id}/review-assignee")
+    public ClaimView assignReview(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody AssignReviewForm body) {
+        return view(service.assignReview(sheetId, user.trim(), id, body.user()));
     }
 
     @PostMapping("/claims/{id}/hold")
