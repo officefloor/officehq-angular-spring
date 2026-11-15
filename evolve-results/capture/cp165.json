@@ -1,0 +1,64 @@
+{
+  "checkpoint": 165,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp165_escalate",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains an escalation gap (settings, a number of days, blank means off, not dated;\nSETTING_CHANGED key=escalate-after value=<days>). Reminding a claim whose previous reminder was at\nleast that many days before the sheet's today escalates it: ESCALATE naming the claim is written\nafter the REMIND line, once per claim ever.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains an escalation gap (settings, a number of days, blank means off, not dated;\nSETTING_CHANGED key=escalate-after value=<days>). Reminding a claim whose previous reminder was at\nleast that many days before the sheet's today escalates it: ESCALATE naming the claim is written\nafter the REMIND line, once per claim ever.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "581091bbaf86883dbc6996a0b817805b3d5545df",
+  "reset_sha": "",
+  "preagent_sha": "7138fe4ce1f5bc4556edcacd76391b2ae040320a",
+  "prev_sha": "7138fe4ce1f5bc4556edcacd76391b2ae040320a",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8619211999999999,
+    "input_tokens": 44,
+    "output_tokens": 10596,
+    "cache_read_tokens": 947526,
+    "cache_creation_tokens": 57540,
+    "num_turns": 23,
+    "duration_ms": 305622,
+    "duration_api_ms": 96569,
+    "model": "claude-opus-5-5",
+    "session_id": "cf958ece-0d32-4ec6-a99f-0728016a3862",
+    "stop_reason": "success",
+    "result_text": "The escalation gap is in place, and all 4 Playwright tests pass: the escalate test and the three existing-behaviour scenarios.\n\n**How it behaves**\n- **The setting:** \"escalate-after\" on the settings screen is a whole number of days. Blank means off, and it isn't dated, so a change applies to the next reminder. Saving it writes `SETTING_CHANGED key=escalate-after value=<days>`.\n- **Escalating:** when a claim is reminded, the app checks the gap between the previous reminder and the sheet's today. If the gap is set, the claim has been reminded before, the gap is at least that many days, and the claim hasn't been escalated yet, `ESCALATE` is written right after the `REMIND` line. The claim is then marked so it never escalates again.\n\n**What changed**\n- **Database:** migration `V89__escalation.sql` adds `sheet.escalate_after` and `claim.escalated`.\n- **Server:**\n  - The new setting is saved through `PUT /settings/escalate-after` and returned with the rest of the settings.\n  - The escalation check is in `ClaimService.remind`.\n  - The escalated flag is kept when a sheet is cloned or a claim is transferred, and the sheet history now records both new fields. Older history records count as \"not escalated\".\n- **Front end:** the settings form has the new input, `setting-escalate-after`, and shows the value in force in `setting-escalate-after-current`.\n\n`bin/e2e` wouldn't start at first because something outside this run is already using port 3000, and `bin/stop` didn't free it. I left that process alone and ran the tests with `PORT=3417 bin/e2e`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8619211999999999,
+        "num_turns": 23,
+        "duration_ms": 305622,
+        "duration_api_ms": 96569,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp165.agent.jsonl",
+  "agent_diff_file": "cp165.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
