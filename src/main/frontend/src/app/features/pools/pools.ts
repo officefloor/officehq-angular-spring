@@ -7,7 +7,7 @@ import { cents, money } from '../claims/claims-api';
 import { csvLine, heldOn, type Person } from '../people/people-api';
 import { dueCents } from '../rates/rates-api';
 import { type Crew } from '../crews/crews-api';
-import { MEMBER_DATE_PATTERN, Pool, PoolMember, PoolsApi, SHARE_PATTERN, crewPool, memberError, memberKey, memberOn, poolError } from './pools-api';
+import { MEMBER_DATE_PATTERN, PeriodThen, Pool, PoolMember, PoolsApi, SHARE_PATTERN, crewPool, memberError, memberKey, memberOn, poolError } from './pools-api';
 
 /** A pool's members' shares in cents, a member whose dates do not include the day counting 0. */
 function memberShares(pool: Pool, day: string | null): number[] {
@@ -58,6 +58,43 @@ function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => b
   return cutsByKey;
 }
 
+/** Each pool's members' cuts, by pool name, on a day with a pot: a pool that is a member of none
+ *  cuts the pot; a pool that is a member of another has no pot of its own but its cut in the pool
+ *  above (none when that pool has no cuts). A person is retired and held as the sets say. */
+function allCuts(pools: Pool[], pot: string | null, retiredIds: Set<number>, heldIds: Set<number>,
+  day: string | null): Map<string, Map<string, string>> {
+  const retired = (id: number) => retiredIds.has(id);
+  const held = (id: number) => heldIds.has(id);
+  const parentOf = new Map<string, string>();
+  for (const p of pools) for (const m of p.members) if (m.pool !== null) parentOf.set(m.pool, p.name);
+  const byName = new Map(pools.map((p) => [p.name, p]));
+  const all = new Map<string, Map<string, string>>();
+  const cutsFor = (pool: Pool, seen: Set<string>): Map<string, string> => {
+    const known = all.get(pool.name);
+    if (known) return known;
+    const parent = parentOf.get(pool.name);
+    let potHere = pot;
+    if (parent !== undefined) {
+      const above = byName.get(parent);
+      potHere = above && !seen.has(parent)
+        ? (cutsFor(above, new Set([...seen, pool.name])).get(`pool-${pool.name}`) ?? null)
+        : null;
+    }
+    const cuts = cutsOf(pool, potHere, retired, held, day);
+    all.set(pool.name, cuts);
+    return cuts;
+  };
+  for (const p of pools) cutsFor(p, new Set([p.name]));
+  return all;
+}
+
+/** A period's cuts for one pool, by member key: the period's name and the cuts as they stood at the
+ *  end of its to-date. */
+export interface PeriodCuts {
+  period: string;
+  cuts: Map<string, string>;
+}
+
 // One pool's row: its total share and whether it is balanced, its members each with their share,
 // and the form that adds a member to it.
 @Component({
@@ -77,6 +114,10 @@ function cutsOf(pool: Pool, pot: string | null, retired: (personId: number) => b
               <span data-testid="pool-member-dates">{{ m.from ?? '' }} – {{ m.to ?? '' }}</span>
             }
             <span data-testid="pool-cut">{{ (cuts().get(key(m)) ?? '') | figure }}</span>
+            @for (pc of periodCuts(); track pc.period) {
+              <span>{{ pc.period }}:
+                <span [attr.data-testid]="'pool-cut-' + pc.period">{{ (pc.cuts.get(key(m)) ?? '') | figure }}</span></span>
+            }
             @if (m.personId !== null && retired(m.personId)) {
               <span>(retired)</span>
             }
@@ -121,6 +162,8 @@ export class PoolRow {
   readonly pools = input.required<Pool[]>();
   /** Each member's cut of this pool's pot, by member key. */
   readonly cuts = input.required<Map<string, string>>();
+  /** Each ended period's cuts of this pool, as they stood at the end of the period. */
+  readonly periodCuts = input.required<PeriodCuts[]>();
   /** The sheet's pools after a member was added. */
   readonly saved = output<Pool[]>();
 
@@ -232,6 +275,7 @@ export class PoolRow {
       <ul aria-label="Pools" data-testid="pools-list">
         @for (p of allPools(); track p.name) {
           <li appPoolRow [pool]="p" [people]="people()" [pools]="pools()" [cuts]="cuts().get(p.name) ?? noCuts"
+            [periodCuts]="periodCuts().get(p.name) ?? noPeriodCuts"
             (saved)="taken($event)"></li>
         }
       </ul>
@@ -260,34 +304,26 @@ export class Pools {
    *  pot; a pool that is a member of another has no pot of its own but its cut in the pool above
    *  (none when that pool has no cuts). */
   protected readonly cuts = computed(() => {
-    const pools = this.allPools();
-    const retiredIds = new Set(this.people().filter((p) => (p.retiredFrom ?? null) !== null).map((p) => p.id));
-    const retired = (id: number) => retiredIds.has(id);
     const today = this.session.today();
-    const heldIds = new Set(this.people().filter((p) => today !== null && heldOn(p.holds, today)).map((p) => p.id));
-    const held = (id: number) => heldIds.has(id);
-    const parentOf = new Map<string, string>();
-    for (const p of pools) for (const m of p.members) if (m.pool !== null) parentOf.set(m.pool, p.name);
-    const byName = new Map(pools.map((p) => [p.name, p]));
-    const all = new Map<string, Map<string, string>>();
-    const cutsFor = (pool: Pool, seen: Set<string>): Map<string, string> => {
-      const known = all.get(pool.name);
-      if (known) return known;
-      const parent = parentOf.get(pool.name);
-      let pot: string | null = this.session.pot();
-      if (parent !== undefined) {
-        const above = byName.get(parent);
-        pot = above && !seen.has(parent)
-          ? (cutsFor(above, new Set([...seen, pool.name])).get(`pool-${pool.name}`) ?? null)
-          : null;
-      }
-      const cuts = cutsOf(pool, pot, retired, held, today);
-      all.set(pool.name, cuts);
-      return cuts;
-    };
-    for (const p of pools) cutsFor(p, new Set([p.name]));
-    return all;
+    const people = this.people();
+    const retiredIds = new Set(people.filter((p) => (p.retiredFrom ?? null) !== null).map((p) => p.id));
+    const heldIds = new Set(people.filter((p) => today !== null && heldOn(p.holds, today)).map((p) => p.id));
+    return allCuts(this.allPools(), this.session.pot(), retiredIds, heldIds, today);
   });
+  /** Each period whose to-date is on or before the sheet's today, as it all stood at the end of it. */
+  private readonly history = signal<PeriodThen[]>([]);
+  /** Each such period's cuts by pool name, worked as the cuts are with the pools, crews, pot and
+   *  people as they stood at the end of the period and its to-date as the sheet's today. */
+  private readonly historyCuts = computed(() => this.history().map((h) => {
+    const retiredIds = new Set(h.people.filter((p) => p.retiredFrom !== null).map((p) => p.id));
+    const heldIds = new Set(h.people.filter((p) => heldOn(p.holds, h.to)).map((p) => p.id));
+    const pools = [...h.pools, ...h.crews.map(crewPool)];
+    return { period: h.period, cuts: allCuts(pools, h.pot, retiredIds, heldIds, h.to) };
+  }));
+  /** Each pool's ended periods' cuts, by pool name (a pool that did not exist then has none). */
+  protected readonly periodCuts = computed(() => new Map(this.allPools().map((p) =>
+    [p.name, this.historyCuts().map((h): PeriodCuts => ({ period: h.period, cuts: h.cuts.get(p.name) ?? this.noCuts }))])));
+  protected readonly noPeriodCuts: PeriodCuts[] = [];
   private saving = false;
   /** Guards against a slower, older read landing over a newer one. */
   private readSeq = 0;
@@ -309,6 +345,15 @@ export class Pools {
         }
       }
       untracked(() => this.cutTotals.emit(totals));
+    });
+    effect(() => {
+      const id = this.session.sheetId();
+      this.session.loads();
+      this.session.today();
+      untracked(() => {
+        this.history.set([]);
+        if (id) void this.readHistory(id);
+      });
     });
     effect(() => {
       const id = this.session.sheetId();
@@ -345,6 +390,8 @@ export class Pools {
   protected taken(pools: Pool[]): void {
     this.readSeq++;
     this.pools.set(pools);
+    const id = this.session.sheetId();
+    if (id) void this.readHistory(id);
   }
 
   protected async add(): Promise<void> {
@@ -370,6 +417,19 @@ export class Pools {
       this.error.set(poolError(e));
     } finally {
       this.saving = false;
+    }
+  }
+
+  /** Guards against a slower, older read of the history landing over a newer one. */
+  private historySeq = 0;
+
+  private async readHistory(sheetId: string): Promise<void> {
+    const seq = ++this.historySeq;
+    try {
+      const history = await this.api.history(sheetId);
+      if (seq === this.historySeq && this.session.sheetId() === sheetId) this.history.set(history);
+    } catch {
+      if (seq === this.historySeq) this.error.set('Something went wrong loading pools; try again.');
     }
   }
 

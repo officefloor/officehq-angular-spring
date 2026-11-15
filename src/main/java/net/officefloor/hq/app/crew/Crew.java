@@ -2,14 +2,17 @@ package net.officefloor.hq.app.crew;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** A crew on the sheet: a name, unique on the sheet, its lead (a person of the sheet; none once
  *  they have left it) and its members ({@link CrewMember}). */
 @Entity
+@EntityListeners(HistoryListener.class)
 @Table(name = "crew")
 public class Crew {
 

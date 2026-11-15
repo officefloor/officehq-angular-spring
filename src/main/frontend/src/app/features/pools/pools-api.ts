@@ -4,7 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { Session, otherError } from '../../core/session';
 import { money } from '../claims/claims-api';
 import { type Crew, crewIds } from '../crews/crews-api';
-import { patronShares } from '../people/people-api';
+import { type Hold, patronShares } from '../people/people-api';
 
 /** A share percent: up to two decimals (more than 0.00 and at most 100.00 is checked apart). */
 export const SHARE_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
@@ -55,6 +55,26 @@ export function crewPool(crew: Crew): Pool {
   };
 }
 
+/** A person as a period's cuts need them: their id, the date they are retired from (null when not
+ *  retired) and their holds. */
+export interface PersonThen {
+  id: number;
+  retiredFrom: string | null;
+  holds: Hold[];
+}
+
+/** A period whose to-date is on or before the sheet's today, with what its cuts are worked from as
+ *  it all stood at the end of that to-date (the day the cuts are taken on): the pot then (null when
+ *  none), the pools and crews then, and the people then. */
+export interface PeriodThen {
+  period: string;
+  to: string;
+  pot: string | null;
+  pools: Pool[];
+  crews: Crew[];
+  people: PersonThen[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class PoolsApi {
   private readonly http = inject(HttpClient);
@@ -63,6 +83,12 @@ export class PoolsApi {
   /** The sheet's pools, in the order they were added. */
   list(sheetId: string): Promise<Pool[]> {
     return firstValueFrom(this.http.get<Pool[]>(this.url(sheetId), { headers: this.headers() }));
+  }
+
+  /** Each period whose to-date is on or before the sheet's today, by from-date, as it all stood at
+   *  the end of its to-date. */
+  history(sheetId: string): Promise<PeriodThen[]> {
+    return firstValueFrom(this.http.get<PeriodThen[]>(`${this.url(sheetId)}/history`, { headers: this.headers() }));
   }
 
   /** Add a pool; resolves to the sheet's pools with it. */

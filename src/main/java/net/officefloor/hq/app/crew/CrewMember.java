@@ -2,13 +2,16 @@ package net.officefloor.hq.app.crew;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** A person in a crew, other than its lead. */
 @Entity
+@EntityListeners(HistoryListener.class)
 @Table(name = "crew_member")
 public class CrewMember {
 

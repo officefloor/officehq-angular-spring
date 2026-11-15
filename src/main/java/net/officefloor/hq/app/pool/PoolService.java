@@ -3,11 +3,15 @@ package net.officefloor.hq.app.pool;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.crew.CrewRepository;
+import net.officefloor.hq.app.history.HistoryService;
+import net.officefloor.hq.app.period.Period;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -23,20 +27,28 @@ public class PoolService {
     public record PoolWithMembers(Pool pool, List<PoolMember> members) {
     }
 
+    /** A period and the sheet as it stood at the end of its to-date. */
+    public record PeriodThen(Period period, HistoryService.AsOf then) {
+    }
+
     private final PoolRepository pools;
     private final PoolMemberRepository members;
     private final PersonRepository people;
     private final CrewRepository crews;
     private final SheetService sheets;
+    private final PeriodRepository periods;
+    private final HistoryService history;
     private final Audit audit;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
-            CrewRepository crews, SheetService sheets, Audit audit) {
+            CrewRepository crews, SheetService sheets, PeriodRepository periods, HistoryService history, Audit audit) {
         this.pools = pools;
         this.members = members;
         this.people = people;
         this.crews = crews;
         this.sheets = sheets;
+        this.periods = periods;
+        this.history = history;
         this.audit = audit;
     }
 
@@ -47,6 +59,20 @@ public class PoolService {
         Map<Long, List<PoolMember>> byPool = members.findByPoolIdInOrderByIdAsc(all.stream().map(Pool::getId).toList())
                 .stream().collect(Collectors.groupingBy(PoolMember::getPoolId));
         return all.stream().map(p -> new PoolWithMembers(p, byPool.getOrDefault(p.getId(), List.of()))).toList();
+    }
+
+    /** Each of the sheet's periods (by from-date) whose to-date is on or before the day (the sheet's
+     *  today when none is given; the periods then as they stood at the end of it), with the sheet as
+     *  it stood at the end of that to-date. */
+    @Transactional(readOnly = true)
+    public List<PeriodThen> history(String sheetId, LocalDate asOf) {
+        LocalDate today = asOf != null ? asOf : sheets.today(sheetId);
+        List<Period> all = asOf != null
+                ? history.asOf(sheetId, asOf).periods().values().stream()
+                        .sorted(Comparator.comparing(Period::getFrom)).toList()
+                : periods.findBySheetIdOrderByFromAsc(sheetId);
+        return all.stream().filter(p -> !p.getTo().isAfter(today))
+                .map(p -> new PeriodThen(p, history.asOf(sheetId, p.getTo()))).toList();
     }
 
     /** Add a pool to the sheet, the sheet created first if it was never loaded; refused (409) when

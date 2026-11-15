@@ -12,11 +12,15 @@ import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimStatus;
+import net.officefloor.hq.app.crew.Crew;
+import net.officefloor.hq.app.crew.CrewMember;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonPatron;
 import net.officefloor.hq.app.person.PersonStatement;
 import net.officefloor.hq.app.person.PersonWatch;
+import net.officefloor.hq.app.pool.Pool;
+import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.settings.Permission;
 import net.officefloor.hq.app.settings.Role;
@@ -30,7 +34,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The sheet's history: each version of its claims, people, rates, settings, periods, statements,
- * patrons, watches, roles and delegations a change left, with the sheet's today when the change was
+ * patrons, watches, roles, delegations, pools and crews (with their members) a change left, with the sheet's today when the change was
  * made (one removed leaves an empty version). A version is written (by {@link HistoryListener}, in
  * the change's own transaction, so a refused change writes none) only when it differs from the one
  * before it. {@link #asOf} rebuilds the sheet as it stood at the end of a date.
@@ -49,6 +53,10 @@ public class HistoryService {
     private static final String ROLE = "role";
     private static final String DELEGATION = "delegation";
     private static final String PERMISSION = "permission";
+    private static final String POOL = "pool";
+    private static final String POOL_MEMBER = "pool-member";
+    private static final String CREW = "crew";
+    private static final String CREW_MEMBER = "crew-member";
 
     /** The version an entity that was removed leaves. */
     private static final String REMOVED = "null";
@@ -111,14 +119,34 @@ public class HistoryService {
     record DelegationState(String user, String steward, LocalDate from, LocalDate to) {
     }
 
+    /** A pool's state: its name. */
+    public record PoolState(String name) {
+    }
+
+    /** A pool member's state: its pool, the person or the member pool (exactly one), its share and
+     *  its from- and to-date (null when not given). */
+    public record PoolMemberState(long poolId, Long personId, Long memberPoolId, BigDecimal share, LocalDate from,
+            LocalDate to) {
+    }
+
+    /** A crew's state: its name and its lead's person id (null once the lead has left the sheet). */
+    public record CrewState(String name, Long leadId) {
+    }
+
+    /** A crew member's state: its crew and the person. */
+    public record CrewMemberState(long crewId, long personId) {
+    }
+
     /** The sheet as it stood at the end of a date: its settings (its today that date), its people
      *  by id in list order, its claims by id, its rates, its periods by id, its statements by id (oldest first), its
-     *  patrons and watches, its roles (by user name), its delegations by id and its permission
-     *  matrix; none of it is stored. */
+     *  patrons and watches, its roles (by user name), its delegations by id, its permission
+     *  matrix, and its pools, pool members, crews and crew members, each by id in the order they
+     *  were added; none of it is stored. */
     public record AsOf(Sheet sheet, Map<Long, Person> people, List<Rate> rates, Map<Long, Claim> claims,
             Map<Long, Period> periods, Map<Long, PersonStatement> statements, List<PersonPatron> patrons,
             List<PersonWatch> watches, List<SheetRole> roles, Map<Long, SheetDelegation> delegations,
-            Map<Permission, String> permissions) {
+            Map<Permission, String> permissions, Map<Long, PoolState> pools, Map<Long, PoolMemberState> poolMembers,
+            Map<Long, CrewState> crews, Map<Long, CrewMemberState> crewMembers) {
     }
 
     private final JdbcTemplate jdbc;
@@ -183,11 +211,27 @@ public class HistoryService {
                     new DelegationState(d.getUser(), d.getSteward(), d.getFrom(), d.getTo()));
         } else if (entity instanceof SheetPermission sp) {
             write(sp.getSheetId(), PERMISSION, sp.getAction().key(), sp.getRoles());
+        } else if (entity instanceof Pool p) {
+            write(p.getSheetId(), POOL, String.valueOf(p.getId()), new PoolState(p.getName()));
+        } else if (entity instanceof PoolMember m) {
+            write(sheetOf("pool", m.getPoolId()), POOL_MEMBER, String.valueOf(m.getId()), new PoolMemberState(
+                    m.getPoolId(), m.getPersonId(), m.getMemberPoolId(), m.getShare(), m.getFromDate(), m.getToDate()));
+        } else if (entity instanceof Crew c) {
+            write(c.getSheetId(), CREW, String.valueOf(c.getId()), new CrewState(c.getName(), c.getLeadId()));
+        } else if (entity instanceof CrewMember m) {
+            write(sheetOf("crew", m.getCrewId()), CREW_MEMBER, String.valueOf(m.getId()),
+                    new CrewMemberState(m.getCrewId(), m.getPersonId()));
         }
     }
 
+    /** The sheet a pool or crew (by its table) is on. */
+    private String sheetOf(String table, long id) {
+        return jdbc.queryForObject("SELECT sheet_id FROM " + table + " WHERE id = ?", String.class, id);
+    }
+
     /** Write that an entity of the sheet is gone now: a person merged or transferred away (with
-     *  their claims), a statement cancelled, a watch stopped, a permission set back to its standing rule. */
+     *  their claims), a statement cancelled, a watch stopped, a permission set back to its standing rule,
+     *  a pool or crew membership dropped. */
     void removed(Object entity) {
         if (entity instanceof Person p) {
             writeText(p.getSheetId(), PERSON, String.valueOf(p.getId()), REMOVED);
@@ -205,6 +249,10 @@ public class HistoryService {
             writeText(r.getSheetId(), ROLE, r.getUser(), REMOVED);
         } else if (entity instanceof SheetPermission sp) {
             writeText(sp.getSheetId(), PERMISSION, sp.getAction().key(), REMOVED);
+        } else if (entity instanceof PoolMember m) {
+            writeText(sheetOf("pool", m.getPoolId()), POOL_MEMBER, String.valueOf(m.getId()), REMOVED);
+        } else if (entity instanceof CrewMember m) {
+            writeText(sheetOf("crew", m.getCrewId()), CREW_MEMBER, String.valueOf(m.getId()), REMOVED);
         }
     }
 
@@ -247,6 +295,10 @@ public class HistoryService {
         List<SheetRole> roles = new ArrayList<>();
         Map<Long, SheetDelegation> delegations = new TreeMap<>();
         Map<Permission, String> permissions = new EnumMap<>(Permission.class);
+        Map<Long, PoolState> pools = new TreeMap<>();
+        Map<Long, PoolMemberState> poolMembers = new TreeMap<>();
+        Map<Long, CrewState> crews = new TreeMap<>();
+        Map<Long, CrewMemberState> crewMembers = new TreeMap<>();
         latest.forEach((key, state) -> {
             if (state.equals(REMOVED)) {
                 return;
@@ -315,6 +367,10 @@ public class HistoryService {
                     delegations.put(Long.valueOf(id), new SheetDelegation(sheetId, d.user(), d.steward(), d.from(), d.to()));
                 }
                 case PERMISSION -> permissions.put(Permission.of(id), json.readValue(state, String.class));
+                case POOL -> pools.put(Long.valueOf(id), json.readValue(state, PoolState.class));
+                case POOL_MEMBER -> poolMembers.put(Long.valueOf(id), json.readValue(state, PoolMemberState.class));
+                case CREW -> crews.put(Long.valueOf(id), json.readValue(state, CrewState.class));
+                case CREW_MEMBER -> crewMembers.put(Long.valueOf(id), json.readValue(state, CrewMemberState.class));
                 default -> {
                 }
             }
@@ -331,7 +387,7 @@ public class HistoryService {
                         .thenComparing(Map.Entry::getKey))
                 .forEach(e -> peopleListed.put(e.getKey(), e.getValue()));
         return new AsOf(sheet, peopleListed, rates, claimsListed, periods, statements, patrons, watches, roles,
-                delegations, permissions);
+                delegations, permissions, pools, poolMembers, crews, crewMembers);
     }
 
     private static Person personOf(String sheetId, long id, PersonState s) {

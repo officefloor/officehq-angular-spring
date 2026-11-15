@@ -2,17 +2,20 @@ package net.officefloor.hq.app.pool;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** A person, or another pool, in a pool with their share percent (two decimals, more than 0.00,
  *  at most 100.00): exactly one of the person and the member pool is set. The membership may carry
  *  a from-date and a to-date (both inclusive, either optional). */
 @Entity
+@EntityListeners(HistoryListener.class)
 @Table(name = "pool_member")
 public class PoolMember {
 

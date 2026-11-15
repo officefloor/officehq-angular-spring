@@ -11,7 +11,12 @@ import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import net.officefloor.hq.app.crew.CrewController;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.HistoryService;
+import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.session.CurrentUser;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -48,6 +53,52 @@ public class PoolController {
         }
     }
 
+    /** A hold as the screen reads it: its from- and to-date (yyyy-mm-dd, the to-date null when open). */
+    public record HoldView(String from, String to) {
+    }
+
+    /** A person as a period's cuts need them: their id, the date they are retired from (null when
+     *  not retired) and their holds. */
+    public record PersonThen(long id, String retiredFrom, List<HoldView> holds) {
+        static PersonThen of(long id, Person p) {
+            return new PersonThen(id, p.getRetiredFrom() == null ? null : p.getRetiredFrom().toString(),
+                    p.getHolds().stream()
+                            .map(h -> new HoldView(h.from().toString(), h.to() == null ? null : h.to().toString()))
+                            .toList());
+        }
+    }
+
+    /** A period whose to-date has come, with what its cuts are worked from as they stood at the end
+     *  of it: the period's name and to-date (the day the cuts are taken on), the pot then (two
+     *  decimals, null when none), the pools and crews then and the people then. */
+    public record PeriodCutsView(String period, String to, String pot, List<PoolView> pools,
+            List<CrewController.CrewView> crews, List<PersonThen> people) {
+        static PeriodCutsView of(PoolService.PeriodThen p) {
+            HistoryService.AsOf then = p.then();
+            Map<Long, String> poolNames = then.pools().entrySet().stream()
+                    .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().name()));
+            List<PoolView> pools = then.pools().entrySet().stream()
+                    .map(e -> new PoolView(e.getValue().name(), then.poolMembers().values().stream()
+                            .filter(m -> m.poolId() == e.getKey())
+                            .map(m -> new MemberView(m.personId(),
+                                    m.memberPoolId() == null ? null : poolNames.get(m.memberPoolId()),
+                                    m.share().setScale(2).toPlainString(),
+                                    m.from() == null ? null : m.from().toString(),
+                                    m.to() == null ? null : m.to().toString()))
+                            .toList()))
+                    .toList();
+            List<CrewController.CrewView> crews = then.crews().entrySet().stream()
+                    .map(e -> new CrewController.CrewView(e.getValue().name(), e.getValue().leadId(),
+                            then.crewMembers().values().stream().filter(m -> m.crewId() == e.getKey())
+                                    .map(HistoryService.CrewMemberState::personId).toList()))
+                    .toList();
+            return new PeriodCutsView(p.period().getName(), p.period().getTo().toString(),
+                    then.sheet().getPot() == null ? null : then.sheet().getPot().setScale(2).toPlainString(),
+                    pools, crews,
+                    then.people().entrySet().stream().map(e -> PersonThen.of(e.getKey(), e.getValue())).toList());
+        }
+    }
+
     /** A pool as the form submits it: a name (not blank). */
     public record PoolForm(@NotBlank @Size(max = 200) String name) {
     }
@@ -78,6 +129,16 @@ public class PoolController {
         Map<Long, String> poolNames = all.stream()
                 .collect(Collectors.toMap(p -> p.pool().getId(), p -> p.pool().getName()));
         return all.stream().map(p -> PoolView.of(p, poolNames)).toList();
+    }
+
+    /** Each period whose to-date is on or before the sheet's today (or the as-of date), by from-date,
+     *  with the pools, crews, pot and people as they stood at the end of its to-date. */
+    @GetMapping("/history")
+    public List<PeriodCutsView> history(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return service.history(sheetId, asOf).stream().map(PeriodCutsView::of).toList();
     }
 
     /** Add a pool; resolves to the sheet's pools with it. */
