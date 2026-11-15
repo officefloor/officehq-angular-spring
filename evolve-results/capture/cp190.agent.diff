@@ -1,0 +1,157 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 0c05711ac..bb6779880 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -427,6 +427,12 @@ export class ClaimsApi {
+       { ids, date }, { headers: this.headers() }));
+   }
+ 
++  /** Void each of the claims with the reason (null: none), in list order, as voiding one would; those that cannot be voided are left as they are. */
++  bulkVoid(sheetId: string, ids: number[], reason: string | null): Promise<{ voided: number; refused: number }> {
++    return firstValueFrom(this.http.post<{ voided: number; refused: number }>(`${this.url(sheetId)}/claims/bulk-void`,
++      { ids, reason }, { headers: this.headers() }));
++  }
++
+   private url(sheetId: string): string {
+     return `/api/sheets/${encodeURIComponent(sheetId)}`;
+   }
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index d967cafa1..1c162b236 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -202,6 +202,24 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
+       @if (bulkRedateError(); as err) {
+         <p role="alert" data-testid="bulk-redate-error">{{ err }}</p>
+       }
++      @if (session.voidReasons().length > 0) {
++        <label for="bulk-void-reason">Void reason for selected claims</label>
++        <select id="bulk-void-reason" data-testid="bulk-void-reason" [value]="bulkVoidReason()"
++          (change)="bulkVoidReason.set($any($event.target).value); bulkVoidError.set(null)">
++          <option value="">Choose a reason</option>
++          @for (r of session.voidReasons(); track r) {
++            <option [value]="r">{{ r }}</option>
++          }
++        </select>
++      }
++      <button type="button" data-testid="bulk-void" (click)="bulkVoid()">Void selected claims</button>
++      @if (bulkVoidResult(); as r) {
++        <p role="status">Voided <strong data-testid="bulk-voided">{{ r.voided }}</strong>,
++          refused <strong data-testid="bulk-void-refused">{{ r.refused }}</strong></p>
++      }
++      @if (bulkVoidError(); as err) {
++        <p role="alert" data-testid="bulk-void-error">{{ err }}</p>
++      }
+       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade selected people">
+         <label for="bulk-grade">Grade selected people</label>
+         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
+@@ -913,6 +931,12 @@ export class People {
+   protected readonly bulkRedateResult = signal<{ redated: number; refused: number } | null>(null);
+   protected readonly bulkRedateError = signal<string | null>(null);
+   private bulkRedating = false;
++  /** The last bulk void's counts; gone while one runs. */
++  protected readonly bulkVoidResult = signal<{ voided: number; refused: number } | null>(null);
++  protected readonly bulkVoidError = signal<string | null>(null);
++  private bulkVoiding = false;
++  /** The void reason chosen in the bulk void bar; blank for none. */
++  protected readonly bulkVoidReason = signal('');
+   /** The ids of the people selected for a bulk grade. */
+   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
+   /** The bulk grade bar: a grade and the date it is in force from (blank: the sheet's today). */
+@@ -1026,6 +1050,9 @@ export class People {
+         this.bulkReassignError.set(null);
+         this.bulkRedateResult.set(null);
+         this.bulkRedateError.set(null);
++        this.bulkVoidResult.set(null);
++        this.bulkVoidError.set(null);
++        this.bulkVoidReason.set('');
+         this.selectedPeople.set(new Set());
+         this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
+         this.bulkGraded.set(null);
+@@ -1538,6 +1565,33 @@ export class People {
+     }
+   }
+ 
++  /** Void every selected claim, in list order, exactly as voiding one would (with the reason
++   *  chosen; a sheet with void reasons refuses each without one); then show how many were voided
++   *  and refused, and the claims as the store now holds them. */
++  protected async bulkVoid(): Promise<void> {
++    if (this.bulkVoiding) return;
++    this.bulkVoidResult.set(null);
++    this.bulkVoidError.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    const chosen = this.bulkVoidReason();
++    const reason = this.session.voidReasons().includes(chosen) ? chosen : null;
++    const ids = [...this.selectedClaims()];
++    this.bulkVoiding = true;
++    try {
++      const result = await this.claimsApi.bulkVoid(sheetId, ids, reason);
++      const claims = await this.claimsApi.list(sheetId);
++      if (this.session.sheetId() !== sheetId) return;
++      this.claims.set(claims);
++      this.selectedClaims.set(new Set());
++      this.bulkVoidResult.set(result);
++    } catch {
++      this.bulkVoidError.set('Something went wrong voiding the claims; try again.');
++    } finally {
++      this.bulkVoiding = false;
++    }
++  }
++
+   /** Select a person for a bulk grade or retire, or take them out of the selection. */
+   protected personToggled(id: number, on: boolean): void {
+     this.bulkGradeErr.set(null);
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index a7844f995..763e32204 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -190,6 +190,15 @@ public class ClaimController {
+     public record BulkRedateView(int redated, int refused) {
+     }
+ 
++    /** The claims selected for a bulk void, by id, and the reason chosen from the sheet's list
++     *  (null or blank for none). */
++    public record BulkVoidForm(@NotNull @Size(max = 10000) List<@NotNull Long> ids, @Size(max = 200) String reason) {
++    }
++
++    /** A bulk void's result: how many of the selected claims were voided and how many refused. */
++    public record BulkVoidView(int voided, int refused) {
++    }
++
+     /** A bulk settle's result: how many of the selected claims were settled (a claim sent to
+      *  PENDING counts) and how many refused. */
+     public record BulkSettleView(int settled, int refused) {
+@@ -536,6 +545,33 @@ public class ClaimController {
+         return new BulkRedateView(redated, selected - redated);
+     }
+ 
++    /** Void each selected claim in list order (people by their place in the list, newest claim
++     *  first), each on its own exactly as voiding one would, with the reason chosen; a claim that
++     *  cannot be voided is left as it is. */
++    @PostMapping("/claims/bulk-void")
++    @ViewerAllowed
++    public BulkVoidView bulkVoid(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody BulkVoidForm body) {
++        int selected = (int) body.ids().stream().distinct().count();
++        if (settings.isViewer(sheetId, user.trim()) || sheets.archived(sheetId)) {
++            return new BulkVoidView(0, selected);
++        }
++        String reason = body.reason() == null || body.reason().isBlank() ? null : body.reason().trim();
++        List<Long> ordered = service.inListOrder(sheetId, body.ids());
++        int voided = 0;
++        for (long id : ordered) {
++            try {
++                service.voidClaim(sheetId, user.trim(), id, reason);
++                voided++;
++            } catch (ResponseStatusException e) {
++                // refused: left as it is
++            }
++        }
++        return new BulkVoidView(voided, selected - voided);
++    }
++
+     @PostMapping("/claims/{id}/split")
+     public SplitView split(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
