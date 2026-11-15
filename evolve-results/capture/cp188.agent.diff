@@ -1,0 +1,105 @@
+diff --git a/src/main/java/net/officefloor/hq/app/rate/RateChain.java b/src/main/java/net/officefloor/hq/app/rate/RateChain.java
+index 218cd13c0..81a1a4030 100644
+--- a/src/main/java/net/officefloor/hq/app/rate/RateChain.java
++++ b/src/main/java/net/officefloor/hq/app/rate/RateChain.java
+@@ -17,7 +17,8 @@ import org.springframework.stereotype.Component;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ /** The rates in force on a sheet: a grade with no rate of its own in force on a date takes its
+- *  parent sheet's for that grade and date, then its parent's parent's, up to {@link #LEVELS} levels up. */
++ *  parent sheet's for that grade and date, then its parent's parent's, up to {@link #LEVELS} levels up;
++ *  then, for a sheet that was cloned, the source sheet's, and so on up that sheet's parents and source. */
+ @Component
+ public class RateChain {
+ 
+@@ -32,19 +33,28 @@ public class RateChain {
+         this.sheets = sheets;
+     }
+ 
+-    /** The ids of the sheet's ancestors, its parent first, up to {@link #LEVELS} levels up. */
++    /** The ids of the sheets the sheet takes rates from, nearest first: its parent, up to
++     *  {@link #LEVELS} levels up, then the sheet it was cloned from and that one's, in turn. */
+     @Transactional(readOnly = true)
+     public List<String> ancestors(String sheetId) {
+         List<String> out = new ArrayList<>();
+         Set<String> seen = new HashSet<>(Set.of(sheetId));
+-        String at = sheetId;
+-        while (out.size() < LEVELS) {
+-            String parent = sheets.findById(at).map(Sheet::getParent).orElse(null);
+-            if (parent == null || !seen.add(parent)) {
+-                break;
++        String from = sheetId;
++        while (from != null) {
++            String at = from;
++            for (int level = 0; level < LEVELS; level++) {
++                String parent = sheets.findById(at).map(Sheet::getParent).orElse(null);
++                if (parent == null || !seen.add(parent)) {
++                    break;
++                }
++                out.add(parent);
++                at = parent;
++            }
++            String source = sheets.findById(from).map(Sheet::getSource).orElse(null);
++            from = source != null && seen.add(source) ? source : null;
++            if (from != null) {
++                out.add(from);
+             }
+-            out.add(parent);
+-            at = parent;
+         }
+         return out;
+     }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 1de78387e..2c79d50c6 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -130,6 +130,12 @@ public class Sheet {
+     @Column(name = "parent")
+     private String parent;
+ 
++    /** The id of the sheet this one was cloned from: a grade with no rate in force on a date on the
++     *  sheet nor on its parents takes the source's (then its parents' and source's); null when it
++     *  was not cloned. Not a setting. */
++    @Column(name = "source")
++    private String source;
++
+     /** The sheet's proof kinds, comma separated: while set, a claim whose due is above the proof
+      *  threshold needs at least one proof of each to be settled or approved; null when blank (none).
+      *  Not dated. */
+@@ -151,7 +157,7 @@ public class Sheet {
+ 
+     /** A clone of the sheet under another id, created by a user: its today and every setting (its
+      *  dated settings, policy date, period numbering, entry date, grace days, escalation gap, fiscal start month, pot, alert threshold and parent). It is
+-     *  not archived and has given no claim number yet. */
++     *  not archived and has given no claim number yet, and has this sheet as its source. */
+     public Sheet clonedTo(String id, String createdBy) {
+         Sheet copy = new Sheet(id, createdBy, today);
+         settings.forEach(d -> copy.settings.add(new DatedSetting(d.getKey(), d.getFrom(), d.getValue())));
+@@ -165,6 +171,7 @@ public class Sheet {
+         copy.pot = pot;
+         copy.alertThreshold = alertThreshold;
+         copy.parent = parent;
++        copy.source = this.id;
+         copy.proofKinds = proofKinds;
+         return copy;
+     }
+@@ -372,6 +379,10 @@ public class Sheet {
+         this.proofKinds = proofKinds;
+     }
+ 
++    public String getSource() {
++        return source;
++    }
++
+     public String getParent() {
+         return parent;
+     }
+diff --git a/src/main/resources/db/migration/V102__sheet_source.sql b/src/main/resources/db/migration/V102__sheet_source.sql
+new file mode 100644
+index 000000000..e09f3b9cc
+--- /dev/null
++++ b/src/main/resources/db/migration/V102__sheet_source.sql
+@@ -0,0 +1,3 @@
++-- The id of the sheet a sheet was cloned from (null: not a clone): a grade with no rate in force
++-- on a date on the sheet nor on its parents takes the source's (then its parents' and source's).
++ALTER TABLE sheet ADD COLUMN source VARCHAR(100);
