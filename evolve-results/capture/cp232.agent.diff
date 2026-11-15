@@ -1,0 +1,79 @@
+diff --git a/src/main/frontend/src/app/features/grades/grades.ts b/src/main/frontend/src/app/features/grades/grades.ts
+index fa27bcaef..6a7371865 100644
+--- a/src/main/frontend/src/app/features/grades/grades.ts
++++ b/src/main/frontend/src/app/features/grades/grades.ts
+@@ -7,7 +7,7 @@ import { PeopleApi, mergeGradeError } from '../people/people-api';
+ // The grades and whether each is retired, with the form that adds one (a code of one to three
+ // capital letters, not yet a grade), the form that retires one: a retired grade cannot be
+ // chosen for a new person or in an edit, while the people already on it keep it; and the form by which
+-// a steward merges a grade into another, giving everyone on it today the other.
++// a steward merges a grade into another, giving everyone on it today the other, retroactively.
+ @Component({
+   selector: 'app-grades',
+   imports: [ReactiveFormsModule],
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index 3e0e13889..6d1c8e8fc 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -221,7 +221,7 @@ export class PeopleApi {
+     );
+   }
+ 
+-  /** Merge a grade into another: everyone on it on the sheet's today is given the other; how many were changed. */
++  /** Merge a grade into another: everyone on it on the sheet's today is given the other, every grade record of theirs on it included; how many were changed. */
+   mergeGrade(sheetId: string, from: string, into: string): Promise<{ changed: number }> {
+     return firstValueFrom(
+       this.http.post<{ changed: number }>(`${this.url(sheetId)}/merge-grade`, { from, into }, { headers: this.headers() }),
+diff --git a/src/main/java/net/officefloor/hq/app/person/Person.java b/src/main/java/net/officefloor/hq/app/person/Person.java
+index dd1505476..1769bf8d7 100644
+--- a/src/main/java/net/officefloor/hq/app/person/Person.java
++++ b/src/main/java/net/officefloor/hq/app/person/Person.java
+@@ -218,6 +218,15 @@ public class Person {
+         datedGrades.put(from, grade);
+     }
+ 
++    /** Turn every grade record of the person on grade {@code from} (the first one among them) into
++     *  {@code into}, whatever its date. */
++    public void mergeGrade(String from, String into) {
++        if (from.equals(grade)) {
++            grade = into;
++        }
++        datedGrades.replaceAll((on, g) -> from.equals(g) ? into : g);
++    }
++
+     /** Every grade the person has been given, by from-date, the first one (undated) leading. */
+     public List<DatedGrade> getGrades() {
+         List<DatedGrade> out = new ArrayList<>();
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 2a0e73e5d..d1370fe53 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -349,7 +349,9 @@ public class PersonService {
+      *  force on the sheet's today is {@code from} is given {@code into} from the sheet's today, in
+      *  list order, as saving them in the person form would. Refused (422) when the two are the same
+      *  grade or {@code into} is retired, and (403) unless the user is a steward. Each person is
+-     *  written with their PERSON_EDITED and rollup lines, then the merge's rollup lines as a whole.
++     *  written with their PERSON_EDITED and rollup lines; then the merge is made retroactive: every
++     *  grade record of theirs on {@code from}, whatever its date, becomes {@code into} (frozen figures
++     *  and those bound by a statement stay as they are); then the merge's rollup lines as a whole.
+      *  Resolves to how many people were given the grade. */
+     @Transactional
+     public int mergeGrade(String sheetId, String user, String from, String into) {
+@@ -369,6 +371,17 @@ public class PersonService {
+         RollupService.Snapshot before = rollup.snapshot(sheetId);
+         audit.recordOnCommit("GRADE_MERGED sheet=" + sheetId + " by=" + user + " from=" + from + " into=" + into);
+         int changed = ids.isEmpty() ? 0 : grade(sheetId, user, ids, into, null);
++        // retroactive: every grade record of theirs on the merged grade becomes the other, whatever its date
++        if (!ids.isEmpty()) {
++            Set<Long> moved = Set.copyOf(ids);
++            people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
++                    .filter(p -> moved.contains(p.getId())).forEach(p -> p.mergeGrade(from, into));
++            try {
++                people.flush();
++            } catch (ObjectOptimisticLockingFailureException e) {
++                throw savedByAnother(); // saved by another user at the same moment
++            }
++        }
+         rollup.recordChanges(sheetId, user, before);
+         return changed;
+     }

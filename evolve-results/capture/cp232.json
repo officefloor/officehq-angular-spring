@@ -1,0 +1,68 @@
+{
+  "checkpoint": 232,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp232_grade-merge-retroactive",
+  "phase": "late",
+  "type": "mutative",
+  "mutates": [
+    225
+  ],
+  "replaced_tests": [
+    "cp225_grade-merge.spec.ts::grade merge"
+  ],
+  "request": {
+    "spec": "A grade merge is now retroactive: for every person it moves, every grade record of theirs on the\nmerged grade becomes the other grade, so all their claims, whatever their date, use the other\ngrade's rates (and its terms and thresholds) from then on. Frozen figures and figures bound by a\nstatement are unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA grade merge is now retroactive: for every person it moves, every grade record of theirs on the\nmerged grade becomes the other grade, so all their claims, whatever their date, use the other\ngrade's rates (and its terms and thresholds) from then on. Frozen figures and figures bound by a\nstatement are unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "3e16c3c22fd530f8e5bf590cd068873d06ebcc8a",
+  "reset_sha": "",
+  "preagent_sha": "1dd8a060a19a0b195a108e19a7996c7dcfd6a47f",
+  "prev_sha": "1dd8a060a19a0b195a108e19a7996c7dcfd6a47f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.396986,
+    "input_tokens": 20,
+    "output_tokens": 4310,
+    "cache_read_tokens": 284770,
+    "cache_creation_tokens": 31719,
+    "num_turns": 11,
+    "duration_ms": 297906,
+    "duration_api_ms": 44174,
+    "model": "claude-opus-5-5",
+    "session_id": "aa99752d-8583-4ee7-8927-cbcf75539d7c",
+    "stop_reason": "success",
+    "result_text": "A grade merge is now retroactive. All 4 tests in `bin/e2e` pass.\n\n**How it works:** the merge still moves each person exactly as before, writing their `PERSON_EDITED` and per-person rollup lines. Then, for each person it moved, it turns every grade record on the merged grade into the other grade, whatever its date. That includes the grade they were first given, not just the dated ones. After that, all their claims use the other grade's rates, terms and thresholds. The merge's own `ROLLUP`/`TOTALS` lines come last and show the recalculated figures, which is the order the test's audit file expects.\n\nSome details:\n- **Who changes:** only people whose grade on the sheet's today is the merged grade. Someone who had that grade in the past but is on a different one today keeps their history as it is.\n- **Frozen and statement figures:** I didn't add anything for these. The existing calculation already leaves frozen figures and figures bound by a statement alone, and the tests pass with that.\n\n**Changes:**\n- `Person.java`: a new `mergeGrade(from, into)` method that rewrites the person's grade records.\n- `PersonService.mergeGrade`: calls it for each moved person, saves, then writes the final rollup lines. I also updated its doc comment.\n- Front end: I only updated the comments in `people-api.ts` and `grades.ts`. No `data-testid`s or screen behaviour changed.\n\nThere's no database migration, because no table changes; only stored grade values are rewritten.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.396986,
+        "num_turns": 11,
+        "duration_ms": 297906,
+        "duration_api_ms": 44174,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp232.agent.jsonl",
+  "agent_diff_file": "cp232.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
