@@ -1,0 +1,232 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 932479304..f15dcd1f0 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -495,7 +495,7 @@ import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person,
+                 }
+               </td>
+               <td>
+-                <app-person-plans [personId]="p.id" [personName]="p.name" />
++                <app-person-plans [personId]="p.id" [personName]="p.name" (claimSaved)="claimSaved($event)" />
+                 <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rateLevels()" [grades]="p.grades" [others]="patronChoicesFor(p)" [periods]="periods()"
+                   [selected]="selectedClaims()" (toggled)="claimToggled($event)" (saved)="claimSaved($event)" />
+               </td>
+diff --git a/src/main/frontend/src/app/features/plans/person-plans.ts b/src/main/frontend/src/app/features/plans/person-plans.ts
+index 0097cff29..fde9bfb7f 100644
+--- a/src/main/frontend/src/app/features/plans/person-plans.ts
++++ b/src/main/frontend/src/app/features/plans/person-plans.ts
+@@ -1,8 +1,8 @@
+-import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
++import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { FigurePipe } from '../../core/figure.pipe';
+ import { Session } from '../../core/session';
+-import { AMOUNT_PATTERN } from '../claims/claims-api';
++import { AMOUNT_PATTERN, type Claim } from '../claims/claims-api';
+ import { PlansApi, amountError, nextDates, pauseError, planError, type Plan } from './plans-api';
+ 
+ // One person's plans, in the order they were added, and the form that adds one.
+@@ -71,6 +71,8 @@ import { PlansApi, amountError, nextDates, pauseError, planError, type Plan } fr
+ export class PersonPlans {
+   readonly personId = input.required<number>();
+   readonly personName = input.required<string>();
++  /** A claim the plans just saved: a DRAFT one edited to its plan's new amount. */
++  readonly claimSaved = output<Claim>();
+ 
+   protected readonly session = inject(Session);
+   private readonly api = inject(PlansApi);
+@@ -143,9 +145,10 @@ export class PersonPlans {
+       return;
+     }
+     try {
+-      const saved = await this.api.changeAmount(sheetId, plan.id, amount);
++      const { plan: saved, claims } = await this.api.changeAmount(sheetId, plan.id, amount);
+       if (this.session.sheetId() === sheetId) {
+         this.session.plans.update((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
++        for (const claim of claims) this.claimSaved.emit(claim);
+         this.amounts.update((all) => ({ ...all, [plan.id]: '' }));
+       }
+     } catch (e) {
+diff --git a/src/main/frontend/src/app/features/plans/plans-api.ts b/src/main/frontend/src/app/features/plans/plans-api.ts
+index 6fdf31b4d..54918ebbb 100644
+--- a/src/main/frontend/src/app/features/plans/plans-api.ts
++++ b/src/main/frontend/src/app/features/plans/plans-api.ts
+@@ -26,6 +26,12 @@ export interface Plan {
+   changes: { on: string; amount: string }[];
+ }
+ 
++/** A plan's amount change: the plan now, and its DRAFT claims on the sheet edited to the new amount. */
++export interface AmountChanged {
++  plan: Plan;
++  claims: Claim[];
++}
++
+ /** A plan as the form submits it: a blank start takes the sheet's today; one of every and day. */
+ export interface PlanForm {
+   amount: string;
+@@ -64,9 +70,10 @@ export class PlansApi {
+     return firstValueFrom(this.http.post<Plan>(`${this.url(sheetId)}/plans/${planId}/${on ? 'pause' : 'resume'}`, null, { headers: this.headers() }));
+   }
+ 
+-  /** Change the plan's amount on the sheet's today; the claims it makes from then on take it. */
+-  changeAmount(sheetId: string, planId: number, amount: string): Promise<Plan> {
+-    return firstValueFrom(this.http.post<Plan>(`${this.url(sheetId)}/plans/${planId}/amount`, { amount }, { headers: this.headers() }));
++  /** Change the plan's amount on the sheet's today; the claims it makes from then on take it, and
++   *  so do those it made that are still DRAFT (returned as now saved). */
++  changeAmount(sheetId: string, planId: number, amount: string): Promise<AmountChanged> {
++    return firstValueFrom(this.http.post<AmountChanged>(`${this.url(sheetId)}/plans/${planId}/amount`, { amount }, { headers: this.headers() }));
+   }
+ 
+   /** Make the claims every plan on the sheet is due by the sheet's today. */
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 45af15c2f..206cf2a5a 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -97,6 +97,12 @@ public class ClaimService {
+         return claims.findBySheetIdOrderByListedDesc(sheetId);
+     }
+ 
++    /** A claim by id, on whichever sheet. */
++    @Transactional(readOnly = true)
++    public Optional<Claim> find(long id) {
++        return claims.findById(id);
++    }
++
+     /** Every tag ever used on the sheet, in order. */
+     @Transactional(readOnly = true)
+     public List<String> tagsUsed(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanClaimRepository.java b/src/main/java/net/officefloor/hq/app/plan/PlanClaimRepository.java
+index 01b438c09..70e8211ea 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanClaimRepository.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanClaimRepository.java
+@@ -7,6 +7,9 @@ import org.springframework.data.jpa.repository.Query;
+ 
+ public interface PlanClaimRepository extends JpaRepository<PlanClaim, PlanClaim.Key> {
+ 
++    /** The claims a plan has made, by plan date. */
++    List<PlanClaim> findByPlanIdOrderByOnDateAsc(long planId);
++
+     boolean existsByPlanIdAndOnDate(long planId, LocalDate onDate);
+ 
+     /** How many claims each of the sheet's plans has made: rows of plan id and count. */
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanController.java b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+index fa826f52a..a2053c104 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanController.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanController.java
+@@ -74,6 +74,11 @@ public class PlanController {
+             @Size(max = 100) @Pattern(regexp = "\\S+") String sheet) {
+     }
+ 
++    /** An amount change's result: the plan now, and its DRAFT claims on the sheet edited to the new
++     *  amount, in plan-date order. */
++    public record AmountView(PlanView plan, List<ClaimView> claims) {
++    }
++
+     /** A generate's result: the claims made on the sheet, in the order they were made; how many were
+      *  made in all, counting those made on its descendants; and the sheet's plans now. */
+     public record GenerateView(List<ClaimView> claims, int made, List<PlanView> plans) {
+@@ -128,13 +133,15 @@ public class PlanController {
+     }
+ 
+     @PostMapping("/plans/{planId}/amount")
+-    public PlanView changeAmount(
++    public AmountView changeAmount(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+             @PathVariable long planId,
+             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody AmountForm body) {
+-        return PlanView.of(service.changeAmount(sheetId, user.trim(), planId, new BigDecimal(body.amount())),
+-                service.madeCounts(sheetId));
++        PlanService.Changed changed = service.changeAmount(sheetId, user.trim(), planId, new BigDecimal(body.amount()));
++        List<ClaimView> here = changed.redrafted().stream().filter(c -> c.getSheetId().equals(sheetId))
++                .map(claims::view).toList();
++        return new AmountView(PlanView.of(changed.plan(), service.madeCounts(sheetId)), here);
+     }
+ 
+     /** Generate the plans' claims; resolves to the claims made and the sheet's plans with their
+diff --git a/src/main/java/net/officefloor/hq/app/plan/PlanService.java b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+index 542b974db..f17a29150 100644
+--- a/src/main/java/net/officefloor/hq/app/plan/PlanService.java
++++ b/src/main/java/net/officefloor/hq/app/plan/PlanService.java
+@@ -9,6 +9,7 @@ import java.util.Map;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimService;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.person.Person;
+ import net.officefloor.hq.app.person.PersonRepository;
+ import net.officefloor.hq.app.sheet.SheetService;
+@@ -22,6 +23,10 @@ import org.springframework.web.server.ResponseStatusException;
+ @Service
+ public class PlanService {
+ 
++    /** An amount change just made: the plan, and its DRAFT claims edited to the new amount. */
++    public record Changed(Plan plan, List<Claim> redrafted) {
++    }
++
+     private final PlanRepository plans;
+     private final PlanClaimRepository made;
+     private final PersonRepository people;
+@@ -120,20 +125,48 @@ public class PlanService {
+     }
+ 
+     /** Change the amount of one of the sheet's plans on the sheet's today; the claims it makes from
+-     *  then on are of the new amount, those made already keep theirs. Refused (404) when the sheet
+-     *  has no such plan. */
+-    @Transactional
+-    public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+-        sheets.load(sheetId, user);
+-        sheets.lock(sheetId);
+-        Plan plan = plans.findByIdAndSheetId(planId, sheetId)
+-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan"));
+-        plan.changeAmount(sheets.today(sheetId), amount);
+-        plans.saveAndFlush(plan);
+-        String name = people.findById(plan.getPersonId()).map(Person::getName).orElse("");
+-        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + name + " start="
+-                + plan.getStart() + " amount=" + amount.setScale(2).toPlainString());
+-        return plan;
++     *  then on are of the new amount, those made already keep theirs, except those still DRAFT,
++     *  which are each then edited to the new amount as the claim form would (keeping their date,
++     *  note, reference and tags), each its own change: one the claim form refuses keeps its amount.
++     *  Resolves to the plan and the claims so edited, in plan-date order, on whichever sheet.
++     *  Refused (404) when the sheet has no such plan. */
++    public Changed changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
++        Plan plan = eachClaim.execute(status -> {
++            sheets.load(sheetId, user);
++            sheets.lock(sheetId);
++            Plan changed = plans.findByIdAndSheetId(planId, sheetId)
++                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan"));
++            changed.changeAmount(sheets.today(sheetId), amount);
++            plans.saveAndFlush(changed);
++            String name = people.findById(changed.getPersonId()).map(Person::getName).orElse("");
++            audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + name + " start="
++                    + changed.getStart() + " amount=" + amount.setScale(2).toPlainString());
++            return changed;
++        });
++        List<Claim> redrafted = new ArrayList<>();
++        for (PlanClaim each : made.findByPlanIdOrderByOnDateAsc(planId)) {
++            Claim claim;
++            try {
++                claim = eachClaim.execute(status -> redraft(user, each.getClaimId(), amount));
++            } catch (ResponseStatusException refused) {
++                continue; // the claim form refuses this edit: the claim keeps its amount
++            }
++            if (claim != null) {
++                redrafted.add(claim);
++            }
++        }
++        return new Changed(plan, redrafted);
++    }
++
++    /** Edit a plan's claim to the amount as the claim form would, in the transaction under way;
++     *  null (and nothing done) when it is gone or no longer a DRAFT. */
++    private Claim redraft(String user, long claimId, BigDecimal amount) {
++        Claim claim = claims.find(claimId).orElse(null);
++        if (claim == null || claim.getStatus() != ClaimStatus.DRAFT) {
++            return null;
++        }
++        return claims.update(claim.getSheetId(), user, claim.getId(), amount, claim.getDate(), claim.getNote(),
++                claim.getCorrects(), claim.getRef(), claim.getTags());
+     }
+ 
+     /** For each of the sheet's plans in the order they were added, add a DRAFT claim of its amount
