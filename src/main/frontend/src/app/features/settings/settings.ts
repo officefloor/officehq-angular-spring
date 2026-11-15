@@ -1,10 +1,10 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTERN, POLICY_DATE_PATTERN, PermissionAction, ROLES, TERMS_PATTERN, Delegation, RoleGrant, SETTINGS_INVALID, SettingsApi, delegateError, roleError, settingsError } from './settings-api';
+import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTERN, POLICY_DATE_PATTERN, PermissionAction, ROLES, TERMS_PATTERN, Delegation, RoleGrant, SETTINGS_INVALID, SettingsApi, delegateError, holidayError, roleError, settingsError } from './settings-api';
 
 // The sheet's settings (its permission matrix: the roles that may open, settle, void, reassign, close or reopen, each blank for its standing rule; its clerk limit: a clerk settles only claims whose due is at or below it;
-// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period; its entry date: while set, a new claim left undated takes it; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one.
+// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period; its entry date: while set, a new claim left undated takes it; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one, and the sheet's holidays (a claim's due-by, as it is created, is moved past them) with the form that adds one.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -126,6 +126,19 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
           <li data-testid="delegate-line">{{ d.steward }} to {{ d.user }}, {{ d.from }} to {{ d.to }}</li>
         }
       </ul>
+      <form [formGroup]="holidayForm" (ngSubmit)="addHoliday()" aria-label="Add a holiday">
+        <label for="holiday-date">Holiday (yyyy-mm-dd)</label>
+        <input id="holiday-date" data-testid="holiday-date" formControlName="date" autocomplete="off" />
+        <button type="submit" data-testid="holiday-add">Add holiday</button>
+        @if (holidayErr(); as err) {
+          <p role="alert" data-testid="holiday-error">{{ err }}</p>
+        }
+      </form>
+      <ul aria-label="Holidays" data-testid="holidays-list">
+        @for (h of holidays(); track h) {
+          <li [attr.data-testid]="'holiday-row-' + h">{{ h }}</li>
+        }
+      </ul>
     </section>
   `,
 })
@@ -154,6 +167,10 @@ export class Settings {
   protected readonly delegations = signal<Delegation[]>([]);
   protected readonly delegateErr = signal<string | null>(null);
   private delegating = false;
+  /** The sheet's holidays (yyyy-mm-dd), earliest first. */
+  protected readonly holidays = signal<string[]>([]);
+  protected readonly holidayErr = signal<string | null>(null);
+  private addingHoliday = false;
   /** Whether a save is waiting for its answer; a second one meanwhile runs once it is answered. */
   private savingSettings = false;
   /** Whether a save was submitted while another was waiting; it runs once that one is answered. */
@@ -214,6 +231,10 @@ export class Settings {
     to: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly holidayForm = new FormGroup({
+    date: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     this.settingsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.gradeTermsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
@@ -221,6 +242,7 @@ export class Settings {
     this.permissionsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.roleForm.valueChanges.subscribe(() => this.roleErr.set(null));
     this.delegateForm.valueChanges.subscribe(() => this.delegateErr.set(null));
+    this.holidayForm.valueChanges.subscribe(() => this.holidayErr.set(null));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
@@ -235,6 +257,9 @@ export class Settings {
         this.delegations.set([]);
         this.delegateErr.set(null);
         this.delegateForm.reset({ user: '', from: '', to: '' }, { emitEvent: false });
+        this.holidays.set([]);
+        this.holidayErr.set(null);
+        this.holidayForm.reset({ date: '' }, { emitEvent: false });
         this.settingsForm.reset({
           clerkLimit: '', clerkLimitFrom: '', floor: '', floorFrom: '', terms: '', termsFrom: '', latePct: '', latePctFrom: '',
           policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', noteThreshold: '', noteThresholdFrom: '', graceDays: '',
@@ -468,11 +493,35 @@ export class Settings {
     }
   }
 
+  protected async addHoliday(): Promise<void> {
+    if (this.addingHoliday) return;
+    this.holidayErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const date = this.holidayForm.getRawValue().date.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.holidayErr.set('Enter a holiday as yyyy-mm-dd.');
+      return;
+    }
+    this.addingHoliday = true;
+    try {
+      const added = await this.api.addHoliday(sheetId, date);
+      if (this.session.sheetId() === sheetId) {
+        this.holidays.update((hs) => [...hs.filter((h) => h !== added), added].sort());
+      }
+      this.holidayForm.reset({ date: '' }, { emitEvent: false });
+    } catch (e) {
+      this.holidayErr.set(holidayError(e));
+    } finally {
+      this.addingHoliday = false;
+    }
+  }
+
   private async read(sheetId: string): Promise<void> {
     const seq = ++this.readSeq;
     try {
-      const [settings, grants, delegations] = await Promise.all([
-        this.api.get(sheetId), this.api.roles(sheetId), this.api.delegations(sheetId),
+      const [settings, grants, delegations, holidays] = await Promise.all([
+        this.api.get(sheetId), this.api.roles(sheetId), this.api.delegations(sheetId), this.api.holidays(sheetId),
       ]);
       if (seq === this.readSeq) {
         this.session.dated.set(settings.dated);
@@ -497,6 +546,7 @@ export class Settings {
         }
         this.grants.set(grants);
         this.delegations.set(delegations);
+        this.holidays.set(holidays);
       }
     } catch {
       if (seq === this.readSeq) this.settingsErr.set('Something went wrong loading settings; try again.');

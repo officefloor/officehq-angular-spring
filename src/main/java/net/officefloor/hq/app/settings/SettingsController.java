@@ -168,6 +168,10 @@ public class SettingsController {
             String to) {
     }
 
+    /** A holiday as the form submits it: a date as yyyy-mm-dd. */
+    public record HolidayForm(@NotNull @Pattern(regexp = "\\s*\\d{4}-\\d{2}-\\d{2}\\s*") String date) {
+    }
+
     /** The grades a person can hold. */
     private static final List<String> GRADES = List.of("A", "B", "C");
 
@@ -416,5 +420,20 @@ public class SettingsController {
             @Valid @RequestBody DelegationForm body) {
         return DelegationView.of(service.delegate(sheetId, user.trim(), body.user().trim(),
                 fromOf(body.from()), fromOf(body.to())));
+    }
+
+    @GetMapping("/holidays")
+    public List<LocalDate> holidays(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return service.holidays(sheetId);
+    }
+
+    @PostMapping("/holidays")
+    public LocalDate addHoliday(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody HolidayForm body) {
+        return service.addHoliday(sheetId, user.trim(), fromOf(body.date().trim()));
     }
 }

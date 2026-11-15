@@ -58,17 +58,19 @@ public class SettingsService {
     private final SheetRoleRepository roles;
     private final SheetPermissionRepository permissions;
     private final SheetDelegationRepository delegations;
+    private final SheetHolidayRepository holidays;
     private final SheetService sheets;
     private final RollupService rollup;
     private final HistoryService history;
     private final Audit audit;
 
     public SettingsService(SheetRoleRepository roles, SheetPermissionRepository permissions,
-            SheetDelegationRepository delegations, SheetService sheets, RollupService rollup, HistoryService history,
-            Audit audit) {
+            SheetDelegationRepository delegations, SheetHolidayRepository holidays, SheetService sheets,
+            RollupService rollup, HistoryService history, Audit audit) {
         this.roles = roles;
         this.permissions = permissions;
         this.delegations = delegations;
+        this.holidays = holidays;
         this.sheets = sheets;
         this.rollup = rollup;
         this.history = history;
@@ -369,6 +371,27 @@ public class SettingsService {
         audit.recordOnCommit("DELEGATED sheet=" + sheetId + " by=" + user + " user=" + name
                 + " from=" + start + " to=" + end);
         return made;
+    }
+
+    /** The sheet's holidays, earliest first. */
+    @Transactional(readOnly = true)
+    public List<LocalDate> holidays(String sheetId) {
+        return holidays.findBySheetIdOrderByDayAsc(sheetId).stream().map(SheetHoliday::getDay).toList();
+    }
+
+    /** Add a holiday to the sheet, the sheet created first if it was never loaded; refused (409)
+     *  when the date is on its list already. A holiday leaves the due-by of the claims already
+     *  created as it is. */
+    @Transactional
+    public LocalDate addHoliday(String sheetId, String user, LocalDate day) {
+        sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        if (holidays.existsBySheetIdAndDay(sheetId, day)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The date is a holiday already");
+        }
+        holidays.saveAndFlush(new SheetHoliday(sheetId, day));
+        audit.recordOnCommit("HOLIDAY_ADDED sheet=" + sheetId + " by=" + user + " date=" + day);
+        return day;
     }
 
     /** Archive the sheet, the sheet created first if it was never loaded; refused (403) unless the

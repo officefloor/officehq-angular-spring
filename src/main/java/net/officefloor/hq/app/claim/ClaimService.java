@@ -745,11 +745,17 @@ public class ClaimService {
     }
 
     /** The due-by a claim of the person dated {@code on} is fixed with as it is created: its date
-     *  plus the person's own terms, else those of their grade then in force on it, else the sheet's. */
+     *  plus the person's own terms, else those of their grade then in force on it, else the sheet's;
+     *  when that falls on one of the sheet's holidays, the next day that is not one. */
     private LocalDate dueByOf(String sheetId, Person person, LocalDate on) {
         int terms = person.getTerms() != null ? person.getTerms()
                 : sheets.find(sheetId).map(s -> s.termsFor(person.gradeOn(on), on)).orElse(Sheet.DEFAULT_TERMS);
-        return on.plusDays(terms);
+        Set<LocalDate> holidays = new HashSet<>(settings.holidays(sheetId));
+        LocalDate due = on.plusDays(terms);
+        while (holidays.contains(due)) {
+            due = due.plusDays(1);
+        }
+        return due;
     }
 
     /** The number a claim due by {@code date} takes as it is opened: under period numbering (set,

@@ -200,6 +200,15 @@ export class SettingsApi {
     );
   }
 
+  /** The sheet's holidays (yyyy-mm-dd), earliest first. */
+  holidays(sheetId: string): Promise<string[]> {
+    return firstValueFrom(this.http.get<string[]>(`${this.url(sheetId)}/holidays`, { headers: this.headers() }));
+  }
+
+  addHoliday(sheetId: string, date: string): Promise<string> {
+    return firstValueFrom(this.http.post<string>(`${this.url(sheetId)}/holidays`, { date }, { headers: this.headers() }));
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }
@@ -226,5 +235,11 @@ export function roleError(e: unknown): string {
 export function delegateError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a user name without spaces and a to-date on or after the from-date, each as yyyy-mm-dd.';
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can delegate the steward role.';
+  return otherError(e);
+}
+
+export function holidayError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a holiday as yyyy-mm-dd.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'That date is a holiday already.';
   return otherError(e);
 }
