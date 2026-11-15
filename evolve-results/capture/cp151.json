@@ -1,0 +1,64 @@
+{
+  "checkpoint": 151,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp151_rounding-mode",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet gains a rounding mode (settings, dated like the floor; SETTING_CHANGED key=rounding\nvalue=<half-up or half-even>; anything else is refused with an error on the settings; blank means\nnone). A claim whose date has a rounding mode in force rounds every live figure by that mode; a\nclaim with none in force on its date rounds by the policy date as before.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet gains a rounding mode (settings, dated like the floor; SETTING_CHANGED key=rounding\nvalue=<half-up or half-even>; anything else is refused with an error on the settings; blank means\nnone). A claim whose date has a rounding mode in force rounds every live figure by that mode; a\nclaim with none in force on its date rounds by the policy date as before.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "dbced558e535f5737564c35beb18c6d80ddf7959",
+  "reset_sha": "",
+  "preagent_sha": "77468152e929979bdb41851fb960ea734bd63aac",
+  "prev_sha": "77468152e929979bdb41851fb960ea734bd63aac",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4539262,
+    "input_tokens": 52,
+    "output_tokens": 12489,
+    "cache_read_tokens": 1865411,
+    "cache_creation_tokens": 103857,
+    "num_turns": 29,
+    "duration_ms": 534201,
+    "duration_api_ms": 126374,
+    "model": "claude-opus-5-5",
+    "session_id": "b0021bcd-3215-480b-adce-c0c66332c4d9",
+    "stop_reason": "success",
+    "result_text": "The sheet now has a dated rounding mode, and all 4 tests in `bin/e2e` pass.\n\n**How it behaves**\n- It's saved like the floor: a value plus a from-date, which is the sheet's today if left blank. The only accepted values are `half-up`, `half-even`, or blank, which means none. Anything else shows the settings error and nothing is saved.\n- A claim whose date has a mode in force rounds all its live figures (the rate step and the late charge) by that mode. A claim with no mode in force on its date rounds by the policy date as before. Corrections use the date of the claim they correct, the same as the policy-date rule.\n- Each change writes `SETTING_CHANGED ... key=rounding value=<v> [from=<date>]`. Like the floor, it also writes ROLLUP/TOTALS lines when totals move.\n\n**What changed**\n- **Server:** `Sheet` has a new `rounding` key and a `roundingOn(date)` lookup. `Rounding.on(date)` checks that mode first and falls back to the policy date. `SettingsService.setRounding` saves it and records rollup changes, and there is a new `PUT /settings/rounding` endpoint.\n- **No database migration:** the existing `sheet_setting` table already stores dated settings by key. Sheet cloning and as-of history already copy them.\n- **Front end:** the settings form has `setting-rounding`, `setting-rounding-from` and `setting-rounding-current`, and checks the value before sending it. The screen also works out dues itself, so `roundsHalfUp` in `claims-api.ts` now checks the dated mode before the policy date. My first run failed on exactly this: the server totals were right but the screen still showed 3.09 instead of 3.08.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4539262,
+        "num_turns": 29,
+        "duration_ms": 534201,
+        "duration_api_ms": 126374,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp151.agent.jsonl",
+  "agent_diff_file": "cp151.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
