@@ -1,0 +1,90 @@
+diff --git a/src/main/frontend/src/app/features/claims/claims-api.ts b/src/main/frontend/src/app/features/claims/claims-api.ts
+index 9939705a8..9bd4b2e1b 100644
+--- a/src/main/frontend/src/app/features/claims/claims-api.ts
++++ b/src/main/frontend/src/app/features/claims/claims-api.ts
+@@ -53,8 +53,8 @@ export interface Claim {
+   /** Where the claim is listed, newest (highest) first: set when it is added, and again when it
+    *  is reassigned, so a moved claim is its new person's newest. */
+   listed: number;
+-  /** yyyy-mm-dd: fixed when the claim was created, its date plus the terms of its person's grade
+-   *  in force on that date; later changes to the terms or its date leave it. */
++  /** yyyy-mm-dd: fixed when the claim was created, its date plus its person's own terms, else
++   *  their grade's, else the sheet's, each in force on the sheet's today when it was created; later changes to the terms or its date leave it. */
+   dueBy: string;
+   /** The claim's status log, oldest first: one line per status it has had. */
+   log: ClaimLogLine[];
+diff --git a/src/main/java/net/officefloor/hq/app/claim/Claim.java b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+index 257d73e51..417c73e6b 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/Claim.java
++++ b/src/main/java/net/officefloor/hq/app/claim/Claim.java
+@@ -36,7 +36,8 @@ public class Claim {
+     private LocalDate date;
+ 
+     /** The date the claim is due by: fixed when it is created, its date plus its person's own
+-     *  terms, else the terms of their grade in force on that date, else the sheet's then; later
++     *  terms, else the terms of their grade, else the sheet's, each as in force on the sheet's today
++     *  when it is created (a split-off part keeps the terms of the claim it is split from); later
+      *  changes to the terms or its date leave it. A holiday added on or before it re-fixes it (while
+      *  the claim is neither SETTLED nor VOID) from its date with {@link #terms}. */
+     @Column(name = "due_by", nullable = false)
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 0a3685751..879ea069d 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -239,7 +239,7 @@ public class ClaimService {
+         Person person = people.findByIdAndSheetId(personId, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         LocalDate on = date != null ? date : sheets.entryDate(sheetId);
+-        int terms = termsOf(sheetId, person, on);
++        int terms = termsOf(sheetId, person);
+         LocalDate dueBy = dueByOf(sheetId, on, terms);
+         refuseIfClosed(sheetId, dueBy);
+         refuseIfRetired(person, on);
+@@ -922,7 +922,7 @@ public class ClaimService {
+         LocalDate on = claim.getDate();
+         claim.setAmount(claim.getAmount().subtract(amount));
+         claim.unbind();
+-        int terms = termsOf(sheetId, person, on);
++        int terms = claim.getTerms();
+         Claim fresh = new Claim(sheetId, person.getId(), amount, on, dueByOf(sheetId, on, terms), claim.getNote());
+         fresh.setTerms(terms);
+         fresh.setStatus(ClaimStatus.OPEN);
+@@ -1113,9 +1113,11 @@ public class ClaimService {
+         return new Statement(person, StatementSummary.of(statements.findByPersonIdOrderByIdAsc(personId)), theirs);
+     }
+ 
+-    /** The terms a claim of the person dated {@code on} is fixed with as it is created: the
+-     *  person's own terms in force on it, else those of their grade then in force on it, else the sheet's. */
+-    private int termsOf(String sheetId, Person person, LocalDate on) {
++    /** The terms a claim of the person is fixed with as it is created, whatever its date: the
++     *  person's own terms in force on the sheet's today, else those of the grade they have then in
++     *  force then, else the sheet's then. */
++    private int termsOf(String sheetId, Person person) {
++        LocalDate on = sheets.today(sheetId);
+         Integer own = person.termsOn(on);
+         return own != null ? own
+                 : sheets.find(sheetId).map(s -> s.termsFor(person.gradeOn(on), on)).orElse(Sheet.DEFAULT_TERMS);
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 994a7a93d..6d86f06cc 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -169,8 +169,8 @@ public class SettingsService {
+     }
+ 
+     /** Set the sheet's terms in days from a date (null: the sheet's today), the sheet created first
+-     *  if it was never loaded; they apply to claims created from now on, dated from then on to the
+-     *  next from-date, in a grade without its own terms, while every claim's due-by, fixed when it
++     *  if it was never loaded; they apply to claims created from then on to the next from-date
++     *  (by the sheet's today, whatever their date), in a grade without its own terms, while every claim's due-by, fixed when it
+      *  was created, stays as it is. */
+     @Transactional
+     public int setTerms(String sheetId, String user, int terms, LocalDate from) {
+@@ -188,7 +188,7 @@ public class SettingsService {
+ 
+     /** Set a grade's terms in days (null: none, the grade uses the sheet's terms), the sheet
+      *  created first if it was never loaded; like the sheet's terms they apply to claims created
+-     *  from now on, dated from the from-date (null: the sheet's today) on, while every claim's due-by
++     *  from the from-date (null: the sheet's today) on (by the sheet's today, whatever their date), while every claim's due-by
+      *  stays as it is. */
+     @Transactional
+     public Integer setGradeTerms(String sheetId, String user, String grade, Integer terms, LocalDate from) {
