@@ -183,6 +183,27 @@ public class PersonService {
         return person;
     }
 
+    /** Name the user (trimmed; blank or null: none) who may approve or reject the person's PENDING
+     *  claims as a steward may. Refused (403) on an archived sheet. */
+    @Transactional
+    public Person setApprover(String sheetId, String user, long id, String approver) {
+        if (sheets.archived(sheetId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The sheet is archived: nothing on it may change");
+        }
+        Person person = people.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        String name = approver == null || approver.isBlank() ? null : approver.trim();
+        person.setApprover(name);
+        try {
+            people.flush();
+        } catch (ObjectOptimisticLockingFailureException e) {
+            throw savedByAnother(); // saved by another user at the same moment
+        }
+        audit.recordOnCommit("APPROVER_SET sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " user=" + (name == null ? "" : name));
+        return person;
+    }
+
     /** Give the person an alias (trimmed); refused when blank, or when it equals, ignoring case, any
      *  name or alias on the sheet. */
     @Transactional

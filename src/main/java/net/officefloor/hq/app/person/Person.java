@@ -77,6 +77,11 @@ public class Person {
     @Column(name = "tags")
     private String tags;
 
+    /** The user name who may approve or reject the person's PENDING claims as a steward may;
+     *  null when they have none. */
+    @Column(name = "approver")
+    private String approver;
+
     /** The person's aliases, kept trimmed: other names the person is found by. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "person_alias", joinColumns = @JoinColumn(name = "person_id"))
@@ -386,6 +391,14 @@ public class Person {
     /** The flag's reason while it is in force on the date (on or before its until-date); else null. */
     public String flagOn(LocalDate date) {
         return flagReason != null && flagUntil != null && !date.isAfter(flagUntil) ? flagReason : null;
+    }
+
+    public String getApprover() {
+        return approver;
+    }
+
+    public void setApprover(String approver) {
+        this.approver = approver;
     }
 
     public String getFlagReason() {

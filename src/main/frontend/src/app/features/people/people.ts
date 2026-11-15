@@ -16,7 +16,7 @@ import { Summary, SummaryPerson } from '../summary/summary';
 import { ClassicSummary } from '../summary/classic-summary';
 import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
 import { Dashboard, Header } from '../header/header';
-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
+import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -282,7 +282,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
             @if (shows('retired')) { <th scope="col">Retired</th> }
             <th scope="col">Retirement</th><th scope="col">Active</th>
             @if (shows('hold')) { <th scope="col">Hold</th> }
-            <th scope="col">Hold from</th><th scope="col">Flag</th><th scope="col">Watched</th>
+            <th scope="col">Hold from</th><th scope="col">Flag</th><th scope="col">Approver</th><th scope="col">Watched</th>
             @if (shows('patrons')) { <th scope="col">Patrons</th> }
             @if (shows('backing')) { <th scope="col">Backing</th> }
             <th scope="col">Add patron</th><th scope="col">Claims</th><th scope="col"><span class="visually-hidden">Actions</span></th>
@@ -441,6 +441,14 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
                   (input)="clearRowError(p.id)" />
                 <button type="button" data-testid="person-flag" (click)="flag(p, flagReason.value, flagUntil.value)"
                   [attr.aria-label]="'Flag ' + p.name">Flag</button>
+              </td>
+              <td>
+                <span data-testid="person-approver">{{ p.approver ?? '' }}</span>
+                <label [for]="'person-approver-input-' + p.id" class="visually-hidden">Approver for {{ p.name }}</label>
+                <input [id]="'person-approver-input-' + p.id" data-testid="person-approver-input" #approverInput
+                  autocomplete="off" maxlength="100" (input)="clearRowError(p.id)" />
+                <button type="button" data-testid="person-approver-save" (click)="setApprover(p, approverInput.value)"
+                  [attr.aria-label]="'Set approver for ' + p.name">Set approver</button>
               </td>
               <td>
                 <span data-testid="person-watched">{{ p.watched ? 'yes' : 'no' }}</span>
@@ -1455,6 +1463,19 @@ export class People {
       if (this.session.sheetId() === sheetId) this.taken(saved);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [p.id]: flagError(e) }));
+    }
+  }
+
+  /** Name the user (blank: none) who may approve or reject the person's PENDING claims; the row then shows them. */
+  protected async setApprover(p: Person, user: string): Promise<void> {
+    this.clearRowError(p.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const saved = await this.api.setApprover(sheetId, p.id, user);
+      if (this.session.sheetId() === sheetId) this.taken(saved);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: approverError(e) }));
     }
   }
 

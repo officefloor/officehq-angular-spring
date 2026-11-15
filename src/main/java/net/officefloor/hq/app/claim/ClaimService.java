@@ -1063,7 +1063,8 @@ public class ClaimService {
     }
 
     /** The PENDING claim a steward decides on: refused (404) when missing, (423) when dated in a
-     *  closed period, (409) unless PENDING, and (403) when the user is not a steward. */
+     *  closed period, (409) unless PENDING, and (403) when the user is neither a steward nor the
+     *  approver of the claim's person. */
     private Claim pendingForSteward(String sheetId, String user, long id) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
@@ -1072,11 +1073,17 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Only a PENDING claim is approved or rejected, not a " + claim.getStatus() + " one");
         }
-        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+        if (settings.roleOf(sheetId, user) != Role.STEWARD && !isApproverOf(sheetId, user, claim)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only a steward approves or rejects a PENDING claim");
+                    "Only a steward or the person's approver approves or rejects a PENDING claim");
         }
         return claim;
+    }
+
+    /** Whether the user is the approver named on the claim's person. */
+    private boolean isApproverOf(String sheetId, String user, Claim claim) {
+        return people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .map(p -> user.equals(p.getApprover())).orElse(false);
     }
 
     /** Write the claim's status now to its log: by the user, on the sheet's today, with the due

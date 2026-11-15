@@ -49,7 +49,7 @@ public class PersonController {
             List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms,
             String contact, List<String> aliases, boolean clashing, String origin,
             List<Person.Retirement> retirements, String tags, List<SnapshotLine> snapshots,
-            List<StatementLine> statements, String flag) {
+            List<StatementLine> statements, String flag, String approver) {
         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
                 boolean watched, boolean clashing) {
             return of(p.getId(), p, today, s, patronIds, watched, clashing);
@@ -63,7 +63,7 @@ public class PersonController {
                     p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.termsOn(today),
                     p.getContact(), p.getAliases(), clashing, p.getOriginSheetId(), p.getRetirements(),
                     p.getTags(), p.getSnapshots().stream().map(SnapshotLine::of).toList(),
-                    s.lines().stream().map(StatementLine::of).toList(), p.flagOn(today));
+                    s.lines().stream().map(StatementLine::of).toList(), p.flagOn(today), p.getApprover());
         }
     }
 
@@ -132,6 +132,10 @@ public class PersonController {
     /** A flag as the row submits it: its reason and the last day it is in force (missing: the
      *  sheet's today). */
     public record FlagForm(@Size(max = 200) String reason, LocalDate until) {
+    }
+
+    /** An approver as the row submits it: a user name, trimmed; blank or null for none. */
+    public record ApproverForm(@Size(max = 100) String user) {
     }
 
     /** A move as the row submits it: up (towards the top of the list) or down. */
@@ -339,6 +343,15 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody FlagForm body) {
         return view(sheetId, user, service.flag(sheetId, user.trim(), id, body.reason(), body.until()));
+    }
+
+    @PostMapping("/{id}/approver")
+    public PersonView setApprover(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ApproverForm body) {
+        return view(sheetId, user, service.setApprover(sheetId, user.trim(), id, body.user()));
     }
 
     @PostMapping("/{id}/aliases")

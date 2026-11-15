@@ -81,6 +81,8 @@ export interface Person {
   statements: StatementLine[];
   /** The reason a steward flagged the person, while the flag is in force on the sheet's today; else null. */
   flag: string | null;
+  /** The user name who may approve or reject the person's PENDING claims as a steward may; null when none. */
+  approver: string | null;
   /** Whether the person has any hold. */
   held: boolean;
   /** The person's holds, in the order they were added: their OPEN claims dated within one count in
@@ -241,6 +243,13 @@ export class PeopleApi {
   }
 
   /** Flag a person, as a steward, with a reason until a date (blank: the sheet's today). */
+  /** Name the user who may approve or reject the person's PENDING claims; blank for none. */
+  setApprover(sheetId: string, id: number, user: string): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/approver`, { user }, { headers: this.headers() }),
+    );
+  }
+
   flag(sheetId: string, id: number, reason: string, until: string): Promise<Person> {
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheetId)}/${id}/flag`, { reason, until: until || null },
@@ -404,6 +413,13 @@ export function flagError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter the until-date as yyyy-mm-dd.';
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may flag a person.';
   if (e instanceof HttpErrorResponse && e.status === 422) return 'Give a reason for the flag.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  return otherError(e);
+}
+
+export function approverError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a user name of at most 100 characters.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'You may not change this person.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   return otherError(e);
 }
