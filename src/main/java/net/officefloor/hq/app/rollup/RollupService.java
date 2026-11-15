@@ -187,6 +187,13 @@ public class RollupService {
         return new Stated(counted, Sheet.capped(dueTotal, sheet.getCap()));
     }
 
+    /** Record, once the transaction commits, a SNAPSHOT line for each person (in the order they
+     *  were added) with their due-total in {@code before}. */
+    public void recordSnapshot(String sheetId, String user, Snapshot before) {
+        before.people().values().forEach(p -> audit.recordOnCommit("SNAPSHOT sheet=" + sheetId + " by=" + user
+                + " name=" + p.name() + " due-total=" + text(p.dueTotal())));
+    }
+
     /** Record, once the transaction commits, a ROLLUP line for each person whose figures moved
      *  since {@code before}, then a TOTALS line when the sheet's totals moved. */
     public void recordChanges(String sheetId, String user, Snapshot before) {

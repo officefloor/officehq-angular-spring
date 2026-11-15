@@ -31,7 +31,7 @@ public class Audit {
     public static final String FOR = Audit.class.getName() + ".for";
 
     /** Records that only report figures, which never carry {@code for=}. */
-    private static final Set<String> FIGURES = Set.of("ROLLUP", "TOTALS", "ALERT");
+    private static final Set<String> FIGURES = Set.of("ROLLUP", "TOTALS", "ALERT", "SNAPSHOT");
 
     private final Path file;
 

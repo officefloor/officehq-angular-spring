@@ -119,13 +119,17 @@ public class SheetService {
     }
 
     /** Change the sheet's today (the sheet is created first if it was never loaded); it has no
-     *  audit line of its own, only what follows from it (such as periods closed past their grace
-     *  days) and then the figures it moves. */
+     *  audit line of its own; when it moves, each person's due-total on the day being left is
+     *  recorded first (SNAPSHOT), then what follows from it (such as periods closed past their
+     *  grace days) and then the figures it moves. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id, user);
         lock(id);
         RollupService.Snapshot before = rollup.snapshot(id);
+        if (!today.equals(sheet.getToday())) {
+            rollup.recordSnapshot(id, user, before);
+        }
         sheet.setToday(today);
         sheets.flush();
         events.publishEvent(new TodayChanged(id, user, today));
