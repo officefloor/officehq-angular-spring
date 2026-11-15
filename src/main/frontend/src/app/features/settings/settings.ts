@@ -1,10 +1,10 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
-import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTERN, POLICY_DATE_PATTERN, PermissionAction, ROLES, TERMS_PATTERN, RoleGrant, SETTINGS_INVALID, SettingsApi, roleError, settingsError } from './settings-api';
+import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTERN, POLICY_DATE_PATTERN, PermissionAction, ROLES, TERMS_PATTERN, Delegation, RoleGrant, SETTINGS_INVALID, SettingsApi, delegateError, roleError, settingsError } from './settings-api';
 
 // The sheet's settings (its permission matrix: the roles that may open, settle, void, reassign, close or reopen, each blank for its standing rule; its clerk limit: a clerk settles only claims whose due is at or below it;
-// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one.
+// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -101,6 +101,23 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
           }
         </tbody>
       </table>
+      <form [formGroup]="delegateForm" (ngSubmit)="delegate()" aria-label="Delegate the steward role">
+        <label for="delegate-user">Delegate the steward role to</label>
+        <input id="delegate-user" data-testid="delegate-user" formControlName="user" autocomplete="off" />
+        <label for="delegate-from">From (yyyy-mm-dd, blank: the sheet's today)</label>
+        <input id="delegate-from" data-testid="delegate-from" formControlName="from" autocomplete="off" />
+        <label for="delegate-to">To (yyyy-mm-dd, inclusive, blank: the from-date)</label>
+        <input id="delegate-to" data-testid="delegate-to" formControlName="to" autocomplete="off" />
+        <button type="submit" data-testid="delegate-submit">Delegate</button>
+        @if (delegateErr(); as err) {
+          <p role="alert" data-testid="delegate-error">{{ err }}</p>
+        }
+      </form>
+      <ul aria-label="Delegations of the steward role" data-testid="delegations-list">
+        @for (d of delegations(); track d.id) {
+          <li data-testid="delegate-line">{{ d.steward }} to {{ d.user }}, {{ d.from }} to {{ d.to }}</li>
+        }
+      </ul>
     </section>
   `,
 })
@@ -123,6 +140,10 @@ export class Settings {
   protected readonly sortedGrants = computed(() => [...this.grants()].sort((a, b) => a.user.localeCompare(b.user)));
   protected readonly settingsErr = signal<string | null>(null);
   protected readonly roleErr = signal<string | null>(null);
+  /** The steward role's delegations on the sheet, in the order they were made. */
+  protected readonly delegations = signal<Delegation[]>([]);
+  protected readonly delegateErr = signal<string | null>(null);
+  private delegating = false;
   /** Whether a save is waiting for its answer; a second one meanwhile runs once it is answered. */
   private savingSettings = false;
   /** Whether a save was submitted while another was waiting; it runs once that one is answered. */
@@ -174,12 +195,19 @@ export class Settings {
     role: new FormControl('', { nonNullable: true }),
   });
 
+  protected readonly delegateForm = new FormGroup({
+    user: new FormControl('', { nonNullable: true }),
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
+  });
+
   constructor() {
     this.settingsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.gradeTermsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.gradeTermsFromForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.permissionsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.roleForm.valueChanges.subscribe(() => this.roleErr.set(null));
+    this.delegateForm.valueChanges.subscribe(() => this.delegateErr.set(null));
     effect(() => {
       const id = this.session.sheetId();
       this.session.loads();
@@ -190,6 +218,9 @@ export class Settings {
         this.permissions.set({});
         this.settingsErr.set(null);
         this.roleErr.set(null);
+        this.delegations.set([]);
+        this.delegateErr.set(null);
+        this.delegateForm.reset({ user: '', from: '', to: '' }, { emitEvent: false });
         this.settingsForm.reset({
           clerkLimit: '', clerkLimitFrom: '', floor: '', floorFrom: '', terms: '', termsFrom: '', latePct: '', latePctFrom: '',
           policyDate: '', periodNumberingFrom: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', graceDays: '',
@@ -381,10 +412,36 @@ export class Settings {
     }
   }
 
+  protected async delegate(): Promise<void> {
+    if (this.delegating) return;
+    this.delegateErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const { user, from, to } = this.delegateForm.getRawValue();
+    if (!/^\S+$/.test(user.trim())) {
+      this.delegateErr.set('Enter a user name without spaces.');
+      return;
+    }
+    this.delegating = true;
+    try {
+      const made = await this.api.delegate(sheetId, user.trim(), from.trim(), to.trim());
+      if (this.session.sheetId() === sheetId) {
+        this.delegations.update((ds) => [...ds.filter((d) => d.id !== made.id), made]);
+      }
+      this.delegateForm.reset({ user: '', from: '', to: '' }, { emitEvent: false });
+    } catch (e) {
+      this.delegateErr.set(delegateError(e));
+    } finally {
+      this.delegating = false;
+    }
+  }
+
   private async read(sheetId: string): Promise<void> {
     const seq = ++this.readSeq;
     try {
-      const [settings, grants] = await Promise.all([this.api.get(sheetId), this.api.roles(sheetId)]);
+      const [settings, grants, delegations] = await Promise.all([
+        this.api.get(sheetId), this.api.roles(sheetId), this.api.delegations(sheetId),
+      ]);
       if (seq === this.readSeq) {
         this.session.dated.set(settings.dated);
         this.session.policyDate.set(settings.policyDate);
@@ -403,6 +460,7 @@ export class Settings {
           if (!control.dirty) control.setValue(settings.permissions[p.action] ?? '', { emitEvent: false });
         }
         this.grants.set(grants);
+        this.delegations.set(delegations);
       }
     } catch {
       if (seq === this.readSeq) this.settingsErr.set('Something went wrong loading settings; try again.');

@@ -19,6 +19,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -133,6 +134,20 @@ public class SettingsController {
     public record RoleForm(
             @NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String user,
             @NotNull @Pattern(regexp = "clerk|steward|viewer") String role) {
+    }
+
+    public record DelegationView(long id, String user, String steward, LocalDate from, LocalDate to) {
+        static DelegationView of(SheetDelegation d) {
+            return new DelegationView(d.getId(), d.getUser(), d.getSteward(), d.getFrom(), d.getTo());
+        }
+    }
+
+    /** A delegation as the form submits it: a user name without spaces, a from-date (blank: the
+     *  sheet's today) and a to-date (blank: the from-date), each as yyyy-mm-dd. */
+    public record DelegationForm(
+            @NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String user,
+            String from,
+            String to) {
     }
 
     /** The grades a person can hold. */
@@ -317,5 +332,21 @@ public class SettingsController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody RoleForm body) {
         return RoleView.of(service.setRole(sheetId, user.trim(), body.user().trim(), Role.of(body.role())));
+    }
+
+    @GetMapping("/delegations")
+    public List<DelegationView> delegations(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return service.delegations(sheetId).stream().map(DelegationView::of).toList();
+    }
+
+    @PostMapping("/delegations")
+    public DelegationView delegate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody DelegationForm body) {
+        return DelegationView.of(service.delegate(sheetId, user.trim(), body.user().trim(),
+                fromOf(body.from()), fromOf(body.to())));
     }
 }

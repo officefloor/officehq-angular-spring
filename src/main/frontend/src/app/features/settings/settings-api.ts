@@ -73,6 +73,15 @@ export interface RoleGrant {
   role: string;
 }
 
+/** A steward's role delegated to a user name from a date to a date (yyyy-mm-dd), inclusive. */
+export interface Delegation {
+  id: number;
+  user: string;
+  steward: string;
+  from: string;
+  to: string;
+}
+
 // The sheet's settings and the roles user names hold on it, read and written through the server.
 @Injectable({ providedIn: 'root' })
 export class SettingsApi {
@@ -165,6 +174,16 @@ export class SettingsApi {
     return firstValueFrom(this.http.put<RoleGrant>(`${this.url(sheetId)}/roles`, { user, role }, { headers: this.headers() }));
   }
 
+  delegations(sheetId: string): Promise<Delegation[]> {
+    return firstValueFrom(this.http.get<Delegation[]>(`${this.url(sheetId)}/delegations`, { headers: this.headers() }));
+  }
+
+  delegate(sheetId: string, user: string, from: string, to: string): Promise<Delegation> {
+    return firstValueFrom(
+      this.http.post<Delegation>(`${this.url(sheetId)}/delegations`, { user, from, to }, { headers: this.headers() }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }
@@ -185,5 +204,11 @@ export function settingsError(e: unknown): string {
 export function roleError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a user name without spaces and a role of clerk, steward or viewer.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The role was changed at the same moment; try again.';
+  return otherError(e);
+}
+
+export function delegateError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a user name without spaces and a to-date on or after the from-date, each as yyyy-mm-dd.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward can delegate the steward role.';
   return otherError(e);
 }
