@@ -155,10 +155,10 @@ export class PersonClaims {
     this.form.valueChanges.subscribe(() => this.error.set(null));
   }
 
-  /** The claim's amount times the rate in force on the claim's date for the person's grade then, divided by 100, rounded
-   *  by the claim's rounding policy (half up before the sheet's policy date, else half to even), at least the sheet's floor; n/a with no rate in force then. A claim settled with a
-   *  due shows the due fixed then, and one bound by a statement the due bound; an overdue open
-   *  (OPEN or PENDING) claim gains its late charge on top. */
+  /** The claim's figure (its amount times the rate in force on the claim's date for the person's grade then, divided by 100, rounded
+   *  by the claim's rounding policy (half up before the sheet's policy date, else half to even), or the figure a statement
+   *  bound it to), with its late charge on top when it is an overdue open (OPEN or PENDING) claim, then raised to the
+   *  sheet's floor in force on its date; n/a with no rate in force then. A claim settled with a due shows the due fixed then. */
   protected dueOf(c: Claim): string {
     const grade = gradeOn(this.grades(), c.date);
     const due = claimDueCents(this.rates().filter((r) => r.grade === grade), c, cents(this.session.floorOn(c.date)), {

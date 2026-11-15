@@ -80,23 +80,23 @@ export interface Lateness {
   latePctOn: (date: string) => string;
 }
 
-/** A claim's due in cents: the due fixed when it was settled, else its figure (the due a statement
- *  bound it to (unless PENDING), else its amount times its grade's rate in force on its date, rounded half up when
- *  `halfUp` (the claim's rounding policy) else half to even, and raised to the sheet's floor in force on its date) with
- *  its late charge, rounded the same way, on top (a correction is neither raised to the floor nor
- *  charged late); null (n/a) with no figure. */
+/** A claim's due in cents: the due fixed when it was settled, else the greater of the sheet's floor in
+ *  force on its date and its figure (the rate figure a statement bound it to (unless PENDING), else its
+ *  amount times its grade's rate in force on its date, rounded half up when `halfUp` (the claim's rounding
+ *  policy) else half to even) with its late charge, rounded the same way, on top (a correction is neither
+ *  raised to the floor nor charged late); null (n/a) with no figure. */
 export function claimDueCents(rates: readonly Rate[], c: Claim, floorCents: number, late: Lateness, halfUp: boolean): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
-  const figure = figureCents(rates, c, floorCents, halfUp);
-  return figure === null ? null : figure + lateChargeCents(c, figure, late, halfUp);
+  const figure = figureCents(rates, c, halfUp);
+  if (figure === null) return null;
+  const charged = figure + lateChargeCents(c, figure, late, halfUp);
+  return isCorrection(c) ? charged : Math.max(charged, floorCents);
 }
 
-function figureCents(rates: readonly Rate[], c: Claim, floorCents: number, halfUp: boolean): number | null {
+function figureCents(rates: readonly Rate[], c: Claim, halfUp: boolean): number | null {
   if (isBound(c)) return c.statedDue === null ? null : cents(c.statedDue);
   const pct = pctOn(rates, c.date);
-  if (pct === null) return null;
-  const due = dueCents(cents(c.amount), cents(pct), halfUp);
-  return isCorrection(c) ? due : Math.max(due, floorCents);
+  return pct === null ? null : dueCents(cents(c.amount), cents(pct), halfUp);
 }
 
 /** An overdue claim's late charge in cents: for every full 30 days past its due-by, the late percent

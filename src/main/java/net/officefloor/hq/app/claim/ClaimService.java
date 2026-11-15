@@ -350,7 +350,8 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal old = claim.getSettledDue();
-        BigDecimal due = LateCharge.of(sheets.find(sheetId)).addToOpen(claim, dueOf(claim, person), roundingOf(claim));
+        BigDecimal due = flooredOf(claim,
+                LateCharge.of(sheets.find(sheetId)).addToOpen(claim, rateFigureOf(claim, person), roundingOf(claim)));
         claim.setSettledDue(due);
         claims.flush();
         logStatus(user, person, claim);
@@ -574,18 +575,28 @@ public class ClaimService {
     }
 
     /** The due a claim shows: the due fixed when it was settled, else its figure with its late
-     *  charge on top. */
+     *  charge on top, raised to the floor in force on its date. */
     private BigDecimal shownDueOf(Claim claim, Person person) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
-        return LateCharge.of(sheets.find(claim.getSheetId())).addTo(claim, figureOf(claim, person), roundingOf(claim));
+        return flooredOf(claim,
+                LateCharge.of(sheets.find(claim.getSheetId())).addTo(claim, figureOf(claim, person), roundingOf(claim)));
     }
 
-    /** A claim's figure before any late charge: the one a statement bound it to (null: n/a), else
-     *  (unbound, or PENDING) its live due. */
+    /** A due (null: n/a, which stays n/a) raised to the sheet's floor in force on the claim's date; a
+     *  correction's never is. */
+    private BigDecimal flooredOf(Claim claim, BigDecimal due) {
+        if (due == null || claim.isCorrection()) {
+            return due;
+        }
+        return due.max(sheets.floorOn(claim.getSheetId(), claim.getDate()));
+    }
+
+    /** A claim's figure before any late charge or floor: the one a statement bound it to (null: n/a),
+     *  else (unbound, or PENDING) its rate figure. */
     private BigDecimal figureOf(Claim claim, Person person) {
-        return claim.isBound() ? claim.getStatedDue() : dueOf(claim, person);
+        return claim.isBound() ? claim.getStatedDue() : rateFigureOf(claim, person);
     }
 
     /** A person's due-total: the sum of the dues their counting claims show (n/a ones skipped);
@@ -600,13 +611,11 @@ public class ClaimService {
     }
 
     /** The claim's amount times the rate, in force on the claim's date, of its person's grade then, divided by
-     *  100, rounded as its rounding policy has it, raised to the sheet's floor in force on its date (a correction's never is); null with no rate in force then. */
-    private BigDecimal dueOf(Claim claim, Person person) {
-        BigDecimal floor = sheets.floorOn(claim.getSheetId(), claim.getDate());
+     *  100, rounded as its rounding policy has it; null with no rate in force then. */
+    private BigDecimal rateFigureOf(Claim claim, Person person) {
         return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, roundingOf(claim)))
-                .map(due -> claim.isCorrection() ? due : due.max(floor))
                 .orElse(null);
     }
 

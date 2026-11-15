@@ -245,27 +245,26 @@ public class RollupService {
 
     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it
      *  to (null: n/a), else its amount times the rate in force on its date of its person's grade
-     *  then, rounded as its rounding policy has it,
-     *  raised to the sheet's floor in force on its date (a correction's never is); an unsettled one with its late charge on top. */
+     *  then, rounded as its rounding policy has it; an unsettled one with its late charge on top, then raised to the
+     *  sheet's floor in force on its date (a correction's never is). */
     private static BigDecimal shownDueOf(Claim c, Person person, List<Rate> sheetRates, Function<LocalDate, BigDecimal> floor,
             LateCharge late, Function<Claim, RoundingMode> rounding) {
         if (c.getSettledDue() != null) {
             return c.getSettledDue();
         }
         RoundingMode mode = rounding.apply(c);
-        return late.addTo(c, figureOf(c, person, sheetRates, floor, mode), mode);
+        BigDecimal due = late.addTo(c, figureOf(c, person, sheetRates, mode), mode);
+        return due == null || c.isCorrection() ? due : due.max(floor.apply(c.getDate()));
     }
 
-    /** A claim's figure before any late charge: the one a statement bound it to (null: n/a), else
-     *  its live due. */
-    private static BigDecimal figureOf(Claim c, Person person, List<Rate> sheetRates, Function<LocalDate, BigDecimal> floor,
-            RoundingMode mode) {
+    /** A claim's figure before any late charge or floor: the one a statement bound it to (null: n/a),
+     *  else its rate figure. */
+    private static BigDecimal figureOf(Claim c, Person person, List<Rate> sheetRates, RoundingMode mode) {
         if (c.isBound()) {
             return c.getStatedDue();
         }
         return inForce(person, sheetRates, c.getDate())
                 .map(r -> c.getAmount().multiply(r.getPct()).divide(BigDecimal.valueOf(100), 2, mode))
-                .map(due -> c.isCorrection() ? due : due.max(floor.apply(c.getDate())))
                 .orElse(null);
     }
 
