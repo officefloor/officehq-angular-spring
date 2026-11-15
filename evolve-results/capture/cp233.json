@@ -1,0 +1,64 @@
+{
+  "checkpoint": 233,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp233_due-by-override",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can set a claim's due-by directly (a date entry and a button on a DRAFT, OPEN or PENDING\nclaim; CLAIM_DUE_BY_SET naming the claim and ending old=<old due-by> new=<new>; anyone else or any\nother status is refused). A due-by set this way stays as set: a holiday added later does not move\nit. Overdue, the late charge, grace and the period the claim belongs to follow the set date.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can set a claim's due-by directly (a date entry and a button on a DRAFT, OPEN or PENDING\nclaim; CLAIM_DUE_BY_SET naming the claim and ending old=<old due-by> new=<new>; anyone else or any\nother status is refused). A due-by set this way stays as set: a holiday added later does not move\nit. Overdue, the late charge, grace and the period the claim belongs to follow the set date.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "8a711eb21a7a8b74314c933b9f6a838bcd4b3ee9",
+  "reset_sha": "",
+  "preagent_sha": "e07093ee262bd5d4d3906f8cdc252bd351691808",
+  "prev_sha": "e07093ee262bd5d4d3906f8cdc252bd351691808",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8594775999999998,
+    "input_tokens": 40,
+    "output_tokens": 9340,
+    "cache_read_tokens": 902668,
+    "cache_creation_tokens": 61498,
+    "num_turns": 21,
+    "duration_ms": 366135,
+    "duration_api_ms": 87237,
+    "model": "claude-opus-5-5",
+    "session_id": "878e4249-fdcf-4a7e-abc3-e0f40b7240c6",
+    "stop_reason": "success",
+    "result_text": "A steward can now set a claim's due-by directly, and a holiday added later no longer moves it. All 4 tests pass in `bin/e2e`.\n\n**Stored data:** a new migration, `V119__claim_due_by_set.sql`, adds a yes/no flag to each claim that records whether a steward set its due-by. Claims that already exist start with it off. The flag also goes into the sheet history and into a claim's copy when it moves to another sheet.\n\n**Server:**\n- A new endpoint, `POST /claims/{id}/due-by`, in `ClaimController.java`. It calls a new `setDueBy` method in `ClaimService.java`, which refuses the change:\n  - for anyone who isn't a steward;\n  - unless the claim is DRAFT, OPEN or PENDING;\n  - if the claim's current or new due-by falls in a closed period.\n- When it goes through, it saves the new date, marks the claim as set, writes `CLAIM_DUE_BY_SET \u2026 old=<old> new=<new>` to the audit file and refreshes the totals.\n- The code that moves due-bys when a holiday is added now skips claims a steward has set.\n- Overdue, the late charge, grace and the claim's period already worked from the stored due-by, so I didn't change them.\n\n**Front end:** each claim row in `person-claims.ts` has a date entry (`claim-due-by-new`) and a \"Set due-by\" button (`claim-set-due-by`). A refusal shows its reason in the row's `claim-error`.\n\nTwo choices of mine that the request didn't cover:\n- **Closed periods:** setting a due-by is refused if the old or the new date is in a closed period, like the app's other claim changes.\n- **Claim numbers:** a claim that already has a number keeps it when its due-by moves into another period.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8594775999999998,
+        "num_turns": 21,
+        "duration_ms": 366135,
+        "duration_api_ms": 87237,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp233.agent.jsonl",
+  "agent_diff_file": "cp233.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
