@@ -15,7 +15,7 @@ import net.officefloor.hq.app.sheet.Sheet;
  * plus the grace days in force on its date of its person's grade then, before the sheet's today) gains, for every full
  * 30 days it is overdue, the late percent in force on that boundary date (its late-from plus 30, 60, 90 ... days) of
  * its figure plus the charges of the boundaries before it (compounding), each rounded as the claim's rounding policy
- * has it, added up on top; a correction (a negative amount) and a waived claim gain none. It is never bound by a statement; settling freezes it in.
+ * has it, added up on top; a correction (a negative amount) and a waived claim gain none. A statement binds it with the due (it then no longer follows the sheet's today); settling freezes it in.
  */
 public record LateCharge(LocalDate today, Function<LocalDate, BigDecimal> pctOn,
         BiFunction<String, LocalDate, Integer> graceOn) {

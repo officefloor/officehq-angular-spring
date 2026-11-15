@@ -443,7 +443,7 @@ public class ClaimService {
                 to = ClaimStatus.REVIEW;
             }
         }
-        // a claim bound by a statement settles at its bound figure, its late charge frozen in
+        // a claim bound by a statement settles at its bound figure, late charge included
         BigDecimal settling = to == ClaimStatus.SETTLED ? shownDueOf(claim, person) : null;
         if (to == ClaimStatus.SETTLED) {
             // before the clerk limit: a claim needing a proof never goes to PENDING
@@ -1004,8 +1004,8 @@ public class ClaimService {
         BigDecimal dueTotal = Sheet.capped(dueTotalOf(counted, person, today), sheets.cap(sheetId));
         for (Claim c : theirs) {
             if (counts(c, person, today)) {
-                // the statement binds the figure; the late charge keeps following the sheet's today
-                c.bind(c.getSettledDue() != null ? c.getSettledDue() : figureOf(c, person));
+                // the statement binds the due as shown, late charge included (a bound one stays as it is)
+                c.bind(shownDueOf(c, person));
             } else {
                 c.unbind();
             }
@@ -1269,14 +1269,18 @@ public class ClaimService {
                         && (c.isBound() || !(person.heldOn(c.getDate()) || person.retiredOn(today))));
     }
 
-    /** The due a claim shows: the due fixed when it was settled, else its figure with its late
-     *  charge on top, raised to the floor in force on its date. */
+    /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it to
+     *  (null: n/a), late charge included, else its rate figure with its late charge on top, raised to
+     *  the floor in force on its date. */
     private BigDecimal shownDueOf(Claim claim, Person person) {
         if (claim.getSettledDue() != null) {
             return claim.getSettledDue();
         }
+        if (claim.isBound()) {
+            return claim.getStatedDue();
+        }
         return flooredOf(claim,
-                LateCharge.of(sheets.find(claim.getSheetId())).addTo(claim, person, figureOf(claim, person), roundingOf(claim)));
+                LateCharge.of(sheets.find(claim.getSheetId())).addTo(claim, person, rateFigureOf(claim, person), roundingOf(claim)));
     }
 
     /** A due (null: n/a, which stays n/a) raised to the sheet's floor in force on the claim's date; a
@@ -1286,12 +1290,6 @@ public class ClaimService {
             return due;
         }
         return due.max(sheets.floorOn(claim.getSheetId(), claim.getDate()));
-    }
-
-    /** A claim's figure before any late charge or floor: the one a statement bound it to (null: n/a),
-     *  else (unbound) its rate figure. */
-    private BigDecimal figureOf(Claim claim, Person person) {
-        return claim.isBound() ? claim.getStatedDue() : rateFigureOf(claim, person);
     }
 
     /** A person's due-total: the sum of the dues their counting claims show (n/a ones skipped);

@@ -292,8 +292,7 @@ public class RollupService {
         Map<Claim, BigDecimal> counted = new LinkedHashMap<>();
         sheetClaims.stream()
                 .filter(c -> c.getPersonId().equals(personId) && countsFor(c, person, today))
-                .forEach(c -> counted.put(c, c.getSettledDue() != null ? c.getSettledDue()
-                        : figureOf(c, person, sheetRates, rounding.apply(c))));
+                .forEach(c -> counted.put(c, shownDueOf(c, person, sheetRates, floor, late, rounding)));
         BigDecimal dueTotal = dueTotalOf(List.copyOf(counted.keySet()), person, sheetRates, today, floor, late, rounding);
         return new Stated(counted, Sheet.capped(dueTotal, sheet.getCap()));
     }
@@ -435,7 +434,7 @@ public class RollupService {
     }
 
     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it
-     *  to (null: n/a), else its amount times the rate in force on its date of its person's grade
+     *  to (null: n/a), late charge included, else its amount times the rate in force on its date of its person's grade
      *  then (as the claim applies the rates: not a forward-only one saved after it was added), rounded as its rounding policy has it; an unsettled one with its late charge on top, then raised to the
      *  sheet's floor in force on its date (a correction's never is). */
     private static BigDecimal shownDueOf(Claim c, Person person, RateChain.Levels sheetRates, Function<LocalDate, BigDecimal> floor,
@@ -443,17 +442,16 @@ public class RollupService {
         if (c.getSettledDue() != null) {
             return c.getSettledDue();
         }
+        if (c.isBound()) {
+            return c.getStatedDue();
+        }
         RoundingMode mode = rounding.apply(c);
         BigDecimal due = late.addTo(c, person, figureOf(c, person, sheetRates, mode), mode);
         return due == null || c.isCorrection() ? due : due.max(floor.apply(c.getDate()));
     }
 
-    /** A claim's figure before any late charge or floor: the one a statement bound it to (null: n/a),
-     *  else its rate figure. */
+    /** A claim's rate figure before any late charge or floor. */
     private static BigDecimal figureOf(Claim c, Person person, RateChain.Levels sheetRates, RoundingMode mode) {
-        if (c.isBound()) {
-            return c.getStatedDue();
-        }
         return inForce(person, sheetRates.forClaim(c.getAdded()), c.getDate())
                 .map(r -> c.getAmount().multiply(r.getPct()).divide(BigDecimal.valueOf(100), 2, mode))
                 .orElse(null);

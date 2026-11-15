@@ -209,13 +209,14 @@ export interface Lateness {
   graceOf?: (c: Claim) => number;
 }
 
-/** A claim's due in cents: the due fixed when it was settled, else the greater of the sheet's floor in
- *  force on its date and its figure (the rate figure a statement bound it to, else its
+/** A claim's due in cents: the due fixed when it was settled, else the due a statement bound it to
+ *  (late charge included), else the greater of the sheet's floor in force on its date and its figure (its
  *  amount times its grade's rate in force on its date, rounded half up when `halfUp` (the claim's rounding
  *  policy) else half to even) with its late charge, rounded the same way, on top (a correction is neither
  *  raised to the floor nor charged late); null (n/a) with no figure. */
 export function claimDueCents(rates: readonly Rate[], c: Claim, floorCents: number, late: Lateness, halfUp: boolean): number | null {
   if (c.settledDue !== null) return cents(c.settledDue);
+  if (isBound(c)) return c.statedDue === null ? null : cents(c.statedDue);
   const figure = figureCents(rates, c, halfUp);
   if (figure === null) return null;
   const charged = figure + lateChargeCents(c, figure, late, halfUp);
@@ -223,7 +224,6 @@ export function claimDueCents(rates: readonly Rate[], c: Claim, floorCents: numb
 }
 
 function figureCents(rates: readonly Rate[], c: Claim, halfUp: boolean): number | null {
-  if (isBound(c)) return c.statedDue === null ? null : cents(c.statedDue);
   const pct = pctOn(rates, c.date);
   return pct === null ? null : dueCents(cents(c.amount), cents(pct), halfUp);
 }
