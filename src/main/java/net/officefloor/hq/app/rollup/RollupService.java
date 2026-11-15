@@ -54,15 +54,27 @@ public class RollupService {
             return people.values().stream().map(Figures::claimed).reduce(zero(), BigDecimal::add);
         }
 
-        /** Everyone's due-total added up, skipping n/a. */
+        /** Everyone's due-total added up, skipping n/a, trimmed. */
         BigDecimal dueTotal() {
-            return people.values().stream().map(Figures::dueTotal).filter(Objects::nonNull)
-                    .reduce(zero(), BigDecimal::add);
+            return trimmedSum(people.values().stream().map(Figures::dueTotal).filter(Objects::nonNull).toList());
         }
 
+        /** Everyone's overdue-total added up, trimmed. */
         BigDecimal overdueTotal() {
-            return people.values().stream().map(Figures::overdueTotal).reduce(zero(), BigDecimal::add);
+            return trimmedSum(people.values().stream().map(Figures::overdueTotal).toList());
         }
+    }
+
+    /** The figures added up, leaving out the single highest and the single lowest when there are
+     *  three or more. */
+    static BigDecimal trimmedSum(List<BigDecimal> figures) {
+        BigDecimal sum = figures.stream().reduce(zero(), BigDecimal::add);
+        if (figures.size() < 3) {
+            return sum;
+        }
+        BigDecimal max = figures.stream().max(BigDecimal::compareTo).orElseThrow();
+        BigDecimal min = figures.stream().min(BigDecimal::compareTo).orElseThrow();
+        return sum.subtract(max).subtract(min);
     }
 
     private final PersonRepository people;

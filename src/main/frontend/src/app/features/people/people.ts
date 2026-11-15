@@ -282,7 +282,7 @@ export class People {
   protected readonly overdueCount = computed(() =>
     [...this.overdueByPerson().values()].reduce((sum, o) => sum + o.count, 0));
   protected readonly overdueTotal = computed(() =>
-    money([...this.overdueByPerson().values()].reduce((sum, o) => sum + o.cents, 0)));
+    money(trimmedSum([...this.overdueByPerson().values()].map((o) => o.cents))));
   protected readonly money = money;
   /** The sheet's periods, by from-date. */
   protected readonly periods = signal<Period[]>([]);
@@ -338,9 +338,9 @@ export class People {
   });
   /** The names of the people on the sheet, by person id (retired ones too). */
   private readonly namesById = computed(() => new Map(this.people().map((p) => [p.id, p.name])));
-  /** Everyone's due-total added up, skipping n/a. */
+  /** Everyone's due-total added up, skipping n/a, trimmed. */
   protected readonly dueTotal = computed(() =>
-    money([...this.dueByPerson().values()].reduce<number>((sum, d) => sum + (d ?? 0), 0)));
+    money(trimmedSum([...this.dueByPerson().values()].filter((d): d is number => d !== null))));
   protected readonly claimedTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + (this.byPerson().get(p.id)?.cents ?? 0), 0)));
   /** The ids of the claims selected for a bulk action. */
@@ -782,4 +782,10 @@ export class People {
       if (seq === this.readSeq) this.error.set('Something went wrong loading people; try again.');
     }
   }
+}
+
+/** The figures added up, leaving out the single highest and the single lowest when there are three or more. */
+function trimmedSum(figures: number[]): number {
+  const sum = figures.reduce((a, b) => a + b, 0);
+  return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
 }
