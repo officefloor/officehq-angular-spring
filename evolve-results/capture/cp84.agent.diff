@@ -1,0 +1,182 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 8d374450f..f951f1af3 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -35,7 +35,7 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
+             <option [value]="g">{{ g }}</option>
+           }
+         </select>
+-        <label for="person-form-terms">Terms (days)</label>
++        <label for="person-form-terms">Terms (business days)</label>
+         <input id="person-form-terms" data-testid="person-form-terms" formControlName="terms" inputmode="numeric" autocomplete="off" />
+         @if (editingId() !== null) {
+           <label for="person-form-grade-from">Grade from</label>
+diff --git a/src/main/frontend/src/app/features/settings/settings-api.ts b/src/main/frontend/src/app/features/settings/settings-api.ts
+index 44cadf4b2..3097bcf2f 100644
+--- a/src/main/frontend/src/app/features/settings/settings-api.ts
++++ b/src/main/frontend/src/app/features/settings/settings-api.ts
+@@ -219,7 +219,7 @@ export class SettingsApi {
+ }
+ 
+ export const SETTINGS_INVALID =
+-  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of days (blank: 14) and terms for each grade of a whole number of days (blank: the sheet\'s terms) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off) and an entry date as yyyy-mm-dd (blank: off) and a cap of 0.00 or more with up to two decimals (blank: none) and a proof threshold of 0.00 or more with up to two decimals (blank: none) and grace days of a whole number of days (blank: off) and the roles for each action as clerk and/or steward, comma separated (blank: the standing rule), each from-date as yyyy-mm-dd (blank: the sheet\'s today).';
++  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of business days (blank: 14) and terms for each grade of a whole number of business days (blank: the sheet\'s terms) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off) and an entry date as yyyy-mm-dd (blank: off) and a cap of 0.00 or more with up to two decimals (blank: none) and a proof threshold of 0.00 or more with up to two decimals (blank: none) and grace days of a whole number of days (blank: off) and the roles for each action as clerk and/or steward, comma separated (blank: the standing rule), each from-date as yyyy-mm-dd (blank: the sheet\'s today).';
+ 
+ export function settingsError(e: unknown): string {
+   if (e instanceof HttpErrorResponse && e.status === 400) return SETTINGS_INVALID;
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index e3c1d9d3a..260a8a705 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -13,9 +13,9 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
+       <h2 id="settings-heading">Settings</h2>
+       <p>Clerk limit in force <strong data-testid="setting-clerk-limit-current">{{ session.clerkLimit() ?? '' }}</strong></p>
+       <p>Floor in force <strong data-testid="setting-floor-current">{{ session.floor() }}</strong></p>
+-      <p>Terms in force (days) <strong data-testid="setting-terms-current">{{ session.terms() }}</strong></p>
++      <p>Terms in force (business days) <strong data-testid="setting-terms-current">{{ session.terms() }}</strong></p>
+       @for (g of grades; track g) {
+-        <p>Terms in force for grade {{ g }} (days) <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ termsOf(g) }}</strong></p>
++        <p>Terms in force for grade {{ g }} (business days) <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ termsOf(g) }}</strong></p>
+       }
+       <p>Late percent in force <strong data-testid="setting-late-pct-current">{{ session.latePct() }}</strong></p>
+       <p>Policy date in force (blank: the sheet's today) <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
+diff --git a/src/main/java/db/migration/V53__claim_business_day_due_by.java b/src/main/java/db/migration/V53__claim_business_day_due_by.java
+new file mode 100644
+index 000000000..f294b9080
+--- /dev/null
++++ b/src/main/java/db/migration/V53__claim_business_day_due_by.java
+@@ -0,0 +1,58 @@
++package db.migration;
++
++import java.sql.Connection;
++import java.sql.Date;
++import java.sql.PreparedStatement;
++import java.sql.ResultSet;
++import java.sql.Statement;
++import java.time.LocalDate;
++import java.time.temporal.ChronoUnit;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.Map;
++import java.util.Set;
++import net.officefloor.hq.app.claim.BusinessDays;
++import org.flywaydb.core.api.migration.BaseJavaMigration;
++import org.flywaydb.core.api.migration.Context;
++
++/**
++ * Terms count business days: a claim's due-by is the terms-th business day after its date, skipping
++ * every Saturday, Sunday and holiday on the sheet. The claims already on a sheet take that due-by,
++ * each with the terms it was fixed with and the holidays on the sheet now. The terms are recovered
++ * from the due-by as it was fixed: its date plus the terms, moved past any holidays it fell on.
++ */
++public class V53__claim_business_day_due_by extends BaseJavaMigration {
++
++    @Override
++    public void migrate(Context context) throws Exception {
++        Connection connection = context.getConnection();
++        Map<String, Set<LocalDate>> holidays = new HashMap<>();
++        try (Statement select = connection.createStatement();
++                ResultSet rs = select.executeQuery("SELECT sheet_id, holiday_date FROM sheet_holiday")) {
++            while (rs.next()) {
++                holidays.computeIfAbsent(rs.getString(1), k -> new HashSet<>()).add(rs.getDate(2).toLocalDate());
++            }
++        }
++        try (Statement select = connection.createStatement();
++                ResultSet rs = select.executeQuery("SELECT id, sheet_id, claim_date, due_by FROM claim");
++                PreparedStatement update = connection.prepareStatement("UPDATE claim SET due_by = ? WHERE id = ?")) {
++            while (rs.next()) {
++                Set<LocalDate> sheetHolidays = holidays.getOrDefault(rs.getString(2), Set.of());
++                LocalDate date = rs.getDate(3).toLocalDate();
++                LocalDate fixed = rs.getDate(4).toLocalDate();
++                // the day the terms reached, before the due-by was moved past holidays
++                LocalDate reached = fixed;
++                while (reached.isAfter(date) && sheetHolidays.contains(reached.minusDays(1))) {
++                    reached = reached.minusDays(1);
++                }
++                int terms = (int) Math.max(0, ChronoUnit.DAYS.between(date, reached));
++                LocalDate due = BusinessDays.after(date, terms, sheetHolidays);
++                if (!due.equals(fixed)) {
++                    update.setDate(1, Date.valueOf(due));
++                    update.setLong(2, rs.getLong(1));
++                    update.executeUpdate();
++                }
++            }
++        }
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/BusinessDays.java b/src/main/java/net/officefloor/hq/app/claim/BusinessDays.java
+new file mode 100644
+index 000000000..2b5acca6e
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/claim/BusinessDays.java
+@@ -0,0 +1,31 @@
++package net.officefloor.hq.app.claim;
++
++import java.time.DayOfWeek;
++import java.time.LocalDate;
++import java.util.Set;
++
++/** Counting business days: every day but a Saturday, a Sunday or one of the sheet's holidays. */
++public final class BusinessDays {
++
++    private BusinessDays() {
++    }
++
++    /** Whether {@code day} is a business day. */
++    public static boolean isBusinessDay(LocalDate day, Set<LocalDate> holidays) {
++        DayOfWeek dow = day.getDayOfWeek();
++        return dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY && !holidays.contains(day);
++    }
++
++    /** The {@code count}-th business day after {@code from}, counting forward from the day after
++     *  it; {@code from} itself when {@code count} is 0. */
++    public static LocalDate after(LocalDate from, int count, Set<LocalDate> holidays) {
++        LocalDate day = from;
++        for (int left = count; left > 0; ) {
++            day = day.plusDays(1);
++            if (isBusinessDay(day, holidays)) {
++                left--;
++            }
++        }
++        return day;
++    }
++}
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+index 894ea6702..acb41a7ed 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimService.java
+@@ -745,17 +745,14 @@ public class ClaimService {
+     }
+ 
+     /** The due-by a claim of the person dated {@code on} is fixed with as it is created: its date
+-     *  plus the person's own terms, else those of their grade then in force on it, else the sheet's;
+-     *  when that falls on one of the sheet's holidays, the next day that is not one. */
++     *  the terms-th business day after it, the person's own terms, else those of their grade then in
++     *  force on it, else the sheet's. Business days skip every Saturday, Sunday and holiday on the
++     *  sheet. */
+     private LocalDate dueByOf(String sheetId, Person person, LocalDate on) {
+         int terms = person.getTerms() != null ? person.getTerms()
+                 : sheets.find(sheetId).map(s -> s.termsFor(person.gradeOn(on), on)).orElse(Sheet.DEFAULT_TERMS);
+         Set<LocalDate> holidays = new HashSet<>(settings.holidays(sheetId));
+-        LocalDate due = on.plusDays(terms);
+-        while (holidays.contains(due)) {
+-            due = due.plusDays(1);
+-        }
+-        return due;
++        return BusinessDays.after(on, terms, holidays);
+     }
+ 
+     /** The number a claim due by {@code date} takes as it is opened: under period numbering (set,
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SheetHoliday.java b/src/main/java/net/officefloor/hq/app/settings/SheetHoliday.java
+index 5a1300211..f99ee787a 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SheetHoliday.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SheetHoliday.java
+@@ -8,7 +8,7 @@ import jakarta.persistence.Id;
+ import jakarta.persistence.Table;
+ import java.time.LocalDate;
+ 
+-/** A holiday on the sheet: a claim's due-by, as it is fixed at creation, is never one. */
++/** A holiday on the sheet: terms count business days, which skip it, as a claim's due-by is fixed at creation. */
+ @Entity
+ @Table(name = "sheet_holiday")
+ public class SheetHoliday {
