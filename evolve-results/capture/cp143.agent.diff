@@ -1,0 +1,579 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 775cfa8fb..96118ee9d 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -42,6 +42,9 @@ export class Session {
+   /** The active sheet's pot (two decimals), null when blank (none): each balanced pool's members
+    *  cut it by their shares. Not dated. */
+   readonly pot = signal<string | null>(null);
++  /** The month (1 to 12) the active sheet's fiscal year starts in; 1 unless set. Not dated. A
++   *  fiscal year is named FY<yyyy> by the calendar year its first day falls in. */
++  readonly fiscalStartMonth = signal(1);
+   /** The active sheet's void reasons, in the order they were added: while there are any, a claim
+    *  is voided only with one of them. */
+   readonly voidReasons = signal<string[]>([]);
+@@ -69,6 +72,12 @@ export class Session {
+   /** Bumped on every sheet load, so a load of the same id again re-reads what the sheet holds. */
+   readonly loads = signal(0);
+ 
++  /** The fiscal year (FY<yyyy>) a date (yyyy-mm-dd) falls in, by the sheet's fiscal start month. */
++  fiscalYearOf(date: string): string {
++    const year = Number(date.slice(0, 4));
++    return `FY${Number(date.slice(5, 7)) >= this.fiscalStartMonth() ? year : year - 1}`;
++  }
++
+   /** The floor (two decimals) in force on a date: a live due of a claim dated then is at least it;
+    *  the starting 1.00 before every from-date. */
+   floorOn(date: string | null): string {
+diff --git a/src/main/frontend/src/app/features/periods/periods-api.ts b/src/main/frontend/src/app/features/periods/periods-api.ts
+index afc67e082..2378f5f87 100644
+--- a/src/main/frontend/src/app/features/periods/periods-api.ts
++++ b/src/main/frontend/src/app/features/periods/periods-api.ts
+@@ -62,6 +62,12 @@ export class PeriodsApi {
+     return firstValueFrom(this.http.post<Period[]>(`${this.url(sheetId)}/generate`, { from, to }, { headers: this.headers() }));
+   }
+ 
++  /** Make the twelve monthly periods of the fiscal year named by its first day's calendar year,
++   *  as {@link generate} does; returns the periods made. */
++  generateFiscalYear(sheetId: string, year: string): Promise<Period[]> {
++    return firstValueFrom(this.http.post<Period[]>(`${this.url(sheetId)}/generate-fy`, { year }, { headers: this.headers() }));
++  }
++
+   close(sheetId: string, id: number): Promise<Period> {
+     return firstValueFrom(this.http.post<Period>(`${this.url(sheetId)}/${id}/close`, null, { headers: this.headers() }));
+   }
+@@ -95,6 +101,11 @@ export function generateError(e: unknown): string {
+   return otherError(e);
+ }
+ 
++export function generateFiscalYearError(e: unknown): string {
++  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a fiscal year as yyyy.';
++  return otherError(e);
++}
++
+ export function closeError(e: unknown): string {
+   if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not close a period.';
+   if (e instanceof HttpErrorResponse && e.status === 409) return 'The period is already closed.';
+diff --git a/src/main/frontend/src/app/features/periods/periods.ts b/src/main/frontend/src/app/features/periods/periods.ts
+index 0a4bb8c77..961c8df65 100644
+--- a/src/main/frontend/src/app/features/periods/periods.ts
++++ b/src/main/frontend/src/app/features/periods/periods.ts
+@@ -2,7 +2,7 @@ import { Component, effect, inject, input, output, signal, untracked } from '@an
+ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Session } from '../../core/session';
+ import { money } from '../claims/claims-api';
+-import { Period, PeriodsApi, closeError, generateError, periodDueCents, periodError, reopenError } from './periods-api';
++import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, periodDueCents, periodError, reopenError } from './periods-api';
+ 
+ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+ 
+@@ -32,6 +32,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+         <label for="period-generate-to">To</label>
+         <input id="period-generate-to" type="date" data-testid="period-generate-to" formControlName="to" />
+         <button type="submit" data-testid="period-generate">Generate monthly periods</button>
++        <label for="period-generate-fy-year">Fiscal year (yyyy)</label>
++        <input id="period-generate-fy-year" data-testid="period-generate-fy-year" [formControl]="fyForm.controls.year" inputmode="numeric" autocomplete="off" />
++        <button type="button" data-testid="period-generate-fy" (click)="generateFiscalYear()">Generate fiscal year</button>
+         @if (generated() !== null) {
+           <p role="status">Made <strong data-testid="period-generated">{{ generated() }}</strong></p>
+         }
+@@ -41,7 +44,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+       </form>
+       <table data-testid="periods-list">
+         <thead>
+-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
++          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+         </thead>
+         <tbody>
+           @for (p of periods(); track p.id) {
+@@ -51,6 +54,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+               <td data-testid="period-to">{{ p.to }}</td>
+               <td data-testid="period-due-total">{{ dueOf(p) }}</td>
+               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
++              <td data-testid="period-fy">{{ session.fiscalYearOf(p.from) }}</td>
+               <td>
+                 <button type="button" data-testid="period-close" (click)="close(p)"
+                   [attr.aria-label]="'Close period ' + p.name">Close</button>
+@@ -70,7 +74,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
+   `,
+ })
+ export class Periods {
+-  private readonly session = inject(Session);
++  protected readonly session = inject(Session);
+   private readonly api = inject(PeriodsApi);
+ 
+   /** The sheet's periods, by from-date. */
+@@ -97,6 +101,10 @@ export class Periods {
+     from: new FormControl('', { nonNullable: true }),
+     to: new FormControl('', { nonNullable: true }),
+   });
++  /** The fiscal year whose twelve monthly periods are generated. */
++  protected readonly fyForm = new FormGroup({
++    year: new FormControl('', { nonNullable: true }),
++  });
+   /** How many periods the last generate made; null while one runs or before the first. */
+   protected readonly generated = signal<number | null>(null);
+   protected readonly generateErr = signal<string | null>(null);
+@@ -105,11 +113,13 @@ export class Periods {
+   constructor() {
+     this.form.valueChanges.subscribe(() => this.error.set(null));
+     this.generateForm.valueChanges.subscribe(() => this.generateErr.set(null));
++    this.fyForm.valueChanges.subscribe(() => this.generateErr.set(null));
+     effect(() => {
+       this.session.sheetId();
+       this.session.loads();
+       untracked(() => {
+         this.generateForm.reset({ from: '', to: '' });
++        this.fyForm.reset({ year: '' });
+         this.generated.set(null);
+         this.generateErr.set(null);
+       });
+@@ -146,6 +156,32 @@ export class Periods {
+     }
+   }
+ 
++  /** Make the twelve monthly periods of a fiscal year as the month range generate does; then show
++   *  how many were made. */
++  protected async generateFiscalYear(): Promise<void> {
++    if (this.generating) return;
++    this.generated.set(null);
++    this.generateErr.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    const year = this.fyForm.controls.year.value.trim();
++    if (!/^\d{4}$/.test(year)) {
++      this.generateErr.set('Enter a fiscal year as yyyy.');
++      return;
++    }
++    this.generating = true;
++    try {
++      const made = await this.api.generateFiscalYear(sheetId, year);
++      if (this.session.sheetId() !== sheetId) return;
++      for (const period of made) this.saved.emit(period);
++      this.generated.set(made.length);
++    } catch (e) {
++      this.generateErr.set(generateFiscalYearError(e));
++    } finally {
++      this.generating = false;
++    }
++  }
++
+   /** A closed period shows the due-total fixed when it was closed; an open one its live total. */
+   protected dueOf(p: Period): string {
+     return money(periodDueCents(p, this.dueTotals()));
+diff --git a/src/main/frontend/src/app/features/settings/settings-api.ts b/src/main/frontend/src/app/features/settings/settings-api.ts
+index 49eca5664..29824ed86 100644
+--- a/src/main/frontend/src/app/features/settings/settings-api.ts
++++ b/src/main/frontend/src/app/features/settings/settings-api.ts
+@@ -34,6 +34,8 @@ export const POLICY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+ 
+ /** Terms of a whole number of days. */
+ export const TERMS_PATTERN = /^\d{1,4}$/;
++/** A fiscal year start month: 1 to 12. */
++export const FISCAL_START_MONTH_PATTERN = /^(0?[1-9]|1[0-2])$/;
+ 
+ /** The grades a person can hold, each of which can have terms of its own. */
+ export const GRADES = ['A', 'B', 'C'] as const;
+@@ -61,6 +63,8 @@ export interface Settings {
+   /** Two decimals, as the server formats it: each balanced pool's members cut it by their shares;
+    *  null when blank (none). Not dated. */
+   pot: string | null;
++  /** The month (1 to 12) the fiscal year starts in; 1 unless set. Not dated. */
++  fiscalStartMonth: number;
+   /** Days, by grade: the terms a grade has of its own; a grade not here uses the sheet's terms. */
+   gradeTerms: Record<string, number>;
+   /** Two decimals, as the server formats it: a person's due-total is at most it; null when there is none. */
+@@ -187,6 +191,12 @@ export class SettingsApi {
+     );
+   }
+ 
++  setFiscalStartMonth(sheetId: string, value: string): Promise<Settings> {
++    return firstValueFrom(
++      this.http.put<Settings>(`${this.url(sheetId)}/settings/fiscal-start-month`, { value }, { headers: this.headers() }),
++    );
++  }
++
+   setPot(sheetId: string, value: string): Promise<Settings> {
+     return firstValueFrom(
+       this.http.put<Settings>(`${this.url(sheetId)}/settings/pot`, { value }, { headers: this.headers() }),
+@@ -261,7 +271,7 @@ export class SettingsApi {
+ }
+ 
+ export const SETTINGS_INVALID =
+-  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of business days (blank: 14) and terms for each grade of a whole number of business days (blank: the sheet\'s terms) and grace days for each grade of a whole number of days (blank: none) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off) and an entry date as yyyy-mm-dd (blank: off) and a cap of 0.00 or more with up to two decimals (blank: none) and a proof threshold of 0.00 or more with up to two decimals (blank: none) and grace days of a whole number of days (blank: off) and a pot of 0.00 or more with up to two decimals (blank: none) and a parent sheet id without spaces (blank: none) and the roles for each action as clerk and/or steward, comma separated (blank: the standing rule), each from-date as yyyy-mm-dd (blank: the sheet\'s today).';
++  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of business days (blank: 14) and terms for each grade of a whole number of business days (blank: the sheet\'s terms) and grace days for each grade of a whole number of days (blank: none) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off) and an entry date as yyyy-mm-dd (blank: off) and a cap of 0.00 or more with up to two decimals (blank: none) and a proof threshold of 0.00 or more with up to two decimals (blank: none) and grace days of a whole number of days (blank: off) and a pot of 0.00 or more with up to two decimals (blank: none) and a fiscal start month from 1 to 12 and a parent sheet id without spaces (blank: none) and the roles for each action as clerk and/or steward, comma separated (blank: the standing rule), each from-date as yyyy-mm-dd (blank: the sheet\'s today).';
+ 
+ export function settingsError(e: unknown): string {
+   if (e instanceof HttpErrorResponse && e.status === 400) return SETTINGS_INVALID;
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 763c9a5b0..1eb129b6d 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -1,10 +1,10 @@
+ import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+ import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+ import { Session } from '../../core/session';
+-import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTERN, POLICY_DATE_PATTERN, PermissionAction, ROLES, TERMS_PATTERN, Delegation, RoleGrant, SETTINGS_INVALID, SettingsApi, delegateError, holidayError, roleError, settingsError, voidReasonError } from './settings-api';
++import { FISCAL_START_MONTH_PATTERN, GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTERN, POLICY_DATE_PATTERN, PermissionAction, ROLES, TERMS_PATTERN, Delegation, RoleGrant, SETTINGS_INVALID, SettingsApi, delegateError, holidayError, roleError, settingsError, voidReasonError } from './settings-api';
+ 
+ // The sheet's settings (its permission matrix: the roles that may open, settle, void, reassign, close or reopen, each blank for its standing rule; its clerk limit: a clerk settles only claims whose due is at or below it;
+-// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period; its entry date: while set, a new claim left undated takes it; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed; its pot: each balanced pool's members cut it by their shares) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one, and the sheet's holidays (a claim's due-by, as it is created, is moved past them) with the form that adds one, and the sheet's void reasons (while there are any, a claim is voided only with one of them) with the form that adds one.
++// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period; its entry date: while set, a new claim left undated takes it; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed; its fiscal start month: each period shows the fiscal year its from-date falls in; its pot: each balanced pool's members cut it by their shares) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one, and the sheet's holidays (a claim's due-by, as it is created, is moved past them) with the form that adds one, and the sheet's void reasons (while there are any, a claim is voided only with one of them) with the form that adds one.
+ @Component({
+   selector: 'app-settings',
+   imports: [ReactiveFormsModule],
+@@ -32,6 +32,7 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
+       <p>Note threshold in force (blank: none) <strong data-testid="setting-note-threshold-current">{{ session.noteThreshold() ?? '' }}</strong></p>
+       <p>Grace days (blank: off) <strong data-testid="setting-grace-days-current">{{ graceDays() ?? '' }}</strong></p>
+       <p>Pot (blank: none) <strong data-testid="setting-pot-current">{{ session.pot() ?? '' }}</strong></p>
++      <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</strong></p>
+       <p>Parent sheet (blank: none) <strong data-testid="setting-parent-current">{{ session.parent() ?? '' }}</strong></p>
+       @for (p of permissionList; track p.action) {
+         <p>Roles that may {{ p.action }} (blank: {{ p.standing }}) <strong [attr.data-testid]="'setting-perm-' + p.action + '-current'">{{ permissions()[p.action] ?? '' }}</strong></p>
+@@ -93,6 +94,8 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
+         <input id="setting-grace-days" data-testid="setting-grace-days" formControlName="graceDays" inputmode="numeric" autocomplete="off" />
+         <label for="setting-pot">Pot: each balanced pool's members cut it by their shares (blank: none)</label>
+         <input id="setting-pot" data-testid="setting-pot" formControlName="pot" inputmode="decimal" autocomplete="off" />
++        <label for="setting-fiscal-start-month">Fiscal year start month: 1 to 12</label>
++        <input id="setting-fiscal-start-month" data-testid="setting-fiscal-start-month" formControlName="fiscalStartMonth" inputmode="numeric" autocomplete="off" />
+         <label for="setting-parent">Parent sheet id: a grade with no rate of its own takes the parent's (blank: none)</label>
+         <input id="setting-parent" data-testid="setting-parent" formControlName="parent" autocomplete="off" />
+         @for (p of permissionList; track p.action) {
+@@ -238,6 +241,7 @@ export class Settings {
+     noteThresholdFrom: new FormControl('', { nonNullable: true }),
+     graceDays: new FormControl('', { nonNullable: true }),
+     pot: new FormControl('', { nonNullable: true }),
++    fiscalStartMonth: new FormControl('', { nonNullable: true }),
+     parent: new FormControl('', { nonNullable: true }),
+   });
+   /** A grade's own terms, typed in beside the other settings and saved with them. */
+@@ -325,6 +329,7 @@ export class Settings {
+         this.entryDate.set(null);
+         this.graceDays.set(null);
+         this.session.pot.set(null);
++        this.session.fiscalStartMonth.set(1);
+         this.grants.set([]);
+         this.permissions.set({});
+         this.settingsErr.set(null);
+@@ -340,7 +345,7 @@ export class Settings {
+         this.voidReasonForm.reset({ reason: '' }, { emitEvent: false });
+         this.settingsForm.reset({
+           clerkLimit: '', clerkLimitFrom: '', floor: '', floorFrom: '', terms: '', termsFrom: '', latePct: '', latePctFrom: '',
+-          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', noteThreshold: '', noteThresholdFrom: '', graceDays: '', pot: '', parent: '',
++          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', noteThreshold: '', noteThresholdFrom: '', graceDays: '', pot: '', fiscalStartMonth: '', parent: '',
+         }, { emitEvent: false });
+         this.gradeTermsForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
+         this.gradeTermsFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
+@@ -368,7 +373,7 @@ export class Settings {
+     this.settingsErr.set(null);
+     const sheetId = this.session.sheetId();
+     if (!sheetId) return;
+-    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, noteThreshold, noteThresholdFrom, graceDays, pot, parent } = this.settingsForm.controls;
++    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, noteThreshold, noteThresholdFrom, graceDays, pot, fiscalStartMonth, parent } = this.settingsForm.controls;
+     // only the settings typed into (or entered and left, as when one already blank is cleared),
+     // or whose from-date was, since the last save are saved (the clerk limit when none is)
+     const typed = (c: AbstractControl) => c.dirty || c.touched;
+@@ -383,6 +388,7 @@ export class Settings {
+     const saveNoteThreshold = typed(noteThreshold) || typed(noteThresholdFrom);
+     const saveGraceDays = typed(graceDays);
+     const savePot = typed(pot);
++    const saveFiscalStartMonth = typed(fiscalStartMonth);
+     const saveParent = typed(parent);
+     const gradeTermsToSave = GRADES
+       .filter((g) => typed(this.gradeTermsForm.controls[g]) || typed(this.gradeTermsFromForm.controls[g]))
+@@ -410,7 +416,7 @@ export class Settings {
+         typed: this.permissionsForm.controls[p.action].value.trim(),
+       }));
+     const saveLimit = typed(clerkLimit) || typed(clerkLimitFrom)
+-      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveNoteThreshold || saveGraceDays || savePot || saveParent);
++      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveNoteThreshold || saveGraceDays || savePot || saveFiscalStartMonth || saveParent);
+     const limitFrom = clerkLimitFrom.value.trim();
+     const floorFromValue = floorFrom.value.trim();
+     const termsFromValue = termsFrom.value.trim();
+@@ -431,6 +437,7 @@ export class Settings {
+     const noteThresholdValue = noteThreshold.value.trim();
+     const graceDaysValue = graceDays.value.trim();
+     const potValue = pot.value.trim();
++    const fiscalStartMonthValue = fiscalStartMonth.value.trim();
+     const parentValue = parent.value.trim();
+     if ((saveLimit && limitValue !== '' && !LIMIT_PATTERN.test(limitValue))
+         || (saveFloor && floorValue !== '' && !LIMIT_PATTERN.test(floorValue))
+@@ -447,6 +454,7 @@ export class Settings {
+         || (saveNoteThreshold && noteThresholdValue !== '' && !LIMIT_PATTERN.test(noteThresholdValue))
+         || (saveGraceDays && graceDaysValue !== '' && !TERMS_PATTERN.test(graceDaysValue))
+         || (savePot && potValue !== '' && !LIMIT_PATTERN.test(potValue))
++        || (saveFiscalStartMonth && !FISCAL_START_MONTH_PATTERN.test(fiscalStartMonthValue))
+         || (saveParent && !/^\S*$/.test(parentValue))
+         || badFrom(saveLimit, limitFrom) || badFrom(saveFloor, floorFromValue) || badFrom(saveTerms, termsFromValue)
+         || badFrom(saveLatePct, latePctFromValue) || badFrom(saveCap, capFromValue)
+@@ -545,6 +553,11 @@ export class Settings {
+         if (pot.value.trim() === potValue) { pot.markAsPristine(); pot.markAsUntouched(); }
+         if (this.session.sheetId() === sheetId) this.session.pot.set(saved.pot);
+       }
++      if (saveFiscalStartMonth) {
++        const saved = await this.api.setFiscalStartMonth(sheetId, fiscalStartMonthValue);
++        settled(fiscalStartMonth, fiscalStartMonthValue);
++        if (this.session.sheetId() === sheetId) this.session.fiscalStartMonth.set(saved.fiscalStartMonth);
++      }
+       if (saveParent) {
+         const saved = await this.api.setParent(sheetId, parentValue);
+         settled(parent, parentValue);
+@@ -683,6 +696,10 @@ export class Settings {
+         this.entryDate.set(settings.entryDate);
+         this.graceDays.set(settings.graceDays);
+         this.session.pot.set(settings.pot);
++        this.session.fiscalStartMonth.set(settings.fiscalStartMonth);
++        // the fiscal start month's field starts at the month in force
++        const fiscalStartMonth = this.settingsForm.controls.fiscalStartMonth;
++        if (!fiscalStartMonth.dirty) fiscalStartMonth.setValue(String(settings.fiscalStartMonth), { emitEvent: false });
+         // the pot's field starts at the pot, so clearing it is a change that saves "none"
+         const pot = this.settingsForm.controls.pot;
+         if (!pot.dirty) pot.setValue(settings.pot ?? '', { emitEvent: false });
+diff --git a/src/main/java/net/officefloor/hq/app/history/HistoryService.java b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+index eb90268d4..d6d39e0ad 100644
+--- a/src/main/java/net/officefloor/hq/app/history/HistoryService.java
++++ b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+@@ -57,7 +57,7 @@ public class HistoryService {
+     }
+ 
+     record SheetState(LocalDate policyDate, List<SettingState> settings, LocalDate periodNumberingFrom,
+-            Integer graceDays, boolean archived, LocalDate entryDate, BigDecimal pot) {
++            Integer graceDays, boolean archived, LocalDate entryDate, BigDecimal pot, Integer fiscalStartMonth) {
+     }
+ 
+     record GradeState(LocalDate from, String grade) {
+@@ -127,7 +127,7 @@ public class HistoryService {
+                 .toList();
+         write(sheet.getId(), SHEET, sheet.getId(), new SheetState(sheet.getPolicyDate(), settings,
+                 sheet.getPeriodNumberingFrom(), sheet.getGraceDays(), sheet.isArchived(), sheet.getEntryDate(),
+-                sheet.getPot()));
++                sheet.getPot(), sheet.getFiscalStartMonth()));
+     }
+ 
+     /** Write the version of an entity of the sheet now, if it differs from the last one. */
+@@ -246,6 +246,7 @@ public class HistoryService {
+                     sheet.setGraceDays(s.graceDays());
+                     sheet.setEntryDate(s.entryDate());
+                     sheet.setPot(s.pot());
++                    sheet.setFiscalStartMonth(s.fiscalStartMonth() == null ? 1 : s.fiscalStartMonth());
+                     if (s.archived()) {
+                         sheet.archive();
+                     }
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodController.java b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+index f3c66480b..8c7a524ba 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodController.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodController.java
+@@ -101,6 +101,20 @@ public class PeriodController {
+         return service.generate(sheetId, user.trim(), body.from(), body.to()).stream().map(PeriodView::of).toList();
+     }
+ 
++    /** A fiscal year as the generate form submits it: the calendar year (yyyy) its first day falls in. */
++    public record GenerateFiscalYearForm(@NotNull @Pattern(regexp = "\\d{4}") String year) {
++    }
++
++    @PostMapping("/generate-fy")
++    @ResponseStatus(HttpStatus.CREATED)
++    public List<PeriodView> generateFiscalYear(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody GenerateFiscalYearForm body) {
++        return service.generateFiscalYear(sheetId, user.trim(), Integer.parseInt(body.year())).stream()
++                .map(PeriodView::of).toList();
++    }
++
+     @PostMapping("/{id}/close")
+     public PeriodView close(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/period/PeriodService.java b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+index a3467fc1e..d7db7c232 100644
+--- a/src/main/java/net/officefloor/hq/app/period/PeriodService.java
++++ b/src/main/java/net/officefloor/hq/app/period/PeriodService.java
+@@ -105,6 +105,17 @@ public class PeriodService {
+         return made;
+     }
+ 
++    /** Generate the twelve monthly periods of a fiscal year, named FY&lt;yyyy&gt; by the calendar year
++     *  its first day falls in: from the first of the sheet's fiscal start month in that year to
++     *  the end of the eleventh month after it, exactly as {@link #generate} does. */
++    @Transactional
++    public List<Period> generateFiscalYear(String sheetId, String user, int year) {
++        sheets.load(sheetId, user);
++        int startMonth = settings.fiscalStartMonth(sheetId);
++        YearMonth first = YearMonth.of(year, startMonth);
++        return generate(sheetId, user, first.atDay(1), first.plusMonths(11).atEndOfMonth());
++    }
++
+     /** Close a period, fixing each person's due-total for it, and its own (their sum), at the
+      *  figures they show now (afresh for a soft-closed one); refused (403) when the user's role may
+      *  not close by the sheet's permission matrix, and (409) when it is already closed. */
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 7a3d8cbaa..36496fabb 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -39,22 +39,22 @@ public class SettingsController {
+      *  none, the floor with two decimals, the terms in days, the late percent with two decimals,
+      *  the policy date, null when blank, the period numbering from-date, null when blank (off),
+      *  the terms each grade has of its own, a grade without them left out, the cap with two
+-     *  decimals, null for none, and the proof threshold with two decimals, null for none, the grace days, null when blank (off), the entry date, null when blank (off), the pot with two decimals, null for none, each of the dated ones as in force on the sheet's today; and every
++     *  decimals, null for none, and the proof threshold with two decimals, null for none, the grace days, null when blank (off), the entry date, null when blank (off), the pot with two decimals, null for none, the month (1 to 12) the fiscal year starts in, each of the dated ones as in force on the sheet's today; and every
+      *  value recorded for the dated settings, by key, each key's by from-date; and the permission
+      *  matrix: the roles set for each action, comma separated, an action left blank left out. */
+     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
+             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
+-            Integer graceDays, LocalDate entryDate, String pot, Map<String, List<DatedValue>> dated, Map<String, String> permissions) {
++            Integer graceDays, LocalDate entryDate, String pot, int fiscalStartMonth, Map<String, List<DatedValue>> dated, Map<String, String> permissions) {
+         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct, LocalDate policyDate,
+                 LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, BigDecimal cap, BigDecimal proofThreshold,
+-                Integer graceDays, LocalDate entryDate, BigDecimal pot, Map<String, List<DatedSetting>> dated, Map<Permission, String> permissions) {
++                Integer graceDays, LocalDate entryDate, BigDecimal pot, int fiscalStartMonth, Map<String, List<DatedSetting>> dated, Map<Permission, String> permissions) {
+             Map<String, String> perms = new TreeMap<>();
+             permissions.forEach((action, roles) -> perms.put(action.key(), roles));
+             return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms,
+                     latePct.setScale(2).toPlainString(), policyDate, periodNumberingFrom, gradeTerms,
+                     cap == null ? null : cap.setScale(2).toPlainString(),
+                     proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), graceDays, entryDate,
+-                    pot == null ? null : pot.setScale(2).toPlainString(), DatedValue.of(dated), perms);
++                    pot == null ? null : pot.setScale(2).toPlainString(), fiscalStartMonth, DatedValue.of(dated), perms);
+         }
+     }
+ 
+@@ -131,6 +131,10 @@ public class SettingsController {
+     public record GraceDaysForm(@NotNull @Pattern(regexp = "(\\d{1,4})?") String value) {
+     }
+ 
++    /** The fiscal year's start month as the form submits it: a month from 1 to 12. */
++    public record FiscalStartMonthForm(@NotNull @Pattern(regexp = "0?[1-9]|1[0-2]") String value) {
++    }
++
+     /** The pot as the form submits it: 0.00 or more with up to two decimals, blank for none. */
+     public record PotForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value) {
+     }
+@@ -366,6 +370,15 @@ public class SettingsController {
+         return view(sheetId);
+     }
+ 
++    @PutMapping("/settings/fiscal-start-month")
++    public SettingsView setFiscalStartMonth(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @Valid @RequestBody FiscalStartMonthForm body) {
++        service.setFiscalStartMonth(sheetId, user.trim(), Integer.parseInt(body.value()));
++        return view(sheetId);
++    }
++
+     @PutMapping("/settings/pot")
+     public SettingsView setPot(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+@@ -399,7 +412,7 @@ public class SettingsController {
+     private SettingsView view(String sheetId) {
+         return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId),
+                 service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId),
+-                gradeTerms(sheetId), service.cap(sheetId), service.proofThreshold(sheetId), service.graceDays(sheetId), service.entryDate(sheetId), service.pot(sheetId), service.datedSettings(sheetId),
++                gradeTerms(sheetId), service.cap(sheetId), service.proofThreshold(sheetId), service.graceDays(sheetId), service.entryDate(sheetId), service.pot(sheetId), service.fiscalStartMonth(sheetId), service.datedSettings(sheetId),
+                 service.permissions(sheetId));
+     }
+ 
+@@ -415,7 +428,7 @@ public class SettingsController {
+         }
+         return SettingsView.of(sheet.getClerkLimit(), sheet.getFloor(), sheet.getTerms(), sheet.getLatePct(),
+                 sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(), gradeTerms, sheet.getCap(),
+-                sheet.getProofThreshold(), sheet.getGraceDays(), sheet.getEntryDate(), sheet.getPot(), sheet.getDatedSettings(), then.permissions());
++                sheet.getProofThreshold(), sheet.getGraceDays(), sheet.getEntryDate(), sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getDatedSettings(), then.permissions());
+     }
+ 
+     /** A from-date as the form submits it; null when blank or left out (the sheet's today). */
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index b5ee7939f..f67c5158d 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -50,6 +50,8 @@ public class SettingsService {
+ 
+     /** The key the pot is audited under. */
+     public static final String POT = "pot";
++    /** The key the fiscal year's start month is audited under. */
++    public static final String FISCAL_START_MONTH = "fiscal-start-month";
+ 
+     /** The key the parent sheet is audited under. */
+     public static final String PARENT = "parent";
+@@ -294,6 +296,25 @@ public class SettingsService {
+         return graceDays;
+     }
+ 
++    /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. */
++    @Transactional(readOnly = true)
++    public int fiscalStartMonth(String sheetId) {
++        return sheets.find(sheetId).map(Sheet::getFiscalStartMonth).orElse(1);
++    }
++
++    /** Set the month (1 to 12) the sheet's fiscal year starts in, the sheet created first if it was
++     *  never loaded; not dated. */
++    @Transactional
++    public int setFiscalStartMonth(String sheetId, String user, int month) {
++        Sheet sheet = sheets.load(sheetId, user);
++        sheets.lock(sheetId);
++        sheet.setFiscalStartMonth(month);
++        sheets.flush();
++        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
++                + " key=" + FISCAL_START_MONTH + " value=" + month);
++        return month;
++    }
++
+     /** The sheet's pot; null when blank (none). */
+     @Transactional(readOnly = true)
+     public BigDecimal pot(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index f82bf62bc..39033c69f 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -97,6 +97,10 @@ public class Sheet {
+     @Column(name = "grace_days")
+     private Integer graceDays;
+ 
++    /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. Not dated. */
++    @Column(name = "fiscal_start_month", nullable = false)
++    private int fiscalStartMonth = 1;
++
+     /** The pot shared out among each balanced pool's members by their shares; null when blank
+      *  (none). Not dated. */
+     @Column(name = "pot")
+@@ -121,7 +125,7 @@ public class Sheet {
+     }
+ 
+     /** A clone of the sheet under another id, created by a user: its today and every setting (its
+-     *  dated settings, policy date, period numbering, entry date, grace days, pot and parent). It is
++     *  dated settings, policy date, period numbering, entry date, grace days, fiscal start month, pot and parent). It is
+      *  not archived and has given no claim number yet. */
+     public Sheet clonedTo(String id, String createdBy) {
+         Sheet copy = new Sheet(id, createdBy, today);
+@@ -130,6 +134,7 @@ public class Sheet {
+         copy.periodNumberingFrom = periodNumberingFrom;
+         copy.entryDate = entryDate;
+         copy.graceDays = graceDays;
++        copy.fiscalStartMonth = fiscalStartMonth;
+         copy.pot = pot;
+         copy.parent = parent;
+         return copy;
+@@ -290,6 +295,14 @@ public class Sheet {
+         this.graceDays = graceDays;
+     }
+ 
++    public int getFiscalStartMonth() {
++        return fiscalStartMonth;
++    }
++
++    public void setFiscalStartMonth(int fiscalStartMonth) {
++        this.fiscalStartMonth = fiscalStartMonth;
++    }
++
+     public BigDecimal getPot() {
+         return pot;
+     }
+diff --git a/src/main/resources/db/migration/V78__sheet_fiscal_start_month.sql b/src/main/resources/db/migration/V78__sheet_fiscal_start_month.sql
+new file mode 100644
+index 000000000..385a3a857
+--- /dev/null
++++ b/src/main/resources/db/migration/V78__sheet_fiscal_start_month.sql
+@@ -0,0 +1,3 @@
++-- The month (1 to 12) the sheet's fiscal year starts in; a fiscal year is named FY<yyyy> by the
++-- calendar year its first day falls in. Not dated.
++ALTER TABLE sheet ADD COLUMN fiscal_start_month INTEGER NOT NULL DEFAULT 1;
