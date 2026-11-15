@@ -423,7 +423,7 @@ public class RollupService {
     }
 
     /** A figure as the screen shows it: two decimals, or n/a. */
-    private static String text(BigDecimal value) {
+    public static String text(BigDecimal value) {
         return value == null ? "n/a" : value.setScale(2).toPlainString();
     }
 
