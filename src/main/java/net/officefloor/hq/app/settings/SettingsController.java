@@ -212,7 +212,7 @@ public class SettingsController {
     /** A role as the form submits it: a user name without spaces and clerk, steward or viewer. */
     public record RoleForm(
             @NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String user,
-            @NotNull @Pattern(regexp = "clerk|steward|viewer") String role) {
+            @NotNull @Pattern(regexp = "clerk|steward|viewer|restricted") String role) {
     }
 
     public record DelegationView(long id, String user, String steward, LocalDate from, LocalDate to) {

@@ -541,10 +541,26 @@ export class People {
   protected readonly grades = GRADES;
   protected readonly columns = PEOPLE_COLUMNS;
   protected readonly people = signal<Person[]>([]);
-  /** The people the list shows: retired ones (any with a retirement date) only with "show retired" on. */
+  /** The people the list shows: retired ones (any with a retirement date) only with "show retired" on; for a
+   *  restricted user, only the person who goes by their name and the people of the crews that person leads or
+   *  belongs to. */
   protected readonly shownPeople = computed(() => {
-    const shown = this.session.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null);
+    const visible = this.visibleIds();
+    const listed = visible ? this.people().filter((p) => visible.has(p.id)) : this.people();
+    const shown = this.session.showRetired() ? listed : listed.filter((p) => p.retiredFrom === null);
     return this.sorted(shown);
+  });
+  /** The ids of the people a restricted user may see on the list; null when the user is not restricted. */
+  private readonly visibleIds = computed<Set<number> | null>(() => {
+    if (this.myRole() !== 'restricted') return null;
+    const me = this.me();
+    if (!me) return new Set();
+    const ids = new Set([me.id]);
+    for (const c of this.crews()) {
+      const people = crewIds(c);
+      if (people.includes(me.id)) people.forEach((id) => ids.add(id));
+    }
+    return ids;
   });
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);

@@ -805,10 +805,11 @@ public class SettingsService {
     }
 
     /** Whether the user's role may take the action: as the permission matrix sets it, else by its
-     *  standing rule. */
+     *  standing rule; a restricted user takes it as a clerk. */
     @Transactional(readOnly = true)
     public boolean mayTake(String sheetId, String user, Permission action) {
-        Role role = roleOf(sheetId, user);
+        Role acting = roleOf(sheetId, user);
+        Role role = acting == Role.RESTRICTED ? Role.CLERK : acting;
         return permissions.findBySheetIdAndAction(sheetId, action.key())
                 .map(p -> p.roleSet().contains(role))
                 .orElseGet(() -> action.standing().contains(role));

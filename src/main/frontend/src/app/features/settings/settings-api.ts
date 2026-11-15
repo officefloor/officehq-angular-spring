@@ -4,8 +4,9 @@ import { firstValueFrom } from 'rxjs';
 import { DatedSettings, Session, otherError } from '../../core/session';
 
 /** The roles a user name can hold on a sheet; a name without one is a clerk. A viewer sees the
- *  sheet and may change nothing on it. */
-export const ROLES = ['clerk', 'steward', 'viewer'] as const;
+ *  sheet and may change nothing on it. A restricted user acts as a clerk, but its people list shows only the
+ *  people of the crews its person leads or belongs to, and that person. */
+export const ROLES = ['clerk', 'steward', 'viewer', 'restricted'] as const;
 
 /** The actions whose roles the permission matrix sets, each with its standing rule (used while
  *  its entry is blank). */
@@ -345,7 +346,7 @@ export function settingsError(e: unknown): string {
 }
 
 export function roleError(e: unknown): string {
-  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a user name without spaces and a role of clerk, steward or viewer.';
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a user name without spaces and a role of clerk, steward, viewer or restricted.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The role was changed at the same moment; try again.';
   return otherError(e);
 }
