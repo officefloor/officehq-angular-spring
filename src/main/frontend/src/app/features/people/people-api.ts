@@ -112,9 +112,9 @@ export class PeopleApi {
     return firstValueFrom(this.http.post<Person>(this.url(sheetId), form, { headers: this.headers() }));
   }
 
-  /** Add a person for each pasted line of name,grade,terms,contact, in order; all or none. */
-  importPeople(sheetId: string, text: string): Promise<Person[]> {
-    return firstValueFrom(this.http.post<Person[]>(`/api/sheets/${encodeURIComponent(sheetId)}/import-people`, { text },
+  /** Add or update a person for each pasted line of name,grade,terms,contact, in order; all or none. */
+  importPeople(sheetId: string, text: string): Promise<ImportedPeople> {
+    return firstValueFrom(this.http.post<ImportedPeople>(`/api/sheets/${encodeURIComponent(sheetId)}/import-people`, { text },
       { headers: this.headers() }));
   }
 
@@ -229,12 +229,18 @@ export function personError(e: unknown): string {
   return otherError(e);
 }
 
+/** The people an import added and those it updated (a line naming a person on the sheet). */
+export interface ImportedPeople {
+  added: Person[];
+  updated: Person[];
+}
+
 export function importError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) {
     return 'Paste lines of name,grade,terms,contact: a name, a grade A, B or C, terms as whole days or blank, and a contact or blank.';
   }
   if (e instanceof HttpErrorResponse && e.status === 409) {
-    return 'Every name and contact must be new to the sheet and given only once in the paste.';
+    return 'Every person and contact may be given only once in the paste, and a new contact must not be in use on this sheet.';
   }
   return otherError(e);
 }

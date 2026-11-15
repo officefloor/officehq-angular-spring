@@ -78,8 +78,9 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
         <label for="import-people">Import people (name,grade,terms,contact per line)</label>
         <textarea id="import-people" data-testid="import-people" formControlName="text" rows="4"></textarea>
         <button type="submit" data-testid="import-submit">Import people</button>
-        @if (imported() !== null) {
-          <p role="status">Added <strong data-testid="import-added">{{ imported() }}</strong></p>
+        @if (imported(); as result) {
+          <p role="status">Added <strong data-testid="import-added">{{ result.added }}</strong>,
+            updated <strong data-testid="import-updated">{{ result.updated }}</strong></p>
         }
         @if (importErr(); as err) {
           <p role="alert" data-testid="import-error">{{ err }}</p>
@@ -663,7 +664,7 @@ export class People {
     text: new FormControl('', { nonNullable: true }),
   });
   /** How many people the last import added; null while one runs or before the first. */
-  protected readonly imported = signal<number | null>(null);
+  protected readonly imported = signal<{ added: number; updated: number } | null>(null);
   protected readonly importErr = signal<string | null>(null);
   private importing = false;
 
@@ -1239,7 +1240,7 @@ export class People {
     }
   }
 
-  /** Add a person per imported line, all or none; then show how many were added. */
+  /** Add or update a person per imported line, all or none; then show how many were added and updated. */
   protected async importPeople(): Promise<void> {
     if (this.importing) return;
     this.imported.set(null);
@@ -1253,11 +1254,12 @@ export class People {
     }
     this.importing = true;
     try {
-      const added = await this.api.importPeople(sheetId, text);
+      const { added, updated } = await this.api.importPeople(sheetId, text);
       if (this.session.sheetId() !== sheetId) return;
+      updated.forEach((p) => this.taken(p));
       this.people.update((ps) => [...ps, ...added]);
       this.importForm.reset({ text: '' }, { emitEvent: false });
-      this.imported.set(added.length);
+      this.imported.set({ added: added.length, updated: updated.length });
     } catch (e) {
       this.importErr.set(importError(e));
     } finally {

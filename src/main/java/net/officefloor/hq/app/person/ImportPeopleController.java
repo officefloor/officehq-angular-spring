@@ -36,17 +36,26 @@ public class ImportPeopleController {
         this.people = people;
     }
 
-    /** The people added, in the order of their lines. */
+    /** The people an import added and those it updated, each in the order of their lines. */
+    public record ImportedView(List<PersonView> added, List<PersonView> updated) {
+    }
+
+    /** The people added and updated, each in the order of their lines. */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public List<PersonView> importPeople(
+    public ImportedView importPeople(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ImportForm body) {
-        List<Person> added = service.importPeople(sheetId, user.trim(), body.text());
+        ImportPeopleService.Imported imported = service.importPeople(sheetId, user.trim(), body.text());
         LocalDate today = people.today(sheetId);
-        return added.stream()
+        List<PersonView> added = imported.added().stream()
                 .map(p -> PersonView.of(p, today, StatementSummary.NONE, List.of(), false, people.clashing(p)))
                 .toList();
+        List<PersonView> updated = imported.updated().stream()
+                .map(p -> PersonView.of(p, today, people.statementSummary(p.getId()), people.patronIds(p.getId()),
+                        people.isWatching(p.getId(), user.trim()), people.clashing(p)))
+                .toList();
+        return new ImportedView(added, updated);
     }
 }
