@@ -1,10 +1,10 @@
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, deferError, deferred, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, deferError, deferred, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -101,7 +101,7 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine,
             <button type="button" data-testid="claim-reassign" (click)="reassign(c, reassignTo.value)"
               [attr.aria-label]="'Reassign claim of ' + c.amount + ' on ' + c.date">Reassign</button>
             @if (editingId() === c.id) {
-              <button type="button" data-testid="claim-cancel" (click)="reset()">Cancel</button>
+              <button type="button" data-testid="claim-cancel" (click)="cancel()">Cancel</button>
             }
             @if (rowErrors()[c.id]; as err) {
               <p role="alert" data-testid="claim-error">{{ err }}</p>
@@ -140,6 +140,8 @@ export class PersonClaims {
   /** The error of each claim's last refused status change, by claim id. */
   /** Whether a submit is waiting for its answer; a second submit meanwhile is ignored. */
   private submitting = false;
+  /** The lock taken for the claim whose editor is open, settling true once it is held. */
+  private locking: { id: number; result: Promise<boolean> } | null = null;
   protected readonly rowErrors = signal<Record<number, string>>({});
   /** The reason typed for rejecting each PENDING claim, by claim id. */
   protected readonly rejectReasons = signal<Record<number, string>>({});
@@ -160,6 +162,24 @@ export class PersonClaims {
 
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(null));
+    // An editor this user left open (the claim is still locked by them) opens again when the
+    // sheet is shown anew.
+    let restored = false;
+    effect(() => {
+      const claims = this.claims();
+      const user = this.session.user();
+      if (restored) return;
+      restored = true;
+      const mine = claims.find((c) => c.status === 'DRAFT' && c.lockedBy !== null && c.lockedBy === user);
+      if (mine) untracked(() => this.openEditor(mine));
+    });
+    // A change of the sheet's today releases every lock, so an open editor closes.
+    let today: string | null | undefined;
+    effect(() => {
+      const now = this.session.today();
+      if (today !== undefined && now !== today) untracked(() => this.reset());
+      today = now;
+    });
   }
 
   /** The claim's figure (its amount times the rate in force on the claim's date for the person's grade then, divided by 100, rounded
@@ -199,7 +219,7 @@ export class PersonClaims {
     return periodOn(this.periods(), c.date)?.name ?? '';
   }
 
-  protected edit(c: Claim): void {
+  protected async edit(c: Claim): Promise<void> {
     this.error.set(null);
     this.clearRowError(c.id);
     if (c.status !== 'DRAFT') {
@@ -210,8 +230,50 @@ export class PersonClaims {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'This claim is dated in a closed period.' }));
       return;
     }
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const was = this.editingId();
+    if (was !== null && was !== c.id) void this.release(sheetId, was);
+    // The editor is the claim's at once, so what is typed meanwhile is never taken for a new
+    // claim; it fills with the claim's values once the lock is taken, unless typed in already.
+    this.editingId.set(c.id);
+    this.form.markAsPristine();
+    const result = this.api.lock(sheetId, c.id).then((claim) => {
+      if (this.session.sheetId() !== sheetId) return false;
+      this.saved.emit(claim);
+      if (this.editingId() === c.id && this.form.pristine) {
+        this.form.setValue({ amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '' });
+      }
+      return true;
+    }, (e: unknown) => {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: editError(e) }));
+      return false;
+    });
+    this.locking = { id: c.id, result };
+    await result;
+  }
+
+  private openEditor(c: Claim): void {
     this.editingId.set(c.id);
     this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '' });
+  }
+
+  /** Close the claim's editor without saving, releasing its lock. */
+  protected async cancel(): Promise<void> {
+    const editing = this.editingId();
+    const sheetId = this.session.sheetId();
+    this.reset();
+    if (editing !== null && sheetId) await this.release(sheetId, editing);
+  }
+
+  /** Release this user's lock on a claim; one already gone (today changed) leaves nothing to do. */
+  private async release(sheetId: string, id: number): Promise<void> {
+    try {
+      const claim = await this.api.unlock(sheetId, id);
+      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
+    } catch {
+      // the lock lapses anyway when the sheet's today changes
+    }
   }
 
   protected async submit(): Promise<void> {
@@ -244,6 +306,12 @@ export class PersonClaims {
     const editing = this.editingId();
     this.submitting = true;
     try {
+      const locking = this.locking;
+      if (editing !== null && locking?.id === editing && !(await locking.result)) {
+        // the refusal shows on the claim; the editor it left open closes, saving nothing
+        if (this.locking === locking) this.reset();
+        return;
+      }
       const claim = editing === null
         ? await this.api.add(sheetId, this.personId(), form)
         : await this.api.update(sheetId, editing, form);
@@ -404,6 +472,7 @@ export class PersonClaims {
 
   protected reset(): void {
     this.editingId.set(null);
+    this.locking = null;
     this.form.reset({ amount: '', date: '', note: '', corrects: '' });
     this.error.set(null);
   }

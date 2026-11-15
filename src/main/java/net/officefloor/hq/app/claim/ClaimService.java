@@ -29,6 +29,8 @@ import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.sheet.TodayChanged;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -158,6 +160,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be edited");
         }
+        refuseIfLocked(claim, user);
         refuseIfClosed(sheetId, on);
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
@@ -168,10 +171,49 @@ public class ClaimService {
         claim.setCorrects(corrected);
         claim.setDate(on);
         claim.setNote(noteOf(note));
+        claim.setLockedBy(null);
         claims.flush();
         record("CLAIM_EDITED", user, person, claim);
         rollup.recordChanges(sheetId, user, before);
         return claim;
+    }
+
+    /** Open a DRAFT claim's editor for the user, locking the claim for everyone else until they
+     *  save or cancel it or the sheet's today changes. Refused (404) when missing, (423) when
+     *  dated in a closed period, (409) unless a DRAFT, and (409) while another user holds it. */
+    @Transactional
+    public Claim lock(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        refuseIfClosed(sheetId, claim.getDate());
+        if (claim.getStatus() != ClaimStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A " + claim.getStatus() + " claim cannot be edited");
+        }
+        refuseIfLocked(claim, user);
+        claim.setLockedBy(user);
+        claims.flush();
+        return claim;
+    }
+
+    /** Close the user's editor of a claim without saving: their lock on it, if they hold it, is
+     *  released. Refused (404) when missing. */
+    @Transactional
+    public Claim unlock(String sheetId, String user, long id) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        if (user.equals(claim.getLockedBy())) {
+            claim.setLockedBy(null);
+            claims.flush();
+        }
+        return claim;
+    }
+
+    /** A change of the sheet's today releases every claim's lock on it. */
+    @EventListener
+    @Transactional
+    public void unlockAll(TodayChanged change) {
+        claims.unlockAll(change.sheetId());
     }
 
     /** Move a claim to a new status; a move its status does not allow is refused (409), as is
@@ -619,6 +661,14 @@ public class ClaimService {
     private void refuseIfClosed(String sheetId, LocalDate date) {
         sheets.lock(sheetId);
         periods.refuseIfClosed(sheetId, date);
+    }
+
+    /** Refuse (409) a change to a claim whose editor another user holds open. */
+    private static void refuseIfLocked(Claim claim, String user) {
+        if (claim.isLockedFor(user)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The claim is being edited by " + claim.getLockedBy());
+        }
     }
 
     /** The number a claim of the amount corrects: none unless the amount is negative, when it must

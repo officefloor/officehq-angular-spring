@@ -55,6 +55,8 @@ export interface Claim {
   proofs: number;
   /** The number of the claim this one was split from; null when not made by a split. */
   splitFrom: string | null;
+  /** The user whose open editor locks the claim for everyone else; null while unlocked. */
+  lockedBy: string | null;
 }
 
 /** A line of a claim's status log: the status, who moved the claim there, the sheet's today then
@@ -186,6 +188,16 @@ export class ClaimsApi {
     return firstValueFrom(this.http.put<Claim>(`${this.url(sheetId)}/claims/${id}`, form, { headers: this.headers() }));
   }
 
+  /** Open a DRAFT claim's editor, locking it for other users until it is saved or cancelled. */
+  lock(sheetId: string, id: number): Promise<Claim> {
+    return firstValueFrom(this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/edit`, null, { headers: this.headers() }));
+  }
+
+  /** Close a claim's editor without saving, releasing this user's lock on it. */
+  unlock(sheetId: string, id: number): Promise<Claim> {
+    return firstValueFrom(this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/cancel`, null, { headers: this.headers() }));
+  }
+
   changeStatus(sheetId: string, id: number, action: ClaimAction): Promise<Claim> {
     return firstValueFrom(
       this.http.post<Claim>(`${this.url(sheetId)}/claims/${id}/${action}`, null, { headers: this.headers() }),
@@ -287,6 +299,14 @@ export function pasteError(e: unknown): string {
     return "Every name must be on the sheet, and every date by that person's retirement date; an amount below zero is a correction, which the paste does not take.";
   }
   if (e instanceof HttpErrorResponse && e.status === 423) return 'A date is in a closed period.';
+  return otherError(e);
+}
+
+/** Why opening a claim's editor was refused. */
+export function editError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only a draft claim that no one else is editing can be edited.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
   return otherError(e);
 }
 

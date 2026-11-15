@@ -5,6 +5,7 @@ import java.util.Optional;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 public interface ClaimRepository extends JpaRepository<Claim, Long> {
@@ -39,4 +40,9 @@ public interface ClaimRepository extends JpaRepository<Claim, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Claim c where c.personId = :personId and c.sheetId = :sheetId order by c.listed desc")
     List<Claim> findByPersonForUpdate(Long personId, String sheetId);
+
+    /** Release every claim's lock on the sheet (its today changed). */
+    @Modifying
+    @Query("update Claim c set c.lockedBy = null where c.sheetId = :sheetId and c.lockedBy is not null")
+    int unlockAll(String sheetId);
 }
