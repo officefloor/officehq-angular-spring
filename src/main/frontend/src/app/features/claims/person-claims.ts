@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
@@ -33,6 +34,16 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimComment,
         <p role="alert" data-testid="claim-form-error">{{ err }}</p>
       }
     </form>
+    <label [for]="'claim-template-select-' + personId()">Template</label>
+    <select [id]="'claim-template-select-' + personId()" data-testid="claim-template-select"
+      [value]="templateChoice()" (change)="templateChanged($any($event.target).value)">
+      <option value="">Choose a template</option>
+      @for (t of session.templates(); track t.name) {
+        <option [value]="t.name">{{ t.name }}</option>
+      }
+    </select>
+    <button type="button" data-testid="claim-template-add" (click)="addFromTemplate()"
+      [attr.aria-label]="'Add claim from template for ' + personName()">Add from template</button>
     @if (claims().length > 0) {
       <ul [attr.aria-label]="'Claims of ' + personName()">
         @for (c of claims(); track c.id) {
@@ -193,6 +204,8 @@ export class PersonClaims {
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The amount typed for changing each DRAFT claim's amount in its row, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
+  /** The name of the template chosen for adding a claim; blank when none is. */
+  protected readonly templateChoice = signal('');
   protected readonly tagsOf = tagsOf;
   protected readonly fieldId = (name: string) => `claim-form-${name}-${this.personId()}`;
 
@@ -384,6 +397,35 @@ export class PersonClaims {
       this.reset();
     } catch (e) {
       this.error.set(claimError(e, correction, ref === '' ? 'none' : editing === null ? 'add' : 'edit'));
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  protected templateChanged(name: string): void {
+    this.error.set(null);
+    this.templateChoice.set(name);
+  }
+
+  /** Add a DRAFT claim with the chosen template's amount and note as they are now, dated as a
+   *  claim added with no date; a refusal shows on the claim form. */
+  protected async addFromTemplate(): Promise<void> {
+    if (this.submitting) return;
+    this.error.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const name = this.templateChoice();
+    if (name === '') {
+      this.error.set('Choose a template to add a claim from.');
+      return;
+    }
+    this.submitting = true;
+    try {
+      const claim = await this.api.addFromTemplate(sheetId, this.personId(), name);
+      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
+    } catch (e) {
+      this.error.set(e instanceof HttpErrorResponse && e.status === 404
+        ? 'That template or person is no longer on this sheet.' : claimError(e));
     } finally {
       this.submitting = false;
     }

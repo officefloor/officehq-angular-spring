@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import type { ClaimTemplate } from '../features/templates/templates-api';
 
 // Who is signed in and which sheet is active. Everything else in the app is kept per sheet.
 @Injectable({ providedIn: 'root' })
@@ -37,6 +38,8 @@ export class Session {
   /** The active sheet's void reasons, in the order they were added: while there are any, a claim
    *  is voided only with one of them. */
   readonly voidReasons = signal<string[]>([]);
+  /** The active sheet's claim templates, by name. */
+  readonly templates = signal<ClaimTemplate[]>([]);
   /** Whether the active sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
   /** Whether the people list shows retired people too: off at first, and kept as it is when a

@@ -225,6 +225,12 @@ export class ClaimsApi {
     );
   }
 
+  /** Add a DRAFT claim for the person with the amount and note the named template has now. */
+  addFromTemplate(sheetId: string, personId: number, template: string): Promise<Claim> {
+    return firstValueFrom(this.http.post<Claim>(`${this.url(sheetId)}/people/${personId}/claims/from-template`, { template },
+      { headers: this.headers() }));
+  }
+
   /** Add a DRAFT claim for the person with the name, adding them (grade A) first when new. */
   quickAdd(sheetId: string, form: QuickAddForm): Promise<QuickAdd> {
     return firstValueFrom(this.http.post<QuickAdd>(`${this.url(sheetId)}/quick-add`, form, { headers: this.headers() }));

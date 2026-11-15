@@ -169,7 +169,7 @@ public class ClaimController {
     }
 
     /** The claim as the screen shows it, with its status log. */
-    ClaimView view(Claim c) {
+    public ClaimView view(Claim c) {
         return ClaimView.of(c, service.logOf(c.getId()), service.commentsOf(c.getId()));
     }
 
