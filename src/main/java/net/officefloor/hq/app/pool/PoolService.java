@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.pool;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -74,5 +75,51 @@ public class PoolService {
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
                 + " name=" + person.getName() + " share=" + share.setScale(2).toPlainString());
         return member;
+    }
+
+    /** The deepest a chain of pools may be, counting the pool at its top. */
+    static final int MAX_DEPTH = 3;
+
+    /** Add another pool of the sheet to a pool with a share; refused (404) for a pool not on the
+     *  sheet, (409) when the member pool is a member of a pool already, (422) when the pool would
+     *  contain itself through any chain or the chain of pools would be more than three deep. */
+    @Transactional
+    public PoolMember addPoolMember(String sheetId, String user, String poolName, String memberName, BigDecimal share) {
+        sheets.lock(sheetId);
+        Pool pool = pools.findBySheetIdAndNameIgnoreCase(sheetId, poolName)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+        Pool memberPool = pools.findBySheetIdAndNameIgnoreCase(sheetId, memberName)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pool"));
+        if (members.findByMemberPoolId(memberPool.getId()).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The pool is a member of a pool already");
+        }
+        // the pool and the pools above it
+        List<Long> above = new ArrayList<>();
+        for (Long id = pool.getId(); id != null;
+                id = members.findByMemberPoolId(id).map(PoolMember::getPoolId).orElse(null)) {
+            above.add(id);
+        }
+        if (above.contains(memberPool.getId())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A pool cannot contain itself");
+        }
+        if (above.size() + height(memberPool.getId()) > MAX_DEPTH) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A chain of pools is at most " + MAX_DEPTH + " deep");
+        }
+        PoolMember member = members.saveAndFlush(PoolMember.ofPool(pool.getId(), memberPool.getId(), share));
+        audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
+                + " name=" + memberPool.getName() + " share=" + share.setScale(2).toPlainString());
+        return member;
+    }
+
+    /** How deep the chain of pools from this one down is, counting this one. */
+    private int height(Long poolId) {
+        int below = 0;
+        for (PoolMember m : members.findByPoolIdInOrderByIdAsc(List.of(poolId))) {
+            if (m.getMemberPoolId() != null) {
+                below = Math.max(below, height(m.getMemberPoolId()));
+            }
+        }
+        return 1 + below;
     }
 }

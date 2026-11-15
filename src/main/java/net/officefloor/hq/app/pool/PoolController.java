@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.session.CurrentUser;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -24,17 +26,21 @@ import org.springframework.web.server.ResponseStatusException;
 @Validated
 public class PoolController {
 
-    /** A member as the screen shows it: the person's id and their share with two decimals. */
-    public record MemberView(long personId, String share) {
-        static MemberView of(PoolMember m) {
-            return new MemberView(m.getPersonId(), m.getShare().setScale(2).toPlainString());
+    /** A member as the screen shows it: the person's id, or the member pool's name, and the share
+     *  with two decimals. */
+    public record MemberView(Long personId, String pool, String share) {
+        static MemberView of(PoolMember m, Map<Long, String> poolNames) {
+            return new MemberView(m.getPersonId(),
+                    m.getMemberPoolId() == null ? null : poolNames.get(m.getMemberPoolId()),
+                    m.getShare().setScale(2).toPlainString());
         }
     }
 
     /** A pool as the screen shows it: its name and its members in the order they were added. */
     public record PoolView(String name, List<MemberView> members) {
-        static PoolView of(PoolService.PoolWithMembers p) {
-            return new PoolView(p.pool().getName(), p.members().stream().map(MemberView::of).toList());
+        static PoolView of(PoolService.PoolWithMembers p, Map<Long, String> poolNames) {
+            return new PoolView(p.pool().getName(),
+                    p.members().stream().map(m -> MemberView.of(m, poolNames)).toList());
         }
     }
 
@@ -42,11 +48,13 @@ public class PoolController {
     public record PoolForm(@NotBlank @Size(max = 200) String name) {
     }
 
-    /** A member as the pool's row submits it: the pool, a person and a share percent with up to
-     *  two decimals, more than 0.00 and at most 100.00. */
+    /** A member as the pool's row submits it: the pool, a person or another pool of the sheet
+     *  (exactly one), and a share percent with up to two decimals, more than 0.00 and at most
+     *  100.00. */
     public record MemberForm(
             @NotBlank @Size(max = 200) String pool,
-            @NotNull Long personId,
+            Long personId,
+            @Size(max = 200) String memberPool,
             @NotNull @Pattern(regexp = "\\s*\\d{1,3}(\\.\\d{1,2})?\\s*") String share) {
     }
 
@@ -60,7 +68,10 @@ public class PoolController {
     public List<PoolView> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId).stream().map(PoolView::of).toList();
+        List<PoolService.PoolWithMembers> all = service.list(sheetId);
+        Map<Long, String> poolNames = all.stream()
+                .collect(Collectors.toMap(p -> p.pool().getId(), p -> p.pool().getName()));
+        return all.stream().map(p -> PoolView.of(p, poolNames)).toList();
     }
 
     /** Add a pool; resolves to the sheet's pools with it. */
@@ -79,7 +90,15 @@ public class PoolController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody MemberForm body) {
-        service.addMember(sheetId, user.trim(), body.pool().trim(), body.personId(), share(body.share()));
+        boolean isPool = body.memberPool() != null && !body.memberPool().isBlank();
+        if (isPool == (body.personId() != null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a person or a pool");
+        }
+        if (isPool) {
+            service.addPoolMember(sheetId, user.trim(), body.pool().trim(), body.memberPool().trim(), share(body.share()));
+        } else {
+            service.addMember(sheetId, user.trim(), body.pool().trim(), body.personId(), share(body.share()));
+        }
         return list(sheetId, user);
     }
 

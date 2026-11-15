@@ -8,7 +8,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 
-/** A person in a pool with their share percent (two decimals, more than 0.00, at most 100.00). */
+/** A person, or another pool, in a pool with their share percent (two decimals, more than 0.00,
+ *  at most 100.00): exactly one of the person and the member pool is set. */
 @Entity
 @Table(name = "pool_member")
 public class PoolMember {
@@ -20,8 +21,11 @@ public class PoolMember {
     @Column(name = "pool_id", nullable = false)
     private Long poolId;
 
-    @Column(name = "person_id", nullable = false)
+    @Column(name = "person_id")
     private Long personId;
+
+    @Column(name = "member_pool_id")
+    private Long memberPoolId;
 
     @Column(name = "share", nullable = false, precision = 5, scale = 2)
     private BigDecimal share;
@@ -35,6 +39,13 @@ public class PoolMember {
         this.share = share;
     }
 
+    /** A pool as a member of another pool, with a share. */
+    public static PoolMember ofPool(Long poolId, Long memberPoolId, BigDecimal share) {
+        PoolMember member = new PoolMember(poolId, null, share);
+        member.memberPoolId = memberPoolId;
+        return member;
+    }
+
     public Long getId() {
         return id;
     }
@@ -45,6 +56,11 @@ public class PoolMember {
 
     public Long getPersonId() {
         return personId;
+    }
+
+    /** The pool that is this member, null for a person. */
+    public Long getMemberPoolId() {
+        return memberPoolId;
     }
 
     public BigDecimal getShare() {
