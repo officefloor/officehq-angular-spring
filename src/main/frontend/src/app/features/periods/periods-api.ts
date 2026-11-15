@@ -16,6 +16,8 @@ export interface Period {
   softClosed: boolean;
   /** The due-total fixed when the period was closed (two decimals); null while open. */
   closedTotal: string | null;
+  /** The most OPEN or PENDING claims a person may have in the period; null for no cap. */
+  cap: number | null;
   /** Each person's due-total for the period fixed when it was closed (two decimals), by person
    *  id; empty while open. */
   closedPersonTotals: Record<string, string>;
@@ -52,8 +54,8 @@ export class PeriodsApi {
     return firstValueFrom(this.http.get<Period[]>(this.url(sheetId), { headers: this.headers() }));
   }
 
-  add(sheetId: string, name: string, from: string, to: string): Promise<Period> {
-    return firstValueFrom(this.http.post<Period>(this.url(sheetId), { name, from, to }, { headers: this.headers() }));
+  add(sheetId: string, name: string, from: string, to: string, cap: number | null): Promise<Period> {
+    return firstValueFrom(this.http.post<Period>(this.url(sheetId), { name, from, to, cap }, { headers: this.headers() }));
   }
 
   /** Make one period per calendar month from the from-date's month to the to-date's; returns

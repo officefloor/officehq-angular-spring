@@ -11,6 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import net.officefloor.hq.app.Audit;
@@ -434,6 +435,7 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         if (to == ClaimStatus.OPEN) {
             refuseIfNoteless(claim, shownDueOf(claim, person));
+            refuseIfOverCap(sheetId, claim);
         }
         // a claim bound by a statement settles at its bound figure, its late charge frozen in
         BigDecimal settling = to == ClaimStatus.SETTLED ? shownDueOf(claim, person) : null;
@@ -1061,6 +1063,25 @@ public class ClaimService {
                 .mapToInt(Integer::parseInt)
                 .max().orElse(0);
         return prefix + (last + 1);
+    }
+
+    /** Refuse (409) opening a claim whose due-by is in a period with a cap when its person already
+     *  has that many OPEN or PENDING claims due in the period. */
+    private void refuseIfOverCap(String sheetId, Claim claim) {
+        Optional<Period> period = periods.containing(sheetId, claim.getDueBy());
+        if (period.isEmpty() || period.get().getCap() == null) {
+            return;
+        }
+        Period p = period.get();
+        long open = claims.findByPersonForUpdate(claim.getPersonId(), sheetId).stream()
+                .filter(c -> !c.getId().equals(claim.getId()))
+                .filter(c -> c.getStatus() == ClaimStatus.OPEN || c.getStatus() == ClaimStatus.PENDING)
+                .filter(c -> c.getDueBy() != null && p.contains(c.getDueBy()))
+                .count();
+        if (open >= p.getCap()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The person already has " + p.getCap() + " open claims in period " + p.getName());
+        }
     }
 
     /** Refuse (423) a change to a claim due by a date in a closed period, holding the sheet locked until

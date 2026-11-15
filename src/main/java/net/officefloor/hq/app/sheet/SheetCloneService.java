@@ -145,7 +145,9 @@ public class SheetCloneService {
         }
         tags.findBySheetIdOrderByTagAsc(sheetId).forEach(t -> tags.save(new SheetTag(target, t.getTag())));
         for (Period p : periods.findBySheetIdOrderByFromAsc(sheetId)) {
-            periods.save(new Period(target, p.getName(), p.getFrom(), p.getTo()));
+            Period copy = new Period(target, p.getName(), p.getFrom(), p.getTo());
+            copy.setCap(p.getCap());
+            periods.save(copy);
         }
 
         // people in list order, then their patrons

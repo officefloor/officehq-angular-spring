@@ -1,6 +1,7 @@
 package net.officefloor.hq.app.period;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -34,7 +35,7 @@ public class PeriodController {
      *  closed (null while open), and each person's due-total for it fixed then, by person id
      *  (empty while open). */
     public record PeriodView(long id, String name, LocalDate from, LocalDate to, boolean closed, boolean softClosed,
-            String closedTotal,
+            String closedTotal, Integer cap,
             Map<Long, String> closedPersonTotals) {
         static PeriodView of(Period p) {
             return of(p.getId(), p);
@@ -45,16 +46,17 @@ public class PeriodController {
             Map<Long, String> personTotals = new LinkedHashMap<>();
             p.getClosedPersonTotals().forEach((personId, total) -> personTotals.put(personId, total.setScale(2).toPlainString()));
             return new PeriodView(id, p.getName(), p.getFrom(), p.getTo(), p.isClosed(), p.isSoftClosed(),
-                    p.getClosedTotal() == null ? null : p.getClosedTotal().setScale(2).toPlainString(), personTotals);
+                    p.getClosedTotal() == null ? null : p.getClosedTotal().setScale(2).toPlainString(), p.getCap(), personTotals);
         }
     }
 
     /** A period as the form submits it: a name without spaces, an optional from-date (the sheet's
-     *  today when absent) and a to-date. */
+     *  today when absent), a to-date and an optional cap on each person's open claims in it (1 or more). */
     public record PeriodForm(
             @NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String name,
             LocalDate from,
-            @NotNull LocalDate to) {
+            @NotNull LocalDate to,
+            @Min(1) Integer cap) {
     }
 
     private final PeriodService service;
@@ -84,7 +86,7 @@ public class PeriodController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PeriodForm body) {
-        return PeriodView.of(service.add(sheetId, user.trim(), body.name(), body.from(), body.to()));
+        return PeriodView.of(service.add(sheetId, user.trim(), body.name(), body.from(), body.to(), body.cap()));
     }
 
     /** A month range as the generate form submits it: an optional from-date (the sheet's today

@@ -456,7 +456,7 @@ export function restoreError(e: unknown): string {
 
 export function statusError(e: unknown, opener: boolean): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a reason for rejecting the claim.';
-  if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status, is deferred, or was settled more than 7 days ago.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'This claim cannot make that change from its status, is deferred, was settled more than 7 days ago, or its person already has the most open claims its period allows.';
   if (e instanceof HttpErrorResponse && e.status === 403) {
     return opener
       ? 'The user who opened or last edited this claim cannot settle or approve it, or your role may not make that change.'

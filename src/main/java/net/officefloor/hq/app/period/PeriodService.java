@@ -44,10 +44,11 @@ public class PeriodService {
         return periods.findBySheetIdOrderByFromAsc(sheetId);
     }
 
-    /** Add a period to the sheet (the sheet is created first if it was never loaded; a from-date left out is the sheet's today); refused when
-     *  its from-date is after its to-date, its name is in use on the sheet or it overlaps another. */
+    /** Add a period to the sheet (the sheet is created first if it was never loaded; a from-date left out is the sheet's today),
+     *  with an optional cap on each person's OPEN or PENDING claims in it (null for none); refused when
+     *  its from-date is after its to-date, its cap is below 1, its name is in use on the sheet or it overlaps another. */
     @Transactional
-    public Period add(String sheetId, String user, String name, LocalDate fromOrNull, LocalDate to) {
+    public Period add(String sheetId, String user, String name, LocalDate fromOrNull, LocalDate to, Integer cap) {
         sheets.load(sheetId, user);
         LocalDate from = fromOrNull != null ? fromOrNull : sheets.today(sheetId);
         // held until the transaction ends, so two periods added at once are checked one after the other
@@ -55,6 +56,9 @@ public class PeriodService {
         String trimmed = name.trim();
         if (from.isAfter(to)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The from-date is after the to-date");
+        }
+        if (cap != null && cap < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The cap must be a whole number of 1 or more");
         }
         List<Period> existing = periods.findBySheetIdOrderByFromAsc(sheetId);
         if (existing.stream().anyMatch(p -> p.getName().equalsIgnoreCase(trimmed))) {
@@ -65,12 +69,14 @@ public class PeriodService {
         }
         Period period;
         try {
-            period = periods.saveAndFlush(new Period(sheetId, trimmed, from, to));
+            Period fresh = new Period(sheetId, trimmed, from, to);
+            fresh.setCap(cap);
+            period = periods.saveAndFlush(fresh);
         } catch (DataIntegrityViolationException e) {
             throw nameInUse();
         }
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user
-                + " period=" + trimmed + " from=" + from + " to=" + to);
+                + " period=" + trimmed + " from=" + from + " to=" + to + (cap == null ? "" : " cap=" + cap));
         return period;
     }
 

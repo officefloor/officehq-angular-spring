@@ -21,6 +21,8 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <input id="period-form-from" type="date" data-testid="period-form-from" formControlName="from" />
         <label for="period-form-to">To</label>
         <input id="period-form-to" type="date" data-testid="period-form-to" formControlName="to" />
+        <label for="period-form-cap">Open claims cap per person</label>
+        <input id="period-form-cap" data-testid="period-form-cap" formControlName="cap" inputmode="numeric" autocomplete="off" />
         <button type="submit" data-testid="period-form-submit">Add period</button>
         @if (error(); as err) {
           <p role="alert" data-testid="period-form-error">{{ err }}</p>
@@ -44,7 +46,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       </form>
       <table data-testid="periods-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col">Cap</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -55,6 +57,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-due-total">{{ dueOf(p) }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
               <td data-testid="period-fy">{{ session.fiscalYearOf(p.from) }}</td>
+              <td data-testid="period-cap">{{ p.cap ?? '' }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                   [attr.aria-label]="'Close period ' + p.name">Close</button>
@@ -94,6 +97,7 @@ export class Periods {
     name: new FormControl('', { nonNullable: true }),
     from: new FormControl('', { nonNullable: true }),
     to: new FormControl('', { nonNullable: true }),
+    cap: new FormControl('', { nonNullable: true }),
   });
 
   /** The month range that generates a period per month. */
@@ -235,6 +239,7 @@ export class Periods {
     const name = this.form.controls.name.value.trim();
     const from = this.form.controls.from.value.trim() || (this.session.today() ?? '');
     const to = this.form.controls.to.value.trim();
+    const capText = this.form.controls.cap.value.trim();
     if (!/^\S+$/.test(name)) {
       this.error.set('Enter a name without spaces.');
       return;
@@ -245,6 +250,15 @@ export class Periods {
     }
     if (from > to) {
       this.error.set('The from-date must be on or before the to-date.');
+      return;
+    }
+    if (capText !== '' && !/^\d+$/.test(capText)) {
+      this.error.set('Enter the cap as a whole number, or leave it blank for none.');
+      return;
+    }
+    const cap = capText === '' ? null : Number(capText);
+    if (cap !== null && cap < 1) {
+      this.error.set('The cap must be 1 or more.');
       return;
     }
     if (this.periods().some((p) => p.name.toLowerCase() === name.toLowerCase())) {
@@ -258,9 +272,9 @@ export class Periods {
     }
     this.submitting = true;
     try {
-      const period = await this.api.add(sheetId, name, from, to);
+      const period = await this.api.add(sheetId, name, from, to, cap);
       if (this.session.sheetId() === sheetId) this.saved.emit(period);
-      this.form.reset({ name: '', from: '', to: '' }, { emitEvent: false });
+      this.form.reset({ name: '', from: '', to: '', cap: '' }, { emitEvent: false });
     } catch (e) {
       this.error.set(periodError(e));
     } finally {

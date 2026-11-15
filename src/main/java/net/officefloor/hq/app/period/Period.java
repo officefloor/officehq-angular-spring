@@ -48,6 +48,9 @@ public class Period {
     @Column(name = "soft_closed", nullable = false)
     private boolean softClosed;
 
+    @Column(name = "claim_cap")
+    private Integer cap;
+
     @Column(name = "closed_total")
     private BigDecimal closedTotal;
 
@@ -85,6 +88,15 @@ public class Period {
 
     public LocalDate getTo() {
         return to;
+    }
+
+    /** The most OPEN or PENDING claims a person may have in the period; null for no cap. */
+    public Integer getCap() {
+        return cap;
+    }
+
+    public void setCap(Integer cap) {
+        this.cap = cap;
     }
 
     public boolean isClosed() {
