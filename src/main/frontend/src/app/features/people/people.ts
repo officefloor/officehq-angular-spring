@@ -365,7 +365,7 @@ export class People {
     const out = new Map<number, { count: number; cents: number }>();
     const late = this.lateness();
     for (const p of this.people()) {
-      const overdueClaims = this.claimsOf(p.id).filter(this.countsLive()).filter((c) => overdue(c, late.today));
+      const overdueClaims = this.claimsOf(p.id).filter(this.countsLive()).filter((c) => overdue(c, late.today, this.graceOf(p, c)));
       out.set(p.id, {
         count: overdueClaims.length,
         cents: overdueClaims.reduce((sum, c) => sum + (this.claimDueCents(p, c, late) ?? 0), 0),
@@ -585,8 +585,14 @@ export class People {
 
   /** A claim's due in cents, at the rate of the person's grade in force on the claim's date. */
   private claimDueCents(p: Person, c: Claim, late: Lateness): number | null {
-    return claimDueCents(this.ratesOf(gradeOn(p.grades, c.date)), c, cents(this.session.floorOn(c.date)), late,
+    return claimDueCents(this.ratesOf(gradeOn(p.grades, c.date)), c, cents(this.session.floorOn(c.date)),
+      { ...late, graceOf: (o) => this.graceOf(p, o) },
       roundsHalfUp(c, this.claimsOf(p.id), this.session.policyDate(), late.today));
+  }
+
+  /** A claim's grace days: those of the person's grade in force on the claim's date. */
+  private graceOf(p: Person, c: Claim): number {
+    return this.session.graceOn(gradeOn(p.grades, c.date), c.date);
   }
 
   /** Every rate the sheet has for a grade. */

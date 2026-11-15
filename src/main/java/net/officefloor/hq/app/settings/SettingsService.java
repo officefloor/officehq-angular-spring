@@ -29,6 +29,8 @@ public class SettingsService {
     public static final String TERMS = Sheet.TERMS;
     /** The key a grade's terms are audited under, followed by the grade. */
     public static final String TERMS_OF_GRADE = Sheet.TERMS_OF_GRADE;
+    /** The key a grade's grace days are audited under, followed by the grade. */
+    public static final String GRACE_OF_GRADE = Sheet.GRACE_OF_GRADE;
     /** The key the late percent is audited under. */
     public static final String LATE_PCT = Sheet.LATE_PCT;
     /** The key the policy date is audited under. */
@@ -158,6 +160,21 @@ public class SettingsService {
         sheets.lock(sheetId);
         record(sheet, user, TERMS_OF_GRADE + grade, terms == null ? "" : String.valueOf(terms), from);
         return terms;
+    }
+
+    /** Set a grade's grace days (null: none) from a date (null: the sheet's today), the sheet
+     *  created first if it was never loaded; a claim dated from then on to the next from-date whose
+     *  person's grade then is this one is overdue only once its due-by plus them is before the
+     *  sheet's today, its late charge counted from there, so every live due (and every total) moves
+     *  with them while every due-by and settled figure stays as it is. */
+    @Transactional
+    public Integer setGradeGrace(String sheetId, String user, String grade, Integer grace, LocalDate from) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        record(sheet, user, GRACE_OF_GRADE + grade, grace == null ? "" : String.valueOf(grace), from);
+        rollup.recordChanges(sheetId, user, before);
+        return grace;
     }
 
     /** The sheet's late percent: an overdue claim's due gains it for every full 30 days overdue. */

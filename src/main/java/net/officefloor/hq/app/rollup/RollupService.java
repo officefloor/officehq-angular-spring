@@ -117,7 +117,7 @@ public class RollupService {
             List<Claim> theirs = counted.getOrDefault(p.getId(), List.of());
             BigDecimal claimed = theirs.stream().map(Claim::getAmount).reduce(zero(), BigDecimal::add);
             BigDecimal overdue = theirs.stream()
-                    .filter(c -> c.getStatus().isOpen() && c.getDueBy().isBefore(today))
+                    .filter(c -> c.getStatus().isOpen() && late.isPast(c, p))
                     .map(c -> shownDueOf(c, p, sheetRates, floor, late, rounding))
                     .filter(Objects::nonNull)
                     .reduce(zero(), BigDecimal::add);
@@ -298,7 +298,7 @@ public class RollupService {
             return c.getSettledDue();
         }
         RoundingMode mode = rounding.apply(c);
-        BigDecimal due = late.addTo(c, figureOf(c, person, sheetRates, mode), mode);
+        BigDecimal due = late.addTo(c, person, figureOf(c, person, sheetRates, mode), mode);
         return due == null || c.isCorrection() ? due : due.max(floor.apply(c.getDate()));
     }
 

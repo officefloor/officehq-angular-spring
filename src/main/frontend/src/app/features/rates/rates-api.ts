@@ -2,7 +2,9 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { Session, otherError } from '../../core/session';
-import { Claim, cents, dueBy, isBound, isCorrection, overdue } from '../claims/claims-api';
+import { Claim, cents, isBound, isCorrection, lateFrom, overdue, plusDays } from '../claims/claims-api';
+
+export { plusDays };
 
 /** A percent of 0.00 or more with up to two decimals. */
 export const PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
@@ -78,6 +80,8 @@ export interface Lateness {
   today: string | null;
   /** The late percent with two decimals in force on a date. */
   latePctOn: (date: string) => string;
+  /** The grace days a claim has (those of its person's grade in force on its date); none when left out. */
+  graceOf?: (c: Claim) => number;
 }
 
 /** A claim's due in cents: the due fixed when it was settled, else the greater of the sheet's floor in
@@ -99,21 +103,19 @@ function figureCents(rates: readonly Rate[], c: Claim, halfUp: boolean): number 
   return pct === null ? null : dueCents(cents(c.amount), cents(pct), halfUp);
 }
 
-/** An overdue claim's late charge in cents: for every full 30 days past its due-by, the late percent
- *  in force on that boundary date (the due-by plus 30, 60, 90 ... days) of its figure, each rounded by
+/** An overdue claim's late charge in cents: for every full 30 days past its due-by plus its grace days, the late percent
+ *  in force on that boundary date (that date plus 30, 60, 90 ... days) of its figure, each rounded by
  *  the claim's rounding policy, added up; 0 when it is not overdue. */
 function lateChargeCents(c: Claim, figure: number, late: Lateness, halfUp: boolean): number {
-  if (late.today === null || isCorrection(c) || !overdue(c, late.today)) return 0;
-  const days = Math.round((Date.parse(late.today) - Date.parse(dueBy(c))) / 86_400_000);
+  const grace = late.graceOf?.(c) ?? 0;
+  if (late.today === null || isCorrection(c) || !overdue(c, late.today, grace)) return 0;
+  const from = lateFrom(c, grace);
+  const days = Math.round((Date.parse(late.today) - Date.parse(from)) / 86_400_000);
   let charge = 0;
   for (let step = 1; step <= Math.floor(days / 30); step++) {
-    const pct = cents(late.latePctOn(plusDays(dueBy(c), step * 30)));
+    const pct = cents(late.latePctOn(plusDays(from, step * 30)));
     if (pct !== 0) charge += dueCents(figure, pct, halfUp);
   }
   return charge;
 }
 
-/** A date (yyyy-mm-dd) moved on by whole days. */
-export function plusDays(date: string, days: number): string {
-  return new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
-}

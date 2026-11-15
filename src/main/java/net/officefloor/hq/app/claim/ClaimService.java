@@ -498,7 +498,7 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal old = claim.getSettledDue();
         BigDecimal due = flooredOf(claim,
-                LateCharge.of(sheets.find(sheetId)).addToOpen(claim, rateFigureOf(claim, person), roundingOf(claim)));
+                LateCharge.of(sheets.find(sheetId)).addToOpen(claim, person, rateFigureOf(claim, person), roundingOf(claim)));
         claim.setSettledDue(due);
         claims.flush();
         logStatus(user, person, claim);
@@ -830,7 +830,7 @@ public class ClaimService {
             return claim.getSettledDue();
         }
         return flooredOf(claim,
-                LateCharge.of(sheets.find(claim.getSheetId())).addTo(claim, figureOf(claim, person), roundingOf(claim)));
+                LateCharge.of(sheets.find(claim.getSheetId())).addTo(claim, person, figureOf(claim, person), roundingOf(claim)));
     }
 
     /** A due (null: n/a, which stays n/a) raised to the sheet's floor in force on the claim's date; a

@@ -125,9 +125,21 @@ export function dueBy(c: Claim): string {
   return c.dueBy;
 }
 
-/** Whether a claim is overdue: open (OPEN or PENDING), not deferred, with its due-by before the sheet's today. */
-export function overdue(c: Claim, today: string | null): boolean {
-  return isOpen(c) && today !== null && dueBy(c) < today && !deferred(c, today);
+/** The date a claim is overdue after: its due-by plus the grace days of its person's grade in
+ *  force on its date (0: none). */
+export function lateFrom(c: Claim, grace = 0): string {
+  return grace === 0 ? dueBy(c) : plusDays(dueBy(c), grace);
+}
+
+/** Whether a claim is overdue: open (OPEN or PENDING), not deferred, with its due-by plus its
+ *  grace days before the sheet's today. */
+export function overdue(c: Claim, today: string | null, grace = 0): boolean {
+  return isOpen(c) && today !== null && lateFrom(c, grace) < today && !deferred(c, today);
+}
+
+/** A date (yyyy-mm-dd) moved on by whole days. */
+export function plusDays(date: string, days: number): string {
+  return new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
 /** Whether a claim's live figures round half up: its date (a correction's, the date of the claim

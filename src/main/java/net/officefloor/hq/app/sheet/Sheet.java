@@ -44,6 +44,8 @@ public class Sheet {
     public static final String TERMS = "terms";
     /** The key of a grade's own terms' dated values, followed by the grade. */
     public static final String TERMS_OF_GRADE = "terms-";
+    /** The key of a grade's grace days' dated values, followed by the grade. */
+    public static final String GRACE_OF_GRADE = "grace-";
     /** The key of the late percent's dated values. */
     public static final String LATE_PCT = "late-pct";
     /** The key of the cap's dated values. */
@@ -191,6 +193,22 @@ public class Sheet {
     public int termsFor(String grade, LocalDate on) {
         Integer own = gradeTermsOn(grade, on);
         return own != null ? own : termsOn(on);
+    }
+
+    /** The grace days of a grade's in force on the sheet's today; null when it has none then. */
+    public Integer getGradeGrace(String grade) {
+        return gradeGraceOn(grade, today);
+    }
+
+    private Integer gradeGraceOn(String grade, LocalDate on) {
+        return settingOn(GRACE_OF_GRADE + grade, on).map(DatedSetting::getValue).map(Integer::valueOf).orElse(null);
+    }
+
+    /** The grace days in force on a date for a grade: a claim dated then in it is overdue only once
+     *  its due-by plus them is before the sheet's today; 0 when it has none then. */
+    public int graceOn(String grade, LocalDate on) {
+        Integer own = gradeGraceOn(grade, on);
+        return own != null ? own : 0;
     }
 
     /** The late percent in force on the sheet's today. */

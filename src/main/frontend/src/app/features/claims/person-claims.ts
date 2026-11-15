@@ -193,7 +193,7 @@ export class PersonClaims {
   protected dueOf(c: Claim): string {
     const grade = gradeOn(this.grades(), c.date);
     const due = claimDueCents(this.rates().filter((r) => r.grade === grade), c, cents(this.session.floorOn(c.date)), {
-      today: this.session.today(), latePctOn: (d) => this.session.latePctOn(d),
+      today: this.session.today(), latePctOn: (d) => this.session.latePctOn(d), graceOf: (o) => this.graceOf(o),
     }, roundsHalfUp(c, this.claims(), this.session.policyDate(), this.session.today()));
     return due === null ? 'n/a' : money(due);
   }
@@ -208,9 +208,14 @@ export class PersonClaims {
     return dueBy(c);
   }
 
-  /** Whether the claim is open (OPEN or PENDING) with its due-by before the sheet's today. */
+  /** Whether the claim is open (OPEN or PENDING) with its due-by plus its grace days before the sheet's today. */
   protected overdueOf(c: Claim): boolean {
-    return overdue(c, this.session.today());
+    return overdue(c, this.session.today(), this.graceOf(c));
+  }
+
+  /** The claim's grace days: those of the person's grade in force on its date. */
+  private graceOf(c: Claim): number {
+    return this.session.graceOn(gradeOn(this.grades(), c.date), c.date);
   }
 
   /** Whether the claim is deferred on the sheet's today. */

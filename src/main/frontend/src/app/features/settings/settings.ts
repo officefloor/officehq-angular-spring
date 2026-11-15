@@ -17,6 +17,9 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
       @for (g of grades; track g) {
         <p>Terms in force for grade {{ g }} (business days) <strong [attr.data-testid]="'setting-terms-' + g + '-current'">{{ termsOf(g) }}</strong></p>
       }
+      @for (g of grades; track g) {
+        <p>Grace days in force for grade {{ g }} (blank: none) <strong [attr.data-testid]="'setting-grace-' + g + '-current'">{{ session.gradeGraceOn(g, session.today()) ?? '' }}</strong></p>
+      }
       <p>Late percent in force <strong data-testid="setting-late-pct-current">{{ session.latePct() }}</strong></p>
       <p>Policy date in force (blank: the sheet's today) <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
       <p>Period numbering from (blank: off) <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
@@ -46,6 +49,12 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
           <input [id]="'setting-terms-' + g" [attr.data-testid]="'setting-terms-' + g" [formControl]="gradeTermsForm.controls[g]" inputmode="numeric" autocomplete="off" />
           <label [for]="'setting-terms-' + g + '-from'">Terms for grade {{ g }} from (blank: the sheet's today)</label>
           <input [id]="'setting-terms-' + g + '-from'" type="date" [attr.data-testid]="'setting-terms-' + g + '-from'" [formControl]="gradeTermsFromForm.controls[g]" />
+        }
+        @for (g of grades; track g) {
+          <label [for]="'setting-grace-' + g">Grace days for grade {{ g }}: its claims are overdue only once past their due-by plus them (blank: none)</label>
+          <input [id]="'setting-grace-' + g" [attr.data-testid]="'setting-grace-' + g" [formControl]="gradeGraceForm.controls[g]" inputmode="numeric" autocomplete="off" />
+          <label [for]="'setting-grace-' + g + '-from'">Grace days for grade {{ g }} from (blank: the sheet's today)</label>
+          <input [id]="'setting-grace-' + g + '-from'" type="date" [attr.data-testid]="'setting-grace-' + g + '-from'" [formControl]="gradeGraceFromForm.controls[g]" />
         }
         <label for="setting-late-pct">Late percent per 30 days overdue (blank: 0.00)</label>
         <input id="setting-late-pct" data-testid="setting-late-pct" formControlName="latePct" inputmode="decimal" autocomplete="off" />
@@ -211,6 +220,18 @@ export class Settings {
     B: new FormControl('', { nonNullable: true }),
     C: new FormControl('', { nonNullable: true }),
   });
+  /** A grade's grace days, typed in beside the other settings and saved with them. */
+  protected readonly gradeGraceForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  });
+  /** The from-date of a grade's grace days, typed in beside them. */
+  protected readonly gradeGraceFromForm = new FormGroup({
+    A: new FormControl('', { nonNullable: true }),
+    B: new FormControl('', { nonNullable: true }),
+    C: new FormControl('', { nonNullable: true }),
+  });
   /** The roles that may take each action, typed in beside the other settings and saved with them. */
   protected readonly permissionsForm = new FormGroup({
     open: new FormControl('', { nonNullable: true }),
@@ -239,6 +260,8 @@ export class Settings {
     this.settingsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.gradeTermsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.gradeTermsFromForm.valueChanges.subscribe(() => this.settingsErr.set(null));
+    this.gradeGraceForm.valueChanges.subscribe(() => this.settingsErr.set(null));
+    this.gradeGraceFromForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.permissionsForm.valueChanges.subscribe(() => this.settingsErr.set(null));
     this.roleForm.valueChanges.subscribe(() => this.roleErr.set(null));
     this.delegateForm.valueChanges.subscribe(() => this.delegateErr.set(null));
@@ -266,6 +289,8 @@ export class Settings {
         }, { emitEvent: false });
         this.gradeTermsForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.gradeTermsFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
+        this.gradeGraceForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
+        this.gradeGraceFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.permissionsForm.reset({ open: '', settle: '', void: '', reassign: '', close: '', reopen: '' }, { emitEvent: false });
         this.roleForm.reset({ user: '', role: '' }, { emitEvent: false });
         if (id) void this.read(id);
@@ -306,6 +331,12 @@ export class Settings {
         grade: g, control: this.gradeTermsForm.controls[g], value: this.gradeTermsForm.controls[g].value.trim(),
         fromControl: this.gradeTermsFromForm.controls[g], from: this.gradeTermsFromForm.controls[g].value.trim(),
       }));
+    const gradeGraceToSave = GRADES
+      .filter((g) => typed(this.gradeGraceForm.controls[g]) || typed(this.gradeGraceFromForm.controls[g]))
+      .map((g) => ({
+        grade: g, control: this.gradeGraceForm.controls[g], value: this.gradeGraceForm.controls[g].value.trim(),
+        fromControl: this.gradeGraceFromForm.controls[g], from: this.gradeGraceFromForm.controls[g].value.trim(),
+      }));
     const permissionsToSave = PERMISSIONS
       .filter((p) => typed(this.permissionsForm.controls[p.action]))
       .map((p) => ({
@@ -314,7 +345,7 @@ export class Settings {
         typed: this.permissionsForm.controls[p.action].value.trim(),
       }));
     const saveLimit = typed(clerkLimit) || typed(clerkLimitFrom)
-      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveNoteThreshold || saveGraceDays);
+      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveNoteThreshold || saveGraceDays);
     const limitFrom = clerkLimitFrom.value.trim();
     const floorFromValue = floorFrom.value.trim();
     const termsFromValue = termsFrom.value.trim();
@@ -338,6 +369,7 @@ export class Settings {
         || (saveFloor && floorValue !== '' && !LIMIT_PATTERN.test(floorValue))
         || (saveTerms && termsValue !== '' && !TERMS_PATTERN.test(termsValue))
         || gradeTermsToSave.some((t) => t.value !== '' && !TERMS_PATTERN.test(t.value))
+        || gradeGraceToSave.some((t) => t.value !== '' && !TERMS_PATTERN.test(t.value))
         || (saveLatePct && latePctValue !== '' && !LATE_PCT_PATTERN.test(latePctValue))
         || (savePolicyDate && policyDateValue !== '' && !POLICY_DATE_PATTERN.test(policyDateValue))
         || (savePeriodNumberingFrom && periodNumberingFromValue !== '' && !POLICY_DATE_PATTERN.test(periodNumberingFromValue))
@@ -350,6 +382,7 @@ export class Settings {
         || badFrom(saveLatePct, latePctFromValue) || badFrom(saveCap, capFromValue)
         || badFrom(saveProofThreshold, proofThresholdFromValue) || badFrom(saveNoteThreshold, noteThresholdFromValue)
         || gradeTermsToSave.some((t) => badFrom(true, t.from))
+        || gradeGraceToSave.some((t) => badFrom(true, t.from))
         || permissionsToSave.some((p) => p.typed !== '' && !PERMISSION_PATTERN.test(p.typed))) {
       this.settingsErr.set(SETTINGS_INVALID);
       return;
@@ -376,6 +409,12 @@ export class Settings {
       }
       for (const t of gradeTermsToSave) {
         const saved = await this.api.setGradeTerms(sheetId, t.grade, t.value, t.from);
+        settled(t.control, t.value);
+        settled(t.fromControl, t.from);
+        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+      }
+      for (const t of gradeGraceToSave) {
+        const saved = await this.api.setGradeGrace(sheetId, t.grade, t.value, t.from);
         settled(t.control, t.value);
         settled(t.fromControl, t.from);
         if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
@@ -436,7 +475,7 @@ export class Settings {
     }
     if (this.resaveSettings) {
       this.resaveSettings = false;
-      if (this.settingsForm.dirty || this.gradeTermsForm.dirty || this.gradeTermsFromForm.dirty || this.permissionsForm.dirty) await this.saveSettings();
+      if (this.settingsForm.dirty || this.gradeTermsForm.dirty || this.gradeTermsFromForm.dirty || this.gradeGraceForm.dirty || this.gradeGraceFromForm.dirty || this.permissionsForm.dirty) await this.saveSettings();
     }
   }
 

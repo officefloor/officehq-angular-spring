@@ -232,6 +232,17 @@ public class SettingsController {
         return view(sheetId);
     }
 
+    @PutMapping("/settings/grace/{grade}")
+    public SettingsView setGradeGrace(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody TermsForm body) {
+        Integer grace = body.value().isEmpty() ? null : Integer.valueOf(body.value());
+        service.setGradeGrace(sheetId, user.trim(), grade, grace, fromOf(body.from()));
+        return view(sheetId);
+    }
+
     @PutMapping("/settings/late-pct")
     public SettingsView setLatePct(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,

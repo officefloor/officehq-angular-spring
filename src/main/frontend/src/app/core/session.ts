@@ -71,6 +71,18 @@ export class Session {
     return own === null ? null : Number(own);
   }
 
+  /** A grade's grace days in force on a date; null when it has none then. */
+  gradeGraceOn(grade: string, date: string | null): number | null {
+    const own = valueOn(this.dated(), `grace-${grade}`, date)?.value ?? null;
+    return own === null ? null : Number(own);
+  }
+
+  /** The grace days a claim dated on a date in a grade has: a claim is overdue only once its
+   *  due-by plus them is before the sheet's today; 0 when the grade has none then. */
+  graceOn(grade: string, date: string | null): number {
+    return this.gradeGraceOn(grade, date) ?? 0;
+  }
+
   /** Sign in by name; resolves to an error message, or null on success. */
   async signIn(name: string): Promise<string | null> {
     try {
