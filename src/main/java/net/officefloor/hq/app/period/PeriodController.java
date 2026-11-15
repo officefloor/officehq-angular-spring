@@ -69,6 +69,20 @@ public class PeriodController {
         return PeriodView.of(service.add(sheetId, user.trim(), body.name(), body.from(), body.to()));
     }
 
+    /** A month range as the generate form submits it: an optional from-date (the sheet's today
+     *  when absent) and a to-date. */
+    public record GenerateForm(LocalDate from, @NotNull LocalDate to) {
+    }
+
+    @PostMapping("/generate")
+    @ResponseStatus(HttpStatus.CREATED)
+    public List<PeriodView> generate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GenerateForm body) {
+        return service.generate(sheetId, user.trim(), body.from(), body.to()).stream().map(PeriodView::of).toList();
+    }
+
     @PostMapping("/{id}/close")
     public PeriodView close(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,

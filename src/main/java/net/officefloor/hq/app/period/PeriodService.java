@@ -2,6 +2,8 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -70,6 +72,37 @@ public class PeriodService {
         audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user
                 + " period=" + trimmed + " from=" + from + " to=" + to);
         return period;
+    }
+
+    /** Generate one period per calendar month from the from-date's month (a from-date left out is
+     *  the sheet's today) to the to-date's month, each from the first to the last day of its month
+     *  and named yyyy-mm; a month whose name is already a period's, or whose days overlap a period
+     *  on the sheet, is left out. Refused when the to-date is before the from-date. Returns the
+     *  periods made, by from-date. */
+    @Transactional
+    public List<Period> generate(String sheetId, String user, LocalDate fromOrNull, LocalDate to) {
+        sheets.load(sheetId, user);
+        LocalDate from = fromOrNull != null ? fromOrNull : sheets.today(sheetId);
+        sheets.lock(sheetId);
+        if (to.isBefore(from)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The to-date is before the from-date");
+        }
+        List<Period> existing = new ArrayList<>(periods.findBySheetIdOrderByFromAsc(sheetId));
+        List<Period> made = new ArrayList<>();
+        for (YearMonth month = YearMonth.from(from); !month.isAfter(YearMonth.from(to)); month = month.plusMonths(1)) {
+            String name = month.toString();
+            LocalDate first = month.atDay(1);
+            LocalDate last = month.atEndOfMonth();
+            if (existing.stream().anyMatch(p -> p.getName().equalsIgnoreCase(name) || p.overlaps(first, last))) {
+                continue;
+            }
+            Period period = periods.saveAndFlush(new Period(sheetId, name, first, last));
+            existing.add(period);
+            made.add(period);
+            audit.recordOnCommit("PERIOD_ADDED sheet=" + sheetId + " by=" + user
+                    + " period=" + name + " from=" + first + " to=" + last);
+        }
+        return made;
     }
 
     /** Close a period, fixing each person's due-total for it, and its own (their sum), at the

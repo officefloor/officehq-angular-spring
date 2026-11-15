@@ -1,8 +1,8 @@
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
-import { Period, PeriodsApi, closeError, periodDueCents, periodError, reopenError } from './periods-api';
+import { Period, PeriodsApi, closeError, generateError, periodDueCents, periodError, reopenError } from './periods-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -24,6 +24,19 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <button type="submit" data-testid="period-form-submit">Add period</button>
         @if (error(); as err) {
           <p role="alert" data-testid="period-form-error">{{ err }}</p>
+        }
+      </form>
+      <form [formGroup]="generateForm" (ngSubmit)="generate()" aria-label="Generate monthly periods">
+        <label for="period-generate-from">From</label>
+        <input id="period-generate-from" type="date" data-testid="period-generate-from" formControlName="from" />
+        <label for="period-generate-to">To</label>
+        <input id="period-generate-to" type="date" data-testid="period-generate-to" formControlName="to" />
+        <button type="submit" data-testid="period-generate">Generate monthly periods</button>
+        @if (generated() !== null) {
+          <p role="status">Made <strong data-testid="period-generated">{{ generated() }}</strong></p>
+        }
+        @if (generateErr(); as err) {
+          <p role="alert" data-testid="period-generate-error">{{ err }}</p>
         }
       </form>
       <table data-testid="periods-list">
@@ -77,8 +90,58 @@ export class Periods {
     to: new FormControl('', { nonNullable: true }),
   });
 
+  /** The month range that generates a period per month. */
+  protected readonly generateForm = new FormGroup({
+    from: new FormControl('', { nonNullable: true }),
+    to: new FormControl('', { nonNullable: true }),
+  });
+  /** How many periods the last generate made; null while one runs or before the first. */
+  protected readonly generated = signal<number | null>(null);
+  protected readonly generateErr = signal<string | null>(null);
+  private generating = false;
+
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(null));
+    this.generateForm.valueChanges.subscribe(() => this.generateErr.set(null));
+    effect(() => {
+      this.session.sheetId();
+      this.session.loads();
+      untracked(() => {
+        this.generateForm.reset({ from: '', to: '' });
+        this.generated.set(null);
+        this.generateErr.set(null);
+      });
+    });
+  }
+
+  /** Make a period per calendar month in the range; then show how many were made. */
+  protected async generate(): Promise<void> {
+    if (this.generating) return;
+    this.generated.set(null);
+    this.generateErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const from = this.generateForm.controls.from.value.trim() || (this.session.today() ?? '');
+    const to = this.generateForm.controls.to.value.trim();
+    if (!DATE.test(from) || !DATE.test(to)) {
+      this.generateErr.set('Enter a from-date and a to-date as yyyy-mm-dd.');
+      return;
+    }
+    if (to < from) {
+      this.generateErr.set('The to-date must be on or after the from-date.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await this.api.generate(sheetId, from, to);
+      if (this.session.sheetId() !== sheetId) return;
+      for (const period of made) this.saved.emit(period);
+      this.generated.set(made.length);
+    } catch (e) {
+      this.generateErr.set(generateError(e));
+    } finally {
+      this.generating = false;
+    }
   }
 
   /** A closed period shows the due-total fixed when it was closed; an open one its live total. */

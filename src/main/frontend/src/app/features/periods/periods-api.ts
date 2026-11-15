@@ -54,6 +54,12 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<Period>(this.url(sheetId), { name, from, to }, { headers: this.headers() }));
   }
 
+  /** Make one period per calendar month from the from-date's month to the to-date's; returns
+   *  the periods made, months already taken or overlapping left out. */
+  generate(sheetId: string, from: string, to: string): Promise<Period[]> {
+    return firstValueFrom(this.http.post<Period[]>(`${this.url(sheetId)}/generate`, { from, to }, { headers: this.headers() }));
+  }
+
   close(sheetId: string, id: number): Promise<Period> {
     return firstValueFrom(this.http.post<Period>(`${this.url(sheetId)}/${id}/close`, null, { headers: this.headers() }));
   }
@@ -74,6 +80,11 @@ export class PeriodsApi {
 export function periodError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name without spaces and a from-date on or before the to-date, as yyyy-mm-dd.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The name is in use on the sheet, or the dates overlap another period.';
+  return otherError(e);
+}
+
+export function generateError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a from-date on or before the to-date, as yyyy-mm-dd.';
   return otherError(e);
 }
 
