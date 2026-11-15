@@ -807,15 +807,16 @@ export class People {
   }
   /** The role the signed-in user acts in on the sheet (as it stood then, under an as-of date), as last read. */
   private readonly myRole = signal<string | null>(null);
-  /** The steward's dashboard: the sheet's PENDING and REVIEW claims and its overdue claims that
-   *  count; null unless the signed-in user is a steward. */
+  /** The steward's dashboard: the PENDING and REVIEW claims and the overdue claims that count,
+   *  over the sheet and all its descendants; null unless the signed-in user is a steward. */
   protected readonly dashboard = computed<Dashboard | null>(() => {
     if (this.myRole() !== 'steward') return null;
     const claims = this.claims();
+    const d = this.descendants();
     return {
-      pending: claims.filter((c) => c.status === 'PENDING').length,
-      review: claims.filter((c) => c.status === 'REVIEW').length,
-      overdue: this.overdueCount(),
+      pending: claims.filter((c) => c.status === 'PENDING').length + (d.statusCounts['PENDING'] ?? 0),
+      review: claims.filter((c) => c.status === 'REVIEW').length + (d.statusCounts['REVIEW'] ?? 0),
+      overdue: this.overdueCount() + d.overdueCount,
     };
   });
   protected readonly overdueCount = computed(() =>
@@ -999,6 +1000,7 @@ export class People {
       statusCounts: Object.fromEntries(STATUSES.map((s) =>
         [s, (own.statusCounts[s] ?? 0) + (d.statusCounts[s] ?? 0)])),
       members,
+      overdueCount: own.overdueCount + d.overdueCount,
     };
   });
   /** The sheet's own figures, live, as the consolidated figures add them up. */
@@ -1017,6 +1019,7 @@ export class People {
         [g, money(people.filter((p) => p.grade === g).reduce((sum, p) => sum + (p.due ?? 0), 0))])),
       statusCounts: Object.fromEntries(statusCounts(this.claims()).map((s) => [s.status, s.count])),
       members,
+      overdueCount: this.overdueCount(),
     };
   });
   protected readonly claimedTotal = computed(() =>

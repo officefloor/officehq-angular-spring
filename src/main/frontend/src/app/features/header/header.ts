@@ -11,9 +11,11 @@ import { STATUSES, statusCounts } from '../summary/summary';
 // of the people on it, retired ones left out, and per status how many claims are in it); and the signed-in user's own
 // due-total and overdue-total, when a person on the sheet goes by their name, and their crew total,
 // when that person leads a crew; and, for a steward, their dashboard: how many claims are PENDING,
-// how many in REVIEW and how many counting ones are overdue (the cells empty for anyone else); and
+// how many in REVIEW and how many counting ones are overdue, over the sheet and all its descendants
+// (the cells empty for anyone else); and
 // how many REVIEW claims are assigned to the signed-in user.
-/** A steward's dashboard: the sheet's PENDING claims, REVIEW claims and counting overdue claims. */
+/** A steward's dashboard: the PENDING claims, REVIEW claims and counting overdue claims of the
+ *  sheet and all its descendants. */
 export interface Dashboard {
   pending: number;
   review: number;
