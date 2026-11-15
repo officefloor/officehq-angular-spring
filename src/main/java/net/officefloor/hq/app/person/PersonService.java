@@ -359,6 +359,25 @@ public class PersonService {
         return person;
     }
 
+    /** Unretire a retired person on the sheet's today: they are no longer retired, and their
+     *  retirement is kept as a past one, from its date to today. Refused (422) for anyone not retired. */
+    @Transactional
+    public Person unretire(String sheetId, String user, long id) {
+        Person person = people.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (!person.isRetired()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "The person is not retired");
+        }
+        LocalDate on = sheets.today(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        person.unretire(on);
+        people.flush();
+        audit.recordOnCommit("PERSON_UNRETIRED sheet=" + sheetId + " by=" + user
+                + " name=" + person.getName() + " on=" + on);
+        rollup.recordChanges(sheetId, user, before);
+        return person;
+    }
+
     /** Retire each of the people of {@code ids}, in list order, from {@code from} (null: the
      *  sheet's today) as the row's retire would, each written with its PERSON_RETIRED and rollup
      *  lines; all or none. Refused (404) when any is not on the sheet. */

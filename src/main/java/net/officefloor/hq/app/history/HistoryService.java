@@ -68,7 +68,7 @@ public class HistoryService {
 
     record PersonState(String name, String grade, List<GradeState> grades, Integer terms, LocalDate retiredFrom,
             List<HoldState> holds, String contact, List<String> aliases, Long position,
-            String originSheetId) {
+            String originSheetId, List<HoldState> retirements) {
     }
 
     record RateState(String grade, BigDecimal pct, LocalDate from, LocalDate to) {
@@ -143,7 +143,8 @@ public class HistoryService {
             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
                     all.stream().skip(1).map(g -> new GradeState(g.from(), g.grade())).toList(), p.getTerms(),
                     p.getRetiredFrom(), p.getHolds().stream().map(h -> new HoldState(h.from(), h.to())).toList(),
-                    p.getContact(), p.getAliases(), p.getPosition(), p.getOriginSheetId()));
+                    p.getContact(), p.getAliases(), p.getPosition(), p.getOriginSheetId(),
+                    p.getRetirements().stream().map(r -> new HoldState(r.from(), r.to())).toList()));
         } else if (entity instanceof Rate r) {
             write(r.getSheetId(), RATE, String.valueOf(r.getId()),
                     new RateState(r.getGrade(), r.getPct(), r.getFrom(), r.getTo()));
@@ -315,6 +316,9 @@ public class HistoryService {
             s.aliases().forEach(p::addAlias);
         }
         p.setOriginSheetId(s.originSheetId());
+        if (s.retirements() != null) { // a version written before people could be unretired has none
+            s.retirements().forEach(r -> p.addRetirement(r.from(), r.to()));
+        }
         return p;
     }
 

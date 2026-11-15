@@ -74,6 +74,13 @@ public class Person {
     @Column(name = "retired_from")
     private LocalDate retiredFrom;
 
+    /** The person's past retirements, in the order they were unretired: no claim dated after the
+     *  from-date and before the to-date of one can be added for them. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "person_retirement", joinColumns = @JoinColumn(name = "person_id"))
+    @OrderColumn(name = "position")
+    private List<Retirement> retirements = new ArrayList<>();
+
     /** The person's holds, in the order they were added: their OPEN claims dated within one count
      *  in no live total (unless bound by a statement). */
     @ElementCollection(fetch = FetchType.EAGER)
@@ -200,9 +207,35 @@ public class Person {
         return retiredFrom != null;
     }
 
-    /** Whether a claim dated {@code date} is refused for the person: one after their retirement date. */
+    /** Whether a claim dated {@code date} is refused for the person: one after their retirement
+     *  date, or after the from-date and before the to-date of a past retirement. */
     public boolean retiredBefore(LocalDate date) {
-        return retiredFrom != null && date.isAfter(retiredFrom);
+        return (retiredFrom != null && date.isAfter(retiredFrom))
+                || retirements.stream().anyMatch(r -> r.covers(date));
+    }
+
+    /** A past retirement: from a date to the day the person was unretired. */
+    @Embeddable
+    public record Retirement(@Column(name = "from_date", nullable = false) LocalDate from,
+            @Column(name = "to_date", nullable = false) LocalDate to) {
+        /** Whether a claim dated {@code date} falls within it: after the from and before the to. */
+        public boolean covers(LocalDate date) {
+            return date.isAfter(from) && date.isBefore(to);
+        }
+    }
+
+    public List<Retirement> getRetirements() {
+        return List.copyOf(retirements);
+    }
+
+    public void addRetirement(LocalDate from, LocalDate to) {
+        retirements.add(new Retirement(from, to));
+    }
+
+    /** Unretire the person on a date: their retirement is kept as a past one, to that date. */
+    public void unretire(LocalDate on) {
+        retirements.add(new Retirement(retiredFrom, on));
+        retiredFrom = null;
     }
 
     /** Whether the person's retirement date is reached on {@code today} (on or after it): their

@@ -38,7 +38,7 @@ public class PersonController {
 
     /** A person as the screen shows them, with their statement count and their last statement's
      *  due-total (two decimals; null when it was n/a or they have none) and date, and the date
-     *  they are retired from (null while not retired), whether they have any hold, their holds, and the ids of
+     *  they are retired from (null while not retired), their past retirements, whether they have any hold, their holds, and the ids of
      *  their patrons in the order they were named, and whether the signed-in user watches them. The grade is the one in force on the sheet's
      *  today; grades lists every grade they have been given, by from-date, the first one undated; terms
      *  are their own terms in days (null when they have none). Clashing: their name or an alias is
@@ -46,7 +46,8 @@ public class PersonController {
     public record PersonView(long id, String name, String grade, long version, int statementCount,
             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held, List<Person.Hold> holds,
             List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms,
-            String contact, List<String> aliases, boolean clashing, String origin) {
+            String contact, List<String> aliases, boolean clashing, String origin,
+            List<Person.Retirement> retirements) {
         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
                 boolean watched, boolean clashing) {
             return of(p.getId(), p, today, s, patronIds, watched, clashing);
@@ -58,7 +59,7 @@ public class PersonController {
             return new PersonView(id, p.getName(), p.gradeOn(today), p.getVersion(), s.count(),
                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
                     p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.getTerms(),
-                    p.getContact(), p.getAliases(), clashing, p.getOriginSheetId());
+                    p.getContact(), p.getAliases(), clashing, p.getOriginSheetId(), p.getRetirements());
         }
     }
 
@@ -251,6 +252,14 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @RequestBody(required = false) RetireForm body) {
         return view(sheetId, user, service.retire(sheetId, user.trim(), id, body == null ? null : body.from()));
+    }
+
+    @PostMapping("/{id}/unretire")
+    public PersonView unretire(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return view(sheetId, user, service.unretire(sheetId, user.trim(), id));
     }
 
     /** Move the person one place up or down the list; answers with the sheet's people in their new order. */

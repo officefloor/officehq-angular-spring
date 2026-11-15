@@ -10,7 +10,7 @@ import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, effectiveRates, pctOn, plusDays } from '../rates/rates-api';
-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, cancelStatementError, retireError, statementError, transferError, watchError } from './people-api';
+import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, cancelStatementError, retireError, statementError, transferError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -245,6 +245,13 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
                   (input)="clearRowError(p.id)" />
                 <button type="button" data-testid="person-retire" (click)="retire(p, retireDate.value)"
                   [attr.aria-label]="'Retire ' + p.name">Retire</button>
+                <button type="button" data-testid="person-unretire" (click)="unretire(p)"
+                  [attr.aria-label]="'Unretire ' + p.name">Unretire</button>
+                <ul aria-label="Past retirements">
+                  @for (r of p.retirements; track $index) {
+                    <li data-testid="person-retirement-line">{{ r.from }} to {{ r.to }}</li>
+                  }
+                </ul>
               </td>
               <td data-testid="person-active">{{ activeIds().has(p.id) ? 'yes' : 'no' }}</td>
               <td>
@@ -965,6 +972,20 @@ export class People {
       if (this.session.sheetId() === sheetId) this.taken(retired);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [p.id]: retireError(e) }));
+    }
+  }
+
+  /** Unretire a retired person on the sheet's today; the row then shows them not retired, with
+   *  the retirement kept as a past one. */
+  protected async unretire(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const unretired = await this.api.unretire(sheetId, p.id);
+      if (this.session.sheetId() === sheetId) this.taken(unretired);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: unretireError(e) }));
     }
   }
 

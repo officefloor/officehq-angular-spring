@@ -30,6 +30,12 @@ export interface Hold {
   to: string | null;
 }
 
+/** A past retirement: from a date (yyyy-mm-dd) to the day the person was unretired. */
+export interface Retirement {
+  from: string;
+  to: string;
+}
+
 /** Whether any of the holds covers a date (yyyy-mm-dd). */
 export function heldOn(holds: readonly Hold[], date: string): boolean {
   return holds.some((h) => h.from <= date && (h.to === null || date <= h.to));
@@ -52,6 +58,9 @@ export interface Person {
   statementDate: string | null;
   /** The date the person is retired from; null while not retired. Set, they count as retired. */
   retiredFrom: string | null;
+  /** The person's past retirements, in the order they were unretired: from a date to the day
+   *  they were unretired. No claim dated after the from and before the to can be added. */
+  retirements: Retirement[];
   /** Whether the person has any hold. */
   held: boolean;
   /** The person's holds, in the order they were added: their OPEN claims dated within one count in
@@ -165,6 +174,13 @@ export class PeopleApi {
   retire(sheetId: string, id: number, from: string): Promise<Person> {
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheetId)}/${id}/retire`, { from: from || null }, { headers: this.headers() }),
+    );
+  }
+
+  /** Unretire a retired person on the sheet's today. */
+  unretire(sheetId: string, id: number): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/unretire`, null, { headers: this.headers() }),
     );
   }
 
@@ -292,6 +308,12 @@ export function cancelStatementError(e: unknown): string {
 export function retireError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a date as yyyy-mm-dd.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  return otherError(e);
+}
+
+export function unretireError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'Only a retired person can be unretired.';
   return otherError(e);
 }
 
