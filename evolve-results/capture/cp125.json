@@ -1,0 +1,64 @@
+{
+  "checkpoint": 125,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp125_unretire",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A retired person can be unretired (a button on the row; PERSON_UNRETIRED name=<name> on=<the\nsheet's today>; anyone not retired is refused with an error on the row). They are no longer retired\n(retired no, no retired-from); the retirement is kept on the row as <from> to <the day unretired>, one line per past\nretirement; and a claim dated after the from and before the to of a\npast retirement is refused as a claim after a retirement is.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA retired person can be unretired (a button on the row; PERSON_UNRETIRED name=<name> on=<the\nsheet's today>; anyone not retired is refused with an error on the row). They are no longer retired\n(retired no, no retired-from); the retirement is kept on the row as <from> to <the day unretired>, one line per past\nretirement; and a claim dated after the from and before the to of a\npast retirement is refused as a claim after a retirement is.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7681ac60d057939fd4654201f1e60fb9558369e1",
+  "reset_sha": "",
+  "preagent_sha": "9f2482275dcb07c8ca5f46230491bf503a163a51",
+  "prev_sha": "9f2482275dcb07c8ca5f46230491bf503a163a51",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7156202,
+    "input_tokens": 30,
+    "output_tokens": 7443,
+    "cache_read_tokens": 645601,
+    "cache_creation_tokens": 54690,
+    "num_turns": 15,
+    "duration_ms": 291462,
+    "duration_api_ms": 69937,
+    "model": "claude-opus-5-5",
+    "session_id": "849f9efa-3f42-4d19-83c7-50dcc41e6ef9",
+    "stop_reason": "success",
+    "result_text": "Unretire is in, and `bin/e2e` passes all four tests in the spec on the first run.\n\n- **Stored data:** a new migration, `V72__person_retirement.sql`, adds a `person_retirement` table that holds each past retirement as a from-date and a to-date.\n- **Server:**\n  - Unretiring saves the person's current retirement as a past one ending on the sheet's today, then clears `retiredFrom`. It writes `PERSON_UNRETIRED sheet=\u2026 by=\u2026 name=\u2026 on=\u2026` to the audit file, then the usual rollup records. Unretiring anyone not retired is refused with a 422 and changes nothing.\n  - The new endpoint is `POST /api/sheets/{sheetId}/people/{id}/unretire`.\n  - Claims use the same check as for a current retirement, so a claim dated strictly between a past retirement's from and to is refused when it's added or moved there.\n  - The sheet's history now records past retirements too, so viewing an earlier version of the sheet shows them. Versions written before this change load with none.\n- **Front end:** each person's row has an **Unretire** button, a list of past retirements shown as `<from> to <to>`, and an error on the row when the unretire is refused.\n\nOne thing I didn't change: moving a person to another sheet doesn't take their past retirements with them, so a person unretired and then moved arrives with none. Say if you want them carried over.\n\nI saved the test output to `.run/e2e.log`, in the same `.run` folder the scripts use for the audit file.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7156202,
+        "num_turns": 15,
+        "duration_ms": 291462,
+        "duration_api_ms": 69937,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp125.agent.jsonl",
+  "agent_diff_file": "cp125.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
