@@ -37,6 +37,12 @@ export interface OpeningsImported {
   periods: Period[];
 }
 
+/** What a rollover did: how many periods it made, and the periods it made or carried openings into. */
+export interface RolledOver {
+  made: number;
+  periods: Period[];
+}
+
 /** The period whose dates contain a date (yyyy-mm-dd), or null when none does. */
 export function periodOn(periods: readonly Period[], date: string): Period | null {
   return periods.find((p) => p.from <= date && date <= p.to) ?? null;
@@ -100,6 +106,12 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<Period[]>(`${this.url(sheetId)}/generate-quarters`, { year }, { headers: this.headers() }));
   }
 
+  /** Roll a fiscal year over (a steward only): make the next fiscal year's periods and carry each
+   *  person's open figure at the old year's end into the new year's first period. */
+  rollover(sheetId: string, year: string): Promise<RolledOver> {
+    return firstValueFrom(this.http.post<RolledOver>(`${this.url(sheetId)}/rollover`, { year }, { headers: this.headers() }));
+  }
+
   /** Add each pasted line of name,period,amount to the person's opening balance for the period;
    *  all or none go through. */
   importOpenings(sheetId: string, text: string): Promise<OpeningsImported> {
@@ -155,6 +167,13 @@ export function generateFiscalYearError(e: unknown): string {
 
 export function generateQuartersError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a year as yyyy.';
+  return otherError(e);
+}
+
+export function rolloverError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a fiscal year as yyyy.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may roll the year over.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'That fiscal year has no periods on the sheet.';
   return otherError(e);
 }
 

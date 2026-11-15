@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -127,6 +128,22 @@ public class PeriodController {
             @Valid @RequestBody GenerateFiscalYearForm body) {
         return service.generateFiscalYear(sheetId, user.trim(), Integer.parseInt(body.year())).stream()
                 .map(PeriodView::of).toList();
+    }
+
+    /** A rollover: how many periods it made, and the periods it made or carried openings into, by from-date. */
+    public record RolloverView(int made, List<PeriodView> periods) {
+    }
+
+    @PostMapping("/rollover")
+    public RolloverView rollover(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GenerateFiscalYearForm body) {
+        PeriodService.Rollover done = service.rollover(sheetId, user.trim(), Integer.parseInt(body.year()));
+        List<Period> changed = new ArrayList<>(done.made());
+        if (done.opened() != null && !changed.contains(done.opened())) changed.add(done.opened());
+        changed.sort(Comparator.comparing(Period::getFrom));
+        return new RolloverView(done.made().size(), changed.stream().map(PeriodView::of).toList());
     }
 
     /** A calendar year as the generate-quarters form submits it (yyyy). */

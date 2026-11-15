@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
-import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, generateQuartersError, lockError, openingsError, periodDueCents, periodError, reopenError } from './periods-api';
+import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, generateQuartersError, lockError, openingsError, periodDueCents, periodError, reopenError, rolloverError } from './periods-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -46,6 +46,17 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         }
         @if (generateErr(); as err) {
           <p role="alert" data-testid="period-generate-error">{{ err }}</p>
+        }
+      </form>
+      <form [formGroup]="rolloverForm" (ngSubmit)="rollover()" aria-label="Roll the year over">
+        <label for="rollover-year">Fiscal year to roll over (yyyy)</label>
+        <input id="rollover-year" data-testid="rollover-year" formControlName="year" inputmode="numeric" autocomplete="off" />
+        <button type="submit" data-testid="rollover">Roll year over</button>
+        @if (rolledOver() !== null) {
+          <p role="status">Made <strong data-testid="rollover-made">{{ rolledOver() }}</strong></p>
+        }
+        @if (rolloverErr(); as err) {
+          <p role="alert" data-testid="rollover-error">{{ err }}</p>
         }
       </form>
       <form [formGroup]="openingForm" (ngSubmit)="importOpenings()" aria-label="Paste opening balances">
@@ -138,6 +149,15 @@ export class Periods {
   protected readonly generateErr = signal<string | null>(null);
   private generating = false;
 
+  /** The fiscal year to roll over. */
+  protected readonly rolloverForm = new FormGroup({
+    year: new FormControl('', { nonNullable: true }),
+  });
+  /** How many periods the last rollover made; null while one runs or before the first. */
+  protected readonly rolledOver = signal<number | null>(null);
+  protected readonly rolloverErr = signal<string | null>(null);
+  private rollingOver = false;
+
   /** The pasted opening balances, one name,period,amount per line. */
   protected readonly openingForm = new FormGroup({
     text: new FormControl('', { nonNullable: true }),
@@ -153,6 +173,7 @@ export class Periods {
     this.fyForm.valueChanges.subscribe(() => this.generateErr.set(null));
     this.quartersForm.valueChanges.subscribe(() => this.generateErr.set(null));
     this.openingForm.valueChanges.subscribe(() => this.openingErr.set(null));
+    this.rolloverForm.valueChanges.subscribe(() => this.rolloverErr.set(null));
     effect(() => {
       this.session.sheetId();
       this.session.loads();
@@ -165,6 +186,9 @@ export class Periods {
         this.openingForm.reset({ text: '' });
         this.openingsDone.set(null);
         this.openingErr.set(null);
+        this.rolloverForm.reset({ year: '' });
+        this.rolledOver.set(null);
+        this.rolloverErr.set(null);
       });
     });
   }
@@ -248,6 +272,32 @@ export class Periods {
       this.generateErr.set(generateQuartersError(e));
     } finally {
       this.generating = false;
+    }
+  }
+
+  /** Roll a fiscal year over: make the next year's periods and carry each person's open figure
+   *  into its first period; then show how many periods were made. */
+  protected async rollover(): Promise<void> {
+    if (this.rollingOver) return;
+    this.rolledOver.set(null);
+    this.rolloverErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const year = this.rolloverForm.controls.year.value.trim();
+    if (!/^\d{4}$/.test(year)) {
+      this.rolloverErr.set('Enter a fiscal year as yyyy.');
+      return;
+    }
+    this.rollingOver = true;
+    try {
+      const done = await this.api.rollover(sheetId, year);
+      if (this.session.sheetId() !== sheetId) return;
+      for (const period of done.periods) this.saved.emit(period);
+      this.rolledOver.set(done.made);
+    } catch (e) {
+      this.rolloverErr.set(rolloverError(e));
+    } finally {
+      this.rollingOver = false;
     }
   }
 
