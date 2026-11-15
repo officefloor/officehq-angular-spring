@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -533,8 +534,13 @@ public class PersonService {
      *  entirely: their statements, patron links (both ways), pool memberships and watches are
      *  dropped, and the numbers their claims had are never given here again. Refused (404) for a
      *  person not on the sheet, (403) unless the user acts as a steward or when either sheet is
-     *  archived, (422) for a retired person or this sheet's own id, and (409) when their name, an
-     *  alias or their contact is already on the other sheet. */
+     *  archived, (422) for a retired person or this sheet's own id, and (409) when their name or an
+     *  alias is a name or alias on another sheet of the other sheet's tree, or when their contact is
+     *  already on the other sheet. When someone on the other sheet goes by their name or an alias
+     *  they are merged into them there instead, as a merge does: their claims are listed after
+     *  that person's, unbound, and their name and aliases join that person's aliases; answers with
+     *  that person. Refused (409) when more than one person there goes by them, and (422) when that
+     *  person is retired. */
     @Transactional
     public Person transfer(String sheetId, String user, long id, String toSheetId) {
         Person person = people.findForUpdate(id, sheetId)
@@ -555,20 +561,40 @@ public class PersonService {
         sheets.load(target, user);
         // held until the transaction ends, so two people cannot take the same name there at once
         sheets.lock(target);
-        requireUnusedName(target, null, person.getName());
-        person.getAliases().forEach(alias -> requireUnusedName(target, null, alias));
-        requireUnusedContact(target, null, person.getContact());
+        // someone there going by their name or an alias: they are merged into them
+        List<String> names = new ArrayList<>();
+        names.add(person.getName());
+        names.addAll(person.getAliases());
+        List<Person> matches = people.findBySheetIdOrderByPositionAscIdAsc(target).stream()
+                .filter(p -> names.stream().anyMatch(p::goesBy)).toList();
+        if (matches.size() > 1) {
+            throw nameInUse();
+        }
+        Person into = matches.isEmpty() ? null : people.findForUpdate(matches.get(0).getId(), target)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Saved by another user"));
+        if (into == null) {
+            names.forEach(name -> requireUnusedName(target, null, name));
+            requireUnusedContact(target, null, person.getContact());
+        } else if (into.isRetired()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A retired person cannot be merged");
+        } else {
+            names.stream().filter(name -> !into.goesBy(name)).forEach(name -> requireUnusedName(target, null, name));
+        }
 
         RollupService.Snapshot beforeHere = rollup.snapshot(sheetId);
         RollupService.Snapshot beforeThere = rollup.snapshot(target);
 
         Person arrived;
-        try {
-            Person copy = person.transferredTo(target);
-            copy.setPosition(people.nextPosition(target));
-            arrived = people.saveAndFlush(copy);
-        } catch (DataIntegrityViolationException e) {
-            throw inUse(e); // taken there by another user at the same moment
+        if (into != null) {
+            arrived = into;
+        } else {
+            try {
+                Person copy = person.transferredTo(target);
+                copy.setPosition(people.nextPosition(target));
+                arrived = people.saveAndFlush(copy);
+            } catch (DataIntegrityViolationException e) {
+                throw inUse(e); // taken there by another user at the same moment
+            }
         }
 
         // claims: copied oldest listed first, so they are listed there in the order they are here
@@ -579,6 +605,9 @@ public class PersonService {
         for (Claim claim : theirs) {
             Claim copy = claim.transferredTo(target, arrived.getId());
             copy.setListed(++listed);
+            if (into != null) {
+                copy.unbind();
+            }
             copies.put(claim, claims.saveAndFlush(copy));
         }
         Map<Long, List<ClaimLog>> logs = new HashMap<>();
@@ -652,8 +681,21 @@ public class PersonService {
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user
                 + " name=" + person.getName() + " to=" + target);
         rollup.recordChanges(sheetId, user, beforeHere);
+        if (into != null) {
+            // aliases joined, as a merge joins them
+            names.stream().filter(name -> !name.equals(into.getName())).forEach(into::addAlias);
+            try {
+                people.flush();
+            } catch (DataIntegrityViolationException | ObjectOptimisticLockingFailureException e) {
+                throw savedByAnother(); // saved by another user at the same moment
+            }
+        }
         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + target + " by=" + user
-                + " name=" + arrived.getName() + " from=" + sheetId);
+                + " name=" + person.getName() + " from=" + sheetId);
+        if (into != null) {
+            audit.recordOnCommit("PERSON_MERGED sheet=" + target + " by=" + user
+                    + " from=" + person.getName() + " into=" + into.getName());
+        }
         rollup.recordChanges(target, user, beforeThere);
         return arrived;
     }

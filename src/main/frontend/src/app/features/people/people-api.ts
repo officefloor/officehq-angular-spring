@@ -355,8 +355,8 @@ export function transferError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter the id of the sheet to transfer to.';
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may transfer people, and neither sheet may be archived.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
-  if (e instanceof HttpErrorResponse && e.status === 409) return 'Their name, an alias or their contact is already on that sheet.';
-  if (e instanceof HttpErrorResponse && e.status === 422) return 'A person is transferred only to another sheet, and not once retired.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Their name or an alias is used by more than one person there or elsewhere in its tree, or their contact is already on that sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'A person is transferred only to another sheet, not once retired, and not into a retired person there.';
   return otherError(e);
 }
 
