@@ -218,6 +218,15 @@ public class Person {
         datedGrades.put(from, grade);
     }
 
+    /** Turn every grade record of the person on grade {@code from} (the first one among them) into
+     *  {@code into}, whatever its date. */
+    public void mergeGrade(String from, String into) {
+        if (from.equals(grade)) {
+            grade = into;
+        }
+        datedGrades.replaceAll((on, g) -> from.equals(g) ? into : g);
+    }
+
     /** Every grade the person has been given, by from-date, the first one (undated) leading. */
     public List<DatedGrade> getGrades() {
         List<DatedGrade> out = new ArrayList<>();

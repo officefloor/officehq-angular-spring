@@ -7,7 +7,7 @@ import { PeopleApi, mergeGradeError } from '../people/people-api';
 // The grades and whether each is retired, with the form that adds one (a code of one to three
 // capital letters, not yet a grade), the form that retires one: a retired grade cannot be
 // chosen for a new person or in an edit, while the people already on it keep it; and the form by which
-// a steward merges a grade into another, giving everyone on it today the other.
+// a steward merges a grade into another, giving everyone on it today the other, retroactively.
 @Component({
   selector: 'app-grades',
   imports: [ReactiveFormsModule],

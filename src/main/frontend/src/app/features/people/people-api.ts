@@ -221,7 +221,7 @@ export class PeopleApi {
     );
   }
 
-  /** Merge a grade into another: everyone on it on the sheet's today is given the other; how many were changed. */
+  /** Merge a grade into another: everyone on it on the sheet's today is given the other, every grade record of theirs on it included; how many were changed. */
   mergeGrade(sheetId: string, from: string, into: string): Promise<{ changed: number }> {
     return firstValueFrom(
       this.http.post<{ changed: number }>(`${this.url(sheetId)}/merge-grade`, { from, into }, { headers: this.headers() }),
