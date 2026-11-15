@@ -170,10 +170,14 @@ public class HistoryService {
         }
     }
 
-    /** Write that an entity of the sheet is gone now: a statement cancelled, a watch stopped, a
-     *  permission set back to its standing rule. */
+    /** Write that an entity of the sheet is gone now: a person merged or transferred away (with
+     *  their claims), a statement cancelled, a watch stopped, a permission set back to its standing rule. */
     void removed(Object entity) {
-        if (entity instanceof PersonStatement st) {
+        if (entity instanceof Person p) {
+            writeText(p.getSheetId(), PERSON, String.valueOf(p.getId()), REMOVED);
+        } else if (entity instanceof Claim c) {
+            writeText(c.getSheetId(), CLAIM, String.valueOf(c.getId()), REMOVED);
+        } else if (entity instanceof PersonStatement st) {
             writeText(st.getSheetId(), STATEMENT, String.valueOf(st.getId()), REMOVED);
         } else if (entity instanceof PersonPatron pp) {
             writeText(pp.getSheetId(), PATRON, String.valueOf(pp.getId()), REMOVED);

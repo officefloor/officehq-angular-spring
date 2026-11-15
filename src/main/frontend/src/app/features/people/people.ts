@@ -12,7 +12,7 @@ import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, effectiveRates, pctOn, plusDays } from '../rates/rates-api';
-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, retireError, statementError, transferError, unretireError, watchError } from './people-api';
+import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, retireError, statementError, transferError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -223,7 +223,18 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
                   [attr.aria-label]="'Add alias for ' + p.name">Add alias</button>
               </td>
               <td data-testid="person-clashing">{{ p.clashing ? 'yes' : 'no' }}</td>
-              <td data-testid="person-grade">{{ gradeOf(p) }}</td>
+              <td>
+                <span data-testid="person-grade">{{ gradeOf(p) }}</span>
+                <label [for]="'person-inline-grade-' + p.id" class="visually-hidden">Grade for {{ p.name }}</label>
+                <select [id]="'person-inline-grade-' + p.id" data-testid="person-inline-grade" #inlineGrade
+                  (change)="clearRowError(p.id)">
+                  @for (g of grades; track g) {
+                    <option [value]="g" [selected]="g === gradeOf(p)">{{ g }}</option>
+                  }
+                </select>
+                <button type="button" data-testid="person-inline-grade-save" (click)="saveGrade(p, inlineGrade.value)"
+                  [attr.aria-label]="'Save grade of ' + p.name">Save grade</button>
+              </td>
               <td data-testid="person-terms">{{ p.terms ?? '' }}</td>
               <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
               <td data-testid="person-tags">{{ personTags(p).join(', ') }}</td>
@@ -1040,6 +1051,20 @@ export class People {
       if (this.session.sheetId() === sheetId) this.taken(retired);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [p.id]: retireError(e) }));
+    }
+  }
+
+  /** Give a person the chosen grade from the sheet's today, as the person form would; the row then
+   *  shows the grade, and the claims and rollups follow it. */
+  protected async saveGrade(p: Person, grade: string): Promise<void> {
+    this.clearRowError(p.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      const graded = await this.api.grade(sheetId, p.id, grade);
+      if (this.session.sheetId() === sheetId) this.taken(graded);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: gradeError(e) }));
     }
   }
 

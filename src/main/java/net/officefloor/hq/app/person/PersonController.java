@@ -129,6 +129,10 @@ public class PersonController {
     public record TransferForm(@NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String toSheetId) {
     }
 
+    /** A grade as the row submits it: in force from the sheet's today. */
+    public record GradeForm(@NotNull @Pattern(regexp = "[ABC]") String grade) {
+    }
+
     /** A bulk grade as the screen submits it: the selected people by id, the grade, and the date it
      *  is in force from (null: the sheet's today). */
     public record BulkGradeForm(
@@ -220,6 +224,17 @@ public class PersonController {
             @Valid @RequestBody PersonForm body) {
         return view(sheetId, user, service.update(sheetId, user.trim(), id, body.version(), body.name(), body.grade(),
                 body.gradeFrom(), body.termsDays(), body.contactValue(), body.tagsValue()));
+    }
+
+    /** Give the person the grade from the sheet's today, as saving them in the person form would. */
+    @PostMapping("/{id}/grade")
+    public PersonView grade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GradeForm body) {
+        service.grade(sheetId, user.trim(), List.of(id), body.grade(), null);
+        return view(sheetId, user, service.get(sheetId, id));
     }
 
     /** Give the selected people the grade; a viewer, who may change nothing, changes no one. */

@@ -164,6 +164,13 @@ export class PeopleApi {
     );
   }
 
+  /** Give a person a grade from the sheet's today, as the person form would; the person as saved. */
+  grade(sheetId: string, id: number, grade: string): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/grade`, { grade }, { headers: this.headers() }),
+    );
+  }
+
   /** Give the people of the ids, in list order, a grade from a date (blank: the sheet's today); how many were changed. */
   bulkGrade(sheetId: string, ids: number[], grade: string, from: string): Promise<{ changed: number }> {
     return firstValueFrom(
@@ -317,6 +324,12 @@ export function cancelStatementError(e: unknown): string {
 
 export function retireError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a date as yyyy-mm-dd.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  return otherError(e);
+}
+
+export function gradeError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Choose a grade.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   return otherError(e);
 }
