@@ -6,7 +6,7 @@ import { Session, otherError } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { RateLevels, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, waiveError, holdClaimError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, reviewLate, roundsHalfUp, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, ClaimComment, ClaimLine, ClaimLogLine, ClaimsApi, cents, claimError, commentError, deleteError, restoreError, commentText, deferError, lineError, lineText, remindError, waiveError, holdClaimError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, reviewLate, roundsHalfUp, settlePartError, splitError, statusError, tagsOf, VOID_REASON_NEEDED, voidError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -185,6 +185,11 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, 
               [value]="splitAmounts()[c.id] ?? ''" (input)="splitAmountChanged(c.id, $any($event.target).value)" />
             <button type="button" data-testid="claim-split" (click)="split(c)"
               [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date">Split</button>
+            <label [for]="'claim-settle-part-amount-' + c.id">Settle part</label>
+            <input [id]="'claim-settle-part-amount-' + c.id" data-testid="claim-settle-part-amount" inputmode="decimal" autocomplete="off"
+              [value]="settlePartAmounts()[c.id] ?? ''" (input)="settlePartAmountChanged(c.id, $any($event.target).value)" />
+            <button type="button" data-testid="claim-settle-part" (click)="settlePart(c)"
+              [attr.aria-label]="'Settle part of claim of ' + c.amount + ' on ' + c.date">Settle part</button>
             <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
             <select #reassignTo [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to"
               (change)="clearRowError(c.id)">
@@ -257,6 +262,8 @@ export class PersonClaims {
   protected readonly lineDrafts = signal<Record<number, { label: string; qty: string; unit: string }>>({});
   /** The amount typed for splitting off each OPEN claim, by claim id. */
   protected readonly splitAmounts = signal<Record<number, string>>({});
+  /** The amount typed for part-settling each OPEN claim, by claim id. */
+  protected readonly settlePartAmounts = signal<Record<number, string>>({});
   /** The amount typed for changing each DRAFT claim's amount in its row, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
   /** The name of the template chosen for adding a claim; blank when none is. */
@@ -774,6 +781,34 @@ export class PersonClaims {
       }
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: splitError(e) }));
+    }
+  }
+
+  protected settlePartAmountChanged(id: number, amount: string): void {
+    this.clearRowError(id);
+    this.settlePartAmounts.update((as) => ({ ...as, [id]: amount }));
+  }
+
+  /** Split the amount typed for it off an OPEN claim and settle the new claim at once (PENDING
+   *  above the clerk limit); a refusal of either refuses the whole with an error on the claim. */
+  protected async settlePart(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const amount = (this.settlePartAmounts()[c.id] ?? '').trim();
+    if (!AMOUNT_PATTERN.test(amount)) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Enter an amount with up to two decimals to settle.' }));
+      return;
+    }
+    try {
+      const { original, split } = await this.api.settlePart(sheetId, c.id, amount);
+      this.settlePartAmounts.update(({ [c.id]: _, ...rest }) => rest);
+      if (this.session.sheetId() === sheetId) {
+        this.saved.emit(original);
+        this.saved.emit(split);
+      }
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: settlePartError(e, this.isOpenerOrEditor(c)) }));
     }
   }
 

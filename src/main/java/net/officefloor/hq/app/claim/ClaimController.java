@@ -546,6 +546,16 @@ public class ClaimController {
         return new SplitView(view(s.original()), view(s.split()));
     }
 
+    @PostMapping("/claims/{id}/settle-part")
+    public SplitView settlePart(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody SplitForm body) {
+        ClaimService.Split s = service.partSettle(sheetId, user.trim(), id, new BigDecimal(body.amount()));
+        return new SplitView(view(s.original()), view(s.split()));
+    }
+
     @PostMapping("/claims/{id}/delete")
     public ClaimView delete(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,

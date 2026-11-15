@@ -361,7 +361,7 @@ public class ClaimService {
      *  refused (422) before the clerk limit is considered. */
     @Transactional
     public Claim changeStatus(String sheetId, String user, long id, ClaimStatus to) {
-        return changeStatus(sheetId, user, id, to, null);
+        return changeStatus(sheetId, user, id, to, null, false);
     }
 
     /** Settle the claims (in the order given) as {@link #changeStatus} does, all or nothing, as the
@@ -377,7 +377,7 @@ public class ClaimService {
         int number = claims.findLastBatch(sheetId) + 1;
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (long id : ids) {
-            Claim claim = changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null);
+            Claim claim = changeStatus(sheetId, user, id, ClaimStatus.SETTLED, null, false);
             claim.setBatch(number);
             claims.save(claim);
             if (claim.getStatus() == ClaimStatus.SETTLED && claim.getSettledDue() != null) {
@@ -394,10 +394,12 @@ public class ClaimService {
      *  (422), and a reason given while it is empty is refused too. The VOIDED record ends with it. */
     @Transactional
     public Claim voidClaim(String sheetId, String user, long id, String reason) {
-        return changeStatus(sheetId, user, id, ClaimStatus.VOID, reason);
+        return changeStatus(sheetId, user, id, ClaimStatus.VOID, reason, false);
     }
 
-    private Claim changeStatus(String sheetId, String user, long id, ClaimStatus to, String voidReason) {
+    /** {@code judged}: the four-eyes rules and the proof rule were already judged on another claim
+     *  (the one a part-settle split this one off), so they are not judged on this one. */
+    private Claim changeStatus(String sheetId, String user, long id, ClaimStatus to, String voidReason, boolean judged) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         refuseIfClosed(sheetId, claim.getDueBy());
@@ -425,13 +427,8 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A claim deferred until " + claim.getDeferredUntil() + " cannot be settled before then");
         }
-        if (to == ClaimStatus.SETTLED && user.equals(claim.getOpenedBy())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "The user who opened a claim cannot settle it");
-        }
-        if (to == ClaimStatus.SETTLED && user.equals(claim.getEditedBy())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "The user who last edited a claim cannot settle it");
+        if (to == ClaimStatus.SETTLED && !judged) {
+            refuseIfOpenerOrEditor(user, claim);
         }
         Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
@@ -446,7 +443,7 @@ public class ClaimService {
         }
         // a claim bound by a statement settles at its bound figure, late charge included
         BigDecimal settling = to == ClaimStatus.SETTLED ? shownDueOf(claim, person) : null;
-        if (to == ClaimStatus.SETTLED) {
+        if (to == ClaimStatus.SETTLED && !judged) {
             // before the clerk limit: a claim needing a proof never goes to PENDING
             refuseIfUnproven(claim, person, settling);
         }
@@ -779,6 +776,18 @@ public class ClaimService {
         return claim;
     }
 
+    /** Refuse (403) settling a claim by the user who opened or last edited it. */
+    private void refuseIfOpenerOrEditor(String user, Claim claim) {
+        if (user.equals(claim.getOpenedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who opened a claim cannot settle it");
+        }
+        if (user.equals(claim.getEditedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "The user who last edited a claim cannot settle it");
+        }
+    }
+
     /** Refuse (422) settling or approving a claim at a due (null: n/a) above the proof threshold in
      *  force on its date (its person's grade's then when one is set, else the sheet's) while it has
      *  no proof, or, while the sheet has proof kinds, without a proof of each of them. */
@@ -959,6 +968,24 @@ public class ClaimService {
         record("CLAIM_OPENED", user, person, split);
         rollup.recordChanges(sheetId, user, before);
         return new Split(claim, split);
+    }
+
+    /** Part-settle an OPEN claim: the amount is split off as {@link #split} does, and the new claim
+     *  is settled at once by the user as {@link #changeStatus} does (going to PENDING above the
+     *  clerk limit). The four-eyes rules and the proof rule are judged on the original claim, as it
+     *  was before the split; any refusal of the split or the settle refuses the whole, changing and
+     *  recording nothing. */
+    @Transactional
+    public Split partSettle(String sheetId, String user, long id, BigDecimal amount) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        refuseIfOpenerOrEditor(user, claim);
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        refuseIfUnproven(claim, person, shownDueOf(claim, person));
+        Split s = split(sheetId, user, id, amount);
+        Claim settled = changeStatus(sheetId, user, s.split().getId(), ClaimStatus.SETTLED, null, true);
+        return new Split(s.original(), settled);
     }
 
     /** A steward reviews a REVIEW claim: it becomes OPEN, numbered now, its opener kept;
