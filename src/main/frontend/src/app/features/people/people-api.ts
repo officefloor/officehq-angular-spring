@@ -89,6 +89,14 @@ export interface PersonForm {
 }
 
 // The people kept on the active sheet, read and written through the server.
+/** Figures added up over a sheet's descendants: how many people (retired ones too), and each
+ *  sheet's due-total and overdue-total as that sheet shows it. */
+export interface DescendantFigures {
+  people: number;
+  dueTotal: string;
+  overdueTotal: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class PeopleApi {
   private readonly http = inject(HttpClient);
@@ -176,6 +184,12 @@ export class PeopleApi {
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheetId)}/${id}/merge`, { intoId }, { headers: this.headers() }),
     );
+  }
+
+  /** The figures of the sheet's descendants (its children, theirs, and so on), each as it is now, added up. */
+  descendantFigures(sheetId: string): Promise<DescendantFigures> {
+    return firstValueFrom(this.http.get<DescendantFigures>(
+      `/api/sheets/${encodeURIComponent(sheetId)}/descendants/figures`, { headers: this.headers() }));
   }
 
   private url(sheetId: string): string {

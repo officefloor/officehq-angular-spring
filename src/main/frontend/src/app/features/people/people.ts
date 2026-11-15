@@ -10,7 +10,7 @@ import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, effectiveRates, pctOn, plusDays } from '../rates/rates-api';
-import { GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, mergeError, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
+import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, mergeError, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -21,7 +21,7 @@ import { GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn
   selector: 'app-people',
   imports: [ReactiveFormsModule, Header, PersonClaims, Periods, Pools, Rates, Summary],
   template: `
-    <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
+    <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()" />
     <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
@@ -523,6 +523,17 @@ export class People {
   /** Everyone's due-total added up, skipping n/a, trimmed. */
   protected readonly dueTotal = computed(() =>
     money(trimmedSum([...this.dueByPerson().values()].filter((d): d is number => d !== null))));
+  /** The figures of the sheet's descendants added up, as last read from the store. */
+  private readonly descendants = signal<DescendantFigures>({ people: 0, dueTotal: '0.00', overdueTotal: '0.00' });
+  /** The sheet's own figures and its descendants' added up. */
+  protected readonly consolidated = computed<DescendantFigures>(() => {
+    const d = this.descendants();
+    return {
+      people: this.people().length + d.people,
+      dueTotal: money(cents(this.dueTotal()) + cents(d.dueTotal)),
+      overdueTotal: money(cents(this.overdueTotal()) + cents(d.overdueTotal)),
+    };
+  });
   protected readonly claimedTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + (this.byPerson().get(p.id)?.cents ?? 0), 0)));
   /** Every tag ever used on the sheet, as last read from the store. */
@@ -660,6 +671,7 @@ export class People {
         this.tagsUsed.set([]);
         this.rates.set([]);
         this.inherited.set([]);
+        this.descendants.set({ people: 0, dueTotal: '0.00', overdueTotal: '0.00' });
         this.periods.set([]);
         if (id) void this.read(id);
       });
@@ -1210,10 +1222,11 @@ export class People {
   private async read(sheetId: string): Promise<void> {
     const seq = ++this.readSeq;
     try {
-      const [people, claims, rates, inherited, periods, tags] = await Promise.all([
+      const [people, claims, rates, inherited, periods, tags, descendants] = await Promise.all([
         this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId), this.ratesApi.inherited(sheetId),
-        this.periodsApi.list(sheetId), this.claimsApi.tags(sheetId)]);
+        this.periodsApi.list(sheetId), this.claimsApi.tags(sheetId), this.api.descendantFigures(sheetId)]);
       if (seq === this.readSeq) {
+        this.descendants.set(descendants);
         this.tagsUsed.set(tags);
         this.rates.set(rates);
         this.inherited.set(inherited);

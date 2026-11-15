@@ -3,13 +3,16 @@ package net.officefloor.hq.app.rollup;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
@@ -125,6 +128,34 @@ public class RollupService {
                     Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding), cap), overdue));
         }
         return new Snapshot(out);
+    }
+
+    /** Figures added up over sheets: how many people (retired ones too), and the due-totals and
+     *  overdue-totals each sheet shows. */
+    public record Consolidated(int people, BigDecimal dueTotal, BigDecimal overdueTotal) {
+    }
+
+    /** The figures of the sheet's descendants (its children, theirs, and so on), each sheet's as
+     *  it is now, added up; all zero for a sheet with no children. */
+    public Consolidated descendants(String sheetId) {
+        int count = 0;
+        BigDecimal due = zero();
+        BigDecimal overdue = zero();
+        Set<String> seen = new HashSet<>(Set.of(sheetId));
+        ArrayDeque<String> todo = new ArrayDeque<>(List.of(sheetId));
+        while (!todo.isEmpty()) {
+            for (Sheet child : sheets.findByParentOrderByIdAsc(todo.poll())) {
+                if (!seen.add(child.getId())) {
+                    continue;
+                }
+                todo.add(child.getId());
+                Snapshot figures = snapshot(child.getId());
+                count += figures.people().size();
+                due = due.add(figures.dueTotal());
+                overdue = overdue.add(figures.overdueTotal());
+            }
+        }
+        return new Consolidated(count, due, overdue);
     }
 
     /** Each person's due-total for the period from {@code from} to {@code to}, inclusive, by person
