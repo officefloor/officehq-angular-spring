@@ -1,0 +1,33 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index ebd46dbb5..325ef4084 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -12,7 +12,7 @@ import { Lateness, Rate, RatesApi, claimDueCents, pctOn, plusDays } from '../rat
+ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, retireError, statementError, watchError } from './people-api';
+ 
+ // The sheet's rates; its periods, each with its due-total; the people on the active sheet, in the order they were added, each with their
+-// claims, what they have claimed, their due-total (held to the sheet's cap) and its excess over the cap, their overdue claims, and their patrons and backing; the sheet's claimed-total,
++// claims, what they have claimed, their due-total (held to the sheet's cap) and its excess over the cap, their overdue claims, and their patrons and backing (their patrons' recent settled figures); the sheet's claimed-total,
+ // due-total and overdue claims; a header of counters repeating them; a summary of them by grade, period and status; and
+ // the one form that adds a person or, with a
+ // person's editor open, saves that person.
+@@ -488,10 +488,16 @@ export class People {
+     return p.patronIds.map((id) => names.get(id) ?? '').filter((n) => n).sort().join(', ');
+   }
+ 
+-  /** The person's patrons' due-totals added up, skipping n/a; 0.00 with no patrons. */
++  /** The person's patrons' settled figures added up over their SETTLED claims dated within the 90 days
++   *  up to and including the sheet's today, each at the due fixed when it was settled; 0.00 with none. */
+   protected backingOf(p: Person): string {
+-    const dues = this.dueByPerson();
+-    return money(p.patronIds.reduce((sum, id) => sum + (dues.get(id) ?? 0), 0));
++    const today = this.session.today();
++    if (today === null) return money(0);
++    const since = plusDays(today, -89);
++    const patrons = new Set(p.patronIds);
++    return money(this.claims()
++      .filter((c) => patrons.has(c.personId) && c.status === 'SETTLED' && c.settledDue !== null && since <= c.date && c.date <= today)
++      .reduce((sum, c) => sum + cents(c.settledDue as string), 0));
+   }
+ 
+   /** The people the person may name as a patron: everyone else on the sheet. */
