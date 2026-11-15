@@ -1,0 +1,47 @@
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index b808629cd..6f29aa4b4 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -36,6 +36,7 @@ export interface Dashboard {
+       <p>My due total <strong data-testid="my-due-total">{{ myDueTotal() | figure }}</strong>,
+         my overdue total <strong data-testid="my-overdue-total">{{ myOverdueTotal() | figure }}</strong></p>
+       <p>My crew total <strong data-testid="my-crew-due-total">{{ myCrewDueTotal() | figure }}</strong></p>
++      <p>Watched total <strong data-testid="watched-due-total">{{ watchedDueTotal() | figure }}</strong></p>
+       <p>My reviews <strong data-testid="my-reviews-count">{{ myReviews() }}</strong></p>
+       <p>Steward's dashboard: pending <strong data-testid="dash-pending-count">{{ dashboard()?.pending ?? '' }}</strong>,
+         in review <strong data-testid="dash-review-count">{{ dashboard()?.review ?? '' }}</strong>,
+@@ -69,6 +70,8 @@ export class Header {
+   readonly myOverdueTotal = input<string | null>(null);
+   /** The due-totals of the crews the signed-in user's person leads, added up; null when they lead none. */
+   readonly myCrewDueTotal = input<string | null>(null);
++  /** The due-totals of the people the signed-in user watches, added up. */
++  readonly watchedDueTotal = input<string>('0.00');
+   /** The steward's dashboard counts; null when the signed-in user is not a steward. */
+   readonly dashboard = input<Dashboard | null>(null);
+ 
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index f15dcd1f0..a485bf6bc 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -29,7 +29,7 @@ import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person,
+   template: `
+     <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()"
+       [myDueTotal]="myFigures()?.dueTotal ?? null" [myOverdueTotal]="myFigures()?.overdueTotal ?? null"
+-      [myCrewDueTotal]="myCrewDueTotal()" [dashboard]="dashboard()"
++      [myCrewDueTotal]="myCrewDueTotal()" [watchedDueTotal]="watchedDueTotal()" [dashboard]="dashboard()"
+       [user]="session.user()" />
+     <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" />
+     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" (replaced)="periods.set($event)" />
+@@ -971,6 +971,12 @@ export class People {
+     return money(led.reduce((sum, c) =>
+       sum + crewIds(c).reduce((s, id) => s + (dues.get(id) ?? 0), 0), 0));
+   });
++  /** The due-totals of the people the signed-in user watches (n/a skipped), added up; 0.00 when
++   *  they watch no one. */
++  protected readonly watchedDueTotal = computed(() => {
++    const dues = this.dueByPerson();
++    return money(this.people().filter((p) => p.watched).reduce((sum, p) => sum + (dues.get(p.id) ?? 0), 0));
++  });
+   /** The figures of the sheet's descendants added up, as last read from the store. */
+   private readonly descendants = signal<DescendantFigures>(NO_FIGURES);
+   /** The sheet's own figures as it stood at the end of the as-of date, read from the store while
