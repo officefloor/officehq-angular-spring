@@ -87,6 +87,10 @@ public class Claim {
     @Column(name = "proofs", nullable = false)
     private int proofs;
 
+    /** The number of the claim this one was split from; none for a claim not made by a split. */
+    @Column(name = "split_from")
+    private String splitFrom;
+
     protected Claim() {
     }
 
@@ -211,6 +215,14 @@ public class Claim {
 
     public void setDeferredUntil(LocalDate deferredUntil) {
         this.deferredUntil = deferredUntil;
+    }
+
+    public String getSplitFrom() {
+        return splitFrom;
+    }
+
+    public void setSplitFrom(String splitFrom) {
+        this.splitFrom = splitFrom;
     }
 
     public int getProofs() {

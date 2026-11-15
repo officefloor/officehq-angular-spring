@@ -37,16 +37,17 @@ public class ClaimController {
      *  and for other claims); who opened it (null while DRAFT); whether the person's last statement
      *  bound it, and the due it was bound to (null when unbound or n/a then); the number of the
      *  claim a correction corrects (null for other claims); its status log, oldest first; the date
-     *  it was deferred until (null when never deferred); how many proofs it has. */
+     *  it was deferred until (null when never deferred); how many proofs it has; the number of the
+     *  claim it was split from (null when not made by a split). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
-            LocalDate deferredUntil, int proofs) {
+            LocalDate deferredUntil, int proofs, String splitFrom) {
         static ClaimView of(Claim c, List<ClaimLog> log) {
             return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
                     c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
-                    log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs());
+                    log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom());
         }
 
         private static String money(BigDecimal value) {
@@ -86,6 +87,14 @@ public class ClaimController {
 
     /** The date a claim is deferred until. */
     public record DeferForm(@NotNull LocalDate until) {
+    }
+
+    /** The amount split off a claim: up to two decimals. */
+    public record SplitForm(@NotNull @Pattern(regexp = "\\d{1,13}(\\.\\d{1,2})?") String amount) {
+    }
+
+    /** A split just made: the original as it now is, and the new claim split off it. */
+    public record SplitView(ClaimView original, ClaimView split) {
     }
 
     /** The claims selected for a bulk action, by id. */
@@ -263,6 +272,16 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ReassignForm body) {
         return view(service.reassign(sheetId, user.trim(), id, body.personId()));
+    }
+
+    @PostMapping("/claims/{id}/split")
+    public SplitView split(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody SplitForm body) {
+        ClaimService.Split s = service.split(sheetId, user.trim(), id, new BigDecimal(body.amount()));
+        return new SplitView(view(s.original()), view(s.split()));
     }
 
     @PostMapping("/claims/{id}/void")

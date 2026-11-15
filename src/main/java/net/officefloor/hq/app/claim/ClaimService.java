@@ -53,6 +53,10 @@ public class ClaimService {
     public record Statement(Person person, StatementSummary summary, List<Claim> claims) {
     }
 
+    /** A split just made: the original, keeping the rest of its amount, and the new claim. */
+    public record Split(Claim original, Claim split) {
+    }
+
     public ClaimService(ClaimRepository claims, ClaimLogRepository log, PersonRepository people, PersonStatementRepository statements,
             RateRepository rates, SheetService sheets, RollupService rollup, PeriodService periods, SettingsService settings, Audit audit) {
         this.claims = claims;
@@ -399,6 +403,52 @@ public class ClaimService {
                 " from=" + from.getName() + " to=" + to.getName());
         rollup.recordChanges(sheetId, user, before);
         return claim;
+    }
+
+    /** Split an amount off an OPEN claim: the claim keeps the rest of its amount and loses any
+     *  figure a statement bound it to, and a new OPEN claim of the amount, with the same date and
+     *  note, the next number, opened by the user, its due-by fixed now from the terms in force on
+     *  the date, and naming the original's number as split-from, is listed as the person's newest.
+     *  Refused (404) when missing, (423) when dated in a closed period, (403) for a role the
+     *  sheet's permission matrix does not let open a claim, (409) unless OPEN and not deferred on
+     *  the sheet's today, and (422) unless the amount is more than 0.00 and less than the claim's. */
+    @Transactional
+    public Split split(String sheetId, String user, long id, BigDecimal amount) {
+        Claim claim = claims.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
+        refuseIfClosed(sheetId, claim.getDate());
+        settings.refuseUnlessAllowed(sheetId, user, Permission.OPEN);
+        if (claim.getStatus() != ClaimStatus.OPEN) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only an OPEN claim is split, not a " + claim.getStatus() + " one");
+        }
+        if (claim.isDeferredOn(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A claim deferred until " + claim.getDeferredUntil() + " cannot be split before then");
+        }
+        if (amount.signum() <= 0 || amount.compareTo(claim.getAmount()) >= 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "The amount split off must be more than 0.00 and less than the claim's");
+        }
+        Person person = people.findByIdAndSheetId(claim.getPersonId(), sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        LocalDate on = claim.getDate();
+        claim.setAmount(claim.getAmount().subtract(amount));
+        claim.unbind();
+        int terms = sheets.find(sheetId).map(s -> s.termsFor(person.gradeOn(on), on)).orElse(Sheet.DEFAULT_TERMS);
+        Claim fresh = new Claim(sheetId, person.getId(), amount, on, on.plusDays(terms), claim.getNote());
+        fresh.setStatus(ClaimStatus.OPEN);
+        fresh.setNumber(nextNumber(sheetId, on));
+        fresh.setOpenedBy(user);
+        fresh.setSplitFrom(claim.getNumber());
+        fresh.setListed(claims.findLastListed(sheetId) + 1);
+        Claim split = claims.saveAndFlush(fresh);
+        logStatus(user, person, split);
+        record("CLAIM_SPLIT", user, person, claim, claim.getNumber(), " into=" + split.getNumber());
+        record("CLAIM_OPENED", user, person, split);
+        rollup.recordChanges(sheetId, user, before);
+        return new Split(claim, split);
     }
 
     /** The PENDING claim a steward decides on: refused (404) when missing, (423) when dated in a

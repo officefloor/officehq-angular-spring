@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, deferError, deferred, proofError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, statusError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, deferError, deferred, proofError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -51,6 +51,7 @@ import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cent
             <span>Deferred <span data-testid="claim-deferred">{{ deferredOf(c) ? 'yes' : 'no' }}</span></span>
             <span>Deferred until <span data-testid="claim-deferred-until">{{ c.deferredUntil ?? '' }}</span></span>
             <span>Proofs <span data-testid="claim-proofs">{{ c.proofs }}</span></span>
+            <span>Split from No. <span data-testid="claim-split-from">{{ c.splitFrom ?? '' }}</span></span>
             <ol [attr.aria-label]="'Status log of claim of ' + c.amount + ' on ' + c.date">
               @for (l of c.log; track $index) {
                 <li data-testid="claim-log-line">{{ logText(l) }}</li>
@@ -80,6 +81,11 @@ import { CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cent
               [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
             <button type="button" data-testid="claim-edit" (click)="edit(c)"
               [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
+            <label [for]="'claim-split-amount-' + c.id">Split off</label>
+            <input [id]="'claim-split-amount-' + c.id" data-testid="claim-split-amount" inputmode="decimal" autocomplete="off"
+              [value]="splitAmounts()[c.id] ?? ''" (input)="splitAmountChanged(c.id, $any($event.target).value)" />
+            <button type="button" data-testid="claim-split" (click)="split(c)"
+              [attr.aria-label]="'Split claim of ' + c.amount + ' on ' + c.date">Split</button>
             <label [for]="'claim-reassign-to-' + c.id">Reassign to</label>
             <select #reassignTo [id]="'claim-reassign-to-' + c.id" data-testid="claim-reassign-to"
               (change)="clearRowError(c.id)">
@@ -134,6 +140,8 @@ export class PersonClaims {
   protected readonly rejectReasons = signal<Record<number, string>>({});
   /** The date typed for deferring each OPEN claim until, by claim id. */
   protected readonly deferDates = signal<Record<number, string>>({});
+  /** The amount typed for splitting off each OPEN claim, by claim id. */
+  protected readonly splitAmounts = signal<Record<number, string>>({});
   protected readonly fieldId = (name: string) => `claim-form-${name}-${this.personId()}`;
 
   protected readonly form = new FormGroup({
@@ -312,6 +320,34 @@ export class PersonClaims {
     } catch (e) {
       const err = action === 'resettle' ? resettleError(e) : statusError(e, c.openedBy === this.session.user());
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: err }));
+    }
+  }
+
+  protected splitAmountChanged(id: number, amount: string): void {
+    this.clearRowError(id);
+    this.splitAmounts.update((as) => ({ ...as, [id]: amount }));
+  }
+
+  /** Split the amount typed for it off an OPEN claim; the original keeps the rest and the new
+   *  claim is listed first. A refusal shows an error on the claim. */
+  protected async split(c: Claim): Promise<void> {
+    this.clearRowError(c.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const amount = (this.splitAmounts()[c.id] ?? '').trim();
+    if (!AMOUNT_PATTERN.test(amount)) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Enter an amount with up to two decimals to split off.' }));
+      return;
+    }
+    try {
+      const { original, split } = await this.api.split(sheetId, c.id, amount);
+      this.splitAmounts.update(({ [c.id]: _, ...rest }) => rest);
+      if (this.session.sheetId() === sheetId) {
+        this.saved.emit(original);
+        this.saved.emit(split);
+      }
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [c.id]: splitError(e) }));
     }
   }
 

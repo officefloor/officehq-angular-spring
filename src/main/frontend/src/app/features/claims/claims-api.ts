@@ -53,6 +53,8 @@ export interface Claim {
   deferredUntil: string | null;
   /** How many proofs the claim has. */
   proofs: number;
+  /** The number of the claim this one was split from; null when not made by a split. */
+  splitFrom: string | null;
 }
 
 /** A line of a claim's status log: the status, who moved the claim there, the sheet's today then
@@ -218,6 +220,14 @@ export class ClaimsApi {
     );
   }
 
+  /** Split an amount off an OPEN claim: the original keeps the rest, and a new OPEN claim takes the amount. */
+  split(sheetId: string, id: number, amount: string): Promise<{ original: Claim; split: Claim }> {
+    return firstValueFrom(
+      this.http.post<{ original: Claim; split: Claim }>(`${this.url(sheetId)}/claims/${id}/split`, { amount },
+        { headers: this.headers() }),
+    );
+  }
+
   /** Open each of the claims, in list order; those that cannot be opened are left as they are. */
   bulkOpen(sheetId: string, ids: number[]): Promise<{ opened: number; refused: number }> {
     return firstValueFrom(this.http.post<{ opened: number; refused: number }>(`${this.url(sheetId)}/claims/bulk-open`, { ids },
@@ -322,6 +332,17 @@ export function reassignError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim or person is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
   if (e instanceof HttpErrorResponse && e.status === 422) return "The claim's date is after that person's retirement date.";
+  return otherError(e);
+}
+
+/** Why a split was refused. */
+export function splitError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter an amount with up to two decimals.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not open a claim, so it may not split one.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Only an open claim that is not deferred can be split.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return "Split off an amount more than 0.00 and less than the claim's.";
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That claim is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 423) return 'This claim is dated in a closed period.';
   return otherError(e);
 }
 
