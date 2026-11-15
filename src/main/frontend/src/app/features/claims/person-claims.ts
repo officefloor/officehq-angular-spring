@@ -371,11 +371,12 @@ export class PersonClaims {
     return this.session.graceOn(gradeOn(this.grades(), c.date), c.date);
   }
 
-  /** Whether the row shows the claim deferred: deferred until a date after the sheet's today, kept
-   *  so after it leaves OPEN (only an OPEN one is left out of the totals). */
+  /** Whether the row shows the claim deferred: deferred until a date after the sheet's today and
+   *  not bound by a statement (the deferral takes effect once the binding ends), kept so after it
+   *  leaves OPEN. */
   protected deferredOf(c: Claim): boolean {
     const today = this.session.today();
-    return c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+    return !c.stated && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
   }
 
   /** The name of the period whose dates contain the claim's due-by; blank when none does. */

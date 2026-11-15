@@ -172,6 +172,23 @@ public class Period {
         openings.merge(personId, amount, BigDecimal::add);
     }
 
+    /** Carry a person merged into another to them: the figures fixed for the merged person and
+     *  their opening balance are added to the other's. */
+    public void mergePerson(Long fromId, Long intoId) {
+        BigDecimal total = closedPersonTotals.remove(fromId);
+        if (total != null) {
+            closedPersonTotals.merge(intoId, total, BigDecimal::add);
+        }
+        BigDecimal carried = closedPersonCarried.remove(fromId);
+        if (carried != null) {
+            closedPersonCarried.merge(intoId, carried, BigDecimal::add);
+        }
+        BigDecimal opening = openings.remove(fromId);
+        if (opening != null) {
+            openings.merge(intoId, opening, BigDecimal::add);
+        }
+    }
+
     /** Close the period, fixing each person's due-total for it at {@code personTotals} and their
      *  carried figure at {@code personCarried} (null: none fixed), by person id, and its due-total
      *  at their due-totals' sum. */

@@ -27,6 +27,7 @@ import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.RetiredNumber;
 import net.officefloor.hq.app.claim.RetiredNumberRepository;
 import net.officefloor.hq.app.pool.PoolMember;
+import net.officefloor.hq.app.period.PeriodRepository;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -58,13 +59,14 @@ public class PersonService {
     private final SettingsService settings;
     private final SheetService sheets;
     private final RollupService rollup;
+    private final PeriodRepository periods;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonStatementRepository statements,
             PersonPatronRepository patrons, PersonWatchRepository watches, ClaimRepository claims,
             ClaimLogRepository claimLog, ClaimCommentRepository claimComments, ClaimLineRepository claimLines, RetiredNumberRepository retiredNumbers,
             ClaimService claimService, PoolMemberRepository poolMembers, CrewService crews, SettingsService settings, SheetService sheets,
-            RollupService rollup, Audit audit) {
+            RollupService rollup, PeriodRepository periods, Audit audit) {
         this.people = people;
         this.statements = statements;
         this.patrons = patrons;
@@ -80,6 +82,7 @@ public class PersonService {
         this.settings = settings;
         this.sheets = sheets;
         this.rollup = rollup;
+        this.periods = periods;
         this.audit = audit;
     }
 
@@ -560,7 +563,9 @@ public class PersonService {
      *  them as patron names the other instead (no repeats), and their pool memberships move to the
      *  other (shares added where the other is a member already). Their statements are carried to
      *  the other, whose statement count becomes their own plus the merged person's, the other's
-     *  last statement staying theirs (or, having none, becoming the merged person's). Their holds,
+     *  last statement staying theirs (or, having none, becoming the merged person's). The figures
+     *  closed and soft-closed periods fixed for them, and their opening balances, are added to the
+     *  other's. Their holds,
      *  watchers and contact go with them. Refused (404) for a person not on the sheet, (403) unless the user
      *  acts as a steward, (422) for the same person, either of them retired, or a pool share added
      *  past 100.00. */
@@ -628,6 +633,10 @@ public class PersonService {
         patrons.deleteAll(theirPatrons);
         patrons.deleteAll(namingThem);
         patrons.flush();
+
+        // the figures closed and soft-closed periods fixed for them, and their opening balances, carried to the other
+        periods.findBySheetIdOrderByFromAsc(sheetId).forEach(p -> p.mergePerson(from.getId(), into.getId()));
+        periods.flush();
 
         // statements carried to the other; watchers go with them
         carryStatements(sheetId, statements.findByPersonIdOrderByIdAsc(from.getId()), into);

@@ -112,6 +112,11 @@ public class Claim {
     @Column(name = "deferred_until")
     private LocalDate deferredUntil;
 
+    /** Whether the claim was deferred while a statement bound it: its deferral takes effect only
+     *  once the binding ends, and then whatever the status it has reached meanwhile. */
+    @Column(name = "deferred_bound", nullable = false)
+    private boolean deferredBound;
+
     /** How many proofs the claim has; 0 until the first is added. */
     @Column(name = "proofs", nullable = false)
     private int proofs;
@@ -359,6 +364,14 @@ public class Claim {
         this.deferredUntil = deferredUntil;
     }
 
+    public boolean isDeferredBound() {
+        return deferredBound;
+    }
+
+    public void setDeferredBound(boolean deferredBound) {
+        this.deferredBound = deferredBound;
+    }
+
     public String getSplitFrom() {
         return splitFrom;
     }
@@ -485,6 +498,7 @@ public class Claim {
         copy.editedBy = editedBy;
         copy.corrects = corrects;
         copy.deferredUntil = deferredUntil;
+        copy.deferredBound = deferredBound;
         copy.proofs = proofs;
         copy.photoProofs = photoProofs;
         copy.splitFrom = splitFrom;
@@ -556,10 +570,16 @@ public class Claim {
         }
     }
 
-    /** Whether the claim is deferred on a date: OPEN, deferred until a date after it. Until then it
-     *  counts in no total, is not overdue, cannot be settled and is left unbound by a statement. */
+    /** Whether the claim is deferred on a date: OPEN (or, deferred while bound, PENDING or
+     *  SETTLED), deferred until a date after it, and not bound by a statement (a deferral takes
+     *  effect only once the binding ends). Until then it counts in no total, is not overdue,
+     *  cannot be settled and is left unbound by a statement. */
     public boolean isDeferredOn(LocalDate today) {
-        return status == ClaimStatus.OPEN && deferredUntil != null && deferredUntil.isAfter(today);
+        if (stated || deferredUntil == null || !deferredUntil.isAfter(today)) {
+            return false;
+        }
+        return status == ClaimStatus.OPEN
+                || (deferredBound && (status == ClaimStatus.PENDING || status == ClaimStatus.SETTLED));
     }
 
     /** Whether the claim's due is bound to {@link #statedDue}: it is stated (a PENDING claim too,

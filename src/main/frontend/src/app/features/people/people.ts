@@ -857,7 +857,7 @@ export class People {
     const today = this.session.today();
     return (c: Claim, end: string) => {
       const status = statusOn(c, end);
-      if (status === null) return false;
+      if (status === null || deferred(c, today)) return false;
       if (status === 'SETTLED') return true;
       if ((status !== 'OPEN' && status !== 'PENDING') || deferred(c, today)) return false;
       // a hold or a reached retirement leaves out a claim still open now, as the live due-total does

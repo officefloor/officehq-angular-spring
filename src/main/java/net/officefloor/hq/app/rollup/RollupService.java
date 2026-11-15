@@ -553,6 +553,10 @@ public class RollupService {
     /** Whether a claim of the person (null: one with neither a hold nor a retirement) counts, as
      *  {@link #counts} has it. */
     private static boolean countsFor(Claim c, Person person, LocalDate today) {
+        // a SETTLED one too, when deferred while bound and the binding has ended
+        if (c.isDeferredOn(today)) {
+            return false;
+        }
         if (c.getStatus() == ClaimStatus.SETTLED) {
             return true;
         }
@@ -564,6 +568,9 @@ public class RollupService {
 
     /** Whether a claim counts toward claimed: as {@link #countsFor} has it. */
     private static boolean countsClaimed(Claim c, Person person, LocalDate today) {
+        if (c.isDeferredOn(today)) {
+            return false;
+        }
         if (c.getStatus() == ClaimStatus.SETTLED) {
             return true;
         }
@@ -576,7 +583,7 @@ public class RollupService {
     /** Whether a claim counts toward a period's due-total, taken in {@code status} (the one it had
      *  at the period's end; null when it was not yet added then): as {@link #counts} has it. */
     private static boolean countsAt(Claim c, ClaimStatus status, Map<Long, Person> held, LocalDate today) {
-        if (status == null) {
+        if (status == null || c.isDeferredOn(today)) {
             return false;
         }
         if (status == ClaimStatus.SETTLED) {

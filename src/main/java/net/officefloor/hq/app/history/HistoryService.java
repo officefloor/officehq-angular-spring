@@ -99,7 +99,7 @@ public class HistoryService {
             boolean lateEntry, LocalDate reminded, String ref, String tags, String voidReason, String editedBy,
             Integer batch, Long added, Boolean escalated, LocalDate reviewOn,
             Boolean waived, Integer photoProofs, Boolean held, String reviewAssignee,
-            LocalDate pendingOn, List<ShareState> shares, Boolean dueBySet) {
+            LocalDate pendingOn, List<ShareState> shares, Boolean dueBySet, Boolean deferredBound) {
     }
 
     /** A share of a claim; none in versions written before claims' shares were kept. */
@@ -196,7 +196,7 @@ public class HistoryService {
                     c.isEscalated(), c.getReviewOn(), c.isWaived(), c.getPhotoProofs(), c.isHeld(),
                     c.getReviewAssignee(), c.getPendingOn(),
                     c.getShares().stream().map(sh -> new ShareState(sh.getPersonId(), sh.getShare())).toList(),
-                    c.isDueBySet()));
+                    c.isDueBySet(), c.isDeferredBound()));
         } else if (entity instanceof Person p) {
             List<Person.DatedGrade> all = p.getGrades();
             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),
@@ -469,6 +469,7 @@ public class HistoryService {
         c.setSettledDue(s.settledDue());
         c.setCorrects(s.corrects());
         c.setDeferredUntil(s.deferredUntil());
+        c.setDeferredBound(Boolean.TRUE.equals(s.deferredBound()));
         c.setNote(s.note() == null ? "" : s.note());
         c.setOpenedBy(s.openedBy());
         c.setListed(s.listed());

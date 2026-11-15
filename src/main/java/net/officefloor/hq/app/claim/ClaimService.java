@@ -631,8 +631,11 @@ public class ClaimService {
 
     /** Defer an OPEN claim until a date after the sheet's today: until the sheet's today reaches
      *  it, the claim counts in no total, is not overdue, cannot be settled and is left unbound by a
-     *  statement. Refused (404) when missing, (423) when due in a closed period, (409) unless
-     *  OPEN, and (422) when the date is not after the sheet's today. */
+     *  statement. A claim a statement binds stays in every total, counts and can be settled while
+     *  bound: its deferral takes effect only once the binding ends (the statement is cancelled, or
+     *  the next leaves it unbound), whatever its status then. Refused (404) when missing, (423)
+     *  when due in a closed period, (409) unless OPEN, and (422) when the date is not after the
+     *  sheet's today. */
     @Transactional
     public Claim defer(String sheetId, String user, long id, LocalDate until) {
         Claim claim = claims.findForUpdate(id, sheetId)
@@ -650,6 +653,8 @@ public class ClaimService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         claim.setDeferredUntil(until);
+        // a claim a statement binds stays in every total until the binding ends
+        claim.setDeferredBound(claim.isBound());
         claims.flush();
         record("CLAIM_DEFERRED", user, person, claim, claim.getNumber(), " until=" + until);
         rollup.recordChanges(sheetId, user, before);
@@ -1515,9 +1520,9 @@ public class ClaimService {
      *  person whose retirement date the sheet's today has reached, unless bound by a statement, nor one deferred
      *  on the sheet's today. */
     private static boolean counts(Claim c, Person person, LocalDate today) {
-        return c.getStatus() == ClaimStatus.SETTLED
-                || (c.getStatus().isOpen() && !c.isDeferredOn(today)
-                        && (c.isBound() || !person.retiredOn(today)));
+        return !c.isDeferredOn(today) && (c.getStatus() == ClaimStatus.SETTLED
+                || (c.getStatus().isOpen()
+                        && (c.isBound() || !person.retiredOn(today))));
     }
 
     /** The due a claim shows: the due fixed when it was settled, else the one a statement bound it to

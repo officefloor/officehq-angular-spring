@@ -60,6 +60,9 @@ export interface Claim {
   log: ClaimLogLine[];
   /** yyyy-mm-dd: the date the claim was deferred until; null when it was never deferred. */
   deferredUntil: string | null;
+  /** Whether the claim was deferred while a statement bound it: its deferral takes effect only
+   *  once the binding ends, and then whatever status it has reached meanwhile. */
+  deferredBound: boolean;
   /** How many proofs the claim has. */
   proofs: number;
   /** Of the claim's proofs, how many are receipts. */
@@ -175,10 +178,12 @@ export function isBound(c: Claim): boolean {
   return c.stated;
 }
 
-/** Whether a claim is deferred on the sheet's today: OPEN, deferred until a date after it. Until
- *  then it counts in no total, is not overdue and cannot be settled. */
+/** Whether a claim is deferred on the sheet's today: OPEN (or, deferred while bound, PENDING or
+ *  SETTLED), deferred until a date after it, and not bound by a statement (a deferral takes effect
+ *  only once the binding ends). Until then it counts in no total, is not overdue and cannot be settled. */
 export function deferred(c: Claim, today: string | null): boolean {
-  return c.status === 'OPEN' && c.deferredUntil !== null && today !== null && today < c.deferredUntil;
+  if (c.stated || c.deferredUntil === null || today === null || today >= c.deferredUntil) return false;
+  return c.status === 'OPEN' || (c.deferredBound && (c.status === 'PENDING' || c.status === 'SETTLED'));
 }
 
 /** Whether a claim counts toward claimed and due totals on the sheet's today: only open (OPEN or
