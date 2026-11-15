@@ -625,7 +625,7 @@ public class SettingsController {
     @PutMapping("/settings/perm/{action}")
     public SettingsView setPermission(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @PathVariable @NotNull @Pattern(regexp = "open|settle|void|reassign|close|reopen") String action,
+            @PathVariable @NotNull @Pattern(regexp = "open|settle|void|reassign|close|reopen|today") String action,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PermissionForm body) {
         String roles = String.join(",", Arrays.stream(body.value().split(","))

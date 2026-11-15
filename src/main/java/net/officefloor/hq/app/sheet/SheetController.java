@@ -13,6 +13,7 @@ import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.session.CurrentUser;
 import net.officefloor.hq.app.settings.SettingsController.DatedValue;
+import net.officefloor.hq.app.settings.Permission;
 import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.settings.ViewerAllowed;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -90,6 +91,7 @@ public class SheetController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody TodayChange body) {
+        settings.refuseUnlessAllowed(id, user.trim(), Permission.TODAY);
         return SheetView.of(service.setToday(id, user.trim(), body.today()));
     }
 

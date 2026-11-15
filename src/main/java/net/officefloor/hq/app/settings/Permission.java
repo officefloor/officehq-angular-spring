@@ -10,7 +10,8 @@ public enum Permission {
     VOID(Set.of(Role.CLERK, Role.STEWARD)),
     REASSIGN(Set.of(Role.STEWARD)),
     CLOSE(Set.of(Role.CLERK, Role.STEWARD)),
-    REOPEN(Set.of(Role.STEWARD));
+    REOPEN(Set.of(Role.STEWARD)),
+    TODAY(Set.of(Role.CLERK, Role.STEWARD));
 
     private final Set<Role> standing;
 

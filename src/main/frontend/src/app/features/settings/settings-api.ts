@@ -17,6 +17,7 @@ export const PERMISSIONS = [
   { action: 'reassign', standing: 'steward' },
   { action: 'close', standing: 'clerk,steward' },
   { action: 'reopen', standing: 'steward' },
+  { action: 'today', standing: 'clerk,steward' },
 ] as const;
 
 export type PermissionAction = (typeof PERMISSIONS)[number]['action'];
