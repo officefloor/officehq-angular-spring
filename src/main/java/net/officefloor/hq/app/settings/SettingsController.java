@@ -135,6 +135,14 @@ public class SettingsController {
     public record PotForm(@NotNull @Pattern(regexp = "(\\d{1,13}(\\.\\d{1,2})?)?") String value) {
     }
 
+    /** The parent as the form submits it: a sheet id without spaces, blank for none. */
+    public record ParentForm(@NotNull @Size(max = 100) @Pattern(regexp = "(\\S+)?") String value) {
+    }
+
+    /** The parent sheet as it is set; null when none. */
+    public record ParentView(String parent) {
+    }
+
     /** An action's roles as the form submits them: clerk and/or steward, comma separated, blank
      *  for the standing rule. */
     public record PermissionForm(@NotNull @Size(max = 100)
@@ -366,6 +374,14 @@ public class SettingsController {
         BigDecimal pot = body.value().isEmpty() ? null : new BigDecimal(body.value());
         service.setPot(sheetId, user.trim(), pot);
         return view(sheetId);
+    }
+
+    @PutMapping("/settings/parent")
+    public ParentView setParent(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ParentForm body) {
+        return new ParentView(service.setParent(sheetId, user.trim(), body.value().isEmpty() ? null : body.value()));
     }
 
     @PutMapping("/settings/perm/{action}")

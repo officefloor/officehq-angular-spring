@@ -45,6 +45,9 @@ export class Session {
   readonly templates = signal<ClaimTemplate[]>([]);
   /** Whether the active sheet is archived: everything stays visible and every change is refused. */
   readonly archived = signal(false);
+  /** The id of the active sheet's parent, null when none: a grade with no rate of its own in force
+   *  on a date takes the parent's (then its parent's, up to three levels up). Not dated. */
+  readonly parent = signal<string | null>(null);
   /** Whether the people list shows retired people too: off at first, and kept as it is when a
    *  sheet is loaded. */
   readonly showRetired = signal(false);
@@ -125,6 +128,7 @@ export class Session {
       this.dated.set(res.dated);
       this.policyDate.set(res.policyDate);
       this.archived.set(res.archived);
+      this.parent.set(res.parent);
       this.shownAsOf.set(asOf);
       this.loads.update((n) => n + 1);
       return null;
@@ -191,6 +195,7 @@ interface SheetView {
   cap: string | null;
   dated: DatedSettings;
   archived: boolean;
+  parent: string | null;
 }
 
 /** A value recorded for a dated setting: in force from its from-date (yyyy-mm-dd) until the next

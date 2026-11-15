@@ -47,9 +47,11 @@ public class RateController {
 
     private final RateService service;
     private final HistoryService history;
+    private final RateChain chain;
 
-    public RateController(RateService service, HistoryService history) {
+    public RateController(RateService service, HistoryService history, RateChain chain) {
         this.service = service;
+        this.chain = chain;
         this.history = history;
     }
 
@@ -60,6 +62,19 @@ public class RateController {
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         List<Rate> rates = asOf == null ? service.list(sheetId) : history.asOf(sheetId, asOf).rates();
         return rates.stream().map(RateView::of).toList();
+    }
+
+    /** The rates of each of the sheet's ancestors, its parent's first (shown as of a date, each
+     *  as it stood at the end of that date): a grade with no rate of its own in force on a date
+     *  takes the first of them that has one. */
+    @GetMapping("/inherited")
+    public List<List<RateView>> inherited(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        List<List<Rate>> inherited = asOf == null ? chain.inherited(sheetId)
+                : chain.ancestors(sheetId).stream().map(a -> history.asOf(a, asOf).rates()).toList();
+        return inherited.stream().map(l -> l.stream().map(RateView::of).toList()).toList();
     }
 
     @PutMapping("/{grade}")

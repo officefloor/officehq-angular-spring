@@ -91,6 +91,8 @@ export class Rates {
 
   /** The sheet's rates, each for a grade from a from-date. */
   readonly rates = input.required<Rate[]>();
+  /** The rates in force on the sheet, with those it inherits from its parent sheets. */
+  readonly effective = input.required<Rate[]>();
   /** The rates by grade, then from-date (an undated rate first). */
   protected readonly sorted = computed(() => [...this.rates()].sort((a, b) =>
     a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '')));
@@ -148,7 +150,7 @@ export class Rates {
 
   /** The grade's rate in force on the sheet's today, or null when it has none then. */
   protected currentOf(grade: string): string | null {
-    return pctOn(this.rates().filter((r) => r.grade === grade), this.session.today());
+    return pctOn(this.effective().filter((r) => r.grade === grade), this.session.today());
   }
 
   protected async submit(): Promise<void> {

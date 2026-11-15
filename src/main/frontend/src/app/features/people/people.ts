@@ -9,7 +9,7 @@ import { Period, PeriodsApi, periodOn, personPeriodDueCents } from '../periods/p
 import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
-import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
+import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, effectiveRates, pctOn, plusDays } from '../rates/rates-api';
 import { GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, mergeError, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
@@ -22,7 +22,7 @@ import { GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn
   imports: [ReactiveFormsModule, Header, PersonClaims, Periods, Pools, Rates, Summary],
   template: `
     <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" />
-    <app-rates [rates]="rates()" [preview]="previewRate" (saved)="rateSaved($event)" />
+    <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" />
     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" (saved)="periodSaved($event)" />
     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
     <app-pools [people]="people()" />
@@ -259,7 +259,7 @@ import { GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn
                 }
               </td>
               <td>
-                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rates()" [grades]="p.grades" [others]="patronChoicesFor(p)" [periods]="periods()"
+                <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="effectiveRates()" [grades]="p.grades" [others]="patronChoicesFor(p)" [periods]="periods()"
                   [selected]="selectedClaims()" (toggled)="claimToggled($event)" (saved)="claimSaved($event)" />
               </td>
               <td>
@@ -353,6 +353,10 @@ export class People {
   });
   /** The sheet's rates (a percent with two decimals), each for a grade from a from-date. */
   protected readonly rates = signal<Rate[]>([]);
+  /** The rates of each of the sheet's ancestors, its parent's first. */
+  private readonly inherited = signal<Rate[][]>([]);
+  /** The rates in force on the sheet: its own, else (for a grade and date with none) its ancestors'. */
+  protected readonly effectiveRates = computed(() => effectiveRates(this.rates(), this.inherited()));
   /** What every late charge follows: the sheet's today and late percent. */
   private readonly lateness = computed<Lateness>(() => ({
     today: this.session.today(), latePctOn: (d) => this.session.latePctOn(d),
@@ -655,9 +659,16 @@ export class People {
         this.claims.set([]);
         this.tagsUsed.set([]);
         this.rates.set([]);
+        this.inherited.set([]);
         this.periods.set([]);
         if (id) void this.read(id);
       });
+    });
+    // a new parent sheet brings in other rates
+    effect(() => {
+      this.session.parent();
+      const id = untracked(() => this.session.sheetId());
+      if (id) void untracked(() => this.readInherited(id));
     });
   }
 
@@ -719,9 +730,9 @@ export class People {
     return this.session.graceOn(gradeOn(p.grades, c.date), c.date);
   }
 
-  /** Every rate the sheet has for a grade. */
+  /** Every rate in force on the sheet for a grade, those it inherits included. */
   protected ratesOf(grade: string): Rate[] {
-    return this.rates().filter((r) => r.grade === grade);
+    return this.effectiveRates().filter((r) => r.grade === grade);
   }
 
   protected dueOf(p: Person): string {
@@ -1186,15 +1197,26 @@ export class People {
     this.error.set(null);
   }
 
+  private async readInherited(sheetId: string): Promise<void> {
+    const seq = this.readSeq;
+    try {
+      const inherited = await this.ratesApi.inherited(sheetId);
+      if (seq === this.readSeq && this.session.sheetId() === sheetId) this.inherited.set(inherited);
+    } catch {
+      // the next load of the sheet reads them again
+    }
+  }
+
   private async read(sheetId: string): Promise<void> {
     const seq = ++this.readSeq;
     try {
-      const [people, claims, rates, periods, tags] = await Promise.all([
-        this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId), this.periodsApi.list(sheetId),
-        this.claimsApi.tags(sheetId)]);
+      const [people, claims, rates, inherited, periods, tags] = await Promise.all([
+        this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId), this.ratesApi.inherited(sheetId),
+        this.periodsApi.list(sheetId), this.claimsApi.tags(sheetId)]);
       if (seq === this.readSeq) {
         this.tagsUsed.set(tags);
         this.rates.set(rates);
+        this.inherited.set(inherited);
         this.periods.set(periods);
         this.claims.set(claims);
         this.people.set(people);

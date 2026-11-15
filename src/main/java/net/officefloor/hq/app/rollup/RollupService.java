@@ -23,7 +23,7 @@ import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetRepository;
 import org.springframework.stereotype.Service;
@@ -80,16 +80,16 @@ public class RollupService {
     private final PersonRepository people;
     private final ClaimRepository claims;
     private final ClaimLogRepository log;
-    private final RateRepository rates;
+    private final RateChain rateChain;
     private final SheetRepository sheets;
     private final Audit audit;
 
-    public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository log, RateRepository rates,
-            SheetRepository sheets, Audit audit) {
+    public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository log,
+            RateChain rateChain, SheetRepository sheets, Audit audit) {
+        this.rateChain = rateChain;
         this.people = people;
         this.claims = claims;
         this.log = log;
-        this.rates = rates;
         this.sheets = sheets;
         this.audit = audit;
     }
@@ -101,7 +101,7 @@ public class RollupService {
         Function<LocalDate, BigDecimal> floor = floorOf(sheet);
         BigDecimal cap = sheet.map(Sheet::getCap).orElse(null);
         LateCharge late = LateCharge.of(sheet);
-        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
+        List<Rate> sheetRates = rateChain.effective(sheetId);
         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
         Map<Long, Person> held = heldPeople(sheetPeople);
         List<Claim> sheetClaims = claims.findBySheetIdOrderByIdDesc(sheetId);
@@ -137,7 +137,7 @@ public class RollupService {
         LocalDate today = sheet.map(Sheet::getToday).orElseGet(LocalDate::now);
         Function<LocalDate, BigDecimal> floor = floorOf(sheet);
         LateCharge late = LateCharge.of(sheet);
-        List<Rate> sheetRates = rates.findBySheetIdOrderByGradeAsc(sheetId);
+        List<Rate> sheetRates = rateChain.effective(sheetId);
         List<Person> sheetPeople = people.findBySheetIdOrderByIdAsc(sheetId);
         Map<Long, Person> held = heldPeople(sheetPeople);
         Map<Long, Person> byId = sheetPeople.stream().collect(Collectors.toMap(Person::getId, p -> p));

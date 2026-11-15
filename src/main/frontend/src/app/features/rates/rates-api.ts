@@ -32,6 +32,41 @@ export function pctOn(rates: readonly Rate[], date: string | null): string | nul
   return best?.pct ?? null;
 }
 
+/** The rates in force on a sheet as one list: for each grade and date, the rate in force then of
+ *  the first of the sheet's own rates, then each ancestor's in `inherited` (its parent's first),
+ *  that has one. The dates are cut where any of them starts or ends, each piece taking the rate
+ *  the levels give it; with nothing inherited it is the sheet's own. */
+export function effectiveRates(own: readonly Rate[], inherited: readonly (readonly Rate[])[]): Rate[] {
+  if (inherited.every((l) => l.length === 0)) return [...own];
+  const levels = [own, ...inherited];
+  const grades = [...new Set(levels.flatMap((l) => l.map((r) => r.grade)))].sort();
+  const out: Rate[] = [];
+  for (const grade of grades) {
+    const byLevel = levels.map((l) => l.filter((r) => r.grade === grade));
+    const cuts = new Set<string>();
+    for (const l of byLevel) {
+      for (const r of l) {
+        if (r.from !== null) cuts.add(r.from);
+        if (r.to !== null) cuts.add(plusDays(r.to, 1));
+      }
+    }
+    const starts: (string | null)[] = [null, ...[...cuts].sort()];
+    starts.forEach((start, i) => {
+      const next = starts[i + 1] ?? null;
+      const end = next === null ? null : plusDays(next, -1);
+      const on = start ?? end ?? '1970-01-01';
+      for (const l of byLevel) {
+        const pct = pctOn(l, on);
+        if (pct !== null) {
+          out.push({ grade, from: start, to: end, pct });
+          break;
+        }
+      }
+    });
+  }
+  return out;
+}
+
 /** What a candidate rate for a grade would change: how many claims' dues, and by how much in cents
  *  (new minus current). */
 export interface RatePreview {
@@ -47,6 +82,11 @@ export class RatesApi {
 
   list(sheetId: string): Promise<Rate[]> {
     return firstValueFrom(this.http.get<Rate[]>(this.url(sheetId), { headers: this.headers() }));
+  }
+
+  /** The rates of each of the sheet's ancestors as they are now, its parent's first. */
+  inherited(sheetId: string): Promise<Rate[][]> {
+    return firstValueFrom(this.http.get<Rate[][]>(`${this.url(sheetId)}/inherited`, { headers: this.headers() }));
   }
 
   set(sheetId: string, grade: string, pct: string, from: string | null, to: string | null): Promise<Rate> {

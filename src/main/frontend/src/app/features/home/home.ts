@@ -26,6 +26,7 @@ import { Templates } from '../templates/templates';
         <p>Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong>
           <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
         </p>
+        <p>Parent sheet <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></p>
         <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
         <form [formGroup]="asOfForm" (ngSubmit)="setAsOf()" aria-label="Show the sheet as of a date">
           <p>As of <strong data-testid="sheet-asof">{{ session.shownAsOf() ?? '' }}</strong></p>

@@ -33,14 +33,19 @@ public class SheetController {
     /** A sheet as the screen takes it: its id, its today, its floor with two decimals, its
      *  terms in days, its late percent with two decimals, its policy date (null when blank), and its cap with two decimals (null when none),
      *  the dated ones as in force on its today; and every value recorded for its dated settings,
-     *  by key, each key's by from-date; and whether it is archived. */
+     *  by key, each key's by from-date; whether it is archived; and its parent sheet's id (null when
+     *  none), as it is now even when the sheet is shown as of a date. */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
-            String cap, Map<String, List<DatedValue>> dated, boolean archived) {
+            String cap, Map<String, List<DatedValue>> dated, boolean archived, String parent) {
         static SheetView of(Sheet sheet) {
+            return of(sheet, sheet.getParent());
+        }
+
+        static SheetView of(Sheet sheet, String parent) {
             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
                     sheet.getLatePct().setScale(2).toPlainString(), sheet.getPolicyDate(),
                     sheet.getCap() == null ? null : sheet.getCap().setScale(2).toPlainString(),
-                    DatedValue.of(sheet.getDatedSettings()), sheet.isArchived());
+                    DatedValue.of(sheet.getDatedSettings()), sheet.isArchived(), parent);
         }
     }
 
@@ -66,7 +71,7 @@ public class SheetController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         Sheet sheet = service.load(id, user.trim());
-        return SheetView.of(asOf == null ? sheet : history.asOf(id, asOf).sheet());
+        return SheetView.of(asOf == null ? sheet : history.asOf(id, asOf).sheet(), sheet.getParent());
     }
 
     @PutMapping("/{id}/today")

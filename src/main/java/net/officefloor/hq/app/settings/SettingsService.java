@@ -3,8 +3,10 @@ package net.officefloor.hq.app.settings;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -48,6 +50,9 @@ public class SettingsService {
 
     /** The key the pot is audited under. */
     public static final String POT = "pot";
+
+    /** The key the parent sheet is audited under. */
+    public static final String PARENT = "parent";
 
     /** The key the cap is audited under. */
     public static final String CAP = Sheet.CAP;
@@ -306,6 +311,44 @@ public class SettingsService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + POT + " value=" + (scaled == null ? "" : scaled.toPlainString()));
         return scaled;
+    }
+
+    /** The id of the sheet's parent; null when blank (none). */
+    @Transactional(readOnly = true)
+    public String parent(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getParent).orElse(null);
+    }
+
+    /** Set the sheet's parent (null: none), the sheet created first if it was never loaded; not
+     *  dated, a grade with no rate of its own in force on a date takes the parent's (then its
+     *  parent's, up to three levels up), so every live due (and every total) moves with it. Refused
+     *  (422) when it is the sheet itself, a sheet never loaded, or one with this sheet as an ancestor. */
+    @Transactional
+    public String setParent(String sheetId, String user, String parent) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        if (parent != null) {
+            if (parent.equals(sheetId)) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A sheet cannot be its own parent");
+            }
+            if (sheets.find(parent).isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "No sheet " + parent + " has been loaded");
+            }
+            Set<String> seen = new HashSet<>();
+            for (String at = parent; at != null && seen.add(at); at = sheets.find(at).map(Sheet::getParent).orElse(null)) {
+                if (at.equals(sheetId)) {
+                    throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                            "The sheet " + parent + " has this sheet as an ancestor");
+                }
+            }
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        sheet.setParent(parent);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + PARENT + " value=" + (parent == null ? "" : parent));
+        rollup.recordChanges(sheetId, user, before);
+        return parent;
     }
 
     /** The sheet's cap in force on its today; null when there is none. */

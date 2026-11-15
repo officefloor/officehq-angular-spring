@@ -25,7 +25,7 @@ import net.officefloor.hq.app.person.PersonWatch;
 import net.officefloor.hq.app.person.PersonWatchRepository;
 import net.officefloor.hq.app.person.StatementSummary;
 import net.officefloor.hq.app.rate.Rate;
-import net.officefloor.hq.app.rate.RateRepository;
+import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.HolidayAdded;
 import net.officefloor.hq.app.settings.Permission;
@@ -54,7 +54,7 @@ public class ClaimService {
     private final PersonRepository people;
     private final PersonStatementRepository statements;
     private final PersonWatchRepository watches;
-    private final RateRepository rates;
+    private final RateChain rateChain;
     private final SheetService sheets;
     private final RollupService rollup;
     private final PeriodService periods;
@@ -71,7 +71,7 @@ public class ClaimService {
     }
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository log, ClaimCommentRepository comments, SheetTagRepository tagsUsed, RetiredNumberRepository retired, PersonRepository people, PersonStatementRepository statements,
-            PersonWatchRepository watches, RateRepository rates, SheetService sheets, RollupService rollup, PeriodService periods, SettingsService settings, HistoryService history, Audit audit) {
+            PersonWatchRepository watches, RateChain rateChain, SheetService sheets, RollupService rollup, PeriodService periods, SettingsService settings, HistoryService history, Audit audit) {
         this.claims = claims;
         this.log = log;
         this.comments = comments;
@@ -80,7 +80,7 @@ public class ClaimService {
         this.people = people;
         this.statements = statements;
         this.watches = watches;
-        this.rates = rates;
+        this.rateChain = rateChain;
         this.sheets = sheets;
         this.rollup = rollup;
         this.periods = periods;
@@ -827,7 +827,8 @@ public class ClaimService {
         List<Claim> theirs = claims.findByPersonForUpdate(personId, sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         RollupService.Stated stated = RollupService.statedOn(then.sheet(), was, personId,
-                List.copyOf(then.claims().values()), then.rates());
+                List.copyOf(then.claims().values()), RateChain.flatten(sheetId, then.rates(),
+                        rateChain.ancestors(sheetId).stream().map(a -> history.asOf(a, asOf).rates()).toList()));
         Map<Long, BigDecimal> bound = new HashMap<>();
         then.claims().forEach((id, c) -> {
             if (stated.counted().containsKey(c)) {
@@ -1058,7 +1059,7 @@ public class ClaimService {
      *  shows a due (a fixed or bound one, or one at the rate of the grade they had on its date). */
     private BigDecimal dueTotalOf(List<Claim> counted, Person person, LocalDate today) {
         List<BigDecimal> dues = counted.stream().map(c -> shownDueOf(c, person)).filter(d -> d != null).toList();
-        if (rates.findInForce(person.getSheetId(), person.gradeOn(today), today).isEmpty() && dues.isEmpty()) {
+        if (rateChain.findInForce(person.getSheetId(), person.gradeOn(today), today).isEmpty() && dues.isEmpty()) {
             return null;
         }
         return dues.stream().reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
@@ -1067,7 +1068,7 @@ public class ClaimService {
     /** The claim's amount times the rate, in force on the claim's date, of its person's grade then, divided by
      *  100, rounded as its rounding policy has it; null with no rate in force then. */
     private BigDecimal rateFigureOf(Claim claim, Person person) {
-        return rates.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
+        return rateChain.findInForce(claim.getSheetId(), person.gradeOn(claim.getDate()), claim.getDate())
                 .map(Rate::getPct)
                 .map(pct -> claim.getAmount().multiply(pct).divide(BigDecimal.valueOf(100), 2, roundingOf(claim)))
                 .orElse(null);
