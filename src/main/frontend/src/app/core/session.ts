@@ -5,6 +5,9 @@ import type { Plan } from '../features/plans/plans-api';
 import type { ClaimTemplate } from '../features/templates/templates-api';
 
 // Who is signed in and which sheet is active. Everything else in the app is kept per sheet.
+/** The keys the people list can be sorted by on the screen. */
+export type PeopleSort = 'added' | 'name' | 'grade' | 'due-total';
+
 @Injectable({ providedIn: 'root' })
 export class Session {
   private readonly http = inject(HttpClient);
@@ -54,6 +57,9 @@ export class Session {
   /** Whether the people list shows retired people too: off at first, and kept as it is when a
    *  sheet is loaded. */
   readonly showRetired = signal(false);
+  /** What this user's screen sorts the people list by: the order they were added at first, and
+   *  kept as it is when a sheet is loaded. Only what the screen shows changes. */
+  readonly sortBy = signal<PeopleSort>('added');
   /** The date (yyyy-mm-dd) this user's screen shows the sheet as of, null when it shows the sheet
    *  as it stands: while set, every figure is as it stood at the end of that date (its today that
    *  date) and every change is refused. Kept as it is when a sheet is loaded. */

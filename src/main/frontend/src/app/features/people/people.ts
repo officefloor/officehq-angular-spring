@@ -132,6 +132,14 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
           (change)="session.showRetired.set($any($event.target).checked)" />
         Show retired
       </label>
+      <label for="sort-by">Sort by</label>
+      <select id="sort-by" data-testid="sort-by" [value]="session.sortBy()"
+        (change)="session.sortBy.set($any($event.target).value)">
+        <option value="added">Added</option>
+        <option value="name">Name</option>
+        <option value="grade">Grade</option>
+        <option value="due-total">Due total</option>
+      </select>
       <button type="button" data-testid="export-people" (click)="exportCsv()">Export people (CSV)</button>
       <button type="button" data-testid="export-claims" (click)="exportClaims()">Export claims (CSV)</button>
       <button type="button" data-testid="bulk-open" (click)="bulkOpen()">Open selected claims</button>
@@ -358,8 +366,10 @@ export class People {
   protected readonly grades = GRADES;
   protected readonly people = signal<Person[]>([]);
   /** The people the list shows: retired ones (any with a retirement date) only with "show retired" on. */
-  protected readonly shownPeople = computed(() =>
-    this.session.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null));
+  protected readonly shownPeople = computed(() => {
+    const shown = this.session.showRetired() ? this.people() : this.people().filter((p) => p.retiredFrom === null);
+    return this.sorted(shown);
+  });
   /** Every claim on the sheet, newest first. */
   protected readonly claims = signal<Claim[]>([]);
   /** The holds of each person with any, by person id: their open (OPEN or PENDING) claims dated within one count in no live total. */
@@ -820,6 +830,24 @@ export class People {
 
   protected claimedBy(personId: number): string {
     return money(this.byPerson().get(personId)?.cents ?? 0);
+  }
+
+  /** The people in the order this user's screen sorts them by: names compared ignoring case, grades
+   *  in their order, due-totals smallest first with n/a last; equal keys keep list order. */
+  private sorted(people: Person[]): Person[] {
+    const by = this.session.sortBy();
+    if (by === 'added') return people;
+    const dues = this.dueByPerson();
+    const key = (p: Person): string | number => {
+      switch (by) {
+        case 'name': return p.name.toLowerCase();
+        case 'grade': return GRADES.indexOf(this.gradeOf(p) as (typeof GRADES)[number]);
+        default: return dues.get(p.id) ?? Number.POSITIVE_INFINITY;
+      }
+    };
+    return people.map((p) => ({ p, k: key(p) }))
+      .sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0))
+      .map((e) => e.p);
   }
 
   /** The grade the person shows: the one in force on the sheet's today. */
