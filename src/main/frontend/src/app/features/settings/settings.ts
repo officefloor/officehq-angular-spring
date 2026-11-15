@@ -42,6 +42,7 @@ import { PROOF_KINDS } from '../claims/claims-api';
       <p>Review SLA in days (blank: none) <strong data-testid="setting-review-sla-current">{{ session.reviewSla() ?? '' }}</strong></p>
       <p>Mid score threshold (blank: none) <strong data-testid="setting-score-mid-current">{{ session.scoreMid() ?? '' }}</strong></p>
       <p>High score threshold (blank: none) <strong data-testid="setting-score-high-current">{{ session.scoreHigh() ?? '' }}</strong></p>
+      <p>Score log (on or blank) <strong data-testid="setting-score-log-current">{{ scoreLog() ? 'on' : '' }}</strong></p>
       <p>Pot (blank: none) <strong data-testid="setting-pot-current">{{ (session.pot() ?? '') | figure }}</strong></p>
       <p>Alert threshold (blank: off) <strong data-testid="setting-alert-threshold-current">{{ (alertThreshold() ?? '') | figure }}</strong></p>
       <p>Fiscal year start month <strong data-testid="setting-fiscal-start-month-current">{{ session.fiscalStartMonth() }}</strong></p>
@@ -128,6 +129,8 @@ import { PROOF_KINDS } from '../claims/claims-api';
         <input id="setting-score-mid" data-testid="setting-score-mid" formControlName="scoreMid" inputmode="numeric" autocomplete="off" />
         <label for="setting-score-high">High score threshold: while both thresholds are set, a person whose score is at or above it shows HIGH (blank: none)</label>
         <input id="setting-score-high" data-testid="setting-score-high" formControlName="scoreHigh" inputmode="numeric" autocomplete="off" />
+        <label for="setting-score-log">Score log: while on, changing the sheet's today records each person's score on the day being left (on, or blank: off)</label>
+        <input id="setting-score-log" data-testid="setting-score-log" formControlName="scoreLog" autocomplete="off" />
         <label for="setting-pot">Pot: each balanced pool's members cut it by their shares (blank: none)</label>
         <input id="setting-pot" data-testid="setting-pot" formControlName="pot" inputmode="decimal" autocomplete="off" />
         <label for="setting-alert-threshold">Alert threshold: a change that takes a person's due-total above it alerts (blank: off)</label>
@@ -236,6 +239,8 @@ export class Settings {
   protected readonly entryDate = signal<string | null>(null);
   /** The sheet's grace days; null when blank (off). */
   protected readonly graceDays = signal<number | null>(null);
+  /** Whether the score log is on. */
+  protected readonly scoreLog = signal(false);
   /** The sheet's escalation gap in days; null when blank (off). */
   protected readonly escalateAfter = signal<number | null>(null);
   /** The sheet's alert threshold (two decimals); null when blank (off). */
@@ -294,6 +299,7 @@ export class Settings {
     reviewSla: new FormControl('', { nonNullable: true }),
     scoreMid: new FormControl('', { nonNullable: true }),
     scoreHigh: new FormControl('', { nonNullable: true }),
+    scoreLog: new FormControl('', { nonNullable: true }),
     pot: new FormControl('', { nonNullable: true }),
     alertThreshold: new FormControl('', { nonNullable: true }),
     fiscalStartMonth: new FormControl('', { nonNullable: true }),
@@ -404,6 +410,7 @@ export class Settings {
         this.session.reviewSla.set(null);
         this.session.scoreMid.set(null);
         this.session.scoreHigh.set(null);
+        this.scoreLog.set(false);
         this.session.pot.set(null);
         this.session.fiscalStartMonth.set(1);
         this.grants.set([]);
@@ -421,7 +428,7 @@ export class Settings {
         this.voidReasonForm.reset({ reason: '' }, { emitEvent: false });
         this.settingsForm.reset({
           clerkLimit: '', clerkLimitFrom: '', floor: '', floorFrom: '', terms: '', termsFrom: '', latePct: '', latePctFrom: '',
-          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', rounding: '', roundingFrom: '', noteThreshold: '', noteThresholdFrom: '', reviewThreshold: '', reviewThresholdFrom: '', graceDays: '', escalateAfter: '', reviewSla: '', scoreMid: '', scoreHigh: '', pot: '', alertThreshold: '', fiscalStartMonth: '', parent: '', proofKinds: '', defaultGrade: '',
+          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', rounding: '', roundingFrom: '', noteThreshold: '', noteThresholdFrom: '', reviewThreshold: '', reviewThresholdFrom: '', graceDays: '', escalateAfter: '', reviewSla: '', scoreMid: '', scoreHigh: '', scoreLog: '', pot: '', alertThreshold: '', fiscalStartMonth: '', parent: '', proofKinds: '', defaultGrade: '',
         }, { emitEvent: false });
         this.gradeClerkLimitForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.gradeClerkLimitFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
@@ -451,7 +458,7 @@ export class Settings {
     this.settingsErr.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, rounding, roundingFrom, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, escalateAfter, reviewSla, scoreMid, scoreHigh, pot, alertThreshold, fiscalStartMonth, parent, proofKinds, defaultGrade } = this.settingsForm.controls;
+    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, rounding, roundingFrom, noteThreshold, noteThresholdFrom, reviewThreshold, reviewThresholdFrom, graceDays, escalateAfter, reviewSla, scoreMid, scoreHigh, scoreLog, pot, alertThreshold, fiscalStartMonth, parent, proofKinds, defaultGrade } = this.settingsForm.controls;
     // only the settings typed into (or entered and left, as when one already blank is cleared),
     // or whose from-date was, since the last save are saved (the clerk limit when none is)
     const typed = (c: AbstractControl) => c.dirty || c.touched;
@@ -471,6 +478,7 @@ export class Settings {
     const saveReviewSla = typed(reviewSla);
     const saveScoreMid = typed(scoreMid);
     const saveScoreHigh = typed(scoreHigh);
+    const saveScoreLog = typed(scoreLog);
     const savePot = typed(pot);
     const saveAlertThreshold = typed(alertThreshold);
     const saveFiscalStartMonth = typed(fiscalStartMonth);
@@ -509,7 +517,7 @@ export class Settings {
         typed: this.permissionsForm.controls[p.action].value.trim(),
       }));
     const saveLimit = typed(clerkLimit) || typed(clerkLimitFrom)
-      || !(saveFloor || saveTerms || gradeClerkLimitToSave.length > 0 || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveRounding || saveNoteThreshold || saveReviewThreshold || saveGraceDays || saveEscalateAfter || saveReviewSla || saveScoreMid || saveScoreHigh || savePot || saveAlertThreshold || saveFiscalStartMonth || saveParent || saveProofKinds || saveDefaultGrade);
+      || !(saveFloor || saveTerms || gradeClerkLimitToSave.length > 0 || gradeTermsToSave.length > 0 || gradeGraceToSave.length > 0 || gradeProofThresholdToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveRounding || saveNoteThreshold || saveReviewThreshold || saveGraceDays || saveEscalateAfter || saveReviewSla || saveScoreMid || saveScoreHigh || saveScoreLog || savePot || saveAlertThreshold || saveFiscalStartMonth || saveParent || saveProofKinds || saveDefaultGrade);
     const limitFrom = clerkLimitFrom.value.trim();
     const floorFromValue = floorFrom.value.trim();
     const termsFromValue = termsFrom.value.trim();
@@ -537,6 +545,7 @@ export class Settings {
     const reviewSlaValue = reviewSla.value.trim();
     const scoreMidValue = scoreMid.value.trim();
     const scoreHighValue = scoreHigh.value.trim();
+    const scoreLogValue = scoreLog.value.trim();
     const potValue = pot.value.trim();
     const alertThresholdValue = alertThreshold.value.trim();
     const fiscalStartMonthValue = fiscalStartMonth.value.trim();
@@ -564,6 +573,7 @@ export class Settings {
         || (saveReviewSla && reviewSlaValue !== '' && !TERMS_PATTERN.test(reviewSlaValue))
         || (saveScoreMid && scoreMidValue !== '' && !SCORE_PATTERN.test(scoreMidValue))
         || (saveScoreHigh && scoreHighValue !== '' && !SCORE_PATTERN.test(scoreHighValue))
+        || (saveScoreLog && scoreLogValue !== '' && scoreLogValue !== 'on')
         || (savePot && potValue !== '' && !LIMIT_PATTERN.test(potValue))
         || (saveAlertThreshold && alertThresholdValue !== '' && !LIMIT_PATTERN.test(alertThresholdValue))
         || (saveFiscalStartMonth && !FISCAL_START_MONTH_PATTERN.test(fiscalStartMonthValue))
@@ -702,6 +712,11 @@ export class Settings {
         const saved = await this.api.setScoreHigh(sheetId, scoreHighValue);
         settled(scoreHigh, scoreHighValue);
         if (this.session.sheetId() === sheetId) this.session.scoreHigh.set(saved.scoreHigh);
+      }
+      if (saveScoreLog) {
+        const saved = await this.api.setScoreLog(sheetId, scoreLogValue);
+        settled(scoreLog, scoreLogValue);
+        if (this.session.sheetId() === sheetId) this.scoreLog.set(saved.scoreLog);
       }
       if (savePot) {
         const saved = await this.api.setPot(sheetId, potValue);
@@ -869,6 +884,7 @@ export class Settings {
         this.session.reviewSla.set(settings.reviewSla);
         this.session.scoreMid.set(settings.scoreMid);
         this.session.scoreHigh.set(settings.scoreHigh);
+        this.scoreLog.set(settings.scoreLog);
         this.session.pot.set(settings.pot);
         this.alertThreshold.set(settings.alertThreshold);
         this.session.fiscalStartMonth.set(settings.fiscalStartMonth);

@@ -46,9 +46,18 @@ public class RollupService {
 
     /** A person's figures: claimed, due-total held to the sheet's cap (null: n/a), and
      *  overdue-total (the dues their overdue counting claims show, n/a ones skipped, not capped);
-     *  with their grade on the sheet's today, whether they have a retirement date, and their aliases. */
+     *  with their grade on the sheet's today, whether they have a retirement date, and their aliases;
+     *  and the dues (n/a ones skipped) their counting SETTLED claims show, and how many of their
+     *  counting claims are overdue. */
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
-            String grade, boolean retired, List<String> aliases) {
+            String grade, boolean retired, List<String> aliases, BigDecimal settled, int overdueCount) {
+        /** The score: the settled figures over 100, less 5 for each overdue claim, rounded half to
+         *  even to a whole number. */
+        BigDecimal score() {
+            return settled.subtract(BigDecimal.valueOf(500L * overdueCount))
+                    .divide(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_EVEN);
+        }
+
         boolean sameAs(Figures other) {
             return other != null && claimed.compareTo(other.claimed) == 0
                     && Objects.equals(text(dueTotal), text(other.dueTotal))
@@ -176,14 +185,22 @@ public class RollupService {
         sheetPeople.forEach((id, p) -> {
             List<Claim> theirs = counted.getOrDefault(id, List.of());
             BigDecimal claimed = zero().add(claimedBy.getOrDefault(id, zero()));
-            BigDecimal overdue = theirs.stream()
+            List<Claim> overdueClaims = theirs.stream()
                     .filter(c -> c.getStatus().isOpen() && late.isPast(c, p))
+                    .toList();
+            BigDecimal overdue = overdueClaims.stream()
                     .map(c -> shownDueOf(c, p, sheetRates, floor, late, rounding))
                     .filter(Objects::nonNull)
                     .reduce(zero(), BigDecimal::add);
+            BigDecimal settled = theirs.stream()
+                    .filter(c -> c.getStatus() == ClaimStatus.SETTLED)
+                    .map(c -> shownDueOf(c, p, sheetRates, floor, late, rounding))
+                    .filter(Objects::nonNull)
+                    .reduce(zero(), BigDecimal::add);
+            int overdueCount = (int) overdueClaims.stream().filter(c -> !c.isDeferredOn(today)).count();
             out.put(id, new Figures(p.getName(), claimed,
                     Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding), cap), overdue,
-                    p.gradeOn(today), p.isRetired(), List.copyOf(p.getAliases())));
+                    p.gradeOn(today), p.isRetired(), List.copyOf(p.getAliases()), settled, overdueCount));
         });
         Map<ClaimStatus, Integer> statuses = new LinkedHashMap<>();
         sheetClaims.stream().map(Claim::getStatus).filter(Objects::nonNull)
@@ -350,6 +367,13 @@ public class RollupService {
             RateChain.Levels sheetRates) {
         Optional<Sheet> held = Optional.of(sheet);
         return shownDueOf(claim, person, sheetRates, floorOf(held), LateCharge.of(held), roundingOf(held, sheetClaims));
+    }
+
+    /** Record, once the transaction commits, a SCORE line for each person (in list order) with
+     *  their score in {@code before}. */
+    public void recordScores(String sheetId, String user, Snapshot before) {
+        before.people().values().forEach(p -> audit.recordOnCommit("SCORE sheet=" + sheetId + " by=" + user
+                + " name=" + p.name() + " score=" + p.score().toPlainString()));
     }
 
     /** Keep on each person a snapshot line for {@code day} (the day being left) with their

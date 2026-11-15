@@ -64,6 +64,9 @@ public class SettingsService {
     /** The key the high score threshold is audited under. */
     public static final String SCORE_HIGH = "score-high";
 
+    /** The key the score log switch is audited under. */
+    public static final String SCORE_LOG = "score-log";
+
     /** The key the pot is audited under. */
     public static final String POT = "pot";
 
@@ -433,6 +436,25 @@ public class SettingsService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + SCORE_HIGH + " value=" + (scoreHigh == null ? "" : scoreHigh));
         return scoreHigh;
+    }
+
+    /** Whether the sheet's score log switch is on; off unless set. */
+    @Transactional(readOnly = true)
+    public boolean scoreLog(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::isScoreLog).orElse(false);
+    }
+
+    /** Set the sheet's score log switch (false: blank), the sheet created first if it was never
+     *  loaded; not dated. */
+    @Transactional
+    public boolean setScoreLog(String sheetId, String user, boolean scoreLog) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        sheet.setScoreLog(scoreLog);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + SCORE_LOG + " value=" + (scoreLog ? "on" : ""));
+        return scoreLog;
     }
 
     /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. */

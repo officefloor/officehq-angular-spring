@@ -78,6 +78,9 @@ export interface Settings {
   /** A whole number: while both thresholds are set, a person whose score is at or above it shows
    *  HIGH; null when blank. Not dated. */
   scoreHigh: number | null;
+  /** Whether the score log is on: changing the sheet's today records each person's score on the
+   *  day being left. Not dated. */
+  scoreLog: boolean;
   /** Two decimals, as the server formats it: each balanced pool's members cut it by their shares;
    *  null when blank (none). Not dated. */
   pot: string | null;
@@ -248,6 +251,12 @@ export class SettingsApi {
   setScoreHigh(sheetId: string, value: string): Promise<Settings> {
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/score-high`, { value }, { headers: this.headers() }),
+    );
+  }
+
+  setScoreLog(sheetId: string, value: string): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/score-log`, { value }, { headers: this.headers() }),
     );
   }
 
