@@ -1,0 +1,76 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 203194df1..f568c819f 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -286,6 +286,7 @@ import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person,
+             <th scope="col">Cut</th><th scope="col">By period</th>
+             @if (shows('overdue-count')) { <th scope="col">Overdue</th> }
+             @if (shows('overdue-total')) { <th scope="col">Overdue total</th> }
++            <th scope="col">Score</th>
+             <th scope="col">Aged</th>
+             @if (shows('statement-count')) { <th scope="col">Statements</th> }
+             @if (shows('stated-total')) { <th scope="col">Last stated</th> }
+@@ -364,6 +365,7 @@ import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person,
+               @if (shows('overdue-total')) {
+                 <td data-testid="person-overdue-total">{{ money(overdueOf(p.id).cents) | figure }}</td>
+               }
++              <td data-testid="person-score">{{ scoreOf(p.id) }}</td>
+               <td>
+                 <span>0–30 <span data-testid="person-aged-0-30">{{ money(agedOf(p.id).upTo30) | figure }}</span></span>
+                 <span>31–60 <span data-testid="person-aged-31-60">{{ money(agedOf(p.id).upTo60) | figure }}</span></span>
+@@ -554,14 +556,18 @@ export class People {
+   private readonly visibleIds = computed<Set<number> | null>(() => {
+     if (this.myRole() !== 'restricted') return null;
+     const me = this.me();
+-    if (!me) return new Set();
+-    const ids = new Set([me.id]);
++    const ids = new Set(this.addedHere());
++    if (!me) return ids;
++    ids.add(me.id);
+     for (const c of this.crews()) {
+       const people = crewIds(c);
+       if (people.includes(me.id)) people.forEach((id) => ids.add(id));
+     }
+     return ids;
+   });
++  /** The people this screen's quick-add bar added since the sheet was loaded: a restricted user sees
++   *  them on the list until the sheet is loaded again. */
++  private readonly addedHere = signal<ReadonlySet<number>>(new Set());
+   /** Every claim on the sheet, newest first. */
+   protected readonly claims = signal<Claim[]>([]);
+   /** The retirement date of each person with one, by person id: from the sheet's today on or after it, their
+@@ -711,6 +717,14 @@ export class People {
+     }
+     return out;
+   });
++  /** The person's score: their settled figures (the dues of their counting SETTLED claims) over 100,
++   *  less 5 for each of their counting overdue claims, rounded half to even to a whole number. */
++  protected scoreOf(personId: number): number {
++    const x = this.settledOpenOf(personId).settled - 50000 * this.overdueOf(personId).count;
++    const q = Math.floor(x / 10000);
++    const r = x - q * 10000;
++    return r > 5000 || (r === 5000 && q % 2 !== 0) ? q + 1 : q;
++  }
+   /** Each person's open (OPEN and PENDING) counting claims' dues in cents (n/a ones skipped), by person id,
+    *  split by the claim's age on the sheet's today (days from its date): 0 to 30, 31 to 60, 61 or more;
+    *  one dated after today counts as 0 to 30. */
+@@ -1195,6 +1209,7 @@ export class People {
+         this.descendants.set(NO_FIGURES);
+         this.ownLive.set(null);
+         this.myRole.set(null);
++        this.addedHere.set(new Set());
+         this.periods.set([]);
+         if (id) void this.read(id);
+       });
+@@ -1921,7 +1936,10 @@ export class People {
+     try {
+       const added = await this.claimsApi.quickAdd(sheetId, { name: value.name, amount });
+       if (this.session.sheetId() !== sheetId) return;
+-      if (added.personAdded) this.people.update((ps) => [...ps.filter((p) => p.id !== added.person.id), added.person]);
++      if (added.personAdded) {
++        this.people.update((ps) => [...ps.filter((p) => p.id !== added.person.id), added.person]);
++        this.addedHere.update((ids) => new Set([...ids, added.person.id]));
++      }
+       else this.taken(added.person);
+       this.claimSaved(added.claim);
+       this.quickForm.reset({ name: '', amount: '' }, { emitEvent: false });
