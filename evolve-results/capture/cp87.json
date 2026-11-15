@@ -1,0 +1,64 @@
+{
+  "checkpoint": 87,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp87_external-reference",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A claim may carry an external reference: a text on the claim form (surrounding spaces removed),\nshown on the claim. A reference already used on the sheet, comparing without regard to case, is\nrefused with an error on the form, and nothing is saved; a blank reference is no reference. A\npasted line gives it at the end of its note as ` #<reference>` (a space, a hash, the reference:\nthat part is the reference, not part of the note), checked the same way and refusing the whole\npaste on a repeat, within the paste too. CLAIM_ADDED gains ref=<reference> at its end when one was\ngiven.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA claim may carry an external reference: a text on the claim form (surrounding spaces removed),\nshown on the claim. A reference already used on the sheet, comparing without regard to case, is\nrefused with an error on the form, and nothing is saved; a blank reference is no reference. A\npasted line gives it at the end of its note as ` #<reference>` (a space, a hash, the reference:\nthat part is the reference, not part of the note), checked the same way and refusing the whole\npaste on a repeat, within the paste too. CLAIM_ADDED gains ref=<reference> at its end when one was\ngiven.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "549b0984d20adad97b171cc4639bea090e062879",
+  "reset_sha": "",
+  "preagent_sha": "c0fa43c356c2ba9e3f62826e9a4e4217765e62c6",
+  "prev_sha": "c0fa43c356c2ba9e3f62826e9a4e4217765e62c6",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.0102234,
+    "input_tokens": 42,
+    "output_tokens": 11495,
+    "cache_read_tokens": 1106497,
+    "cache_creation_tokens": 69857,
+    "num_turns": 23,
+    "duration_ms": 279138,
+    "duration_api_ms": 115121,
+    "model": "claude-opus-5-5",
+    "session_id": "0b5bc9e1-a586-40d3-803b-fccf80af1afe",
+    "stop_reason": "success",
+    "result_text": "Claims can now carry an external reference, and all 4 tests in `bin/e2e` pass.\n\n**How it behaves**\n- **Claim form:** there's a new \"Reference\" field. Surrounding spaces are removed, and a blank field means no reference.\n- **On the claim row:** the reference is shown in `claim-ref`.\n- **Repeats:** if the reference is already on another claim on the sheet (ignoring case), the add or edit is refused, the form shows its error and nothing is saved. When you edit a claim, its own reference doesn't count as a repeat.\n- **Paste:** a line's note can end in ` #<reference>`. That part becomes the reference and is taken out of the note. A repeat, either against the sheet or between lines of the same paste, refuses the whole paste and shows `paste-error`. A note that is only `#inv-4` once trimmed has no space before the hash, so it stays as note text, which is what the test expects.\n- **Audit:** `CLAIM_ADDED` gets ` ref=<reference>` at the end only when a reference was given. `CLAIM_EDITED` is unchanged.\n\n**Changes**\n- **Database:** new migration `V54__claim_ref.sql` adds a `ref` column to the claim table.\n- **Server:** `Claim`, `ClaimRepository` (a new case-insensitive `existsRef` lookup) and `ClaimService` (the check, plus the audit field). Also `ClaimController`, `PasteClaimsService` (reads the reference off the note), and `HistoryService`, so views of the sheet as of a past date include the reference. `QuickAddService` just passes \"no reference\".\n- **Front end:** `claims-api.ts` and `person-claims.ts`. Editing an amount directly on the row now sends the claim's reference back, so it isn't wiped.\n\n**Things you might want to change**\n- A repeated reference is refused with a 409 Conflict, the same code the server already uses for \"this claim is no longer a draft\". The server doesn't pass its message through to the screen, so when an edit with a reference fails with 409, the form can't tell which reason it was. It shows: \"That reference is already used on this sheet, or the claim is no longer a draft.\" A failed add has only one possible reason, so it gets a plain message.\n- Uniqueness is checked in the service, not by a database constraint. That relies on the existing sheet lock to stop two users adding the same reference at once.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.0102234,
+        "num_turns": 23,
+        "duration_ms": 279138,
+        "duration_api_ms": 115121,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp87.agent.jsonl",
+  "agent_diff_file": "cp87.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
