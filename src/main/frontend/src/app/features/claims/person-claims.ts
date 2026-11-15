@@ -270,7 +270,7 @@ export class PersonClaims {
     const grade = gradeOn(this.grades(), c.date);
     const due = claimDueCents(this.rates().filter((r) => r.grade === grade), c, cents(this.session.floorOn(c.date)), {
       today: this.session.today(), latePctOn: (d) => this.session.latePctOn(d), graceOf: (o) => this.graceOf(o),
-    }, roundsHalfUp(c, this.claims(), this.session.policyDate(), this.session.today()));
+    }, roundsHalfUp(c, this.claims(), this.session.policyDate(), this.session.today(), (d) => this.session.roundingOn(d)));
     return due === null ? 'n/a' : money(due);
   }
 

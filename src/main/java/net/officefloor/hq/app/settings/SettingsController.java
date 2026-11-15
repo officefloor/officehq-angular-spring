@@ -116,6 +116,12 @@ public class SettingsController {
             @Pattern(regexp = FROM) String from) {
     }
 
+    /** The rounding mode as the form submits it: half-up or half-even, blank for none, from a date
+     *  (blank: the sheet's today). */
+    public record RoundingForm(@NotNull @Pattern(regexp = "(half-up|half-even)?") String value,
+            @Pattern(regexp = FROM) String from) {
+    }
+
     /** The policy date as the form submits it: a date as yyyy-mm-dd, blank for none (the sheet's today). */
     public record PolicyDateForm(@NotNull @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String value) {
     }
@@ -317,6 +323,15 @@ public class SettingsController {
             @Valid @RequestBody NoteThresholdForm body) {
         BigDecimal threshold = body.value().isEmpty() ? null : new BigDecimal(body.value());
         service.setNoteThreshold(sheetId, user.trim(), threshold, fromOf(body.from()));
+        return view(sheetId);
+    }
+
+    @PutMapping("/settings/rounding")
+    public SettingsView setRounding(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody RoundingForm body) {
+        service.setRounding(sheetId, user.trim(), body.value().isEmpty() ? null : body.value(), fromOf(body.from()));
         return view(sheetId);
     }
 

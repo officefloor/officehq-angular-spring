@@ -36,6 +36,8 @@ public class SettingsService {
     public static final String GRACE_OF_GRADE = Sheet.GRACE_OF_GRADE;
     /** The key the late percent is audited under. */
     public static final String LATE_PCT = Sheet.LATE_PCT;
+    /** The key the rounding mode is audited under. */
+    public static final String ROUNDING = Sheet.ROUNDING;
     /** The key the policy date is audited under. */
     public static final String POLICY_DATE = "policy-date";
 
@@ -217,6 +219,26 @@ public class SettingsService {
         record(sheet, user, LATE_PCT, scaled.toPlainString(), from);
         rollup.recordChanges(sheetId, user, before);
         return scaled;
+    }
+
+    /** The sheet's rounding mode in force on its today; null when there is none. */
+    @Transactional(readOnly = true)
+    public String rounding(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getRounding).orElse(null);
+    }
+
+    /** Set the sheet's rounding mode (half-up or half-even; null: none) from a date (null: the
+     *  sheet's today), the sheet created first if it was never loaded; every live figure of a claim
+     *  dated from then on to the next from-date (and so every total) rounds by it, a claim with none
+     *  in force on its date by the policy date, while settled, bound and closed figures stay as they are. */
+    @Transactional
+    public String setRounding(String sheetId, String user, String mode, LocalDate from) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        record(sheet, user, ROUNDING, mode == null ? "" : mode, from);
+        rollup.recordChanges(sheetId, user, before);
+        return mode;
     }
 
     /** The sheet's policy date as set; null when blank (the sheet's today is the policy date). */

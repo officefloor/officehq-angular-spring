@@ -32,6 +32,9 @@ export const LATE_PCT_PATTERN = /^\d{1,3}(\.\d{1,2})?$/;
 /** A policy date as yyyy-mm-dd. */
 export const POLICY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+/** A rounding mode: half-up or half-even. */
+export const ROUNDING_PATTERN = /^(half-up|half-even)$/;
+
 /** Terms of a whole number of days. */
 export const TERMS_PATTERN = /^\d{1,4}$/;
 /** A fiscal year start month: 1 to 12. */
@@ -165,6 +168,13 @@ export class SettingsApi {
   setProofThreshold(sheetId: string, value: string, from = ''): Promise<Settings> {
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/proof-threshold`, { value, from }, { headers: this.headers() }),
+    );
+  }
+
+  /** Save the rounding mode (half-up or half-even; blank: none) from a date (blank: the sheet's today). */
+  setRounding(sheetId: string, value: string, from = ''): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/rounding`, { value, from }, { headers: this.headers() }),
     );
   }
 

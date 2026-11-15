@@ -56,6 +56,8 @@ public class Sheet {
     public static final String PROOF_THRESHOLD_OF_GRADE = "proof-threshold-";
     /** The key of the note threshold's dated values. */
     public static final String NOTE_THRESHOLD = "note-threshold";
+    /** The key of the rounding mode's dated values. */
+    public static final String ROUNDING = "rounding";
 
     @Id
     private String id;
@@ -379,6 +381,17 @@ public class Sheet {
      *  opened with an empty note; null when there is none. */
     public BigDecimal noteThresholdOn(LocalDate on) {
         return amountOn(NOTE_THRESHOLD, on, null);
+    }
+
+    /** The rounding mode in force on the sheet's today (half-up or half-even); null when there is none. */
+    public String getRounding() {
+        return roundingOn(today);
+    }
+
+    /** The rounding mode in force on a date: a claim dated then rounds its live figures by it;
+     *  null when there is none (the claim rounds by the policy date). */
+    public String roundingOn(LocalDate on) {
+        return settingOn(ROUNDING, on).map(DatedSetting::getValue).orElse(null);
     }
 
     /** A due-total held to the cap (null, n/a, is not capped): the cap when the sum is above it. */

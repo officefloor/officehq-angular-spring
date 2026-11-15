@@ -183,13 +183,18 @@ export function plusDays(date: string, days: number): string {
   return new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
-/** Whether a claim's live figures round half up: its date (a correction's, the date of the claim
- *  of its person it corrects, among `theirs`) is before the sheet's policy date (null: blank, the
- *  sheet's today); else they round half to even. */
-export function roundsHalfUp(c: Claim, theirs: readonly Claim[], policyDate: string | null, today: string | null): boolean {
+/** Whether a claim's live figures round half up: by the sheet's rounding mode in force on its date
+ *  (a correction's, the date of the claim of its person it corrects, among `theirs`) when there is
+ *  one; else when that date is before the sheet's policy date (null: blank, the sheet's today),
+ *  rounding half to even otherwise. */
+export function roundsHalfUp(c: Claim, theirs: readonly Claim[], policyDate: string | null, today: string | null,
+                             roundingOn: (date: string) => string | null = () => null): boolean {
+  const on = c.corrects === null ? c.date : theirs.find((o) => o.number === c.corrects)?.date ?? c.date;
+  const mode = roundingOn(on);
+  if (mode === 'half-up') return true;
+  if (mode === 'half-even') return false;
   const policy = policyDate ?? today;
   if (policy === null) return false;
-  const on = c.corrects === null ? c.date : theirs.find((o) => o.number === c.corrects)?.date ?? c.date;
   return on < policy;
 }
 

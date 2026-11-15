@@ -915,7 +915,7 @@ export class People {
   private claimDueCents(p: Person, c: Claim, late: Lateness, rates?: Rate[]): number | null {
     return claimDueCents(rates ?? this.ratesOf(gradeOn(p.grades, c.date)), c, cents(this.session.floorOn(c.date)),
       { ...late, graceOf: (o) => this.graceOf(p, o) },
-      roundsHalfUp(c, this.claimsOf(p.id), this.session.policyDate(), late.today));
+      roundsHalfUp(c, this.claimsOf(p.id), this.session.policyDate(), late.today, (d) => this.session.roundingOn(d)));
   }
 
   /** A claim's grace days: those of the person's grade in force on the claim's date. */

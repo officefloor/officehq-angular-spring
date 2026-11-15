@@ -39,6 +39,10 @@ export class Session {
   /** The active sheet's note threshold (two decimals) in force on its today, null when there is
    *  none: a claim whose due is above the one in force on its date is opened only with a note. */
   readonly noteThreshold = computed(() => valueOn(this.dated(), 'note-threshold', this.today())?.value ?? null);
+  /** The active sheet's rounding mode (half-up or half-even) in force on its today, null when
+   *  there is none: a claim with one in force on its date rounds its live figures by it, one with
+   *  none by the policy date. */
+  readonly rounding = computed(() => this.roundingOn(this.today()));
   /** The active sheet's pot (two decimals), null when blank (none): each balanced pool's members
    *  cut it by their shares. Not dated. */
   readonly pot = signal<string | null>(null);
@@ -76,6 +80,12 @@ export class Session {
   fiscalYearOf(date: string): string {
     const year = Number(date.slice(0, 4));
     return `FY${Number(date.slice(5, 7)) >= this.fiscalStartMonth() ? year : year - 1}`;
+  }
+
+  /** The rounding mode (half-up or half-even) in force on a date: a claim dated then rounds its
+   *  live figures by it; null when there is none (it rounds by the policy date). */
+  roundingOn(date: string | null): string | null {
+    return valueOn(this.dated(), 'rounding', date)?.value ?? null;
   }
 
   /** The floor (two decimals) in force on a date: a live due of a claim dated then is at least it;
