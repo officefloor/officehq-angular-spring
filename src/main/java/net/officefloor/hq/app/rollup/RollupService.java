@@ -235,6 +235,10 @@ public class RollupService {
     /** Record, once the transaction commits, a ROLLUP line for each person whose figures moved
      *  since {@code before}, then a TOTALS line when the sheet's totals moved. */
     public void recordChanges(String sheetId, String user, Snapshot before) {
+        recordChanges(sheetId, user, before, false);
+    }
+
+    private void recordChanges(String sheetId, String user, Snapshot before, boolean totals) {
         Snapshot after = snapshot(sheetId);
         after.people().forEach((id, now) -> {
             if (!now.sameAs(before.people().get(id))) {
@@ -242,13 +246,19 @@ public class RollupService {
                         + " claimed=" + text(now.claimed()) + " due-total=" + text(now.dueTotal()) + " overdue-total=" + text(now.overdueTotal()));
             }
         });
-        if (after.claimedTotal().compareTo(before.claimedTotal()) != 0
+        if (totals || after.claimedTotal().compareTo(before.claimedTotal()) != 0
                 || after.dueTotal().compareTo(before.dueTotal()) != 0
                 || after.overdueTotal().compareTo(before.overdueTotal()) != 0) {
             audit.recordOnCommit("TOTALS sheet=" + sheetId + " by=" + user + " claimed-total="
                     + text(after.claimedTotal()) + " due-total=" + text(after.dueTotal())
                     + " overdue-total=" + text(after.overdueTotal()));
         }
+    }
+
+    /** Record, once the transaction commits, a ROLLUP line for every person (in list order), then
+     *  the sheet's TOTALS line, as the sheet's figures are now. */
+    public void recordAll(String sheetId, String user) {
+        recordChanges(sheetId, user, new Snapshot(Map.of()), true);
     }
 
     /** Whether a claim counts toward claimed and due totals: only OPEN (or PENDING) and SETTLED ones

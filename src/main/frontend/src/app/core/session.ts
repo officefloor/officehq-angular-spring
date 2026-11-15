@@ -183,6 +183,28 @@ export class Session {
       return otherError(e);
     }
   }
+
+  /** Clone the active sheet to another id that was never used (a steward only); resolves to an
+   *  error message, or null. */
+  async cloneSheet(toSheetId: string): Promise<string | null> {
+    const user = this.user();
+    const id = this.sheetId();
+    if (!user || !id) return 'Load a sheet first.';
+    try {
+      await firstValueFrom(
+        this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/clone`, { toSheetId }, {
+          headers: { 'X-User': user },
+        }),
+      );
+      return null;
+    } catch (e) {
+      if (e instanceof HttpErrorResponse && e.status === 409) return 'That sheet id is already in use.';
+      if (e instanceof HttpErrorResponse && e.status === 403 && !e.headers.has('X-As-Of')) {
+        return 'Only a steward may clone an open sheet.';
+      }
+      return message(e, 'Enter a sheet id without spaces.');
+    }
+  }
 }
 
 interface SheetView {

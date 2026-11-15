@@ -370,6 +370,17 @@ public class Claim {
         return copy;
     }
 
+    /** A copy of the claim for a clone of the sheet: what a transfer carries, and its reference,
+     *  batch and listing too. Its number and statement binding are left for the clone to give, and
+     *  it is not locked; corrects and split-from name this sheet's numbers, so the caller maps them. */
+    public Claim clonedTo(String sheetId, Long personId) {
+        Claim copy = transferredTo(sheetId, personId);
+        copy.ref = ref;
+        copy.batch = batch;
+        copy.listed = listed;
+        return copy;
+    }
+
     /** Whether another user than this one holds the claim's editor open. */
     public boolean isLockedFor(String user) {
         return lockedBy != null && !lockedBy.equals(user);

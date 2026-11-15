@@ -52,14 +52,21 @@ public class SheetController {
     public record TodayChange(@NotNull LocalDate today) {
     }
 
+    /** A clone as the screen submits it: the id of the sheet to clone this one to. */
+    public record CloneForm(@NotBlank @Size(max = 100) @Pattern(regexp = "\\s*\\S+\\s*") String toSheetId) {
+    }
+
     private final SheetService service;
     private final SettingsService settings;
     private final HistoryService history;
+    private final SheetCloneService cloning;
 
-    public SheetController(SheetService service, SettingsService settings, HistoryService history) {
+    public SheetController(SheetService service, SettingsService settings, HistoryService history,
+            SheetCloneService cloning) {
         this.service = service;
         this.settings = settings;
         this.history = history;
+        this.cloning = cloning;
     }
 
     /** Load the sheet; shown as of a date, it is as it stood at the end of that date, that date its today. */
@@ -88,5 +95,14 @@ public class SheetController {
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String id,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
         return SheetView.of(settings.archive(id, user.trim()));
+    }
+
+    /** Clone the sheet to another id that was never used: a steward only; answers with the clone. */
+    @PostMapping("/{id}/clone")
+    public SheetView cloneSheet(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody CloneForm body) {
+        return SheetView.of(cloning.cloneSheet(id, user.trim(), body.toSheetId()));
     }
 }

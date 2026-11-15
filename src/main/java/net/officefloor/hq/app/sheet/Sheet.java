@@ -120,6 +120,21 @@ public class Sheet {
         this.today = today;
     }
 
+    /** A clone of the sheet under another id, created by a user: its today and every setting (its
+     *  dated settings, policy date, period numbering, entry date, grace days, pot and parent). It is
+     *  not archived and has given no claim number yet. */
+    public Sheet clonedTo(String id, String createdBy) {
+        Sheet copy = new Sheet(id, createdBy, today);
+        settings.forEach(d -> copy.settings.add(new DatedSetting(d.getKey(), d.getFrom(), d.getValue())));
+        copy.policyDate = policyDate;
+        copy.periodNumberingFrom = periodNumberingFrom;
+        copy.entryDate = entryDate;
+        copy.graceDays = graceDays;
+        copy.pot = pot;
+        copy.parent = parent;
+        return copy;
+    }
+
     public String getId() {
         return id;
     }

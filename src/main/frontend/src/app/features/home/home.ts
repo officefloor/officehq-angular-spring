@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
 import { AuditViewer } from '../audit/audit-viewer';
@@ -26,6 +26,12 @@ import { Templates } from '../templates/templates';
         <p>Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong>
           <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
         </p>
+        <form [formGroup]="cloneForm" (ngSubmit)="cloneSheet()" aria-label="Clone sheet">
+          <label for="sheet-clone-to">Clone to sheet id</label>
+          <input id="sheet-clone-to" data-testid="sheet-clone-to" formControlName="toSheetId" autocomplete="off" />
+          <button type="submit" data-testid="sheet-clone">Clone sheet</button>
+          <p>Cloned to <strong data-testid="sheet-cloned-to">{{ clonedTo() ?? '' }}</strong></p>
+        </form>
         <p>Parent sheet <strong data-testid="sheet-parent">{{ session.parent() ?? '' }}</strong></p>
         <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
         <form [formGroup]="asOfForm" (ngSubmit)="setAsOf()" aria-label="Show the sheet as of a date">
@@ -77,6 +83,11 @@ export class Home {
   protected readonly asOfForm = new FormGroup({
     date: new FormControl('', { nonNullable: true, validators: Validators.required }),
   });
+  protected readonly cloneForm = new FormGroup({
+    toSheetId: new FormControl('', { nonNullable: true, validators: Validators.required }),
+  });
+  /** The id the active sheet was last cloned to from this screen; null before, and while a clone runs. */
+  protected readonly clonedTo = signal<string | null>(null);
   protected readonly signinError = signal<string | null>(null);
   protected readonly asOfError = signal<string | null>(null);
   protected readonly sheetError = signal<string | null>(null);
@@ -86,6 +97,11 @@ export class Home {
     this.sheetForm.valueChanges.subscribe(() => this.sheetError.set(null));
     this.todayForm.valueChanges.subscribe(() => this.sheetError.set(null));
     this.asOfForm.valueChanges.subscribe(() => this.asOfError.set(null));
+    this.cloneForm.valueChanges.subscribe(() => this.sheetError.set(null));
+    effect(() => {
+      this.session.sheetId();
+      this.clonedTo.set(null);
+    });
   }
 
   protected async signIn(): Promise<void> {
@@ -111,6 +127,22 @@ export class Home {
   protected async archive(): Promise<void> {
     this.sheetError.set(null);
     this.sheetError.set(await this.session.archive());
+  }
+
+  protected async cloneSheet(): Promise<void> {
+    this.sheetError.set(null);
+    this.clonedTo.set(null);
+    const to = this.cloneForm.controls.toSheetId.value.trim();
+    if (!/^\S+$/.test(to)) {
+      this.sheetError.set('Enter a sheet id without spaces.');
+      return;
+    }
+    const err = await this.session.cloneSheet(to);
+    if (err) {
+      this.sheetError.set(err);
+    } else {
+      this.clonedTo.set(to);
+    }
   }
 
   protected async setAsOf(): Promise<void> {
