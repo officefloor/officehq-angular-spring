@@ -75,7 +75,7 @@ public class PasteClaimsService {
             Person person = people.findBySheetIdAndNameIgnoreCase(sheetId, name).stream().findFirst()
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                             "Line " + n + ": no person named " + name));
-            added.add(claims.add(sheetId, user, person.getId(), new BigDecimal(amount), on, note, null, ref));
+            added.add(claims.add(sheetId, user, person.getId(), new BigDecimal(amount), on, note, null, ref, null));
         }
         return added;
     }

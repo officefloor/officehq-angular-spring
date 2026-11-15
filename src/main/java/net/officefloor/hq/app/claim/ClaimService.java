@@ -9,8 +9,10 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.period.Period;
@@ -45,6 +47,7 @@ public class ClaimService {
 
     private final ClaimRepository claims;
     private final ClaimLogRepository log;
+    private final SheetTagRepository tagsUsed;
     private final RetiredNumberRepository retired;
     private final PersonRepository people;
     private final PersonStatementRepository statements;
@@ -65,10 +68,11 @@ public class ClaimService {
     public record Split(Claim original, Claim split) {
     }
 
-    public ClaimService(ClaimRepository claims, ClaimLogRepository log, RetiredNumberRepository retired, PersonRepository people, PersonStatementRepository statements,
+    public ClaimService(ClaimRepository claims, ClaimLogRepository log, SheetTagRepository tagsUsed, RetiredNumberRepository retired, PersonRepository people, PersonStatementRepository statements,
             PersonWatchRepository watches, RateRepository rates, SheetService sheets, RollupService rollup, PeriodService periods, SettingsService settings, HistoryService history, Audit audit) {
         this.claims = claims;
         this.log = log;
+        this.tagsUsed = tagsUsed;
         this.retired = retired;
         this.people = people;
         this.statements = statements;
@@ -85,6 +89,12 @@ public class ClaimService {
     @Transactional(readOnly = true)
     public List<Claim> list(String sheetId) {
         return claims.findBySheetIdOrderByListedDesc(sheetId);
+    }
+
+    /** Every tag ever used on the sheet, in order. */
+    @Transactional(readOnly = true)
+    public List<String> tagsUsed(String sheetId) {
+        return tagsUsed.findBySheetIdOrderByTagAsc(sheetId).stream().map(SheetTag::getTag).toList();
     }
 
     /** The status logs of the sheet's claims, each oldest first, by claim id. */
@@ -125,10 +135,11 @@ public class ClaimService {
      *  (423) when the due-by it would be fixed with is in a closed period, (422) when it is after the person's
      *  retirement date, and (422) when it is a correction (a negative amount) that does not name
      *  the number of a SETTLED claim of the same person, and (409) when its reference (blank: none) is
-     *  already used on the sheet, comparing without regard to case. */
+     *  already used on the sheet, comparing without regard to case. Its tags are taken as
+     *  {@link #tagsOf} has them. */
     @Transactional
     public Claim add(String sheetId, String user, long personId, BigDecimal amount, LocalDate date, String note,
-            String corrects, String ref) {
+            String corrects, String ref, String tags) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.entryDate(sheetId);
@@ -141,13 +152,16 @@ public class ClaimService {
         Claim fresh = new Claim(sheetId, personId, amount, on, dueBy, noteOf(note));
         fresh.setCorrects(corrected);
         fresh.setRef(reference);
+        fresh.setTags(tagsOf(tags));
         // the sheet is locked (refuseIfClosed), so two claims added at once are listed one after the other
         fresh.setListed(claims.findLastListed(sheetId) + 1);
         fresh.setLateEntry(periods.softClosedOn(sheetId, dueBy));
         Claim claim = claims.saveAndFlush(fresh);
+        keepTags(claim);
         logStatus(user, person, claim);
         record("CLAIM_ADDED", user, person, claim, claim.getNumber(),
-                claim.getRef() != null ? " ref=" + claim.getRef() : "");
+                (claim.getRef() != null ? " ref=" + claim.getRef() : "")
+                        + (claim.getTags() != null ? " tags=" + claim.getTags() : ""));
         if (claim.isLateEntry()) {
             record("LATE_ENTRY", user, person, claim, null);
         }
@@ -161,10 +175,11 @@ public class ClaimService {
      *  added instead), and (423) when its due-by (which the edit leaves) is in a closed period, and (422) when the new
      *  date is after the person's retirement date, or when it is a correction that does not name
      *  the number of a SETTLED claim of the same person, and (409) when its reference (blank: none) is
-     *  used by another claim on the sheet, comparing without regard to case. */
+     *  used by another claim on the sheet, comparing without regard to case. Its tags are
+     *  replaced as {@link #tagsOf} has them. */
     @Transactional
     public Claim update(String sheetId, String user, long id, BigDecimal amount, LocalDate date, String note,
-            String corrects, String ref) {
+            String corrects, String ref, String tags) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         LocalDate on = date != null ? date : sheets.entryDate(sheetId);
@@ -183,10 +198,12 @@ public class ClaimService {
         claim.setAmount(amount);
         claim.setCorrects(corrected);
         claim.setRef(reference);
+        claim.setTags(tagsOf(tags));
         claim.setDate(on);
         claim.setNote(noteOf(note));
         claim.setLockedBy(null);
         claims.flush();
+        keepTags(claim);
         record("CLAIM_EDITED", user, person, claim);
         rollup.recordChanges(sheetId, user, before);
         return claim;
@@ -569,8 +586,8 @@ public class ClaimService {
     }
 
     /** Split an amount off an OPEN claim: the claim keeps the rest of its amount and loses any
-     *  figure a statement bound it to, and a new OPEN claim of the amount, with the same date and
-     *  note, the next number, opened by the user, its due-by fixed now from the terms in force on
+     *  figure a statement bound it to, and a new OPEN claim of the amount, with the same date,
+     *  note and tags, the next number, opened by the user, its due-by fixed now from the terms in force on
      *  the date (the person's own, else their grade's, else the sheet's), and naming the original's number as split-from, is listed as the person's newest (a late entry
      *  when a soft-closed period contains its due-by).
      *  Refused (404) when missing, (423) when due in a closed period, (403) for a role the
@@ -605,6 +622,7 @@ public class ClaimService {
         fresh.setNumber(nextNumber(sheetId, fresh.getDueBy()));
         fresh.setOpenedBy(user);
         fresh.setSplitFrom(claim.getNumber());
+        fresh.setTags(claim.getTags());
         fresh.setLateEntry(periods.softClosedOn(sheetId, fresh.getDueBy()));
         fresh.setListed(claims.findLastListed(sheetId) + 1);
         Claim split = claims.saveAndFlush(fresh);
@@ -824,6 +842,34 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The reference " + trimmed + " is already used on the sheet");
         }
         return trimmed;
+    }
+
+    /** A claim's tags as the form gives them, comma separated: each trimmed and lower-cased, blank
+     *  ones and repeats dropped, sorted and joined by commas; none when no tag is left. */
+    static String tagsOf(String tags) {
+        if (tags == null) {
+            return null;
+        }
+        Set<String> each = new TreeSet<>();
+        for (String tag : tags.split(",")) {
+            String t = tag.trim().toLowerCase(Locale.ROOT);
+            if (!t.isEmpty()) {
+                each.add(t);
+            }
+        }
+        return each.isEmpty() ? null : String.join(",", each);
+    }
+
+    /** Keep each of the claim's tags among those ever used on its sheet. */
+    private void keepTags(Claim claim) {
+        if (claim.getTags() == null) {
+            return;
+        }
+        for (String tag : claim.getTags().split(",")) {
+            if (!tagsUsed.existsBySheetIdAndTag(claim.getSheetId(), tag)) {
+                tagsUsed.save(new SheetTag(claim.getSheetId(), tag));
+            }
+        }
     }
 
     /** Refuse (422) a claim dated after its person's retirement date. */

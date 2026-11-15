@@ -7,8 +7,10 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.person.PersonController.PersonView;
@@ -44,12 +46,13 @@ public class ClaimController {
      *  it was deferred until (null when never deferred); how many proofs it has; the number of the
      *  claim it was split from (null when not made by a split); the user whose open editor locks
      *  it (null while unlocked); whether it was added while its period was soft-closed; the last
-     *  day it was reminded (null when never reminded); its external reference (null when none). */
+     *  day it was reminded (null when never reminded); its external reference (null when none); its
+     *  tags, lower-case, sorted and comma separated (null when none). */
     public record ClaimView(long id, long personId, String amount, LocalDate date, String note,
             ClaimStatus status, String number, String settledDue, String openedBy, boolean stated,
             String statedDue, String corrects, long listed, LocalDate dueBy, List<LogLineView> log,
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
-            boolean lateEntry, LocalDate reminded, String ref) {
+            boolean lateEntry, LocalDate reminded, String ref, String tags) {
         static ClaimView of(Claim c, List<ClaimLog> log) {
             return of(c.getId(), c, log);
         }
@@ -60,7 +63,7 @@ public class ClaimController {
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
                     c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
                     log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLockedBy(),
-                    c.isLateEntry(), c.getReminded(), c.getRef());
+                    c.isLateEntry(), c.getReminded(), c.getRef(), c.getTags());
         }
 
         private static String money(BigDecimal value) {
@@ -86,14 +89,15 @@ public class ClaimController {
 
     /** A claim's values as the form submits them: an amount with up to two decimals (negative
      *  for a correction), an optional date (the sheet's today when absent), an optional note, and
-     *  the number of the claim a correction corrects, and an optional external reference (blank:
-     *  none). */
+     *  the number of the claim a correction corrects, an optional external reference (blank:
+     *  none), and its tags, comma separated (blank: none). */
     public record ClaimForm(
             @NotNull @Pattern(regexp = "-?\\d{1,13}(\\.\\d{1,2})?") String amount,
             LocalDate date,
             @Size(max = 1000) String note,
             @Size(max = 120) @Pattern(regexp = "\\s*\\S+\\s*") String corrects,
-            @Size(max = 120) String ref) {
+            @Size(max = 120) String ref,
+            @Size(max = 1000) String tags) {
     }
 
     /** The reason a steward gives for rejecting a PENDING claim. */
@@ -172,6 +176,24 @@ public class ClaimController {
         return service.list(sheetId).stream().map(c -> ClaimView.of(c, logs.getOrDefault(c.getId(), List.of()))).toList();
     }
 
+    /** Every tag ever used on the sheet, in order; as of a date, those its claims carried then. */
+    @GetMapping("/tags")
+    public List<String> tags(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            return history.asOf(sheetId, asOf).claims().values().stream()
+                    .map(Claim::getTags)
+                    .filter(Objects::nonNull)
+                    .flatMap(t -> Arrays.stream(t.split(",")))
+                    .distinct()
+                    .sorted()
+                    .toList();
+        }
+        return service.tagsUsed(sheetId);
+    }
+
     @PostMapping("/people/{personId}/claims")
     @ResponseStatus(HttpStatus.CREATED)
     public ClaimView add(
@@ -180,7 +202,7 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm body) {
         return view(service.add(sheetId, user.trim(), personId, new BigDecimal(body.amount()), body.date(), body.note(), trimmed(body.corrects()),
-                body.ref()));
+                body.ref(), body.tags()));
     }
 
     @PutMapping("/claims/{id}")
@@ -190,7 +212,7 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ClaimForm body) {
         return view(service.update(sheetId, user.trim(), id, new BigDecimal(body.amount()), body.date(), body.note(), trimmed(body.corrects()),
-                body.ref()));
+                body.ref(), body.tags()));
     }
 
     /** Open the claim's editor, locking the claim for other users until it is saved or cancelled

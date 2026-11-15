@@ -113,6 +113,11 @@ public class Claim {
     @Column(name = "ref")
     private String ref;
 
+    /** The claim's tags: lower-case, sorted and comma separated, without repeats; none when it has
+     *  none. */
+    @Column(name = "tags")
+    private String tags;
+
     protected Claim() {
     }
 
@@ -277,6 +282,14 @@ public class Claim {
 
     public void setRef(String ref) {
         this.ref = ref;
+    }
+
+    public String getTags() {
+        return tags;
+    }
+
+    public void setTags(String tags) {
+        this.tags = tags;
     }
 
     /** Whether another user than this one holds the claim's editor open. */

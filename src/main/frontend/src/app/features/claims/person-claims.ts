@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { Rate, claimDueCents } from '../rates/rates-api';
-import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, deferError, deferred, remindError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError } from './claims-api';
+import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine, ClaimsApi, cents, claimError, deferError, deferred, remindError, editError, proofError, redateError, dueBy, logLineText, money, overdue, reassignError, resettleError, roundsHalfUp, splitError, statusError, tagsOf } from './claims-api';
 
 // One person's claims, newest first, and the one form that adds a claim or, with a claim's
 // editor open, saves that claim.
@@ -26,6 +26,8 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine,
         autocomplete="off" />
       <label [for]="fieldId('ref')">Reference</label>
       <input [id]="fieldId('ref')" data-testid="claim-form-ref" formControlName="ref" autocomplete="off" />
+      <label [for]="fieldId('tags')">Tags (comma separated)</label>
+      <input [id]="fieldId('tags')" data-testid="claim-form-tags" formControlName="tags" autocomplete="off" />
       <button type="submit" data-testid="claim-form-submit">{{ editingId() === null ? 'Add claim' : 'Save claim' }}</button>
       @if (error(); as err) {
         <p role="alert" data-testid="claim-form-error">{{ err }}</p>
@@ -43,6 +45,7 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine,
             <span data-testid="claim-date">{{ c.date }}</span>
             <span data-testid="claim-note">{{ c.note }}</span>
             <span>Ref <span data-testid="claim-ref">{{ c.ref ?? '' }}</span></span>
+            <span>Tags <span data-testid="claim-tags">{{ tagsOf(c).join(', ') }}</span></span>
             <span>Corrects No. <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
             <span>Due <span data-testid="claim-due">{{ dueOf(c) }}</span></span>
             <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
@@ -165,6 +168,7 @@ export class PersonClaims {
   protected readonly splitAmounts = signal<Record<number, string>>({});
   /** The amount typed for changing each DRAFT claim's amount in its row, by claim id. */
   protected readonly inlineAmounts = signal<Record<number, string>>({});
+  protected readonly tagsOf = tagsOf;
   protected readonly fieldId = (name: string) => `claim-form-${name}-${this.personId()}`;
 
   protected readonly form = new FormGroup({
@@ -173,6 +177,7 @@ export class PersonClaims {
     note: new FormControl('', { nonNullable: true }),
     corrects: new FormControl('', { nonNullable: true }),
     ref: new FormControl('', { nonNullable: true }),
+    tags: new FormControl('', { nonNullable: true }),
   });
 
   constructor() {
@@ -263,7 +268,7 @@ export class PersonClaims {
       this.saved.emit(claim);
       if (this.editingId() === c.id && this.form.pristine) {
         this.form.setValue({ amount: claim.amount, date: claim.date, note: claim.note, corrects: claim.corrects ?? '',
-          ref: claim.ref ?? '' });
+          ref: claim.ref ?? '', tags: tagsOf(claim).join(', ') });
       }
       return true;
     }, (e: unknown) => {
@@ -276,7 +281,8 @@ export class PersonClaims {
 
   private openEditor(c: Claim): void {
     this.editingId.set(c.id);
-    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '', ref: c.ref ?? '' });
+    this.form.setValue({ amount: c.amount, date: c.date, note: c.note, corrects: c.corrects ?? '', ref: c.ref ?? '',
+      tags: tagsOf(c).join(', ') });
   }
 
   /** Close the claim's editor without saving, releasing its lock. */
@@ -328,8 +334,13 @@ export class PersonClaims {
       this.error.set('Enter a reference of up to 120 characters.');
       return;
     }
+    const tags = value.tags.trim();
+    if (tags.length > 1000) {
+      this.error.set('Enter tags of up to 1000 characters in all.');
+      return;
+    }
     const form = { amount, date: date || null, note: value.note, corrects: corrects === '' ? null : corrects,
-      ref: ref === '' ? null : ref };
+      ref: ref === '' ? null : ref, tags: tags === '' ? null : tags };
     const editing = this.editingId();
     this.submitting = true;
     try {
@@ -506,7 +517,7 @@ export class PersonClaims {
       return;
     }
     try {
-      const claim = await this.api.update(sheetId, c.id, { amount, date: c.date, note: c.note, corrects: c.corrects, ref: c.ref });
+      const claim = await this.api.update(sheetId, c.id, { amount, date: c.date, note: c.note, corrects: c.corrects, ref: c.ref, tags: c.tags });
       if (this.session.sheetId() === sheetId) this.saved.emit(claim);
     } catch (e) {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: claimError(e, amount.startsWith('-')) }));
@@ -537,7 +548,7 @@ export class PersonClaims {
   protected reset(): void {
     this.editingId.set(null);
     this.locking = null;
-    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '' });
+    this.form.reset({ amount: '', date: '', note: '', corrects: '', ref: '', tags: '' });
     this.error.set(null);
   }
 }

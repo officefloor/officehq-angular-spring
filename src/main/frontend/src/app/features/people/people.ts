@@ -1,7 +1,7 @@
 import { DOCUMENT, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Session } from '../../core/session';
-import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, deferred, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp, statusOn } from '../claims/claims-api';
+import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, deferred, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp, statusOn, tagsOf } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn, personPeriodDueCents } from '../periods/periods-api';
@@ -76,6 +76,16 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
         totalling <strong data-testid="rollup-overdue-total">{{ overdueTotal() }}</strong></p>
       <p>Settled total <strong data-testid="rollup-settled-total">{{ settledTotal() }}</strong>
         open total <strong data-testid="rollup-open-total">{{ openTotal() }}</strong></p>
+      @if (tagTotals().length > 0) {
+        <table aria-label="Due total by tag">
+          <thead><tr><th scope="col">Tag</th><th scope="col">Due total</th></tr></thead>
+          <tbody>
+            @for (t of tagTotals(); track t.tag) {
+              <tr><th scope="row">{{ t.tag }}</th><td [attr.data-testid]="'tag-' + t.tag + '-due-total'">{{ money(t.cents) }}</td></tr>
+            }
+          </tbody>
+        </table>
+      }
       <label>
         <input type="checkbox" data-testid="show-retired" [checked]="session.showRetired()"
           (change)="session.showRetired.set($any($event.target).checked)" />
@@ -463,6 +473,24 @@ export class People {
     money(trimmedSum([...this.dueByPerson().values()].filter((d): d is number => d !== null))));
   protected readonly claimedTotal = computed(() =>
     money(this.people().reduce((sum, p) => sum + (this.byPerson().get(p.id)?.cents ?? 0), 0)));
+  /** Every tag ever used on the sheet, as last read from the store. */
+  private readonly tagsUsed = signal<string[]>([]);
+  /** Each tag ever used on the sheet (those read, and any a claim carries now), in order, with
+   *  the dues in cents (n/a ones skipped) of the counting claims that carry it; a claim with two
+   *  tags counts in both. */
+  protected readonly tagTotals = computed(() => {
+    const out = new Map<string, number>(this.tagsUsed().map((t) => [t, 0]));
+    for (const c of this.claims()) for (const t of tagsOf(c)) if (!out.has(t)) out.set(t, 0);
+    const late = this.lateness();
+    const live = this.countsLive();
+    for (const p of this.people()) {
+      for (const c of this.claimsOf(p.id).filter((c) => c.tags !== null && live(c))) {
+        const due = this.claimDueCents(p, c, late) ?? 0;
+        for (const t of tagsOf(c)) out.set(t, (out.get(t) ?? 0) + due);
+      }
+    }
+    return [...out].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([tag, cents]) => ({ tag, cents }));
+  });
   /** The ids of the claims selected for a bulk action. */
   protected readonly selectedClaims = signal<ReadonlySet<number>>(new Set());
   /** The last bulk open's counts; gone while one runs. */
@@ -552,6 +580,7 @@ export class People {
         this.bulkGradeErr.set(null);
         this.people.set([]);
         this.claims.set([]);
+        this.tagsUsed.set([]);
         this.rates.set([]);
         this.periods.set([]);
         if (id) void this.read(id);
@@ -987,9 +1016,11 @@ export class People {
   private async read(sheetId: string): Promise<void> {
     const seq = ++this.readSeq;
     try {
-      const [people, claims, rates, periods] = await Promise.all([
-        this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId), this.periodsApi.list(sheetId)]);
+      const [people, claims, rates, periods, tags] = await Promise.all([
+        this.api.list(sheetId), this.claimsApi.list(sheetId), this.ratesApi.list(sheetId), this.periodsApi.list(sheetId),
+        this.claimsApi.tags(sheetId)]);
       if (seq === this.readSeq) {
+        this.tagsUsed.set(tags);
         this.rates.set(rates);
         this.periods.set(periods);
         this.claims.set(claims);

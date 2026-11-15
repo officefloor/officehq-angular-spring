@@ -63,6 +63,8 @@ export interface Claim {
   reminded: string | null;
   /** The claim's external reference, unique on its sheet without regard to case; null when none. */
   ref: string | null;
+  /** The claim's tags: lower-case, sorted and comma separated; null when none. */
+  tags: string | null;
 }
 
 /** A line of a claim's status log: the status, who moved the claim there, the sheet's today then
@@ -163,6 +165,8 @@ export interface ClaimForm {
   corrects: string | null;
   /** The claim's external reference; null (or blank) for none. */
   ref: string | null;
+  /** The claim's tags, comma separated; null (or blank) for none. */
+  tags: string | null;
 }
 
 export interface QuickAddForm {
@@ -186,6 +190,11 @@ export class ClaimsApi {
   /** Every claim on the sheet, newest first. */
   list(sheetId: string): Promise<Claim[]> {
     return firstValueFrom(this.http.get<Claim[]>(`${this.url(sheetId)}/claims`, { headers: this.headers() }));
+  }
+
+  /** Every tag ever used on the sheet, in order. */
+  tags(sheetId: string): Promise<string[]> {
+    return firstValueFrom(this.http.get<string[]>(`${this.url(sheetId)}/tags`, { headers: this.headers() }));
   }
 
   add(sheetId: string, personId: number, form: ClaimForm): Promise<Claim> {
@@ -439,4 +448,9 @@ export function cents(amount: string): number {
 export function money(cents: number): string {
   const abs = Math.abs(cents);
   return `${cents < 0 ? '-' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
+}
+
+/** A claim's tags, each on its own; none when it has none. */
+export function tagsOf(c: Claim): string[] {
+  return c.tags ? c.tags.split(',') : [];
 }
