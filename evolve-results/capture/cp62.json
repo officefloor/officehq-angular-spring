@@ -1,0 +1,64 @@
+{
+  "checkpoint": 62,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp62_archive-sheet",
+  "phase": "early",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A steward can archive the sheet (a button; SHEET_ARCHIVED; anyone else is refused with an error\non the sheet). Show archived yes/no. On an archived sheet everything stays visible and every\nchange is refused with its usual error, including changing the sheet's today, every bulk action,\nthe paste box and the quick-add bar.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA steward can archive the sheet (a button; SHEET_ARCHIVED; anyone else is refused with an error\non the sheet). Show archived yes/no. On an archived sheet everything stays visible and every\nchange is refused with its usual error, including changing the sheet's today, every bulk action,\nthe paste box and the quick-add bar.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "aaf1f146497a8d0a701b650755335a32631affd4",
+  "reset_sha": "",
+  "preagent_sha": "614dd1aba3408ed1d3da53b6bf1e1ef0c78be1cc",
+  "prev_sha": "614dd1aba3408ed1d3da53b6bf1e1ef0c78be1cc",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.8764616000000001,
+    "input_tokens": 36,
+    "output_tokens": 10466,
+    "cache_read_tokens": 866068,
+    "cache_creation_tokens": 61723,
+    "num_turns": 20,
+    "duration_ms": 271415,
+    "duration_api_ms": 97002,
+    "model": "claude-opus-5-5",
+    "session_id": "45c63a1b-14a5-4e11-b136-fd903c3b4965",
+    "stop_reason": "success",
+    "result_text": "Stewards can now archive a sheet, and `bin/e2e` passes all 4 acceptance tests. After that run I only reworded one code comment.\n\n**Stored data and server**\n- **New column:** a migration (`V44__sheet_archived.sql`) adds `archived` to the sheet, defaulting to false. The sheet data the screen loads now includes it.\n- **Archive button endpoint:** `POST /api/sheets/{id}/archive` archives the sheet and writes `SHEET_ARCHIVED sheet=<id> by=<user>` to the audit file. Only someone acting as a steward can do it, and that includes a user covered by a steward's delegation. Anyone else gets a 403. Archiving a sheet that is already archived is refused too.\n- **Blocking changes:** `ViewerGuard`, the existing check that stops viewers changing anything, now also refuses every change on an archived sheet before it is carried out. So nothing is written to the store or the audit file. This covers changing the sheet's today, settings, rates, people, claims, periods, the paste box and the quick-add bar.\n- **Exceptions to the guard:** a few actions skip that check and handle refusals themselves:\n  - Loading a sheet still works, so everything stays visible.\n  - Bulk open and bulk settle report 0 done and every selected claim refused, the same as they already do for a viewer.\n  - Watching a person is refused on an archived sheet. Viewers are normally allowed to watch, but I took \"every change is refused\" to include it.\n\n**Front end**\n- The sheet area shows `sheet-archived` (yes/no) and the `sheet-archive` button.\n- A refused archive shows its message in `sheet-error`, which is cleared on the next attempt.\n\nWhen some other action is refused on an archived sheet, its error says \"Your role may not change anything on this sheet\". That wording comes from the app's existing message for any 403, so it doesn't mention archiving. I left it as is; making it say the sheet is archived would mean the screen reading the reason the server sends back.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.8764616000000001,
+        "num_turns": 20,
+        "duration_ms": 271415,
+        "duration_api_ms": 97002,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp62.agent.jsonl",
+  "agent_diff_file": "cp62.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

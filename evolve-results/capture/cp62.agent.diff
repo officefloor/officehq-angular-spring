@@ -1,0 +1,351 @@
+diff --git a/src/main/frontend/src/app/core/session.ts b/src/main/frontend/src/app/core/session.ts
+index 6288c3bdf..0b44f0793 100644
+--- a/src/main/frontend/src/app/core/session.ts
++++ b/src/main/frontend/src/app/core/session.ts
+@@ -31,6 +31,8 @@ export class Session {
+   /** The active sheet's proof threshold (two decimals) in force on its today, null when there is
+    *  none: a claim whose due is above the one in force on its date is settled only with a proof. */
+   readonly proofThreshold = computed(() => valueOn(this.dated(), 'proof-threshold', this.today())?.value ?? null);
++  /** Whether the active sheet is archived: everything stays visible and every change is refused. */
++  readonly archived = signal(false);
+   /** Whether the people list shows retired people too: off at first, and kept as it is when a
+    *  sheet is loaded. */
+   readonly showRetired = signal(false);
+@@ -85,6 +87,7 @@ export class Session {
+       this.today.set(res.today);
+       this.dated.set(res.dated);
+       this.policyDate.set(res.policyDate);
++      this.archived.set(res.archived);
+       this.loads.update((n) => n + 1);
+       return null;
+     } catch (e) {
+@@ -109,6 +112,26 @@ export class Session {
+       return message(e, 'Enter a date as yyyy-mm-dd.');
+     }
+   }
++
++  /** Archive the active sheet (a steward only); resolves to an error message, or null. */
++  async archive(): Promise<string | null> {
++    const user = this.user();
++    const id = this.sheetId();
++    if (!user || !id) return 'Load a sheet first.';
++    try {
++      const res = await firstValueFrom(
++        this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/archive`, null, {
++          headers: { 'X-User': user },
++        }),
++      );
++      if (this.sheetId() === res.id) this.archived.set(res.archived);
++      return null;
++    } catch (e) {
++      if (e instanceof HttpErrorResponse && e.status === 409) return 'The sheet is archived already.';
++      if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may archive an open sheet.';
++      return otherError(e);
++    }
++  }
+ }
+ 
+ interface SheetView {
+@@ -120,6 +143,7 @@ interface SheetView {
+   policyDate: string | null;
+   cap: string | null;
+   dated: DatedSettings;
++  archived: boolean;
+ }
+ 
+ /** A value recorded for a dated setting: in force from its from-date (yyyy-mm-dd) until the next
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index be8aab69c..a7b855c5d 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -21,6 +21,9 @@ import { Settings } from '../settings/settings';
+       </form>
+       @if (session.sheetId(); as id) {
+         <p>Sheet <strong data-testid="sheet-current-id">{{ id }}</strong></p>
++        <p>Archived <strong data-testid="sheet-archived">{{ session.archived() ? 'yes' : 'no' }}</strong>
++          <button type="button" data-testid="sheet-archive" (click)="archive()">Archive sheet</button>
++        </p>
+         <p>Today <strong data-testid="sheet-today">{{ session.today() }}</strong></p>
+         <form [formGroup]="todayForm" (ngSubmit)="saveToday()" aria-label="Sheet today">
+           <label for="sheet-today-input">Change today</label>
+@@ -85,6 +88,11 @@ export class Home {
+     this.sheetError.set(await this.session.loadSheet(id));
+   }
+ 
++  protected async archive(): Promise<void> {
++    this.sheetError.set(null);
++    this.sheetError.set(await this.session.archive());
++  }
++
+   protected async saveToday(): Promise<void> {
+     this.sheetError.set(null);
+     const today = this.todayForm.controls.today.value.trim();
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index b96cfd3d7..23e1a5e2e 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -13,6 +13,7 @@ import net.officefloor.hq.app.person.PersonController.PersonView;
+ import net.officefloor.hq.app.person.PersonService;
+ import net.officefloor.hq.app.session.CurrentUser;
+ import net.officefloor.hq.app.settings.SettingsService;
++import net.officefloor.hq.app.sheet.SheetService;
+ import net.officefloor.hq.app.settings.ViewerAllowed;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.validation.annotation.Validated;
+@@ -122,11 +123,13 @@ public class ClaimController {
+     private final ClaimService service;
+     private final PersonService people;
+     private final SettingsService settings;
++    private final SheetService sheets;
+ 
+-    public ClaimController(ClaimService service, PersonService people, SettingsService settings) {
++    public ClaimController(ClaimService service, PersonService people, SettingsService settings, SheetService sheets) {
+         this.service = service;
+         this.people = people;
+         this.settings = settings;
++        this.sheets = sheets;
+     }
+ 
+     @GetMapping("/claims")
+@@ -173,7 +176,7 @@ public class ClaimController {
+             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody BulkForm body) {
+         int selected = (int) body.ids().stream().distinct().count();
+-        if (settings.isViewer(sheetId, user.trim())) {
++        if (settings.isViewer(sheetId, user.trim()) || sheets.archived(sheetId)) {
+             return new BulkOpenView(0, selected);
+         }
+         List<Long> ordered = service.inListOrder(sheetId, body.ids());
+@@ -207,7 +210,7 @@ public class ClaimController {
+             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+             @Valid @RequestBody BulkForm body) {
+         int selected = (int) body.ids().stream().distinct().count();
+-        if (settings.isViewer(sheetId, user.trim())) {
++        if (settings.isViewer(sheetId, user.trim()) || sheets.archived(sheetId)) {
+             return new BulkSettleView(0, selected);
+         }
+         List<Long> ordered = service.inListOrder(sheetId, body.ids());
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 24a9e5fa1..550c9cf97 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -93,9 +93,13 @@ public class PersonService {
+         return watches.existsByPersonIdAndUserName(personId, user);
+     }
+ 
+-    /** Start (on) or stop watching the person as the user; already so, nothing changes. */
++    /** Start (on) or stop watching the person as the user; already so, nothing changes; refused
++     *  (403) on an archived sheet. */
+     @Transactional
+     public Person watch(String sheetId, String user, long id, boolean on) {
++        if (sheets.archived(sheetId)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The sheet is archived: nothing on it may change");
++        }
+         Person person = people.findForUpdate(id, sheetId)
+                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+         if (on) {
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index 75f1750f4..1f0499546 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -328,6 +328,24 @@ public class SettingsService {
+         return made;
+     }
+ 
++    /** Archive the sheet, the sheet created first if it was never loaded; refused (403) unless the
++     *  user acts as a steward, and (409) when it is archived already. */
++    @Transactional
++    public Sheet archive(String sheetId, String user) {
++        Sheet sheet = sheets.load(sheetId, user);
++        sheets.lock(sheetId);
++        if (roleOf(sheetId, user) != Role.STEWARD) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may archive the sheet");
++        }
++        if (sheet.isArchived()) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT, "The sheet is archived already");
++        }
++        sheet.archive();
++        sheets.flush();
++        audit.recordOnCommit("SHEET_ARCHIVED sheet=" + sheetId + " by=" + user);
++        return sheet;
++    }
++
+     /** Whether the user name is a viewer on the sheet: sees it and may change nothing on it. */
+     @Transactional(readOnly = true)
+     public boolean isViewer(String sheetId, String user) {
+diff --git a/src/main/java/net/officefloor/hq/app/settings/ViewerAllowed.java b/src/main/java/net/officefloor/hq/app/settings/ViewerAllowed.java
+index 57ef82ae6..e0ee4b509 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/ViewerAllowed.java
++++ b/src/main/java/net/officefloor/hq/app/settings/ViewerAllowed.java
+@@ -5,9 +5,9 @@ import java.lang.annotation.Retention;
+ import java.lang.annotation.RetentionPolicy;
+ import java.lang.annotation.Target;
+ 
+-/** Marks a changing request a viewer is not refused at the door: it changes nothing (a sheet load)
+- *  or the handler itself does nothing for a viewer (a bulk action or a generate: 0 done, every
+- *  selected item refused). */
++/** Marks a changing request a viewer, or anyone on an archived sheet, is not refused at the door:
++ *  it changes nothing (a sheet load) or the handler itself does nothing for a viewer or on an
++ *  archived sheet (a bulk action or a generate: 0 done, every selected item refused). */
+ @Target(ElementType.METHOD)
+ @Retention(RetentionPolicy.RUNTIME)
+ public @interface ViewerAllowed {
+diff --git a/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java b/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java
+index 658603b87..409c6fbdd 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java
++++ b/src/main/java/net/officefloor/hq/app/settings/ViewerGuard.java
+@@ -6,6 +6,7 @@ import java.util.Map;
+ import java.util.Set;
+ import net.officefloor.hq.app.Audit;
+ import net.officefloor.hq.app.session.CurrentUser;
++import net.officefloor.hq.app.sheet.SheetService;
+ import org.springframework.context.annotation.Configuration;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.method.HandlerMethod;
+@@ -15,9 +16,9 @@ import org.springframework.web.servlet.HandlerMapping;
+ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+ 
+-/** Refuses (403) every changing request on a sheet by a user who is a viewer on it, before it
+- *  reaches its handler, so it writes nothing; a handler marked {@link ViewerAllowed} sees to the
+- *  viewer itself. A changing request by a user acting under a steward's delegation is marked
++/** Refuses (403) every changing request on a sheet by a user who is a viewer on it, and every
++ *  changing request on an archived sheet, before it reaches its handler, so it writes nothing; a
++ *  handler marked {@link ViewerAllowed} sees to the viewer and the archived sheet itself. A changing request by a user acting under a steward's delegation is marked
+  *  for its audit records ({@link Audit#FOR}). */
+ @Configuration
+ public class ViewerGuard implements HandlerInterceptor, WebMvcConfigurer {
+@@ -25,9 +26,11 @@ public class ViewerGuard implements HandlerInterceptor, WebMvcConfigurer {
+     private static final Set<String> READING = Set.of("GET", "HEAD", "OPTIONS");
+ 
+     private final SettingsService settings;
++    private final SheetService sheets;
+ 
+-    public ViewerGuard(SettingsService settings) {
++    public ViewerGuard(SettingsService settings, SheetService sheets) {
+         this.settings = settings;
++        this.sheets = sheets;
+     }
+ 
+     @Override
+@@ -53,6 +56,9 @@ public class ViewerGuard implements HandlerInterceptor, WebMvcConfigurer {
+         if (method.hasMethodAnnotation(ViewerAllowed.class)) {
+             return true;
+         }
++        if (sheetId != null && sheets.archived(sheetId)) {
++            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The sheet is archived: nothing on it may change");
++        }
+         if (user != null && sheetId != null && settings.isViewer(sheetId, user.trim())) {
+             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A viewer may change nothing on this sheet");
+         }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 1acd9f108..91532e5c4 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -83,6 +83,10 @@ public class Sheet {
+     @Column(name = "grace_days")
+     private Integer graceDays;
+ 
++    /** Whether a steward has archived the sheet: every change on it is refused. */
++    @Column(name = "archived", nullable = false)
++    private boolean archived;
++
+     protected Sheet() {
+     }
+ 
+@@ -218,6 +222,14 @@ public class Sheet {
+         this.graceDays = graceDays;
+     }
+ 
++    public boolean isArchived() {
++        return archived;
++    }
++
++    public void archive() {
++        this.archived = true;
++    }
++
+     /** Whether a claim opened now is numbered within its period: the setting is a date and the
+      *  sheet's today is on or after it. */
+     public boolean isPeriodNumberingOn() {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+index c09434395..545590e63 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetController.java
+@@ -10,6 +10,7 @@ import java.util.List;
+ import java.util.Map;
+ import net.officefloor.hq.app.session.CurrentUser;
+ import net.officefloor.hq.app.settings.SettingsController.DatedValue;
++import net.officefloor.hq.app.settings.SettingsService;
+ import net.officefloor.hq.app.settings.ViewerAllowed;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.PathVariable;
+@@ -28,14 +29,14 @@ public class SheetController {
+     /** A sheet as the screen takes it: its id, its today, its floor with two decimals, its
+      *  terms in days, its late percent with two decimals, its policy date (null when blank), and its cap with two decimals (null when none),
+      *  the dated ones as in force on its today; and every value recorded for its dated settings,
+-     *  by key, each key's by from-date. */
++     *  by key, each key's by from-date; and whether it is archived. */
+     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
+-            String cap, Map<String, List<DatedValue>> dated) {
++            String cap, Map<String, List<DatedValue>> dated, boolean archived) {
+         static SheetView of(Sheet sheet) {
+             return new SheetView(sheet.getId(), sheet.getToday(), sheet.getFloor().toPlainString(), sheet.getTerms(),
+                     sheet.getLatePct().setScale(2).toPlainString(), sheet.getPolicyDate(),
+                     sheet.getCap() == null ? null : sheet.getCap().setScale(2).toPlainString(),
+-                    DatedValue.of(sheet.getDatedSettings()));
++                    DatedValue.of(sheet.getDatedSettings()), sheet.isArchived());
+         }
+     }
+ 
+@@ -43,9 +44,11 @@ public class SheetController {
+     }
+ 
+     private final SheetService service;
++    private final SettingsService settings;
+ 
+-    public SheetController(SheetService service) {
++    public SheetController(SheetService service, SettingsService settings) {
+         this.service = service;
++        this.settings = settings;
+     }
+ 
+     @PostMapping("/{id}/load")
+@@ -63,4 +66,12 @@ public class SheetController {
+             @Valid @RequestBody TodayChange body) {
+         return SheetView.of(service.setToday(id, user.trim(), body.today()));
+     }
++
++    /** Archive the sheet: a steward only; everything stays visible and every change is refused. */
++    @PostMapping("/{id}/archive")
++    public SheetView archive(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String id,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
++        return SheetView.of(settings.archive(id, user.trim()));
++    }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 423bcde57..9902794a4 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -89,6 +89,12 @@ public class SheetService {
+         return sheets.findById(id).map(s -> s.proofThresholdOn(on)).orElse(null);
+     }
+ 
++    /** Whether the sheet is archived: every change on it is refused. */
++    @Transactional(readOnly = true)
++    public boolean archived(String id) {
++        return sheets.findById(id).map(Sheet::isArchived).orElse(false);
++    }
++
+     /** Whether a claim opened now is numbered within its period. */
+     @Transactional(readOnly = true)
+     public boolean periodNumberingOn(String id) {
+diff --git a/src/main/resources/db/migration/V44__sheet_archived.sql b/src/main/resources/db/migration/V44__sheet_archived.sql
+new file mode 100644
+index 000000000..59259556a
+--- /dev/null
++++ b/src/main/resources/db/migration/V44__sheet_archived.sql
+@@ -0,0 +1,2 @@
++-- Whether a steward has archived the sheet: everything on it stays visible and every change is refused.
++ALTER TABLE sheet ADD COLUMN archived BOOLEAN DEFAULT FALSE NOT NULL;
