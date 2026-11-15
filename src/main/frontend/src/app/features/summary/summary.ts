@@ -22,7 +22,7 @@ export interface SummaryPerson {
 }
 
 // The sheet in figures, each as the lists show it: per grade, how many people not retired are on it
-// today, their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total; per status, how
+// today, their due-totals added up (n/a skipped) and how many of them are active; per period, its due-total and its change from the period before it by start date; per status, how
 // many claims have it; per void reason on the sheet's list, how many VOID claims were voided with it.
 @Component({
   selector: 'app-summary',
@@ -48,13 +48,14 @@ export interface SummaryPerson {
       <table data-testid="summary-periods">
         <caption>By period</caption>
         <thead>
-          <tr><th scope="col">Period</th><th scope="col">Due</th></tr>
+          <tr><th scope="col">Period</th><th scope="col">Due</th><th scope="col">Change</th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
             <tr>
               <th scope="row">{{ p.name }}</th>
               <td [attr.data-testid]="'summary-period-' + p.name + '-due-total'">{{ money(periodDue(p)) }}</td>
+              <td [attr.data-testid]="'summary-period-' + p.name + '-change'">{{ changeText(p) }}</td>
             </tr>
           }
         </tbody>
@@ -115,5 +116,21 @@ export class Summary {
 
   protected periodDue(p: Period): number {
     return periodDueCents(p, this.dueTotals());
+  }
+
+  /** Each period's change of due-total in cents from the period before it by start date, by
+   *  period id; none for the earliest. */
+  private readonly changes = computed(() => {
+    const byStart = [...this.periods()].sort((a, b) => a.from.localeCompare(b.from) || a.id - b.id);
+    const changes = new Map<number, number>();
+    byStart.forEach((p, i) => {
+      if (i > 0) changes.set(p.id, this.periodDue(p) - this.periodDue(byStart[i - 1]));
+    });
+    return changes;
+  });
+
+  protected changeText(p: Period): string {
+    const change = this.changes().get(p.id);
+    return change === undefined ? '' : money(change);
   }
 }
