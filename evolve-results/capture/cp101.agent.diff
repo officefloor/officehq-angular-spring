@@ -1,0 +1,220 @@
+diff --git a/src/main/frontend/src/app/features/audit/audit-api.ts b/src/main/frontend/src/app/features/audit/audit-api.ts
+new file mode 100644
+index 000000000..22f9bba23
+--- /dev/null
++++ b/src/main/frontend/src/app/features/audit/audit-api.ts
+@@ -0,0 +1,20 @@
++import { HttpClient } from '@angular/common/http';
++import { Injectable, inject } from '@angular/core';
++import { firstValueFrom } from 'rxjs';
++import { Session } from '../../core/session';
++
++// The sheet's audit lines, read from the audit file through the server.
++@Injectable({ providedIn: 'root' })
++export class AuditApi {
++  private readonly http = inject(HttpClient);
++  private readonly session = inject(Session);
++
++  /** The sheet's audit lines as the file holds them, newest first; with a name, only those about
++   *  that person. */
++  lines(sheetId: string, name: string): Promise<string[]> {
++    return firstValueFrom(this.http.get<string[]>(`/api/sheets/${encodeURIComponent(sheetId)}/audit`, {
++      params: { name },
++      headers: { 'X-User': this.session.user() ?? '' },
++    }));
++  }
++}
+diff --git a/src/main/frontend/src/app/features/audit/audit-viewer.ts b/src/main/frontend/src/app/features/audit/audit-viewer.ts
+new file mode 100644
+index 000000000..0563365df
+--- /dev/null
++++ b/src/main/frontend/src/app/features/audit/audit-viewer.ts
+@@ -0,0 +1,58 @@
++import { Component, inject, signal } from '@angular/core';
++import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
++import { Session, otherError } from '../../core/session';
++import { AuditApi } from './audit-api';
++
++// The audit viewer: the sheet's audit lines as the file holds them, newest first; with a name in
++// the filter, only the lines about that person (name= or person= it, case and spaces ignored).
++@Component({
++  selector: 'app-audit-viewer',
++  imports: [ReactiveFormsModule],
++  template: `
++    <section aria-labelledby="audit-heading">
++      <h2 id="audit-heading">Audit</h2>
++      <form [formGroup]="filterForm" (ngSubmit)="show()" aria-label="Show audit lines">
++        <label for="audit-filter">Person (blank: every line)</label>
++        <input id="audit-filter" data-testid="audit-filter" formControlName="name" autocomplete="off" />
++        <button type="submit" data-testid="audit-show">Show</button>
++        @if (error(); as err) {
++          <p role="alert" data-testid="audit-error">{{ err }}</p>
++        }
++      </form>
++      <ol data-testid="audit-lines">
++        @for (line of lines(); track $index) {
++          <li data-testid="audit-line">{{ line }}</li>
++        }
++      </ol>
++    </section>
++  `,
++})
++export class AuditViewer {
++  private readonly session = inject(Session);
++  private readonly api = inject(AuditApi);
++
++  protected readonly filterForm = new FormGroup({
++    name: new FormControl('', { nonNullable: true }),
++  });
++  protected readonly lines = signal<string[]>([]);
++  protected readonly error = signal<string | null>(null);
++
++  constructor() {
++    this.filterForm.valueChanges.subscribe(() => this.error.set(null));
++  }
++
++  protected async show(): Promise<void> {
++    this.error.set(null);
++    this.lines.set([]);
++    const id = this.session.sheetId();
++    if (!id) {
++      this.error.set('Load a sheet first.');
++      return;
++    }
++    try {
++      this.lines.set(await this.api.lines(id, this.filterForm.controls.name.value.trim()));
++    } catch (e) {
++      this.error.set(otherError(e));
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/home/home.ts b/src/main/frontend/src/app/features/home/home.ts
+index 2a3889d7d..f726509ef 100644
+--- a/src/main/frontend/src/app/features/home/home.ts
++++ b/src/main/frontend/src/app/features/home/home.ts
+@@ -1,13 +1,14 @@
+ import { Component, inject, signal } from '@angular/core';
+ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+ import { Session } from '../../core/session';
++import { AuditViewer } from '../audit/audit-viewer';
+ import { People } from '../people/people';
+ import { Settings } from '../settings/settings';
+ 
+ // The one screen: sign in by name, then load a sheet by id and work on its people.
+ @Component({
+   selector: 'app-home',
+-  imports: [ReactiveFormsModule, People, Settings],
++  imports: [ReactiveFormsModule, AuditViewer, People, Settings],
+   template: `
+     @if (session.user(); as user) {
+       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
+@@ -42,6 +43,7 @@ import { Settings } from '../settings/settings';
+         </form>
+         <app-settings />
+         <app-people />
++        <app-audit-viewer />
+       } @else {
+         <p data-testid="home-empty">Load a sheet to begin.</p>
+       }
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index d55a4014f..ba390ea0a 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -6,6 +6,9 @@ import java.nio.charset.StandardCharsets;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
+ import java.nio.file.StandardOpenOption;
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.List;
+ import java.util.Set;
+ import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.stereotype.Service;
+@@ -83,6 +86,45 @@ public class Audit {
+         return entry + " for=" + steward;
+     }
+ 
++    /**
++     * The sheet's records exactly as the file holds them, newest first; with a name (not blank),
++     * only those about that person: carrying {@code name=} or {@code person=} that name, compared
++     * as names are (case and surrounding spaces ignored).
++     */
++    public synchronized List<String> lines(String sheetId, String name) {
++        List<String> all;
++        try {
++            all = Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : List.of();
++        } catch (IOException e) {
++            throw new UncheckedIOException(e);
++        }
++        String who = name == null ? "" : name.trim();
++        List<String> found = new ArrayList<>();
++        for (String line : all) {
++            if (hasField(line, "sheet", sheetId, false)
++                    && (who.isEmpty() || hasField(line, "name", who, true) || hasField(line, "person", who, true))) {
++                found.add(line);
++            }
++        }
++        Collections.reverse(found);
++        return found;
++    }
++
++    /** Whether the record carries the field {@code key=value}: after the event name, ending the
++     *  line or followed by a space. */
++    private static boolean hasField(String line, String key, String value, boolean ignoreCase) {
++        String field = " " + key + "=";
++        for (int at = line.indexOf(field); at >= 0; at = line.indexOf(field, at + 1)) {
++            int start = at + field.length();
++            int end = start + value.length();
++            if (end <= line.length() && line.regionMatches(ignoreCase, start, value, 0, value.length())
++                    && (end == line.length() || line.charAt(end) == ' ')) {
++                return true;
++            }
++        }
++        return false;
++    }
++
+     /** Truncate the audit file. */
+     public synchronized void clear() {
+         try {
+diff --git a/src/main/java/net/officefloor/hq/app/AuditController.java b/src/main/java/net/officefloor/hq/app/AuditController.java
+new file mode 100644
+index 000000000..75c92059f
+--- /dev/null
++++ b/src/main/java/net/officefloor/hq/app/AuditController.java
+@@ -0,0 +1,36 @@
++package net.officefloor.hq.app;
++
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import java.util.List;
++import net.officefloor.hq.app.session.CurrentUser;
++import org.springframework.validation.annotation.Validated;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.RequestHeader;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
++import org.springframework.web.bind.annotation.RestController;
++
++/** The audit viewer: reads what the audit file holds for a sheet; it is not a second record. */
++@RestController
++@RequestMapping("/api/sheets")
++@Validated
++public class AuditController {
++
++    private final Audit audit;
++
++    public AuditController(Audit audit) {
++        this.audit = audit;
++    }
++
++    /** The sheet's audit lines, newest first; with a name, only those about that person. */
++    @GetMapping("/{id}/audit")
++    public List<String> lines(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String id,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @RequestParam(defaultValue = "") @Size(max = 200) String name) {
++        return audit.lines(id, name);
++    }
++}

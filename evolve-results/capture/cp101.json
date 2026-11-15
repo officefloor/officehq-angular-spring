@@ -1,0 +1,64 @@
+{
+  "checkpoint": 101,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp101_audit-viewer",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Add an audit viewer to the screen: a filter entry, a show button and a list of lines. With the\nfilter blank it lists every audit line of this sheet exactly as the file holds it, newest first.\nWith a name in the filter it lists only the lines about that person: those carrying name=<the\nname> or person=<the name>, compared as names are compared (case and surrounding spaces ignored).\nThe viewer reads what the file holds; it is not a second record.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nAdd an audit viewer to the screen: a filter entry, a show button and a list of lines. With the\nfilter blank it lists every audit line of this sheet exactly as the file holds it, newest first.\nWith a name in the filter it lists only the lines about that person: those carrying name=<the\nname> or person=<the name>, compared as names are compared (case and surrounding spaces ignored).\nThe viewer reads what the file holds; it is not a second record.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7353e9dcceacdc6a8c0be1f1a56ab4e2998942ae",
+  "reset_sha": "",
+  "preagent_sha": "4f86f26c8bcf593837b02bb5d4d59841fd62eec6",
+  "prev_sha": "4f86f26c8bcf593837b02bb5d4d59841fd62eec6",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.748799,
+    "input_tokens": 42,
+    "output_tokens": 8792,
+    "cache_read_tokens": 894955,
+    "cache_creation_tokens": 49225,
+    "num_turns": 21,
+    "duration_ms": 506428,
+    "duration_api_ms": 105266,
+    "model": "claude-opus-5-5",
+    "session_id": "e3940328-f72e-48f6-84c7-c53c97025a8b",
+    "stop_reason": "success",
+    "result_text": "I added the audit viewer, and all 4 tests pass when I run `bin/e2e`.\n\n**What it does**\n- **Blank filter:** pressing Show lists every audit line for this sheet exactly as the file holds it, newest first.\n- **Name in the filter:** it lists only lines carrying `name=<name>` or `person=<name>`. Case and surrounding spaces are ignored, so \" ada \" matches Ada.\n- It only reads the audit file. It stores nothing of its own and writes no audit records.\n\n**Server**\n- `Audit.java` has a new `lines(sheetId, name)` method that reads the file and returns the matching lines newest first.\n- A field must match as a whole value. So `sheet=abc` doesn't match `sheet=abcd`, and the filter \"Ad\" doesn't match `name=Ada`.\n- The new `AuditController.java` serves this at `GET /api/sheets/{id}/audit?name=`. Because it's a read, a viewer, an archived sheet or an as-of view isn't blocked.\n\n**Front end**\n- New files `features/audit/audit-api.ts` and `features/audit/audit-viewer.ts`. The viewer has the `audit-filter` entry, the `audit-show` button and an `audit-line` for each line.\n- It also has an `audit-error` element, which the test doesn't use.\n- The viewer sits on the home screen below the people section.\n- Pressing Show clears the old list first, so two presses with different results can't be confused.\n\n**Limitation:** a person whose name has spaces in it also matches any filter equal to the first part of their name. For example, \"Ada\" also matches `name=Ada Lovelace`. This is because a line's fields are only separated by spaces, so the viewer can't tell where a name ends.\n\n**Port 3000:** while testing, I accidentally left an app instance of my own running on port 3000, which made one `bin/e2e` run refuse to start. I stopped that process; nothing else was affected.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.748799,
+        "num_turns": 21,
+        "duration_ms": 506428,
+        "duration_api_ms": 105266,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp101.agent.jsonl",
+  "agent_diff_file": "cp101.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
