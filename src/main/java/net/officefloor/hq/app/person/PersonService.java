@@ -1,13 +1,22 @@
 package net.officefloor.hq.app.person;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.pool.PoolMember;
+import net.officefloor.hq.app.pool.PoolMemberRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.Role;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -23,17 +32,24 @@ public class PersonService {
     private final PersonStatementRepository statements;
     private final PersonPatronRepository patrons;
     private final PersonWatchRepository watches;
+    private final ClaimRepository claims;
+    private final PoolMemberRepository poolMembers;
+    private final SettingsService settings;
     private final SheetService sheets;
     private final RollupService rollup;
     private final Audit audit;
 
     public PersonService(PersonRepository people, PersonStatementRepository statements,
-            PersonPatronRepository patrons, PersonWatchRepository watches, SheetService sheets, RollupService rollup,
+            PersonPatronRepository patrons, PersonWatchRepository watches, ClaimRepository claims,
+            PoolMemberRepository poolMembers, SettingsService settings, SheetService sheets, RollupService rollup,
             Audit audit) {
         this.people = people;
         this.statements = statements;
         this.patrons = patrons;
         this.watches = watches;
+        this.claims = claims;
+        this.poolMembers = poolMembers;
+        this.settings = settings;
         this.sheets = sheets;
         this.rollup = rollup;
         this.audit = audit;
@@ -292,6 +308,103 @@ public class PersonService {
                 + " name=" + person.getName() + " from=" + on);
         rollup.recordChanges(sheetId, user, before);
         return person;
+    }
+
+    /** Merge a person into another person on the sheet, as a steward: the merged person's claims
+     *  move to the other (numbers and dates kept, listed after the other's in the order they were
+     *  added, each unbound from any statement), their name and aliases become the other's aliases,
+     *  their patrons are added to the other's (not the other themselves, no repeats), anyone naming
+     *  them as patron names the other instead (no repeats), and their pool memberships move to the
+     *  other (shares added where the other is a member already). Their statements, holds, watchers
+     *  and contact go with them. Refused (404) for a person not on the sheet, (403) unless the user
+     *  acts as a steward, (422) for the same person, either of them retired, or a pool share added
+     *  past 100.00. */
+    @Transactional
+    public Person merge(String sheetId, String user, long id, long intoId) {
+        Person from = people.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        Person into = people.findForUpdate(intoId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may merge people");
+        }
+        if (from.getId().equals(into.getId())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A person cannot be merged into themselves");
+        }
+        if (from.isRetired() || into.isRetired()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A retired person cannot be merged");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+
+        // pool memberships: moved, or the share added to the other's
+        for (PoolMember member : poolMembers.findByPersonIdOrderByIdAsc(from.getId())) {
+            var theirs = poolMembers.findByPoolIdAndPersonId(member.getPoolId(), into.getId());
+            if (theirs.isPresent()) {
+                BigDecimal share = theirs.get().getShare().add(member.getShare());
+                if (share.compareTo(BigDecimal.valueOf(100)) > 0) {
+                    throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                            "The merged shares would be over 100.00 in a pool");
+                }
+                theirs.get().setShare(share);
+                poolMembers.delete(member);
+            } else {
+                member.setPersonId(into.getId());
+            }
+        }
+        poolMembers.flush();
+
+        // claims: moved, listed after the other's in the order they were added, unbound
+        long listed = claims.findLastListed(sheetId);
+        List<Claim> moved = claims.findByPersonForUpdate(from.getId(), sheetId).stream()
+                .sorted(Comparator.comparing(Claim::getId)).toList();
+        for (Claim claim : moved) {
+            claim.setPersonId(into.getId());
+            claim.setListed(++listed);
+            claim.unbind();
+        }
+        claims.flush();
+
+        // patrons: the merged person's added to the other's; those naming the merged person name the other
+        Set<Long> intoPatrons = new LinkedHashSet<>(patronIds(into.getId()));
+        List<PersonPatron> theirPatrons = patrons.findByPersonIdOrderByIdAsc(from.getId());
+        List<PersonPatron> namingThem = patrons.findByPatronIdOrderByIdAsc(from.getId());
+        for (PersonPatron named : theirPatrons) {
+            if (!named.getPatronId().equals(into.getId()) && intoPatrons.add(named.getPatronId())) {
+                patrons.save(new PersonPatron(sheetId, into.getId(), named.getPatronId()));
+            }
+        }
+        for (PersonPatron naming : namingThem) {
+            if (!naming.getPersonId().equals(into.getId())
+                    && !naming.getPersonId().equals(from.getId())
+                    && !patrons.existsByPersonIdAndPatronId(naming.getPersonId(), into.getId())) {
+                patrons.save(new PersonPatron(sheetId, naming.getPersonId(), into.getId()));
+            }
+        }
+        patrons.deleteAll(theirPatrons);
+        patrons.deleteAll(namingThem);
+        patrons.flush();
+
+        // statements and watchers go with them
+        statements.deleteAll(statements.findByPersonIdOrderByIdAsc(from.getId()));
+        watches.deleteAll(watches.findByPersonIdOrderByIdAsc(from.getId()));
+        statements.flush();
+        watches.flush();
+
+        String fromName = from.getName();
+        List<String> fromAliases = from.getAliases();
+        people.delete(from);
+        people.flush();
+        into.addAlias(fromName);
+        fromAliases.forEach(into::addAlias);
+        try {
+            people.flush();
+        } catch (ObjectOptimisticLockingFailureException e) {
+            throw savedByAnother(); // saved by another user at the same moment
+        }
+        audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user + " from=" + fromName
+                + " into=" + into.getName());
+        rollup.recordChanges(sheetId, user, before);
+        return into;
     }
 
     /** Written with the grade in force on {@code today}, the sheet's today, then {@code extra}. */

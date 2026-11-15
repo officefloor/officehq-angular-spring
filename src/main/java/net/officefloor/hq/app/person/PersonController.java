@@ -106,6 +106,10 @@ public class PersonController {
     public record PatronForm(@NotNull Long patronId) {
     }
 
+    /** A merge as the row submits it: the id of the person on the sheet to merge into. */
+    public record MergeForm(@NotNull Long intoId) {
+    }
+
     /** A bulk grade as the screen submits it: the selected people by id, the grade, and the date it
      *  is in force from (null: the sheet's today). */
     public record BulkGradeForm(
@@ -236,6 +240,16 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody PatronForm body) {
         return view(sheetId, user, service.addPatron(sheetId, user.trim(), id, body.patronId()));
+    }
+
+    /** Merge the person into another; answers with the person merged into. */
+    @PostMapping("/{id}/merge")
+    public PersonView merge(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody MergeForm body) {
+        return view(sheetId, user, service.merge(sheetId, user.trim(), id, body.intoId()));
     }
 
     /** Start or stop watching the person as the signed-in user; refused for a viewer, who may change nothing. */

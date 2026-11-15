@@ -11,5 +11,8 @@ public interface PersonPatronRepository extends JpaRepository<PersonPatron, Long
     /** The person's patrons, in the order they were named. */
     List<PersonPatron> findByPersonIdOrderByIdAsc(Long personId);
 
+    /** The people naming the patron, in the order they named them. */
+    List<PersonPatron> findByPatronIdOrderByIdAsc(Long patronId);
+
     boolean existsByPersonIdAndPatronId(Long personId, Long patronId);
 }

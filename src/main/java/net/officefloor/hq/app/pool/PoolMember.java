@@ -50,4 +50,13 @@ public class PoolMember {
     public BigDecimal getShare() {
         return share;
     }
+
+    /** Move the membership to another person. */
+    public void setPersonId(Long personId) {
+        this.personId = personId;
+    }
+
+    public void setShare(BigDecimal share) {
+        this.share = share;
+    }
 }

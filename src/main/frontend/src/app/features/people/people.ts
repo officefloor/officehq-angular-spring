@@ -10,7 +10,7 @@ import { Rates } from '../rates/rates';
 import { Summary, SummaryPerson } from '../summary/summary';
 import { Header } from '../header/header';
 import { Lateness, Rate, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
-import { GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
+import { GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn, heldOn, holdError, isStale, mergeError, patronError, personError, cancelStatementError, retireError, statementError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons and backing (their patrons' recent settled figures); the sheet's claimed-total,
@@ -265,6 +265,16 @@ import { GRADES, PeopleApi, Person, aliasError, bulkGradeError, csvLine, gradeOn
               <td>
                 <button type="button" [attr.data-testid]="'person-edit-' + p.id" (click)="edit(p)"
                   [attr.aria-label]="'Edit ' + p.name">Edit</button>
+                <label [for]="'person-merge-into-' + p.id" class="visually-hidden">Merge {{ p.name }} into</label>
+                <select [id]="'person-merge-into-' + p.id" data-testid="person-merge-into" #mergeInto
+                  (change)="clearRowError(p.id)">
+                  <option value="">Merge into</option>
+                  @for (o of patronChoicesFor(p); track o.id) {
+                    <option [value]="o.id">{{ o.name }}</option>
+                  }
+                </select>
+                <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto.value)"
+                  [attr.aria-label]="'Merge ' + p.name">Merge</button>
                 @if (rowErrors()[p.id]; as err) {
                   <p role="alert" data-testid="person-error">{{ err }}</p>
                 }
@@ -756,6 +766,26 @@ export class People {
       if (this.session.sheetId() === sheetId) this.taken(saved);
     } catch (e) {
       this.patronErrors.update((errs) => ({ ...errs, [p.id]: patronError(e) }));
+    }
+  }
+
+  /** Merge a person into another; the row then leaves the list, and the sheet's people and claims
+   *  are read again to show the other with what they took in. */
+  protected async merge(p: Person, intoId: string): Promise<void> {
+    this.clearRowError(p.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    if (!intoId) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: 'Choose a person to merge into.' }));
+      return;
+    }
+    try {
+      await this.api.merge(sheetId, p.id, Number(intoId));
+      if (this.session.sheetId() !== sheetId) return;
+      this.people.update((ps) => ps.filter((o) => o.id !== p.id));
+      await this.read(sheetId);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: mergeError(e) }));
     }
   }
 

@@ -171,6 +171,13 @@ export class PeopleApi {
     );
   }
 
+  /** Merge the person into another; resolves to the person merged into. */
+  merge(sheetId: string, id: number, intoId: number): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/merge`, { intoId }, { headers: this.headers() }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}/people`;
   }
@@ -230,6 +237,14 @@ export function aliasError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That name or alias is already in use on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 422) return 'Enter an alias.';
+  return otherError(e);
+}
+
+export function mergeError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Choose a person to merge into.';
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may merge people.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'A person is merged only into someone else, neither of them retired, with pool shares of at most 100.00.';
   return otherError(e);
 }
 
