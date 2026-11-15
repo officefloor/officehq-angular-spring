@@ -26,6 +26,12 @@ export interface Plan {
   changes: { on: string; amount: string }[];
 }
 
+/** A plan's amount change: the plan now, and its DRAFT claims on the sheet edited to the new amount. */
+export interface AmountChanged {
+  plan: Plan;
+  claims: Claim[];
+}
+
 /** A plan as the form submits it: a blank start takes the sheet's today; one of every and day. */
 export interface PlanForm {
   amount: string;
@@ -64,9 +70,10 @@ export class PlansApi {
     return firstValueFrom(this.http.post<Plan>(`${this.url(sheetId)}/plans/${planId}/${on ? 'pause' : 'resume'}`, null, { headers: this.headers() }));
   }
 
-  /** Change the plan's amount on the sheet's today; the claims it makes from then on take it. */
-  changeAmount(sheetId: string, planId: number, amount: string): Promise<Plan> {
-    return firstValueFrom(this.http.post<Plan>(`${this.url(sheetId)}/plans/${planId}/amount`, { amount }, { headers: this.headers() }));
+  /** Change the plan's amount on the sheet's today; the claims it makes from then on take it, and
+   *  so do those it made that are still DRAFT (returned as now saved). */
+  changeAmount(sheetId: string, planId: number, amount: string): Promise<AmountChanged> {
+    return firstValueFrom(this.http.post<AmountChanged>(`${this.url(sheetId)}/plans/${planId}/amount`, { amount }, { headers: this.headers() }));
   }
 
   /** Make the claims every plan on the sheet is due by the sheet's today. */

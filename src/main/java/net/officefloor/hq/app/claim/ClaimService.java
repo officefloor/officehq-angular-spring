@@ -97,6 +97,12 @@ public class ClaimService {
         return claims.findBySheetIdOrderByListedDesc(sheetId);
     }
 
+    /** A claim by id, on whichever sheet. */
+    @Transactional(readOnly = true)
+    public Optional<Claim> find(long id) {
+        return claims.findById(id);
+    }
+
     /** Every tag ever used on the sheet, in order. */
     @Transactional(readOnly = true)
     public List<String> tagsUsed(String sheetId) {

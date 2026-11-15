@@ -1,8 +1,8 @@
-import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
-import { AMOUNT_PATTERN } from '../claims/claims-api';
+import { AMOUNT_PATTERN, type Claim } from '../claims/claims-api';
 import { PlansApi, amountError, nextDates, pauseError, planError, type Plan } from './plans-api';
 
 // One person's plans, in the order they were added, and the form that adds one.
@@ -71,6 +71,8 @@ import { PlansApi, amountError, nextDates, pauseError, planError, type Plan } fr
 export class PersonPlans {
   readonly personId = input.required<number>();
   readonly personName = input.required<string>();
+  /** A claim the plans just saved: a DRAFT one edited to its plan's new amount. */
+  readonly claimSaved = output<Claim>();
 
   protected readonly session = inject(Session);
   private readonly api = inject(PlansApi);
@@ -143,9 +145,10 @@ export class PersonPlans {
       return;
     }
     try {
-      const saved = await this.api.changeAmount(sheetId, plan.id, amount);
+      const { plan: saved, claims } = await this.api.changeAmount(sheetId, plan.id, amount);
       if (this.session.sheetId() === sheetId) {
         this.session.plans.update((ps) => ps.map((p) => (p.id === saved.id ? saved : p)));
+        for (const claim of claims) this.claimSaved.emit(claim);
         this.amounts.update((all) => ({ ...all, [plan.id]: '' }));
       }
     } catch (e) {

@@ -495,7 +495,7 @@ import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person,
                 }
               </td>
               <td>
-                <app-person-plans [personId]="p.id" [personName]="p.name" />
+                <app-person-plans [personId]="p.id" [personName]="p.name" (claimSaved)="claimSaved($event)" />
                 <app-person-claims [personId]="p.id" [personName]="p.name" [claims]="claimsOf(p.id)" [rates]="rateLevels()" [grades]="p.grades" [others]="patronChoicesFor(p)" [periods]="periods()"
                   [selected]="selectedClaims()" (toggled)="claimToggled($event)" (saved)="claimSaved($event)" />
               </td>

@@ -9,6 +9,7 @@ import java.util.Map;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.Claim;
 import net.officefloor.hq.app.claim.ClaimService;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -21,6 +22,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class PlanService {
+
+    /** An amount change just made: the plan, and its DRAFT claims edited to the new amount. */
+    public record Changed(Plan plan, List<Claim> redrafted) {
+    }
 
     private final PlanRepository plans;
     private final PlanClaimRepository made;
@@ -120,20 +125,48 @@ public class PlanService {
     }
 
     /** Change the amount of one of the sheet's plans on the sheet's today; the claims it makes from
-     *  then on are of the new amount, those made already keep theirs. Refused (404) when the sheet
-     *  has no such plan. */
-    @Transactional
-    public Plan changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
-        sheets.load(sheetId, user);
-        sheets.lock(sheetId);
-        Plan plan = plans.findByIdAndSheetId(planId, sheetId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan"));
-        plan.changeAmount(sheets.today(sheetId), amount);
-        plans.saveAndFlush(plan);
-        String name = people.findById(plan.getPersonId()).map(Person::getName).orElse("");
-        audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + name + " start="
-                + plan.getStart() + " amount=" + amount.setScale(2).toPlainString());
-        return plan;
+     *  then on are of the new amount, those made already keep theirs, except those still DRAFT,
+     *  which are each then edited to the new amount as the claim form would (keeping their date,
+     *  note, reference and tags), each its own change: one the claim form refuses keeps its amount.
+     *  Resolves to the plan and the claims so edited, in plan-date order, on whichever sheet.
+     *  Refused (404) when the sheet has no such plan. */
+    public Changed changeAmount(String sheetId, String user, long planId, BigDecimal amount) {
+        Plan plan = eachClaim.execute(status -> {
+            sheets.load(sheetId, user);
+            sheets.lock(sheetId);
+            Plan changed = plans.findByIdAndSheetId(planId, sheetId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such plan"));
+            changed.changeAmount(sheets.today(sheetId), amount);
+            plans.saveAndFlush(changed);
+            String name = people.findById(changed.getPersonId()).map(Person::getName).orElse("");
+            audit.recordOnCommit("PLAN_CHANGED sheet=" + sheetId + " by=" + user + " name=" + name + " start="
+                    + changed.getStart() + " amount=" + amount.setScale(2).toPlainString());
+            return changed;
+        });
+        List<Claim> redrafted = new ArrayList<>();
+        for (PlanClaim each : made.findByPlanIdOrderByOnDateAsc(planId)) {
+            Claim claim;
+            try {
+                claim = eachClaim.execute(status -> redraft(user, each.getClaimId(), amount));
+            } catch (ResponseStatusException refused) {
+                continue; // the claim form refuses this edit: the claim keeps its amount
+            }
+            if (claim != null) {
+                redrafted.add(claim);
+            }
+        }
+        return new Changed(plan, redrafted);
+    }
+
+    /** Edit a plan's claim to the amount as the claim form would, in the transaction under way;
+     *  null (and nothing done) when it is gone or no longer a DRAFT. */
+    private Claim redraft(String user, long claimId, BigDecimal amount) {
+        Claim claim = claims.find(claimId).orElse(null);
+        if (claim == null || claim.getStatus() != ClaimStatus.DRAFT) {
+            return null;
+        }
+        return claims.update(claim.getSheetId(), user, claim.getId(), amount, claim.getDate(), claim.getNote(),
+                claim.getCorrects(), claim.getRef(), claim.getTags());
     }
 
     /** For each of the sheet's plans in the order they were added, add a DRAFT claim of its amount

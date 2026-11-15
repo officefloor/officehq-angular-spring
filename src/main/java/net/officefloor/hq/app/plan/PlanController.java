@@ -74,6 +74,11 @@ public class PlanController {
             @Size(max = 100) @Pattern(regexp = "\\S+") String sheet) {
     }
 
+    /** An amount change's result: the plan now, and its DRAFT claims on the sheet edited to the new
+     *  amount, in plan-date order. */
+    public record AmountView(PlanView plan, List<ClaimView> claims) {
+    }
+
     /** A generate's result: the claims made on the sheet, in the order they were made; how many were
      *  made in all, counting those made on its descendants; and the sheet's plans now. */
     public record GenerateView(List<ClaimView> claims, int made, List<PlanView> plans) {
@@ -128,13 +133,15 @@ public class PlanController {
     }
 
     @PostMapping("/plans/{planId}/amount")
-    public PlanView changeAmount(
+    public AmountView changeAmount(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @PathVariable long planId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody AmountForm body) {
-        return PlanView.of(service.changeAmount(sheetId, user.trim(), planId, new BigDecimal(body.amount())),
-                service.madeCounts(sheetId));
+        PlanService.Changed changed = service.changeAmount(sheetId, user.trim(), planId, new BigDecimal(body.amount()));
+        List<ClaimView> here = changed.redrafted().stream().filter(c -> c.getSheetId().equals(sheetId))
+                .map(claims::view).toList();
+        return new AmountView(PlanView.of(changed.plan(), service.madeCounts(sheetId)), here);
     }
 
     /** Generate the plans' claims; resolves to the claims made and the sheet's plans with their
