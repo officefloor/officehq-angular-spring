@@ -1,0 +1,57 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 797ada021..c84d5da6a 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -139,6 +139,19 @@ import { DescendantFigures, GRADES, NO_FIGURES, PeopleApi, Person, aliasError, a
+           </tbody>
+         </table>
+       }
++      <label for="snapshot-from">Compare snapshots from</label>
++      <input #snapshotFrom id="snapshot-from" type="date" data-testid="snapshot-from" />
++      <label for="snapshot-to">to</label>
++      <input #snapshotTo id="snapshot-to" type="date" data-testid="snapshot-to" />
++      <button type="button" data-testid="snapshot-compare"
++        (click)="compareSnapshots(snapshotFrom.value, snapshotTo.value)">Compare snapshots</button>
++      @if (snapshotRange()) {
++        <ul aria-label="Snapshot comparison">
++          @for (l of snapshotLines(); track $index) {
++            <li data-testid="snapshot-line">{{ l }}</li>
++          }
++        </ul>
++      }
+       <button type="button" data-testid="dups-show" (click)="dupsShown.set(true)">Show duplicate claims</button>
+       @if (dupsShown()) {
+         <ul aria-label="Duplicate claims">
+@@ -949,6 +962,32 @@ export class People {
+     }
+     return [...out].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([month, cents]) => ({ month, cents }));
+   });
++  /** The from-date and to-date of the snapshot comparison last asked for; null before any. */
++  protected readonly snapshotRange = signal<{ from: string; to: string } | null>(null);
++  /** The snapshot comparison, one line per person in list order: "<name> <then> <now>", then the
++   *  due-total of the snapshot taken leaving the from-date, now that of the to-date (or the live
++   *  due-total when the to-date is blank); a missing snapshot is empty, and the line is trimmed. */
++  protected readonly snapshotLines = computed(() => {
++    const range = this.snapshotRange();
++    if (!range) return [];
++    const at = (p: Person, day: string): string => {
++      const sn = p.snapshots.filter((s) => s.day === day).at(-1);
++      return sn ? sn.dueTotal ?? 'n/a' : '';
++    };
++    return this.shownPeople().map((p) =>
++      [p.name, at(p, range.from), range.to ? at(p, range.to) : this.dueOf(p)].join(' ').trim());
++  });
++  /** Compare the snapshots of the two dates, with the people (and their snapshots) as the
++   *  store now holds them. */
++  protected async compareSnapshots(from: string, to: string): Promise<void> {
++    this.snapshotRange.set(null);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    const people = await this.api.list(sheetId);
++    if (this.session.sheetId() !== sheetId) return;
++    this.people.set(people);
++    this.snapshotRange.set({ from, to });
++  }
+   /** Whether the duplicate claims are shown. */
+   protected readonly dupsShown = signal(false);
+   /** Each person, date and amount with two or more claims (VOID and DELETED ones left out), as
