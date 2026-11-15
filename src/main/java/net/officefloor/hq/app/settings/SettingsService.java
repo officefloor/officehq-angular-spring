@@ -36,6 +36,9 @@ public class SettingsService {
     /** The key the period numbering from-date is audited under. */
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
 
+    /** The key the grace days are audited under. */
+    public static final String GRACE_DAYS = "grace-days";
+
     /** The key the cap is audited under. */
     public static final String CAP = Sheet.CAP;
 
@@ -201,6 +204,25 @@ public class SettingsService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + PERIOD_NUMBERING_FROM + " value=" + (from == null ? "" : from));
         return from;
+    }
+
+    /** The sheet's grace days; null when blank (off). */
+    @Transactional(readOnly = true)
+    public Integer graceDays(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getGraceDays).orElse(null);
+    }
+
+    /** Set the sheet's grace days (null: off), the sheet created first if it was never loaded; not
+     *  dated, they apply from the next change of the sheet's today. */
+    @Transactional
+    public Integer setGraceDays(String sheetId, String user, Integer graceDays) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        sheet.setGraceDays(graceDays);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + GRACE_DAYS + " value=" + (graceDays == null ? "" : graceDays));
+        return graceDays;
     }
 
     /** The sheet's cap in force on its today; null when there is none. */

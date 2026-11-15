@@ -78,6 +78,11 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** When the sheet's today changes, every open period whose to-date plus this many days is
+     *  before the new today is closed; null when blank (off). */
+    @Column(name = "grace_days")
+    private Integer graceDays;
+
     protected Sheet() {
     }
 
@@ -203,6 +208,14 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public Integer getGraceDays() {
+        return graceDays;
+    }
+
+    public void setGraceDays(Integer graceDays) {
+        this.graceDays = graceDays;
     }
 
     /** Whether a claim opened now is numbered within its period: the setting is a date and the

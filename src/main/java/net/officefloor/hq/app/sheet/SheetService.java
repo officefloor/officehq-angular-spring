@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
 import net.officefloor.hq.app.rollup.RollupService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,10 +14,12 @@ public class SheetService {
 
     private final SheetRepository sheets;
     private final RollupService rollup;
+    private final ApplicationEventPublisher events;
 
-    public SheetService(SheetRepository sheets, RollupService rollup) {
+    public SheetService(SheetRepository sheets, RollupService rollup, ApplicationEventPublisher events) {
         this.sheets = sheets;
         this.rollup = rollup;
+        this.events = events;
     }
 
     /** Load a sheet by id; an id never used before starts an empty sheet, its today the real date. */
@@ -110,13 +113,16 @@ public class SheetService {
     }
 
     /** Change the sheet's today (the sheet is created first if it was never loaded); it has no
-     *  audit line of its own, only the figures it moves. */
+     *  audit line of its own, only what follows from it (such as periods closed past their grace
+     *  days) and then the figures it moves. */
     @Transactional
     public Sheet setToday(String id, String user, LocalDate today) {
         Sheet sheet = load(id, user);
+        lock(id);
         RollupService.Snapshot before = rollup.snapshot(id);
         sheet.setToday(today);
         sheets.flush();
+        events.publishEvent(new TodayChanged(id, user, today));
         rollup.recordChanges(id, user, before);
         return sheet;
     }

@@ -35,21 +35,21 @@ public class SettingsController {
      *  none, the floor with two decimals, the terms in days, the late percent with two decimals,
      *  the policy date, null when blank, the period numbering from-date, null when blank (off),
      *  the terms each grade has of its own, a grade without them left out, the cap with two
-     *  decimals, null for none, and the proof threshold with two decimals, null for none, each of the dated ones as in force on the sheet's today; and every
+     *  decimals, null for none, and the proof threshold with two decimals, null for none, the grace days, null when blank (off), each of the dated ones as in force on the sheet's today; and every
      *  value recorded for the dated settings, by key, each key's by from-date; and the permission
      *  matrix: the roles set for each action, comma separated, an action left blank left out. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
-            Map<String, List<DatedValue>> dated, Map<String, String> permissions) {
+            Integer graceDays, Map<String, List<DatedValue>> dated, Map<String, String> permissions) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct, LocalDate policyDate,
                 LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, BigDecimal cap, BigDecimal proofThreshold,
-                Map<String, List<DatedSetting>> dated, Map<Permission, String> permissions) {
+                Integer graceDays, Map<String, List<DatedSetting>> dated, Map<Permission, String> permissions) {
             Map<String, String> perms = new TreeMap<>();
             permissions.forEach((action, roles) -> perms.put(action.key(), roles));
             return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms,
                     latePct.setScale(2).toPlainString(), policyDate, periodNumberingFrom, gradeTerms,
                     cap == null ? null : cap.setScale(2).toPlainString(),
-                    proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), DatedValue.of(dated), perms);
+                    proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), graceDays, DatedValue.of(dated), perms);
         }
     }
 
@@ -110,6 +110,10 @@ public class SettingsController {
 
     /** The period numbering from-date as the form submits it: a date as yyyy-mm-dd, blank for off. */
     public record PeriodNumberingFromForm(@NotNull @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String value) {
+    }
+
+    /** The grace days as the form submits them: a whole number of days, blank for off. */
+    public record GraceDaysForm(@NotNull @Pattern(regexp = "(\\d{1,4})?") String value) {
     }
 
     /** An action's roles as the form submits them: clerk and/or steward, comma separated, blank
@@ -248,6 +252,16 @@ public class SettingsController {
         return view(sheetId);
     }
 
+    @PutMapping("/settings/grace-days")
+    public SettingsView setGraceDays(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GraceDaysForm body) {
+        Integer graceDays = body.value().isEmpty() ? null : Integer.valueOf(body.value());
+        service.setGraceDays(sheetId, user.trim(), graceDays);
+        return view(sheetId);
+    }
+
     @PutMapping("/settings/perm/{action}")
     public SettingsView setPermission(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
@@ -263,7 +277,7 @@ public class SettingsController {
     private SettingsView view(String sheetId) {
         return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId),
                 service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId),
-                gradeTerms(sheetId), service.cap(sheetId), service.proofThreshold(sheetId), service.datedSettings(sheetId),
+                gradeTerms(sheetId), service.cap(sheetId), service.proofThreshold(sheetId), service.graceDays(sheetId), service.datedSettings(sheetId),
                 service.permissions(sheetId));
     }
 

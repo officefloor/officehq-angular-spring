@@ -2,13 +2,17 @@ package net.officefloor.hq.app.period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Permission;
 import net.officefloor.hq.app.settings.SettingsService;
+import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
+import net.officefloor.hq.app.sheet.TodayChanged;
+import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -81,12 +85,33 @@ public class PeriodService {
         if (period.isClosed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The period is already closed");
         }
+        closeNow(sheetId, user, period, "");
+        return period;
+    }
+
+    /** Once the sheet's today changes, close every open period whose to-date plus the sheet's
+     *  grace days (when set) is before the new today, in order of their to-dates, each as a close
+     *  by hand would. */
+    @EventListener
+    @Transactional
+    public void closePastGrace(TodayChanged change) {
+        Integer graceDays = sheets.find(change.sheetId()).map(Sheet::getGraceDays).orElse(null);
+        if (graceDays == null) {
+            return;
+        }
+        periods.findBySheetIdOrderByFromAsc(change.sheetId()).stream()
+                .filter(p -> !p.isClosed() && p.getTo().plusDays(graceDays).isBefore(change.today()))
+                .sorted(Comparator.comparing(Period::getTo))
+                .forEach(p -> closeNow(change.sheetId(), change.user(), p, " auto=yes"));
+    }
+
+    /** Fix the period's figures as they show now and audit it, with any trailing fields. */
+    private void closeNow(String sheetId, String user, Period period, String trailing) {
         period.close(rollup.dueByPersonBetween(sheetId, period.getFrom(), period.getTo()));
         periods.flush();
         BigDecimal total = period.getClosedTotal();
         audit.recordOnCommit("PERIOD_CLOSED sheet=" + sheetId + " by=" + user
-                + " period=" + period.getName() + " total=" + total.toPlainString());
-        return period;
+                + " period=" + period.getName() + " total=" + total.toPlainString() + trailing);
     }
 
     /** Reopen a closed period, its due-total live again; refused (403) unless the user's role may
