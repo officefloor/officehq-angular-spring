@@ -629,6 +629,13 @@ public class ClaimService {
      *  the new person's retirement date. */
     @Transactional
     public Claim reassign(String sheetId, String user, long id, long toPersonId) {
+        return reassign(sheetId, user, id, toPersonId, false);
+    }
+
+    /** Reassign a claim as {@link #reassign(String, String, long, long)} does; when {@code toSame}
+     *  a claim already the person's is moved too (listed as their newest), as a bulk reassign does. */
+    @Transactional
+    public Claim reassign(String sheetId, String user, long id, long toPersonId, boolean toSame) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
         Person to = people.findByIdAndSheetId(toPersonId, sheetId)
@@ -639,7 +646,7 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A " + claim.getStatus() + " claim cannot be reassigned");
         }
-        if (claim.getPersonId() == toPersonId) {
+        if (!toSame && claim.getPersonId() == toPersonId) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The claim is already that person's");
         }
         refuseIfRetired(to, claim.getDate());

@@ -328,6 +328,12 @@ export class ClaimsApi {
       { headers: this.headers() }));
   }
 
+  /** Move each of the claims to the person, in list order, as reassigning one would; those that cannot be moved are left as they are. */
+  bulkReassign(sheetId: string, ids: number[], personId: number): Promise<{ reassigned: number; refused: number }> {
+    return firstValueFrom(this.http.post<{ reassigned: number; refused: number }>(`${this.url(sheetId)}/claims/bulk-reassign`,
+      { ids, personId }, { headers: this.headers() }));
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }

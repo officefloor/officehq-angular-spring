@@ -150,6 +150,14 @@ public class ClaimController {
     public record BulkOpenView(int opened, int refused) {
     }
 
+    /** The claims selected for a bulk reassign, by id, and the person they are moved to. */
+    public record BulkReassignForm(@NotNull @Size(max = 10000) List<@NotNull Long> ids, @NotNull Long personId) {
+    }
+
+    /** A bulk reassign's result: how many of the selected claims were moved and how many refused. */
+    public record BulkReassignView(int reassigned, int refused) {
+    }
+
     /** A bulk settle's result: how many of the selected claims were settled (a claim sent to
      *  PENDING counts) and how many refused. */
     public record BulkSettleView(int settled, int refused) {
@@ -398,6 +406,32 @@ public class ClaimController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody ReassignForm body) {
         return view(service.reassign(sheetId, user.trim(), id, body.personId()));
+    }
+
+    /** Move each selected claim to the person in list order (people in the order added, newest
+     *  claim first), each on its own by the rules of reassigning one; a claim that cannot be moved
+     *  is left as it is. */
+    @PostMapping("/claims/bulk-reassign")
+    @ViewerAllowed
+    public BulkReassignView bulkReassign(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkReassignForm body) {
+        int selected = (int) body.ids().stream().distinct().count();
+        if (settings.isViewer(sheetId, user.trim()) || sheets.archived(sheetId)) {
+            return new BulkReassignView(0, selected);
+        }
+        List<Long> ordered = service.inListOrder(sheetId, body.ids());
+        int reassigned = 0;
+        for (long id : ordered) {
+            try {
+                service.reassign(sheetId, user.trim(), id, body.personId(), true);
+                reassigned++;
+            } catch (ResponseStatusException e) {
+                // refused: left as it is
+            }
+        }
+        return new BulkReassignView(reassigned, selected - reassigned);
     }
 
     @PostMapping("/claims/{id}/split")

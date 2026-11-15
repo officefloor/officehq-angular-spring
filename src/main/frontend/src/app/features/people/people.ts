@@ -108,6 +108,20 @@ import { GRADES, PeopleApi, Person, bulkGradeError, csvLine, gradeOn, heldOn, ho
       @if (bulkSettleError(); as err) {
         <p role="alert" data-testid="bulk-settle-error">{{ err }}</p>
       }
+      <label for="bulk-reassign-to">Reassign selected claims to</label>
+      <select #bulkReassignTo id="bulk-reassign-to" data-testid="bulk-reassign-to" (change)="bulkReassignError.set(null)">
+        @for (p of people(); track p.id) {
+          <option [value]="p.id">{{ p.name }}</option>
+        }
+      </select>
+      <button type="button" data-testid="bulk-reassign" (click)="bulkReassign(bulkReassignTo.value)">Reassign selected claims</button>
+      @if (bulkReassignResult(); as r) {
+        <p role="status">Reassigned <strong data-testid="bulk-reassigned">{{ r.reassigned }}</strong>,
+          refused <strong data-testid="bulk-reassign-refused">{{ r.refused }}</strong></p>
+      }
+      @if (bulkReassignError(); as err) {
+        <p role="alert" data-testid="bulk-reassign-error">{{ err }}</p>
+      }
       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade selected people">
         <label for="bulk-grade">Grade selected people</label>
         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
@@ -501,6 +515,10 @@ export class People {
   protected readonly bulkSettleResult = signal<{ settled: number; refused: number } | null>(null);
   protected readonly bulkSettleError = signal<string | null>(null);
   private bulkSettling = false;
+  /** The last bulk reassign's counts; gone while one runs. */
+  protected readonly bulkReassignResult = signal<{ reassigned: number; refused: number } | null>(null);
+  protected readonly bulkReassignError = signal<string | null>(null);
+  private bulkReassigning = false;
   /** The ids of the people selected for a bulk grade. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** The bulk grade bar: a grade and the date it is in force from (blank: the sheet's today). */
@@ -574,6 +592,8 @@ export class People {
         this.bulkError.set(null);
         this.bulkSettleResult.set(null);
         this.bulkSettleError.set(null);
+        this.bulkReassignResult.set(null);
+        this.bulkReassignError.set(null);
         this.selectedPeople.set(new Set());
         this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
         this.bulkGraded.set(null);
@@ -828,6 +848,35 @@ export class People {
       this.bulkSettleError.set('Something went wrong settling the claims; try again.');
     } finally {
       this.bulkSettling = false;
+    }
+  }
+
+  /** Move every selected claim that can be moved to the person, in list order, by the rules of
+   *  reassigning one; then show how many were moved and refused, and the claims as the store now
+   *  holds them. */
+  protected async bulkReassign(personId: string): Promise<void> {
+    if (this.bulkReassigning) return;
+    this.bulkReassignResult.set(null);
+    this.bulkReassignError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    if (!personId) {
+      this.bulkReassignError.set('Choose a person to reassign the claims to.');
+      return;
+    }
+    const ids = [...this.selectedClaims()];
+    this.bulkReassigning = true;
+    try {
+      const result = await this.claimsApi.bulkReassign(sheetId, ids, Number(personId));
+      const claims = await this.claimsApi.list(sheetId);
+      if (this.session.sheetId() !== sheetId) return;
+      this.claims.set(claims);
+      this.selectedClaims.set(new Set());
+      this.bulkReassignResult.set(result);
+    } catch {
+      this.bulkReassignError.set('Something went wrong reassigning the claims; try again.');
+    } finally {
+      this.bulkReassigning = false;
     }
   }
 
