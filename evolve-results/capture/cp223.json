@@ -1,0 +1,64 @@
+{
+  "checkpoint": 223,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp223_grade-retire",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A grade can be retired (a select and a button; GRADE_RETIRED grade=<grade>; a retired grade is\nrefused). People on a retired grade keep it (an edit leaving it as it was, with no from-date, is\nnot a choice of it), but it cannot be chosen for a new person or in an edit, by the form, the quick-add bar (the default grade falling back to A) or an import.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA grade can be retired (a select and a button; GRADE_RETIRED grade=<grade>; a retired grade is\nrefused). People on a retired grade keep it (an edit leaving it as it was, with no from-date, is\nnot a choice of it), but it cannot be chosen for a new person or in an edit, by the form, the quick-add bar (the default grade falling back to A) or an import.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "9fa3cde51d91d2379f3dba72ee8732e535e84e2a",
+  "reset_sha": "",
+  "preagent_sha": "440c01b142228e488cff6e028646c6f375e41fde",
+  "prev_sha": "440c01b142228e488cff6e028646c6f375e41fde",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4377906000000003,
+    "input_tokens": 70,
+    "output_tokens": 15558,
+    "cache_read_tokens": 2257233,
+    "cache_creation_tokens": 84363,
+    "num_turns": 37,
+    "duration_ms": 416568,
+    "duration_api_ms": 173530,
+    "model": "claude-opus-5-5",
+    "session_id": "08c30889-275b-4083-b812-6a241ef15dc2",
+    "stop_reason": "success",
+    "result_text": "Grades can now be retired. I ran `bin/e2e` and all 4 tests in the spec pass.\n\n**What it does**\n- A new Grades section on the main screen shows A, B and C with a \"retired yes/no\" value for each, plus a select and a \"Retire grade\" button. A successful retire writes `GRADE_RETIRED sheet=<id> by=<user> grade=<g>` to the audit file. Retiring a grade that is already retired shows the section's error and writes nothing. A grade other than A, B or C isn't offered in the select, and the server refuses it too.\n- **Rules for a retired grade:**\n  - It's refused when adding a person, editing one (the form or the in-row grade select), changing grades in bulk, or importing a line that names it. The screen shows \"That grade is retired: choose another.\"\n  - An edit that leaves someone on their retired grade with no from-date still saves, so people keep their grade.\n  - An import line that leaves someone already on that grade unchanged is also allowed.\n- **Default grade:** you can still set it to a retired grade. While that grade is retired, the quick-add bar and import lines with a blank grade use A instead.\n\n**How it's stored**\n- A new database migration, `V116__grade_retired.sql`, adds a `retired_grades` column to the sheet. The list is read whenever a sheet is loaded, so a second signed-in user sees the change after reloading.\n- Cloning a sheet copies its retired grades.\n\n**Gap:** when a sheet is shown \"as of\" a past date, the grades all show as not retired, because the sheet history doesn't record retirements. Nothing in the spec checks this. Recording it would mean adding a field to the saved history.\n\nThe main changes are in `SheetService.java` (`requireActiveGrade`, and the default grade falling back to A), `SettingsService.retireGrade`, `PersonService.java` (`add`, `update` and bulk `grade`), and the new `features/grades/grades.ts`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4377906000000003,
+        "num_turns": 37,
+        "duration_ms": 416568,
+        "duration_api_ms": 173530,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp223.agent.jsonl",
+  "agent_diff_file": "cp223.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
