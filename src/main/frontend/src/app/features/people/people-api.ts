@@ -148,10 +148,19 @@ export interface DescendantFigures {
   overdueTotal: string;
   gradeDueTotals: Record<string, string>;
   statusCounts: Record<string, number>;
+  /** Each person's name and aliases, due-total (null: n/a) and overdue-total. */
+  members: FigureMember[];
+}
+
+/** A person as the consolidated figures take them. */
+export interface FigureMember {
+  names: string[];
+  dueTotal: string | null;
+  overdueTotal: string;
 }
 
 /** Figures with nothing in them. */
-export const NO_FIGURES: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {} };
+export const NO_FIGURES: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {}, members: [] };
 
 @Injectable({ providedIn: 'root' })
 export class PeopleApi {

@@ -16,7 +16,7 @@ import { STATUSES, Summary, SummaryPerson, statusCounts } from '../summary/summa
 import { ClassicSummary } from '../summary/classic-summary';
 import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
 import { Dashboard, Header } from '../header/header';
-import { DescendantFigures, GRADES, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
+import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -902,28 +902,39 @@ export class People {
    *  figures are then live). */
   private readonly ownLive = signal<DescendantFigures | null>(null);
   /** The sheet's own figures and its descendants' added up, each as the screen shows the sheet:
-   *  as it is now, or as it stood at the end of the as-of date. */
+   *  as it is now, or as it stood at the end of the as-of date. The due-total and overdue-total are
+   *  everyone's over the whole tree, trimmed once; people whose names or aliases match count once. */
   protected readonly consolidated = computed<DescendantFigures>(() => {
     const d = this.descendants();
     const own = this.ownLive() ?? this.ownFigures();
+    const members = [...own.members, ...d.members];
     return {
-      people: own.people + d.people,
-      dueTotal: money(cents(own.dueTotal) + cents(d.dueTotal)),
-      overdueTotal: money(cents(own.overdueTotal) + cents(d.overdueTotal)),
+      people: distinctPeople(members),
+      dueTotal: money(trimmedSum(members.flatMap((m) => (m.dueTotal === null ? [] : [cents(m.dueTotal)])))),
+      overdueTotal: money(trimmedSum(members.map((m) => cents(m.overdueTotal)))),
       gradeDueTotals: Object.fromEntries(GRADES.map((g) =>
         [g, money(cents(own.gradeDueTotals[g] ?? '0.00') + cents(d.gradeDueTotals[g] ?? '0.00'))])),
       statusCounts: Object.fromEntries(STATUSES.map((s) =>
         [s, (own.statusCounts[s] ?? 0) + (d.statusCounts[s] ?? 0)])),
+      members,
     };
   });
   /** The sheet's own figures, live, as the consolidated figures add them up. */
   private readonly ownFigures = computed<DescendantFigures>(() => {
     const people = this.summaryPeople().filter((p) => !p.retired);
+    const dues = this.dueByPerson();
+    const overdues = this.overdueByPerson();
+    const members = this.people().map((p) => {
+      const due = dues.get(p.id) ?? null;
+      return { names: [p.name, ...p.aliases], dueTotal: due === null ? null : money(due),
+        overdueTotal: money(overdues.get(p.id)?.cents ?? 0) };
+    });
     return {
       people: this.people().length, dueTotal: this.dueTotal(), overdueTotal: this.overdueTotal(),
       gradeDueTotals: Object.fromEntries(GRADES.map((g) =>
         [g, money(people.filter((p) => p.grade === g).reduce((sum, p) => sum + (p.due ?? 0), 0))])),
       statusCounts: Object.fromEntries(statusCounts(this.claims()).map((s) => [s.status, s.count])),
+      members,
     };
   });
   protected readonly claimedTotal = computed(() =>
@@ -2047,6 +2058,23 @@ export class People {
 function trimmedSum(figures: number[]): number {
   const sum = figures.reduce((a, b) => a + b, 0);
   return figures.length < 3 ? sum : sum - Math.max(...figures) - Math.min(...figures);
+}
+
+/** How many people these are, counting once those whose names or aliases match (ignoring case,
+ *  as names are compared), directly or through others. */
+function distinctPeople(members: FigureMember[]): number {
+  const parent = members.map((_, i) => i);
+  const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+  const byName = new Map<string, number>();
+  members.forEach((m, i) => {
+    for (const n of m.names) {
+      const key = n.toLowerCase();
+      const other = byName.get(key);
+      if (other === undefined) byName.set(key, i);
+      else parent[root(i)] = root(other);
+    }
+  });
+  return members.filter((_, i) => root(i) === i).length;
 }
 
 /** A person's own terms as the form shows them: the days, blank when none. */

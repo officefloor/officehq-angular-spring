@@ -46,9 +46,9 @@ public class RollupService {
 
     /** A person's figures: claimed, due-total held to the sheet's cap (null: n/a), and
      *  overdue-total (the dues their overdue counting claims show, n/a ones skipped, not capped);
-     *  with their grade on the sheet's today and whether they have a retirement date. */
+     *  with their grade on the sheet's today, whether they have a retirement date, and their aliases. */
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
-            String grade, boolean retired) {
+            String grade, boolean retired, List<String> aliases) {
         boolean sameAs(Figures other) {
             return other != null && claimed.compareTo(other.claimed) == 0
                     && Objects.equals(text(dueTotal), text(other.dueTotal))
@@ -83,6 +83,15 @@ public class RollupService {
         /** Everyone's overdue-total added up, trimmed. */
         BigDecimal overdueTotal() {
             return trimmedSum(people.values().stream().map(Figures::overdueTotal).toList());
+        }
+
+        /** Each person's names and figures, in list order. */
+        List<Member> members() {
+            return people.values().stream().map(f -> {
+                List<String> names = new ArrayList<>(List.of(f.name()));
+                names.addAll(f.aliases());
+                return new Member(names, f.dueTotal(), f.overdueTotal());
+            }).toList();
         }
     }
 
@@ -174,7 +183,7 @@ public class RollupService {
                     .reduce(zero(), BigDecimal::add);
             out.put(id, new Figures(p.getName(), claimed,
                     Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding), cap), overdue,
-                    p.gradeOn(today), p.isRetired()));
+                    p.gradeOn(today), p.isRetired(), List.copyOf(p.getAliases())));
         });
         Map<ClaimStatus, Integer> statuses = new LinkedHashMap<>();
         sheetClaims.stream().map(Claim::getStatus).filter(Objects::nonNull)
@@ -184,9 +193,15 @@ public class RollupService {
 
     /** Figures added up over sheets: how many people (retired ones too), the due-totals and
      *  overdue-totals each sheet shows, per grade the due-totals of the people on it (retired ones
-     *  left out), and per status how many claims are in it. */
+     *  left out), per status how many claims are in it, and each person's names and figures (so a
+     *  tree's figures can be trimmed over all its people, and people matched by name counted once). */
     public record Consolidated(int people, BigDecimal dueTotal, BigDecimal overdueTotal,
-            Map<String, BigDecimal> gradeDueTotals, Map<ClaimStatus, Integer> statusCounts) {
+            Map<String, BigDecimal> gradeDueTotals, Map<ClaimStatus, Integer> statusCounts, List<Member> members) {
+    }
+
+    /** A person as the consolidated figures take them: their name and aliases, due-total held to
+     *  the cap (null: n/a) and overdue-total. */
+    public record Member(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal) {
     }
 
     /** The sheet's own figures as it is now, or as it stood at the end of {@code asOf} when given:
@@ -194,7 +209,7 @@ public class RollupService {
     public Consolidated own(String sheetId, LocalDate asOf) {
         Snapshot figures = asOf == null ? snapshot(sheetId) : snapshotAsOf(sheetId, asOf);
         return new Consolidated(figures.people().size(), figures.dueTotal(), figures.overdueTotal(),
-                figures.dueByGrade(), figures.statuses());
+                figures.dueByGrade(), figures.statuses(), figures.members());
     }
 
     /** The figures of the sheet's descendants (its children, theirs, and so on), each sheet's as
@@ -206,6 +221,7 @@ public class RollupService {
         BigDecimal overdue = zero();
         Map<String, BigDecimal> grades = new LinkedHashMap<>();
         Map<ClaimStatus, Integer> statuses = new LinkedHashMap<>();
+        List<Member> members = new ArrayList<>();
         Set<String> seen = new HashSet<>(Set.of(sheetId));
         ArrayDeque<String> todo = new ArrayDeque<>(List.of(sheetId));
         while (!todo.isEmpty()) {
@@ -220,9 +236,10 @@ public class RollupService {
                 overdue = overdue.add(figures.overdueTotal());
                 figures.dueByGrade().forEach((g, d) -> grades.merge(g, d, BigDecimal::add));
                 figures.statuses().forEach((st, n) -> statuses.merge(st, n, Integer::sum));
+                members.addAll(figures.members());
             }
         }
-        return new Consolidated(count, due, overdue, grades, statuses);
+        return new Consolidated(count, due, overdue, grades, statuses, members);
     }
 
     /** Each person's due-total for the period from {@code from} to {@code to}, inclusive, by person
