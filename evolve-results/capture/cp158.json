@@ -1,0 +1,64 @@
+{
+  "checkpoint": 158,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp158_column-chooser",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach user can choose which columns of the people list their screen shows: a checkbox per column\n(claimed, due-total, statement-count, stated-total, statement-date, overdue-count, overdue-total,\npatrons, backing, hold, retired, terms, contact, aliases), per user's screen. A column switched off has no cell on the screen at all; totals, the header, the summary and every other figure are\nunaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a5321ed21751938671b729d206d6b6b90757571a",
+  "reset_sha": "",
+  "preagent_sha": "af8ecb1520c7c26b94f956c7e79b86ae0e6abf23",
+  "prev_sha": "af8ecb1520c7c26b94f956c7e79b86ae0e6abf23",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.6591805999999999,
+    "input_tokens": 30,
+    "output_tokens": 9536,
+    "cache_read_tokens": 532263,
+    "cache_creation_tokens": 45236,
+    "num_turns": 15,
+    "duration_ms": 313292,
+    "duration_api_ms": 93097,
+    "model": "claude-opus-5-5",
+    "session_id": "bdc6e079-20e2-4461-b672-5a8394fbf75b",
+    "stop_reason": "success",
+    "result_text": "The column chooser is in, and all 4 tests in `e2e/specs/acceptance.spec.ts` pass with `bin/e2e`.\n\n**What it does:** above the people list there is now a \"Columns shown\" set of 14 checkboxes (`column-claimed`, `column-due-total`, \u2026 `column-aliases`). All are ticked at first. Unticking one removes that column's header and its cell from every person row. Totals, the header counters, the summary and the CSV export don't change.\n\n**Where the choice is kept:** only in the browser, for each signed-in user, in `src/main/frontend/src/app/core/session.ts`. It works the same way as the existing \"Sort by\" and \"Show retired\" settings: it stays when a sheet is reloaded, and another user's screen is unaffected. So there's no database or server change. The catch is that the choice is lost when the page is reloaded or the user opens a new browser. If you want it to last across sessions, I can store it on the server the way the per-user locale is stored.\n\n**Table changes in `src/main/frontend/src/app/features/people/people.ts`:** several cells used to hold more than one of the listed values, so I split them so each value can be hidden on its own:\n- **Split cells:** statement count / last stated total / statement date, overdue count / overdue total, and patrons / backing are now separate columns.\n- **Controls moved:** the buttons and inputs that shared those cells (add alias, take statement, retire, hold from/to, add patron) now sit in their own columns. This way, hiding a value never hides a button you need.\n- **Due cell:** hiding \"due-total\" removes the whole Due cell, so its excess, settled and open figures go too. The first test requires this.\n\nNo `data-testid` was renamed or removed.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.6591805999999999,
+        "num_turns": 15,
+        "duration_ms": 313292,
+        "duration_api_ms": 93097,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp158.agent.jsonl",
+  "agent_diff_file": "cp158.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
