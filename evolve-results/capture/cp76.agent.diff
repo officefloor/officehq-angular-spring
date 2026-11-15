@@ -1,0 +1,55 @@
+diff --git a/src/main/java/net/officefloor/hq/app/Audit.java b/src/main/java/net/officefloor/hq/app/Audit.java
+index 59a073dcf..118b8a480 100644
+--- a/src/main/java/net/officefloor/hq/app/Audit.java
++++ b/src/main/java/net/officefloor/hq/app/Audit.java
+@@ -31,7 +31,7 @@ public class Audit {
+     public static final String FOR = Audit.class.getName() + ".for";
+ 
+     /** Records that only report figures, which never carry {@code for=}. */
+-    private static final Set<String> FIGURES = Set.of("ROLLUP", "TOTALS", "ALERT");
++    private static final Set<String> FIGURES = Set.of("ROLLUP", "TOTALS", "ALERT", "SNAPSHOT");
+ 
+     private final Path file;
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index be1278f44..0244bf0af 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -187,6 +187,13 @@ public class RollupService {
+         return new Stated(counted, Sheet.capped(dueTotal, sheet.getCap()));
+     }
+ 
++    /** Record, once the transaction commits, a SNAPSHOT line for each person (in the order they
++     *  were added) with their due-total in {@code before}. */
++    public void recordSnapshot(String sheetId, String user, Snapshot before) {
++        before.people().values().forEach(p -> audit.recordOnCommit("SNAPSHOT sheet=" + sheetId + " by=" + user
++                + " name=" + p.name() + " due-total=" + text(p.dueTotal())));
++    }
++
+     /** Record, once the transaction commits, a ROLLUP line for each person whose figures moved
+      *  since {@code before}, then a TOTALS line when the sheet's totals moved. */
+     public void recordChanges(String sheetId, String user, Snapshot before) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+index 9902794a4..96d036f4c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/SheetService.java
+@@ -119,13 +119,17 @@ public class SheetService {
+     }
+ 
+     /** Change the sheet's today (the sheet is created first if it was never loaded); it has no
+-     *  audit line of its own, only what follows from it (such as periods closed past their grace
+-     *  days) and then the figures it moves. */
++     *  audit line of its own; when it moves, each person's due-total on the day being left is
++     *  recorded first (SNAPSHOT), then what follows from it (such as periods closed past their
++     *  grace days) and then the figures it moves. */
+     @Transactional
+     public Sheet setToday(String id, String user, LocalDate today) {
+         Sheet sheet = load(id, user);
+         lock(id);
+         RollupService.Snapshot before = rollup.snapshot(id);
++        if (!today.equals(sheet.getToday())) {
++            rollup.recordSnapshot(id, user, before);
++        }
+         sheet.setToday(today);
+         sheets.flush();
+         events.publishEvent(new TodayChanged(id, user, today));
