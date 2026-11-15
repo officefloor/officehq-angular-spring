@@ -2,7 +2,11 @@ package net.officefloor.hq.app.sheet;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayDeque;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -106,6 +110,27 @@ public class SheetService {
     @Transactional(readOnly = true)
     public BigDecimal noteThresholdOn(String id, LocalDate on) {
         return sheets.findById(id).map(s -> s.noteThresholdOn(on)).orElse(null);
+    }
+
+    /** The ids of the other sheets of the sheet's tree, among those that exist: its ancestors (its
+     *  parent, theirs, and so on) and its descendants (its children, theirs, and so on). */
+    @Transactional(readOnly = true)
+    public Set<String> tree(String id) {
+        Set<String> seen = new LinkedHashSet<>(Set.of(id));
+        for (String at = sheets.findById(id).map(Sheet::getParent).orElse(null);
+                at != null && sheets.existsById(at) && seen.add(at);
+                at = sheets.findById(at).map(Sheet::getParent).orElse(null)) {
+        }
+        ArrayDeque<String> todo = new ArrayDeque<>(List.of(id));
+        while (!todo.isEmpty()) {
+            for (Sheet child : sheets.findByParentOrderByIdAsc(todo.poll())) {
+                if (seen.add(child.getId())) {
+                    todo.add(child.getId());
+                }
+            }
+        }
+        seen.remove(id);
+        return seen;
     }
 
     /** Whether the sheet is archived: every change on it is refused. */

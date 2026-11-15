@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -241,6 +242,11 @@ public class PersonService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String trimmed = name.trim();
         requireUnusedName(sheetId, id, trimmed);
+        // a person who clashes with the sheet's tree is saved only once renamed clear of it
+        Set<String> treeNames = treeNames(sheetId);
+        if (person.getAliases().stream().anyMatch(a -> treeNames.contains(nameKey(a)))) {
+            throw nameInUse();
+        }
         requireUnusedContact(sheetId, id, contact);
         person.setName(trimmed);
         boolean termsChanged = !Objects.equals(terms, person.getTerms());
@@ -603,14 +609,47 @@ public class PersonService {
     }
 
     /** Refuse a name another person on the sheet already has as their name or an alias (ignoring
-     *  case); {@code exceptId} null checks against everyone, the person's own name and aliases too. */
+     *  case), or anyone on another sheet of its tree has; {@code exceptId} null checks against
+     *  everyone, the person's own name and aliases too. */
     private void requireUnusedName(String sheetId, Long exceptId, String name) {
         boolean taken = people.findBySheetIdAndNameIgnoreCase(sheetId, name).stream()
                 .anyMatch(p -> !p.getId().equals(exceptId))
-                || !people.findBySheetIdAndAliasIgnoreCase(sheetId, name).isEmpty();
+                || !people.findBySheetIdAndAliasIgnoreCase(sheetId, name).isEmpty()
+                || treeNames(sheetId).contains(nameKey(name));
         if (taken) {
             throw nameInUse();
         }
+    }
+
+    /** Every name and alias of the people on the other sheets of the sheet's tree (its ancestors
+     *  and descendants), as names are compared. */
+    @Transactional(readOnly = true)
+    public Set<String> treeNames(String sheetId) {
+        Set<String> names = new HashSet<>();
+        for (String other : sheets.tree(sheetId)) {
+            for (Person p : people.findBySheetIdOrderByIdAsc(other)) {
+                names.add(nameKey(p.getName()));
+                p.getAliases().forEach(a -> names.add(nameKey(a)));
+            }
+        }
+        return names;
+    }
+
+    /** Whether the person's name or an alias is also a name or alias on another sheet of their tree. */
+    @Transactional(readOnly = true)
+    public boolean clashing(Person person) {
+        return clashes(person, treeNames(person.getSheetId()));
+    }
+
+    /** Whether the person's name or an alias is among {@code treeNames} (from {@link #treeNames}). */
+    public static boolean clashes(Person person, Set<String> treeNames) {
+        return !treeNames.isEmpty() && (treeNames.contains(nameKey(person.getName()))
+                || person.getAliases().stream().anyMatch(a -> treeNames.contains(nameKey(a))));
+    }
+
+    /** A name or alias as names are compared: ignoring case. */
+    private static String nameKey(String name) {
+        return name.toLowerCase(java.util.Locale.ROOT);
     }
 
     private static ResponseStatusException savedByAnother() {

@@ -67,6 +67,8 @@ export interface Person {
   contact: string | null;
   /** The person's aliases, sorted as names are compared (ignoring case). */
   aliases: string[];
+  /** Whether their name or an alias is also a name or alias on another sheet of the sheet's tree. */
+  clashing: boolean;
 }
 
 /** A statement just taken: the person as they now show, and all their claims, newest first. */

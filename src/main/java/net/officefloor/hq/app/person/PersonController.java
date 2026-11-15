@@ -41,23 +41,24 @@ public class PersonController {
      *  they are retired from (null while not retired), whether they have any hold, their holds, and the ids of
      *  their patrons in the order they were named, and whether the signed-in user watches them. The grade is the one in force on the sheet's
      *  today; grades lists every grade they have been given, by from-date, the first one undated; terms
-     *  are their own terms in days (null when they have none). */
+     *  are their own terms in days (null when they have none). Clashing: their name or an alias is
+     *  also a name or alias on another sheet of the sheet's tree. */
     public record PersonView(long id, String name, String grade, long version, int statementCount,
             String statedTotal, LocalDate statementDate, LocalDate retiredFrom, boolean held, List<Person.Hold> holds,
             List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms,
-            String contact, List<String> aliases) {
+            String contact, List<String> aliases, boolean clashing) {
         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
-                boolean watched) {
-            return of(p.getId(), p, today, s, patronIds, watched);
+                boolean watched, boolean clashing) {
+            return of(p.getId(), p, today, s, patronIds, watched, clashing);
         }
 
         /** The person of the id, which a version rebuilt from the sheet's history does not carry. */
         static PersonView of(long id, Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
-                boolean watched) {
+                boolean watched, boolean clashing) {
             return new PersonView(id, p.getName(), p.gradeOn(today), p.getVersion(), s.count(),
                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
                     p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.getTerms(),
-                    p.getContact(), p.getAliases());
+                    p.getContact(), p.getAliases(), clashing);
         }
     }
 
@@ -145,15 +146,18 @@ public class PersonController {
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         if (asOf != null) {
             HistoryService.AsOf then = history.asOf(sheetId, asOf);
-            return then.people().keySet().stream().map(id -> viewAsOf(then, asOf, user, id)).toList();
+            Set<String> treeNames = service.treeNames(sheetId);
+            return then.people().keySet().stream().map(id -> viewAsOf(then, asOf, user, id, treeNames)).toList();
         }
         Map<Long, StatementSummary> summaries = service.statementSummaries(sheetId);
         Map<Long, List<Long>> patrons = service.patronIds(sheetId);
         LocalDate today = service.today(sheetId);
         Set<Long> watched = service.watchedIds(sheetId, user.trim());
+        Set<String> treeNames = service.treeNames(sheetId);
         return service.list(sheetId).stream()
                 .map(p -> PersonView.of(p, today, summaries.getOrDefault(p.getId(), StatementSummary.NONE),
-                        patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId())))
+                        patrons.getOrDefault(p.getId(), List.of()), watched.contains(p.getId()),
+                        PersonService.clashes(p, treeNames)))
                 .toList();
     }
 
@@ -168,7 +172,7 @@ public class PersonController {
             if (!then.people().containsKey(id)) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person");
             }
-            return viewAsOf(then, asOf, user, id);
+            return viewAsOf(then, asOf, user, id, service.treeNames(sheetId));
         }
         return view(sheetId, user, service.get(sheetId, id));
     }
@@ -264,7 +268,8 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody TransferForm body) {
         Person arrived = service.transfer(sheetId, user.trim(), id, body.toSheetId());
-        return PersonView.of(arrived, service.today(arrived.getSheetId()), StatementSummary.NONE, List.of(), false);
+        return PersonView.of(arrived, service.today(arrived.getSheetId()), StatementSummary.NONE, List.of(), false,
+                service.clashing(arrived));
     }
 
     /** Start or stop watching the person as the signed-in user; refused for a viewer, who may change nothing. */
@@ -278,19 +283,22 @@ public class PersonController {
     }
 
     /** The person of the id as they stood at the end of {@code asOf}, with the statements, patrons
-     *  and watches there were then. */
-    private static PersonView viewAsOf(HistoryService.AsOf then, LocalDate asOf, String user, long id) {
+     *  and watches there were then; clashing against the names the sheet's tree has now. */
+    private static PersonView viewAsOf(HistoryService.AsOf then, LocalDate asOf, String user, long id,
+            Set<String> treeNames) {
         List<PersonStatement> theirs = then.statements().values().stream()
                 .filter(s -> s.getPersonId() == id).toList();
         List<Long> patronIds = then.patrons().stream().filter(p -> p.getPersonId() == id)
                 .map(PersonPatron::getPatronId).collect(Collectors.toList());
         boolean watched = then.watches().stream()
                 .anyMatch(w -> w.getPersonId() == id && w.getUserName().equals(user.trim()));
-        return PersonView.of(id, then.people().get(id), asOf, StatementSummary.of(theirs), patronIds, watched);
+        Person p = then.people().get(id);
+        return PersonView.of(id, p, asOf, StatementSummary.of(theirs), patronIds, watched,
+                PersonService.clashes(p, treeNames));
     }
 
     private PersonView view(String sheetId, String user, Person p) {
         return PersonView.of(p, service.today(sheetId), service.statementSummary(p.getId()), service.patronIds(p.getId()),
-                service.isWatching(p.getId(), user.trim()));
+                service.isWatching(p.getId(), user.trim()), service.clashing(p));
     }
 }

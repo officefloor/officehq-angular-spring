@@ -476,7 +476,7 @@ public class ClaimController {
 
     private StatementView statementView(String sheetId, ClaimService.Statement s, String user) {
         return new StatementView(PersonView.of(s.person(), people.today(sheetId), s.summary(), people.patronIds(s.person().getId()),
-                people.isWatching(s.person().getId(), user)),
+                people.isWatching(s.person().getId(), user), people.clashing(s.person())),
                 s.claims().stream().map(this::view).toList());
     }
 }

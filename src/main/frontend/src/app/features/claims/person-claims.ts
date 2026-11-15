@@ -313,6 +313,8 @@ export class PersonClaims {
       return true;
     }, (e: unknown) => {
       this.rowErrors.update((errs) => ({ ...errs, [c.id]: editError(e) }));
+      // the editor never opened: the form is back to adding, so the next add is not swallowed
+      if (this.editingId() === c.id && this.locking?.result === result) this.reset();
       return false;
     });
     this.locking = { id: c.id, result };
