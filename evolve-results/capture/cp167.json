@@ -1,0 +1,64 @@
+{
+  "checkpoint": 167,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp167_crew-lead-total",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The header shows the signed-in user's crew total when a person with the user's name leads a\ncrew: the due-totals of the crews they lead, added up; nothing otherwise.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe header shows the signed-in user's crew total when a person with the user's name leads a\ncrew: the due-totals of the crews they lead, added up; nothing otherwise.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "a4b868dd5c6f9f8ceae9d1ab9a8a627b89395507",
+  "reset_sha": "",
+  "preagent_sha": "8f789a54d00f8bc1ff6f25e57938d7c67bd4917d",
+  "prev_sha": "8f789a54d00f8bc1ff6f25e57938d7c67bd4917d",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.4389626,
+    "input_tokens": 24,
+    "output_tokens": 4615,
+    "cache_read_tokens": 357953,
+    "cache_creation_tokens": 34372,
+    "num_turns": 13,
+    "duration_ms": 271313,
+    "duration_api_ms": 47051,
+    "model": "claude-opus-5-5",
+    "session_id": "dae413db-ff7f-485a-ba8e-3a0fab7844eb",
+    "stop_reason": "success",
+    "result_text": "The header now shows the signed-in user's crew total, and `bin/e2e` passes all 4 tests.\n\n**How it works:**\n- **Who counts as \"you\":** a person on the sheet whose name or alias matches the signed-in user's name, ignoring case. This is the same match \"my due total\" already uses, so I moved it into one shared `me` value in `people.ts` that both figures read.\n- **What the total is:** each crew that person leads gets its due-total exactly as the crew row works it out (the lead's and members' due-totals, skipping n/a), and those are added up. If the person leads no crews, or nobody on the sheet has your name, the figure is blank.\n- **Where it shows:** a new \"My crew total\" line in the header, under `data-testid=\"my-crew-due-total\"`, formatted for your locale like the other figures.\n\n**Files changed (front end only):**\n- `features/crews/crews.ts`: the crews list is now a two-way `model()`, so the main people screen sees the crews as they're loaded or added.\n- `features/people/people.ts`: holds the crews and adds `myCrewDueTotal`.\n- `features/header/header.ts`: the new input and line, and an updated comment.\n\nNo server, database or audit changes were needed, because the crews and per-person due-totals were already on the screen.\n\nTwo things to be aware of:\n- A person who is in two crews counts once for each crew you lead, because the request says to add up the crews' totals.\n- If two people on the sheet go by your name, only the first one counts, the same as for \"my due total\".",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.4389626,
+        "num_turns": 13,
+        "duration_ms": 271313,
+        "duration_api_ms": 47051,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp167.agent.jsonl",
+  "agent_diff_file": "cp167.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
