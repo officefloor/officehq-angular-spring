@@ -1,0 +1,64 @@
+{
+  "checkpoint": 134,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp134_sorting",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The people list can be sorted on the screen: a select of added, name, grade or due-total, per\nuser's screen. Sorting by name compares as names are compared; by due-total puts n/a last; equal\nkeys keep list order. Sorting changes only what the screen shows: the positions, the rollup lines\nand every action in list order are unaffected.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe people list can be sorted on the screen: a select of added, name, grade or due-total, per\nuser's screen. Sorting by name compares as names are compared; by due-total puts n/a last; equal\nkeys keep list order. Sorting changes only what the screen shows: the positions, the rollup lines\nand every action in list order are unaffected.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "e9a1d8172f2ffcac3bb76ed9cae95ffea81ce27a",
+  "reset_sha": "",
+  "preagent_sha": "9d3a8c5c9ec8ef4f43db4d65dbf58c18602abe4e",
+  "prev_sha": "9d3a8c5c9ec8ef4f43db4d65dbf58c18602abe4e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.43829300000000004,
+    "input_tokens": 24,
+    "output_tokens": 4158,
+    "cache_read_tokens": 373945,
+    "cache_creation_tokens": 35031,
+    "num_turns": 12,
+    "duration_ms": 243368,
+    "duration_api_ms": 42514,
+    "model": "claude-opus-5-5",
+    "session_id": "7149ef3b-a866-4d65-b327-9f966ec55dea",
+    "stop_reason": "success",
+    "result_text": "The people list now has a \"Sort by\" select with added, name, grade and due-total, and all 4 tests in `bin/e2e` pass.\n\nHow the sort works:\n- **Name** ignores case, the same way the app already compares names elsewhere. So \"ada\" comes before \"Ben\".\n- **Grade** follows the order A, B, C, using each person's grade on the sheet's today.\n- **Due-total** goes from smallest to largest, using the shown figure (after the sheet's cap), with n/a last.\n- People with equal keys stay in list order. **Added** shows the list order unchanged.\n\nThe choice belongs to each user's screen and isn't saved anywhere. It stays set when a sheet is reloaded, but another user still sees the added order. Sorting only changes the order of the rows on screen: the rollups, bulk actions, the reassign drop-down and the stored positions all still use list order. Nothing changed on the server, in the stored data or in the audit records.\n\nThe changes are in two files:\n- `core/session.ts`: a `sortBy` value next to `showRetired`.\n- `features/people/people.ts`: the `sort-by` select and the sorting in `shownPeople`.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.43829300000000004,
+        "num_turns": 12,
+        "duration_ms": 243368,
+        "duration_api_ms": 42514,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp134.agent.jsonl",
+  "agent_diff_file": "cp134.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
