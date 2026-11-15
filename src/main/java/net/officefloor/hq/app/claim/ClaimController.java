@@ -190,6 +190,15 @@ public class ClaimController {
     public record BulkRedateView(int redated, int refused) {
     }
 
+    /** The claims selected for a bulk void, by id, and the reason chosen from the sheet's list
+     *  (null or blank for none). */
+    public record BulkVoidForm(@NotNull @Size(max = 10000) List<@NotNull Long> ids, @Size(max = 200) String reason) {
+    }
+
+    /** A bulk void's result: how many of the selected claims were voided and how many refused. */
+    public record BulkVoidView(int voided, int refused) {
+    }
+
     /** A bulk settle's result: how many of the selected claims were settled (a claim sent to
      *  PENDING counts) and how many refused. */
     public record BulkSettleView(int settled, int refused) {
@@ -534,6 +543,33 @@ public class ClaimController {
             }
         }
         return new BulkRedateView(redated, selected - redated);
+    }
+
+    /** Void each selected claim in list order (people by their place in the list, newest claim
+     *  first), each on its own exactly as voiding one would, with the reason chosen; a claim that
+     *  cannot be voided is left as it is. */
+    @PostMapping("/claims/bulk-void")
+    @ViewerAllowed
+    public BulkVoidView bulkVoid(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody BulkVoidForm body) {
+        int selected = (int) body.ids().stream().distinct().count();
+        if (settings.isViewer(sheetId, user.trim()) || sheets.archived(sheetId)) {
+            return new BulkVoidView(0, selected);
+        }
+        String reason = body.reason() == null || body.reason().isBlank() ? null : body.reason().trim();
+        List<Long> ordered = service.inListOrder(sheetId, body.ids());
+        int voided = 0;
+        for (long id : ordered) {
+            try {
+                service.voidClaim(sheetId, user.trim(), id, reason);
+                voided++;
+            } catch (ResponseStatusException e) {
+                // refused: left as it is
+            }
+        }
+        return new BulkVoidView(voided, selected - voided);
     }
 
     @PostMapping("/claims/{id}/split")

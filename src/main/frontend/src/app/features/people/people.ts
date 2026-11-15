@@ -202,6 +202,24 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
       @if (bulkRedateError(); as err) {
         <p role="alert" data-testid="bulk-redate-error">{{ err }}</p>
       }
+      @if (session.voidReasons().length > 0) {
+        <label for="bulk-void-reason">Void reason for selected claims</label>
+        <select id="bulk-void-reason" data-testid="bulk-void-reason" [value]="bulkVoidReason()"
+          (change)="bulkVoidReason.set($any($event.target).value); bulkVoidError.set(null)">
+          <option value="">Choose a reason</option>
+          @for (r of session.voidReasons(); track r) {
+            <option [value]="r">{{ r }}</option>
+          }
+        </select>
+      }
+      <button type="button" data-testid="bulk-void" (click)="bulkVoid()">Void selected claims</button>
+      @if (bulkVoidResult(); as r) {
+        <p role="status">Voided <strong data-testid="bulk-voided">{{ r.voided }}</strong>,
+          refused <strong data-testid="bulk-void-refused">{{ r.refused }}</strong></p>
+      }
+      @if (bulkVoidError(); as err) {
+        <p role="alert" data-testid="bulk-void-error">{{ err }}</p>
+      }
       <form [formGroup]="bulkGradeForm" (ngSubmit)="bulkGrade()" aria-label="Grade selected people">
         <label for="bulk-grade">Grade selected people</label>
         <select id="bulk-grade" data-testid="bulk-grade" formControlName="grade">
@@ -913,6 +931,12 @@ export class People {
   protected readonly bulkRedateResult = signal<{ redated: number; refused: number } | null>(null);
   protected readonly bulkRedateError = signal<string | null>(null);
   private bulkRedating = false;
+  /** The last bulk void's counts; gone while one runs. */
+  protected readonly bulkVoidResult = signal<{ voided: number; refused: number } | null>(null);
+  protected readonly bulkVoidError = signal<string | null>(null);
+  private bulkVoiding = false;
+  /** The void reason chosen in the bulk void bar; blank for none. */
+  protected readonly bulkVoidReason = signal('');
   /** The ids of the people selected for a bulk grade. */
   protected readonly selectedPeople = signal<ReadonlySet<number>>(new Set());
   /** The bulk grade bar: a grade and the date it is in force from (blank: the sheet's today). */
@@ -1026,6 +1050,9 @@ export class People {
         this.bulkReassignError.set(null);
         this.bulkRedateResult.set(null);
         this.bulkRedateError.set(null);
+        this.bulkVoidResult.set(null);
+        this.bulkVoidError.set(null);
+        this.bulkVoidReason.set('');
         this.selectedPeople.set(new Set());
         this.bulkGradeForm.reset({ grade: 'A', from: '' }, { emitEvent: false });
         this.bulkGraded.set(null);
@@ -1535,6 +1562,33 @@ export class People {
       this.bulkRedateError.set('Something went wrong re-dating the claims; try again.');
     } finally {
       this.bulkRedating = false;
+    }
+  }
+
+  /** Void every selected claim, in list order, exactly as voiding one would (with the reason
+   *  chosen; a sheet with void reasons refuses each without one); then show how many were voided
+   *  and refused, and the claims as the store now holds them. */
+  protected async bulkVoid(): Promise<void> {
+    if (this.bulkVoiding) return;
+    this.bulkVoidResult.set(null);
+    this.bulkVoidError.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const chosen = this.bulkVoidReason();
+    const reason = this.session.voidReasons().includes(chosen) ? chosen : null;
+    const ids = [...this.selectedClaims()];
+    this.bulkVoiding = true;
+    try {
+      const result = await this.claimsApi.bulkVoid(sheetId, ids, reason);
+      const claims = await this.claimsApi.list(sheetId);
+      if (this.session.sheetId() !== sheetId) return;
+      this.claims.set(claims);
+      this.selectedClaims.set(new Set());
+      this.bulkVoidResult.set(result);
+    } catch {
+      this.bulkVoidError.set('Something went wrong voiding the claims; try again.');
+    } finally {
+      this.bulkVoiding = false;
     }
   }
 

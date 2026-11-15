@@ -427,6 +427,12 @@ export class ClaimsApi {
       { ids, date }, { headers: this.headers() }));
   }
 
+  /** Void each of the claims with the reason (null: none), in list order, as voiding one would; those that cannot be voided are left as they are. */
+  bulkVoid(sheetId: string, ids: number[], reason: string | null): Promise<{ voided: number; refused: number }> {
+    return firstValueFrom(this.http.post<{ voided: number; refused: number }>(`${this.url(sheetId)}/claims/bulk-void`,
+      { ids, reason }, { headers: this.headers() }));
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }
