@@ -38,6 +38,8 @@ public class Sheet {
 
     /** The key of the clerk limit's dated values. */
     public static final String CLERK_LIMIT = "clerk-limit";
+    /** The key of a grade's own clerk limit's dated values, followed by the grade. */
+    public static final String CLERK_LIMIT_OF_GRADE = "clerk-limit-";
     /** The key of the floor's dated values. */
     public static final String FLOOR = "floor";
     /** The key of the sheet's terms' dated values. */
@@ -231,6 +233,13 @@ public class Sheet {
     /** The clerk limit in force on the sheet's today; null when there is none. */
     public BigDecimal getClerkLimit() {
         return amountOn(CLERK_LIMIT, today, null);
+    }
+
+    /** The clerk limit in force on the sheet's today for a grade: its own then when one is set,
+     *  else the sheet's; null when there is none. */
+    public BigDecimal clerkLimitFor(String grade) {
+        BigDecimal own = grade == null ? null : amountOn(CLERK_LIMIT_OF_GRADE + grade, today, null);
+        return own != null ? own : getClerkLimit();
     }
 
     /** The floor in force on the sheet's today. */

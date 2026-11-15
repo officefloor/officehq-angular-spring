@@ -28,6 +28,8 @@ public class SettingsService {
 
     /** The key the clerk limit is audited under. */
     public static final String CLERK_LIMIT = Sheet.CLERK_LIMIT;
+    /** The key a grade's clerk limit is audited under, followed by the grade. */
+    public static final String CLERK_LIMIT_OF_GRADE = Sheet.CLERK_LIMIT_OF_GRADE;
     /** The key the floor is audited under. */
     public static final String FLOOR = Sheet.FLOOR;
     /** The key the terms are audited under. */
@@ -135,6 +137,18 @@ public class SettingsService {
         sheets.lock(sheetId);
         BigDecimal scaled = limit == null ? null : limit.setScale(2);
         record(sheet, user, CLERK_LIMIT, scaled == null ? "" : scaled.toPlainString(), from);
+        return scaled;
+    }
+
+    /** Set a grade's clerk limit (null: none, the grade uses the sheet's) from a date (null: the
+     *  sheet's today), the sheet created first if it was never loaded; a claim whose person's grade
+     *  on the sheet's today is this one is held to it while it is in force then. */
+    @Transactional
+    public BigDecimal setGradeClerkLimit(String sheetId, String user, String grade, BigDecimal limit, LocalDate from) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        BigDecimal scaled = limit == null ? null : limit.setScale(2);
+        record(sheet, user, CLERK_LIMIT_OF_GRADE + grade, scaled == null ? "" : scaled.toPlainString(), from);
         return scaled;
     }
 
@@ -747,14 +761,15 @@ public class SettingsService {
         return held;
     }
 
-    /** Whether a user may settle a claim showing a due (null: n/a, within any limit): a steward
-     *  settles anything, a clerk only a due at or below the sheet's clerk limit, if it has one. */
+    /** Whether a user may settle a claim showing a due (null: n/a, within any limit) whose person
+     *  has a grade on the sheet's today: a steward settles anything, a clerk only a due at or below
+     *  the clerk limit in force (the grade's own when one is set, else the sheet's), if there is one. */
     @Transactional(readOnly = true)
-    public boolean maySettle(String sheetId, String user, BigDecimal due) {
+    public boolean maySettle(String sheetId, String user, String grade, BigDecimal due) {
         if (due == null || roleOf(sheetId, user) == Role.STEWARD) {
             return true;
         }
-        BigDecimal limit = clerkLimit(sheetId);
+        BigDecimal limit = sheets.find(sheetId).map(s -> s.clerkLimitFor(grade)).orElse(null);
         return limit == null || due.compareTo(limit) <= 0;
     }
 

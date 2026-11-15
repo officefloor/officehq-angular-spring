@@ -271,6 +271,17 @@ public class SettingsController {
         return view(sheetId);
     }
 
+    @PutMapping("/settings/clerk-limit/{grade}")
+    public SettingsView setGradeClerkLimit(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable @NotNull @Pattern(regexp = "[ABC]") String grade,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ClerkLimitForm body) {
+        BigDecimal limit = body.value().isEmpty() ? null : new BigDecimal(body.value());
+        service.setGradeClerkLimit(sheetId, user.trim(), grade, limit, fromOf(body.from()));
+        return view(sheetId);
+    }
+
     @PutMapping("/settings/floor")
     public SettingsView setFloor(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,

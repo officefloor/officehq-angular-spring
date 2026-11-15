@@ -139,6 +139,12 @@ export class Session {
     return own === null ? null : Number(own);
   }
 
+  /** A grade's own clerk limit (two decimals) in force on a date; null when it has none then
+   *  (a claim in it uses the sheet's). */
+  gradeClerkLimitOn(grade: string, date: string | null): string | null {
+    return valueOn(this.dated(), `clerk-limit-${grade}`, date)?.value ?? null;
+  }
+
   /** A grade's own proof threshold (two decimals) in force on a date; null when it has none then
    *  (a claim in it uses the sheet's). */
   gradeProofThresholdOn(grade: string, date: string | null): string | null {

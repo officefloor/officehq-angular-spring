@@ -447,7 +447,7 @@ public class ClaimService {
             // before the clerk limit: a claim needing a proof never goes to PENDING
             refuseIfUnproven(claim, person, settling);
         }
-        if (to == ClaimStatus.SETTLED && !settings.maySettle(sheetId, user, settling)) {
+        if (to == ClaimStatus.SETTLED && !settings.maySettle(sheetId, user, person.gradeOn(sheets.today(sheetId)), settling)) {
             // above the clerk limit: a steward approves or rejects it
             to = ClaimStatus.PENDING;
         }
