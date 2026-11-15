@@ -1,0 +1,136 @@
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index 79abcea24..16a390493 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -355,8 +355,8 @@ export function transferError(e: unknown): string {
+   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter the id of the sheet to transfer to.';
+   if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may transfer people, and neither sheet may be archived.';
+   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+-  if (e instanceof HttpErrorResponse && e.status === 409) return 'Their name, an alias or their contact is already on that sheet.';
+-  if (e instanceof HttpErrorResponse && e.status === 422) return 'A person is transferred only to another sheet, and not once retired.';
++  if (e instanceof HttpErrorResponse && e.status === 409) return 'Their name or an alias is used by more than one person there or elsewhere in its tree, or their contact is already on that sheet.';
++  if (e instanceof HttpErrorResponse && e.status === 422) return 'A person is transferred only to another sheet, not once retired, and not into a retired person there.';
+   return otherError(e);
+ }
+ 
+diff --git a/src/main/java/net/officefloor/hq/app/person/PersonService.java b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+index 3d192a608..f97dc0718 100644
+--- a/src/main/java/net/officefloor/hq/app/person/PersonService.java
++++ b/src/main/java/net/officefloor/hq/app/person/PersonService.java
+@@ -2,6 +2,7 @@ package net.officefloor.hq.app.person;
+ 
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
++import java.util.ArrayList;
+ import java.util.Comparator;
+ import java.util.HashMap;
+ import java.util.HashSet;
+@@ -533,8 +534,13 @@ public class PersonService {
+      *  entirely: their statements, patron links (both ways), pool memberships and watches are
+      *  dropped, and the numbers their claims had are never given here again. Refused (404) for a
+      *  person not on the sheet, (403) unless the user acts as a steward or when either sheet is
+-     *  archived, (422) for a retired person or this sheet's own id, and (409) when their name, an
+-     *  alias or their contact is already on the other sheet. */
++     *  archived, (422) for a retired person or this sheet's own id, and (409) when their name or an
++     *  alias is a name or alias on another sheet of the other sheet's tree, or when their contact is
++     *  already on the other sheet. When someone on the other sheet goes by their name or an alias
++     *  they are merged into them there instead, as a merge does: their claims are listed after
++     *  that person's, unbound, and their name and aliases join that person's aliases; answers with
++     *  that person. Refused (409) when more than one person there goes by them, and (422) when that
++     *  person is retired. */
+     @Transactional
+     public Person transfer(String sheetId, String user, long id, String toSheetId) {
+         Person person = people.findForUpdate(id, sheetId)
+@@ -555,20 +561,40 @@ public class PersonService {
+         sheets.load(target, user);
+         // held until the transaction ends, so two people cannot take the same name there at once
+         sheets.lock(target);
+-        requireUnusedName(target, null, person.getName());
+-        person.getAliases().forEach(alias -> requireUnusedName(target, null, alias));
+-        requireUnusedContact(target, null, person.getContact());
++        // someone there going by their name or an alias: they are merged into them
++        List<String> names = new ArrayList<>();
++        names.add(person.getName());
++        names.addAll(person.getAliases());
++        List<Person> matches = people.findBySheetIdOrderByPositionAscIdAsc(target).stream()
++                .filter(p -> names.stream().anyMatch(p::goesBy)).toList();
++        if (matches.size() > 1) {
++            throw nameInUse();
++        }
++        Person into = matches.isEmpty() ? null : people.findForUpdate(matches.get(0).getId(), target)
++                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Saved by another user"));
++        if (into == null) {
++            names.forEach(name -> requireUnusedName(target, null, name));
++            requireUnusedContact(target, null, person.getContact());
++        } else if (into.isRetired()) {
++            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A retired person cannot be merged");
++        } else {
++            names.stream().filter(name -> !into.goesBy(name)).forEach(name -> requireUnusedName(target, null, name));
++        }
+ 
+         RollupService.Snapshot beforeHere = rollup.snapshot(sheetId);
+         RollupService.Snapshot beforeThere = rollup.snapshot(target);
+ 
+         Person arrived;
+-        try {
+-            Person copy = person.transferredTo(target);
+-            copy.setPosition(people.nextPosition(target));
+-            arrived = people.saveAndFlush(copy);
+-        } catch (DataIntegrityViolationException e) {
+-            throw inUse(e); // taken there by another user at the same moment
++        if (into != null) {
++            arrived = into;
++        } else {
++            try {
++                Person copy = person.transferredTo(target);
++                copy.setPosition(people.nextPosition(target));
++                arrived = people.saveAndFlush(copy);
++            } catch (DataIntegrityViolationException e) {
++                throw inUse(e); // taken there by another user at the same moment
++            }
+         }
+ 
+         // claims: copied oldest listed first, so they are listed there in the order they are here
+@@ -579,6 +605,9 @@ public class PersonService {
+         for (Claim claim : theirs) {
+             Claim copy = claim.transferredTo(target, arrived.getId());
+             copy.setListed(++listed);
++            if (into != null) {
++                copy.unbind();
++            }
+             copies.put(claim, claims.saveAndFlush(copy));
+         }
+         Map<Long, List<ClaimLog>> logs = new HashMap<>();
+@@ -652,8 +681,21 @@ public class PersonService {
+         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + sheetId + " by=" + user
+                 + " name=" + person.getName() + " to=" + target);
+         rollup.recordChanges(sheetId, user, beforeHere);
++        if (into != null) {
++            // aliases joined, as a merge joins them
++            names.stream().filter(name -> !name.equals(into.getName())).forEach(into::addAlias);
++            try {
++                people.flush();
++            } catch (DataIntegrityViolationException | ObjectOptimisticLockingFailureException e) {
++                throw savedByAnother(); // saved by another user at the same moment
++            }
++        }
+         audit.recordOnCommit("PERSON_TRANSFERRED sheet=" + target + " by=" + user
+-                + " name=" + arrived.getName() + " from=" + sheetId);
++                + " name=" + person.getName() + " from=" + sheetId);
++        if (into != null) {
++            audit.recordOnCommit("PERSON_MERGED sheet=" + target + " by=" + user
++                    + " from=" + person.getName() + " into=" + into.getName());
++        }
+         rollup.recordChanges(target, user, beforeThere);
+         return arrived;
+     }
+diff --git a/src/main/resources/db/migration/V73__person_alias_case.sql b/src/main/resources/db/migration/V73__person_alias_case.sql
+new file mode 100644
+index 000000000..6941889d6
+--- /dev/null
++++ b/src/main/resources/db/migration/V73__person_alias_case.sql
+@@ -0,0 +1,4 @@
++-- A merge by transfer joins the arriving person's name and aliases to the aliases of the person
++-- they are merged into, so one person may hold aliases differing only in case (Addie and addie).
++-- The service still keeps an alias from equalling another name or alias on the sheet.
++DROP INDEX person_alias_key;
