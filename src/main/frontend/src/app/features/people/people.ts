@@ -19,7 +19,7 @@ import { Dashboard, Header } from '../header/header';
 import { DescendantFigures, FigureMember, GRADES, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
-// claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
+// claims, what they have claimed, their due-total (held to the sheet's cap less their cut total), its excess over that and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
 // due-total and overdue claims; a header of counters repeating them; a summary of them by grade, period and status; and
 // the one form that adds a person or, with a
 // person's editor open, saves that person.
@@ -688,14 +688,16 @@ export class People {
     }
     return out;
   });
-  /** Each person's due-total in cents, by person id, held to the sheet's cap: the cap when their
-   *  uncapped one is above it (n/a is not capped). */
+  /** Each person's due-total in cents, by person id, held to the sheet's cap less their cut total
+   *  (not below 0.00): that when their uncapped one is above it (n/a is not capped). */
   protected readonly dueByPerson = computed(() => {
     const cap = this.session.cap();
     const capCents = cap === null ? null : cents(cap);
+    const cuts = this.cutTotals();
     const out = new Map<number, number | null>();
     for (const [id, due] of this.uncappedDueByPerson()) {
-      out.set(id, due === null || capCents === null ? due : Math.min(due, capCents));
+      const held = capCents === null ? null : Math.max(capCents - (cuts.get(id) ?? 0), 0);
+      out.set(id, due === null || held === null ? due : Math.min(due, held));
     }
     return out;
   });
@@ -735,7 +737,8 @@ export class People {
   protected readonly cutTotals = signal<Map<number, number>>(new Map());
   /** Everyone's cut total added up. */
   protected readonly cutTotal = computed(() => [...this.cutTotals().values()].reduce((sum, c) => sum + c, 0));
-  /** The person's excess in cents: how far their uncapped due-total is above their capped one (0 otherwise). */
+  /** The person's excess in cents: how far their uncapped due-total is above their capped one, the
+   *  cap less their cut total (0 otherwise). */
   protected excessOf(personId: number): number {
     return (this.uncappedDueByPerson().get(personId) ?? 0) - (this.dueByPerson().get(personId) ?? 0);
   }

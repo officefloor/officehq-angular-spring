@@ -12,6 +12,7 @@ import net.officefloor.hq.app.crew.CrewRepository;
 import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodRepository;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
 import net.officefloor.hq.app.sheet.SheetService;
@@ -39,10 +40,13 @@ public class PoolService {
     private final SheetService sheets;
     private final PeriodRepository periods;
     private final HistoryService history;
+    private final RollupService rollup;
     private final Audit audit;
 
     public PoolService(PoolRepository pools, PoolMemberRepository members, PersonRepository people,
-            CrewRepository crews, SheetService sheets, PeriodRepository periods, HistoryService history, Audit audit) {
+            CrewRepository crews, SheetService sheets, PeriodRepository periods, HistoryService history,
+            RollupService rollup, Audit audit) {
+        this.rollup = rollup;
         this.pools = pools;
         this.members = members;
         this.people = people;
@@ -110,11 +114,13 @@ public class PoolService {
         if (members.existsByPoolIdAndPersonId(pool.getId(), person.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "The person is in the pool already");
         }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         PoolMember member = new PoolMember(pool.getId(), person.getId(), share);
         member.setDates(from, to);
         member = members.saveAndFlush(member);
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
                 + " name=" + person.getName() + " share=" + share.setScale(2).toPlainString() + dates(from, to));
+        rollup.recordChanges(sheetId, user, before);
         return member;
     }
 
@@ -153,11 +159,13 @@ public class PoolService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "A chain of pools is at most " + MAX_DEPTH + " deep");
         }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         PoolMember member = PoolMember.ofPool(pool.getId(), memberPool.getId(), share);
         member.setDates(from, to);
         member = members.saveAndFlush(member);
         audit.recordOnCommit("POOL_MEMBER_ADDED sheet=" + sheetId + " by=" + user + " pool=" + pool.getName()
                 + " name=" + memberPool.getName() + " share=" + share.setScale(2).toPlainString() + dates(from, to));
+        rollup.recordChanges(sheetId, user, before);
         return member;
     }
 

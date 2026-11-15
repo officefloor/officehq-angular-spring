@@ -27,6 +27,7 @@ import net.officefloor.hq.app.person.PersonWatchRepository;
 import net.officefloor.hq.app.person.StatementSummary;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
+import net.officefloor.hq.app.pool.CutTotals;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.HolidayAdded;
 import net.officefloor.hq.app.settings.Permission;
@@ -1064,7 +1065,7 @@ public class ClaimService {
         LocalDate on = claim.getDate();
         claim.setAmount(claim.getAmount().subtract(amount));
         claim.unbind();
-        int terms = claim.getTerms();
+        int terms = termsOf(sheetId, person);
         Claim fresh = new Claim(sheetId, person.getId(), amount, on, dueByOf(sheetId, on, terms), claim.getNote());
         fresh.setTerms(terms);
         fresh.setStatus(ClaimStatus.OPEN);
@@ -1185,7 +1186,8 @@ public class ClaimService {
         List<Claim> theirs = claims.findByPersonForUpdate(personId, sheetId);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         List<Claim> counted = theirs.stream().filter(c -> counts(c, person, today)).toList();
-        BigDecimal dueTotal = Sheet.capped(dueTotalOf(counted, person, today), sheets.cap(sheetId));
+        BigDecimal dueTotal = Sheet.capped(dueTotalOf(counted, person, today),
+                RollupService.capLessCut(sheets.cap(sheetId), rollup.cutTotals(sheetId).get(personId)));
         for (Claim c : theirs) {
             if (counts(c, person, today)) {
                 // the statement binds the due as shown, late charge included (a bound one stays as it is)
@@ -1221,7 +1223,8 @@ public class ClaimService {
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         RollupService.Stated stated = RollupService.statedOn(then.sheet(), was, personId,
                 List.copyOf(then.claims().values()), new RateChain.Levels(sheetId, then.rates(),
-                        rateChain.ancestors(sheetId).stream().map(a -> history.asOf(a, asOf).rates()).toList()));
+                        rateChain.ancestors(sheetId).stream().map(a -> history.asOf(a, asOf).rates()).toList()),
+                then.sheet().getCap() == null ? null : CutTotals.of(then).get(personId));
         Map<Long, BigDecimal> bound = new HashMap<>();
         then.claims().forEach((id, c) -> {
             if (stated.counted().containsKey(c)) {

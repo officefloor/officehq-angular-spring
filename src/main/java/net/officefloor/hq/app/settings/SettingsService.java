@@ -507,11 +507,13 @@ public class SettingsService {
     public BigDecimal setPot(String sheetId, String user, BigDecimal pot) {
         Sheet sheet = sheets.load(sheetId, user);
         sheets.lock(sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
         BigDecimal scaled = pot == null ? null : pot.setScale(2);
         sheet.setPot(scaled);
         sheets.flush();
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + POT + " value=" + (scaled == null ? "" : scaled.toPlainString()));
+        rollup.recordChanges(sheetId, user, before);
         return scaled;
     }
 

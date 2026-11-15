@@ -26,6 +26,7 @@ import net.officefloor.hq.app.claim.Rounding;
 import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.person.Person;
 import net.officefloor.hq.app.person.PersonRepository;
+import net.officefloor.hq.app.pool.CutTotals;
 import net.officefloor.hq.app.rate.Rate;
 import net.officefloor.hq.app.rate.RateChain;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -129,10 +130,12 @@ public class RollupService {
     private final RateChain rateChain;
     private final SheetRepository sheets;
     private final HistoryService history;
+    private final CutTotals cuts;
     private final Audit audit;
 
     public RollupService(PersonRepository people, ClaimRepository claims, ClaimLogRepository log,
-            RateChain rateChain, SheetRepository sheets, HistoryService history, Audit audit) {
+            RateChain rateChain, SheetRepository sheets, HistoryService history, CutTotals cuts, Audit audit) {
+        this.cuts = cuts;
         this.history = history;
         this.rateChain = rateChain;
         this.people = people;
@@ -146,8 +149,31 @@ public class RollupService {
     public Snapshot snapshot(String sheetId) {
         Map<Long, Person> sheetPeople = new LinkedHashMap<>();
         people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> sheetPeople.put(p.getId(), p));
-        return snapshotOf(sheets.findById(sheetId), sheetPeople, claims.findBySheetIdOrderByIdDesc(sheetId),
-                rateChain.levels(sheetId));
+        Optional<Sheet> sheet = sheets.findById(sheetId);
+        return snapshotOf(sheet, sheetPeople, claims.findBySheetIdOrderByIdDesc(sheetId),
+                rateChain.levels(sheetId), cutTotals(sheetId, sheet, sheetPeople));
+    }
+
+    /** Each person's cut total on the sheet now, by person id (none when the sheet has no cap, as
+     *  the cut totals then hold nothing). */
+    private Map<Long, BigDecimal> cutTotals(String sheetId, Optional<Sheet> sheet, Map<Long, Person> sheetPeople) {
+        if (sheet.map(Sheet::getCap).isEmpty()) {
+            return Map.of();
+        }
+        return cuts.of(sheetId, sheet.get().getPot(), sheetPeople, sheet.get().getToday());
+    }
+
+    /** Each person's cut total on the sheet now, by person id. */
+    public Map<Long, BigDecimal> cutTotals(String sheetId) {
+        Map<Long, Person> sheetPeople = new LinkedHashMap<>();
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> sheetPeople.put(p.getId(), p));
+        return cutTotals(sheetId, sheets.findById(sheetId), sheetPeople);
+    }
+
+    /** The cap a person's due-total is held to: the sheet's cap less their cut total, not below
+     *  0.00 (null: no cap). */
+    public static BigDecimal capLessCut(BigDecimal cap, BigDecimal cut) {
+        return cap == null ? null : cap.subtract(cut == null ? zero() : cut).max(zero());
     }
 
     /** The sheet's figures as it stood at the end of {@code on}, rebuilt from its history (and its
@@ -160,13 +186,14 @@ public class RollupService {
                 .toList();
         RateChain.Levels sheetRates = new RateChain.Levels(sheetId, then.rates(),
                 rateChain.ancestors(sheetId).stream().map(a -> history.asOf(a, on).rates()).toList());
-        return snapshotOf(Optional.of(then.sheet()), then.people(), sheetClaims, sheetRates);
+        return snapshotOf(Optional.of(then.sheet()), then.people(), sheetClaims, sheetRates,
+                then.sheet().getCap() == null ? Map.of() : CutTotals.of(then));
     }
 
     /** The figures of a sheet with these settings (none: the defaults, today the real date), people
-     *  (by id, in list order), claims (newest first) and rates. */
+     *  (by id, in list order), claims (newest first), rates and people's cut totals (by id). */
     private static Snapshot snapshotOf(Optional<Sheet> sheet, Map<Long, Person> sheetPeople, List<Claim> sheetClaims,
-            RateChain.Levels sheetRates) {
+            RateChain.Levels sheetRates, Map<Long, BigDecimal> cutTotals) {
         LocalDate today = sheet.map(Sheet::getToday).orElseGet(LocalDate::now);
         Function<LocalDate, BigDecimal> floor = floorOf(sheet);
         BigDecimal cap = sheet.map(Sheet::getCap).orElse(null);
@@ -209,7 +236,8 @@ public class RollupService {
                     .reduce(zero(), BigDecimal::add);
             int overdueCount = (int) overdueClaims.stream().filter(c -> !c.isDeferredOn(today)).count();
             out.put(id, new Figures(p.getName(), claimed,
-                    Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding, shared), cap), overdue,
+                    Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding, shared),
+                            capLessCut(cap, cutTotals.get(id))), overdue,
                     p.gradeOn(today), p.isRetired(), List.copyOf(p.getAliases()), settled, overdueCount));
         });
         Map<ClaimStatus, Integer> statuses = new LinkedHashMap<>();
@@ -402,9 +430,9 @@ public class RollupService {
     /** The statement of a person on a sheet that is not stored (one rebuilt as it stood at the end of
      *  a date, its today that date): counting their claims among {@code sheetClaims}, by the rates,
      *  floor, late charge and cap of the sheet and the person's holds and retirement, as the live
-     *  totals do. */
+     *  totals do; their due-total held to the cap less their cut total. */
     public static Stated statedOn(Sheet sheet, Person person, Long personId, List<Claim> sheetClaims,
-            RateChain.Levels sheetRates) {
+            RateChain.Levels sheetRates, BigDecimal cutTotal) {
         Optional<Sheet> held = Optional.of(sheet);
         LocalDate today = sheet.getToday();
         Function<LocalDate, BigDecimal> floor = floorOf(held);
@@ -415,7 +443,7 @@ public class RollupService {
                 .filter(c -> c.getPersonId().equals(personId) && countsFor(c, person, today))
                 .forEach(c -> counted.put(c, shownDueOf(c, person, sheetRates, floor, late, rounding)));
         BigDecimal dueTotal = dueTotalOf(List.copyOf(counted.keySet()), person, sheetRates, today, floor, late, rounding, List.of());
-        return new Stated(counted, Sheet.capped(dueTotal, sheet.getCap()));
+        return new Stated(counted, Sheet.capped(dueTotal, capLessCut(sheet.getCap(), cutTotal)));
     }
 
     /** The due a claim of a person shows on a sheet that is not stored (one rebuilt as it stood at
