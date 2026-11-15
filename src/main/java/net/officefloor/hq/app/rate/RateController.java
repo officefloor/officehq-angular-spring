@@ -16,6 +16,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -43,6 +44,10 @@ public class RateController {
         public boolean isToNotBeforeFrom() {
             return from == null || to == null || !to.isBefore(from);
         }
+    }
+
+    /** The rate import box's text: lines of grade,rate,from,to. */
+    public record ImportForm(@NotNull @Size(max = 1_000_000) String text) {
     }
 
     private final RateService service;
@@ -84,5 +89,14 @@ public class RateController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody RateForm body) {
         return RateView.of(service.set(sheetId, user.trim(), grade, body.from(), body.to(), new BigDecimal(body.pct())));
+    }
+
+    /** The rates set by an import, in the order of their lines. */
+    @PostMapping("/import")
+    public List<RateView> importRates(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody ImportForm body) {
+        return service.importRates(sheetId, user.trim(), body.text()).stream().map(RateView::of).toList();
     }
 }

@@ -95,6 +95,11 @@ export class RatesApi {
     );
   }
 
+  /** Set a rate for each pasted line of grade,rate,from,to, all or none; the rates set, in line order. */
+  importRates(sheetId: string, text: string): Promise<Rate[]> {
+    return firstValueFrom(this.http.post<Rate[]>(`${this.url(sheetId)}/import`, { text }, { headers: this.headers() }));
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}/rates`;
   }
@@ -107,6 +112,14 @@ export class RatesApi {
 export function rateError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Choose a grade, enter a percent of 0.00 or more with up to two decimals and a from-date and to-date as yyyy-mm-dd or none, the to-date not before the from-date.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The rate was changed at the same moment; try again.';
+  return otherError(e);
+}
+
+export function importRatesError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) {
+    return 'Paste lines of grade,rate,from,to: a grade A, B or C, a percent of 0.00 or more with up to two decimals, and a from-date and to-date as yyyy-mm-dd or blank, the to-date not before the from-date.';
+  }
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'A rate was changed at the same moment; try again.';
   return otherError(e);
 }
 

@@ -1,13 +1,14 @@
-import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
 import { GRADES } from '../people/people-api';
-import { PCT_PATTERN, Rate, RatePreview, RatesApi, pctOn, rateError } from './rates-api';
+import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rateError } from './rates-api';
 
 // The rate in force on the sheet's today for each grade, every rate the sheet has for each grade by
-// from-date, the form that sets a grade's rate from a date, optionally through a date, and a preview
-// of what a candidate rate for a grade would change (nothing is saved).
+// from-date, the form that sets a grade's rate from a date, optionally through a date, an import box
+// that sets a rate per pasted line, and a preview of what a candidate rate for a grade would change
+// (nothing is saved).
 @Component({
   selector: 'app-rates',
   imports: [ReactiveFormsModule],
@@ -30,6 +31,17 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, pctOn, rateError } from './ra
         <button type="submit" data-testid="rate-form-submit">Set rate</button>
         @if (error(); as err) {
           <p role="alert" data-testid="rate-form-error">{{ err }}</p>
+        }
+      </form>
+      <form [formGroup]="importForm" (ngSubmit)="importRates()" aria-label="Import rates">
+        <label for="import-rates">Import rates (grade,rate,from,to per line)</label>
+        <textarea id="import-rates" data-testid="import-rates" formControlName="text" rows="4"></textarea>
+        <button type="submit" data-testid="import-rates-submit">Import rates</button>
+        @if (imported() !== null) {
+          <p role="status">Set <strong data-testid="import-rates-set">{{ imported() }}</strong></p>
+        }
+        @if (importErr(); as err) {
+          <p role="alert" data-testid="import-rates-error">{{ err }}</p>
         }
       </form>
       <form [formGroup]="previewForm" (ngSubmit)="runPreview()" aria-label="Preview rate">
@@ -111,6 +123,15 @@ export class Rates {
     to: new FormControl('', { nonNullable: true }),
   });
 
+  /** The import box: lines of grade,rate,from,to, each a rate as the form sets it. */
+  protected readonly importForm = new FormGroup({
+    text: new FormControl('', { nonNullable: true }),
+  });
+  /** How many rates the last import set; null while one runs or before the first. */
+  protected readonly imported = signal<number | null>(null);
+  protected readonly importErr = signal<string | null>(null);
+  private importing = false;
+
   /** What a candidate percent for a grade would change on the sheet as it is shown. */
   readonly preview = input.required<(grade: string, pct: string) => RatePreview>();
   protected readonly previewed = signal<RatePreview | null>(null);
@@ -125,6 +146,17 @@ export class Rates {
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(null));
     this.previewForm.valueChanges.subscribe(() => this.previewError.set(null));
+    this.importForm.valueChanges.subscribe(() => this.importErr.set(null));
+    // a sheet (re)loaded starts with an empty import box
+    effect(() => {
+      this.session.sheetId();
+      this.session.loads();
+      untracked(() => {
+        this.importForm.reset({ text: '' }, { emitEvent: false });
+        this.imported.set(null);
+        this.importErr.set(null);
+      });
+    });
     // a preview is of the sheet as it was; once its rates are (re)loaded or changed it is gone
     effect(() => {
       this.rates();
@@ -191,6 +223,32 @@ export class Rates {
       this.error.set(rateError(e));
     } finally {
       this.submitting = false;
+    }
+  }
+
+  /** Set a rate per imported line, all or none; then show how many were set. */
+  protected async importRates(): Promise<void> {
+    if (this.importing) return;
+    this.imported.set(null);
+    this.importErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const text = this.importForm.getRawValue().text;
+    if (!text.trim()) {
+      this.importErr.set('Paste at least one line of grade,rate,from,to.');
+      return;
+    }
+    this.importing = true;
+    try {
+      const rates = await this.api.importRates(sheetId, text);
+      if (this.session.sheetId() !== sheetId) return;
+      rates.forEach((r) => this.saved.emit(r));
+      this.importForm.reset({ text: '' }, { emitEvent: false });
+      this.imported.set(rates.length);
+    } catch (e) {
+      this.importErr.set(importRatesError(e));
+    } finally {
+      this.importing = false;
     }
   }
 }
