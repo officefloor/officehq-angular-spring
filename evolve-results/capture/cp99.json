@@ -1,0 +1,64 @@
+{
+  "checkpoint": 99,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp99_person-contact",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A person may have a contact: a text on the person form, stored with surrounding spaces removed and\nlower-cased, shown on the row. A contact already on the sheet (another person's) is refused with an\nerror on the form, and nothing is saved; a blank contact is none. PERSON_ADDED gains\ncontact=<contact> at the end when the form gave one; PERSON_EDITED gains contact=<contact> at the\nend when the contact the form gave differs from the one stored (the empty value when it was\ncleared).\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA person may have a contact: a text on the person form, stored with surrounding spaces removed and\nlower-cased, shown on the row. A contact already on the sheet (another person's) is refused with an\nerror on the form, and nothing is saved; a blank contact is none. PERSON_ADDED gains\ncontact=<contact> at the end when the form gave one; PERSON_EDITED gains contact=<contact> at the\nend when the contact the form gave differs from the one stored (the empty value when it was\ncleared).\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "0e1f56180db1d7ea1822b431c0442f469ba78f10",
+  "reset_sha": "",
+  "preagent_sha": "719501bd8fdc6aa4c1c7b43c931d1db77fe0d06e",
+  "prev_sha": "719501bd8fdc6aa4c1c7b43c931d1db77fe0d06e",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.7573892000000001,
+    "input_tokens": 30,
+    "output_tokens": 8812,
+    "cache_read_tokens": 641986,
+    "cache_creation_tokens": 56579,
+    "num_turns": 17,
+    "duration_ms": 248913,
+    "duration_api_ms": 79429,
+    "model": "claude-opus-5-5",
+    "session_id": "adc2f743-a1c4-4df8-aa41-3e3054fa7071",
+    "stop_reason": "success",
+    "result_text": "People can now have a contact, and all 4 tests in the acceptance spec pass when run with `bin/e2e`.\n\n**How it behaves:**\n- The person form has a new Contact field. The contact is saved with surrounding spaces removed and in lower case, and shown in a new Contact column on the row.\n- Leaving it blank means no contact.\n- A contact that another person on the same sheet already has is refused: the form shows an error and nothing is saved or written to the audit file.\n- `PERSON_ADDED` ends with `contact=<contact>` when one was given.\n- `PERSON_EDITED` ends with `contact=<contact>` when the contact changed, and with `contact=` when it was cleared.\n\n**What changed:**\n- **Database:** a new migration, `V61__person_contact.sql`, adds a `contact` column to people and makes it unique per sheet. The unique rule also covers two users saving the same contact at the same moment.\n- **Server:**\n  - `Person` has the new field.\n  - The form in `PersonController` cleans up the value and the person view returns it.\n  - `PersonService` refuses duplicates and writes the audit fields.\n  - `HistoryService` keeps the contact so viewing a sheet as of a past date still shows it.\n  - `QuickAddService` was updated to the new `add` signature.\n- **Front end:** `people.ts` and `people-api.ts` have the form field, the row cell (`person-form-contact` and `person-contact`), and the add and save requests.\n\nA taken contact gets the same error as a taken name, worded \"That name or contact is already in use on this sheet.\" The server tells the two apart, but the screen doesn't, because both come back as the same kind of conflict. A separate message for each would need the screen to read the server's reason.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.7573892000000001,
+        "num_turns": 17,
+        "duration_ms": 248913,
+        "duration_api_ms": 79429,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp99.agent.jsonl",
+  "agent_diff_file": "cp99.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
