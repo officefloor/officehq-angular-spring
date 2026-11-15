@@ -10,7 +10,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /** A statement taken of a person: their due-total then (null when n/a), how many of their claims
- *  counted then, and the sheet's today when it was taken. */
+ *  counted then, the sheet's today when it was taken, and the date it was taken as of (none: as the
+ *  sheet stood when it was taken). */
 @Entity
 @Table(name = "person_statement")
 public class PersonStatement {
@@ -34,6 +35,9 @@ public class PersonStatement {
     @Column(name = "taken_on", nullable = false)
     private LocalDate takenOn;
 
+    @Column(name = "as_of")
+    private LocalDate asOf;
+
     @Column(name = "taken_by", nullable = false)
     private String takenBy;
 
@@ -41,12 +45,13 @@ public class PersonStatement {
     }
 
     public PersonStatement(String sheetId, Long personId, BigDecimal dueTotal, int claims, LocalDate takenOn,
-            String takenBy) {
+            LocalDate asOf, String takenBy) {
         this.sheetId = sheetId;
         this.personId = personId;
         this.dueTotal = dueTotal;
         this.claims = claims;
         this.takenOn = takenOn;
+        this.asOf = asOf;
         this.takenBy = takenBy;
     }
 
@@ -68,5 +73,15 @@ public class PersonStatement {
 
     public LocalDate getTakenOn() {
         return takenOn;
+    }
+
+    /** The date the statement was taken as of; null when it was taken as the sheet stood then. */
+    public LocalDate getAsOf() {
+        return asOf;
+    }
+
+    /** The date the statement shows: the one it was taken as of, else the sheet's today when taken. */
+    public LocalDate getStatedOn() {
+        return asOf != null ? asOf : takenOn;
     }
 }

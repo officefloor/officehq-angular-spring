@@ -162,6 +162,31 @@ public class RollupService {
         return out;
     }
 
+    /** A statement's figures for a person: their claims that count, each with the figure a statement
+     *  binds it to (null: n/a), and their due-total held to the cap (null: n/a). */
+    public record Stated(Map<Claim, BigDecimal> counted, BigDecimal dueTotal) {
+    }
+
+    /** The statement of a person on a sheet that is not stored (one rebuilt as it stood at the end of
+     *  a date, its today that date): counting their claims among {@code sheetClaims}, by the rates,
+     *  floor, late charge and cap of the sheet and the person's holds and retirement, as the live
+     *  totals do. */
+    public static Stated statedOn(Sheet sheet, Person person, Long personId, List<Claim> sheetClaims,
+            List<Rate> sheetRates) {
+        Optional<Sheet> held = Optional.of(sheet);
+        LocalDate today = sheet.getToday();
+        Function<LocalDate, BigDecimal> floor = floorOf(held);
+        LateCharge late = LateCharge.of(held);
+        Function<Claim, RoundingMode> rounding = roundingOf(held, sheetClaims);
+        Map<Claim, BigDecimal> counted = new LinkedHashMap<>();
+        sheetClaims.stream()
+                .filter(c -> c.getPersonId().equals(personId) && countsFor(c, person, today))
+                .forEach(c -> counted.put(c, c.getSettledDue() != null ? c.getSettledDue()
+                        : figureOf(c, person, sheetRates, rounding.apply(c))));
+        BigDecimal dueTotal = dueTotalOf(List.copyOf(counted.keySet()), person, sheetRates, today, floor, late, rounding);
+        return new Stated(counted, Sheet.capped(dueTotal, sheet.getCap()));
+    }
+
     /** Record, once the transaction commits, a ROLLUP line for each person whose figures moved
      *  since {@code before}, then a TOTALS line when the sheet's totals moved. */
     public void recordChanges(String sheetId, String user, Snapshot before) {
@@ -186,13 +211,19 @@ public class RollupService {
      *  by a statement, nor (so unbound) any open one of a person whose retirement date the sheet's
      *  today has reached, nor one deferred on the sheet's today. */
     private static boolean counts(Claim c, Map<Long, Person> held, LocalDate today) {
+        return countsFor(c, held.get(c.getPersonId()), today);
+    }
+
+    /** Whether a claim of the person (null: one with neither a hold nor a retirement) counts, as
+     *  {@link #counts} has it. */
+    private static boolean countsFor(Claim c, Person person, LocalDate today) {
         if (c.getStatus() == ClaimStatus.SETTLED) {
             return true;
         }
         if (!c.getStatus().isOpen() || c.isDeferredOn(today)) {
             return false;
         }
-        return c.isBound() || !leftOut(held.get(c.getPersonId()), c, today);
+        return c.isBound() || !leftOut(person, c, today);
     }
 
     /** Whether a claim counts toward a period's due-total, taken in {@code status} (the one it had

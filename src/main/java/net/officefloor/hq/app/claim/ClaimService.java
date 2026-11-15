@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.period.Period;
 import net.officefloor.hq.app.period.PeriodService;
 import net.officefloor.hq.app.person.Person;
@@ -53,6 +54,7 @@ public class ClaimService {
     private final RollupService rollup;
     private final PeriodService periods;
     private final SettingsService settings;
+    private final HistoryService history;
     private final Audit audit;
 
     /** A statement just taken: the person, their statement summary now, and their claims, newest first. */
@@ -64,7 +66,7 @@ public class ClaimService {
     }
 
     public ClaimService(ClaimRepository claims, ClaimLogRepository log, RetiredNumberRepository retired, PersonRepository people, PersonStatementRepository statements,
-            PersonWatchRepository watches, RateRepository rates, SheetService sheets, RollupService rollup, PeriodService periods, SettingsService settings, Audit audit) {
+            PersonWatchRepository watches, RateRepository rates, SheetService sheets, RollupService rollup, PeriodService periods, SettingsService settings, HistoryService history, Audit audit) {
         this.claims = claims;
         this.log = log;
         this.retired = retired;
@@ -76,6 +78,7 @@ public class ClaimService {
         this.rollup = rollup;
         this.periods = periods;
         this.settings = settings;
+        this.history = history;
         this.audit = audit;
     }
 
@@ -613,9 +616,13 @@ public class ClaimService {
 
     /** Take a statement of a person: record their due-total now, and bind each of their claims
      *  that counts (OPEN, PENDING or SETTLED, but no unbound open one within a hold, nor a deferred one) to its figure now; the others
-     *  are left unbound. */
+     *  are left unbound. Taken as of a date ({@code asOf}, not null), the sheet as it stood at the end
+     *  of that date stands in for it now (see {@link #statementAsOf}). */
     @Transactional
-    public Statement statement(String sheetId, String user, long personId) {
+    public Statement statement(String sheetId, String user, long personId, LocalDate asOf) {
+        if (asOf != null) {
+            return statementAsOf(sheetId, user, personId, asOf);
+        }
         Person person = people.findForUpdate(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate today = sheets.today(sheetId);
@@ -632,11 +639,58 @@ public class ClaimService {
             }
         }
         claims.flush();
-        statements.saveAndFlush(new PersonStatement(sheetId, personId, dueTotal, counted.size(), today, user));
+        return stated(sheetId, user, person, theirs, dueTotal, counted.size(), today, null, before);
+    }
+
+    /** Take a statement of a person as of a date on or before the sheet's today: their claims that
+     *  counted at the end of it are bound to their figures as they stood then (every change made
+     *  while the sheet's today was on or before it counts, every later one does not), with that date
+     *  standing in for the sheet's today in every figure; their other claims are left unbound.
+     *  Refused (422) when the date is after the sheet's today, or the person was not yet added then. */
+    private Statement statementAsOf(String sheetId, String user, long personId, LocalDate asOf) {
+        Person person = people.findForUpdate(personId, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        LocalDate today = sheets.today(sheetId);
+        if (asOf.isAfter(today)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A statement is taken as of a date on or before the sheet's today");
+        }
+        HistoryService.AsOf then = history.asOf(sheetId, asOf);
+        Person was = then.people().get(personId);
+        if (was == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "The person was not yet on the sheet on " + asOf);
+        }
+        List<Claim> theirs = claims.findByPersonForUpdate(personId, sheetId);
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        RollupService.Stated stated = RollupService.statedOn(then.sheet(), was, personId,
+                List.copyOf(then.claims().values()), then.rates());
+        Map<Long, BigDecimal> bound = new HashMap<>();
+        then.claims().forEach((id, c) -> {
+            if (stated.counted().containsKey(c)) {
+                bound.put(id, stated.counted().get(c));
+            }
+        });
+        for (Claim c : theirs) {
+            if (bound.containsKey(c.getId())) {
+                c.bind(bound.get(c.getId()));
+            } else {
+                c.unbind();
+            }
+        }
+        claims.flush();
+        return stated(sheetId, user, person, theirs, stated.dueTotal(), stated.counted().size(), today, asOf, before);
+    }
+
+    /** Record a statement just taken (as of {@code asOf}, or null) and audit it. */
+    private Statement stated(String sheetId, String user, Person person, List<Claim> theirs, BigDecimal dueTotal,
+            int counted, LocalDate today, LocalDate asOf, RollupService.Snapshot before) {
+        statements.saveAndFlush(new PersonStatement(sheetId, person.getId(), dueTotal, counted, today, asOf, user));
         audit.recordOnCommit("STATEMENT sheet=" + sheetId + " by=" + user + " name=" + person.getName()
-                + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counted.size());
+                + " due-total=" + (dueTotal == null ? "n/a" : dueTotal.toPlainString()) + " claims=" + counted
+                + (asOf == null ? "" : " asof=" + asOf));
         rollup.recordChanges(sheetId, user, before);
-        return new Statement(person, StatementSummary.of(statements.findByPersonIdOrderByIdAsc(personId)), theirs);
+        return new Statement(person, StatementSummary.of(statements.findByPersonIdOrderByIdAsc(person.getId())), theirs);
     }
 
     /** A steward cancels a person's last statement: it is removed, and every claim it bound is

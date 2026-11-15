@@ -4,6 +4,7 @@ import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -18,9 +19,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** A sheet: everything else in the app is kept per sheet. */
 @Entity
+@EntityListeners(HistoryListener.class)
 @Table(name = "sheet")
 public class Sheet {
 

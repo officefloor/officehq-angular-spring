@@ -67,6 +67,10 @@ public class ClaimController {
         }
     }
 
+    /** A statement as the row submits it: the date it is taken as of; missing, it is taken now. */
+    public record StatementForm(LocalDate asOf) {
+    }
+
     /** A statement just taken: the person as they now show, and all their claims, newest first. */
     public record StatementView(PersonView person, List<ClaimView> claims) {
     }
@@ -334,8 +338,10 @@ public class ClaimController {
     public StatementView statement(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @PathVariable long personId,
-            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return statementView(sheetId, service.statement(sheetId, user.trim(), personId), user.trim());
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestBody(required = false) StatementForm body) {
+        return statementView(sheetId,
+                service.statement(sheetId, user.trim(), personId, body == null ? null : body.asOf()), user.trim());
     }
 
     @PostMapping("/people/{personId}/statement/cancel")

@@ -5,7 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 /** What a person shows of their statements: how many they have had, and the last one's due-total
- *  (null when it was n/a) and date (both null with none). */
+ *  (null when it was n/a) and date, the one it was taken as of if any (both null with none). */
 public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate lastDate) {
 
     public static final StatementSummary NONE = new StatementSummary(0, null, null);
@@ -16,6 +16,6 @@ public record StatementSummary(int count, BigDecimal lastDueTotal, LocalDate las
             return NONE;
         }
         PersonStatement last = statements.get(statements.size() - 1);
-        return new StatementSummary(statements.size(), last.getDueTotal(), last.getTakenOn());
+        return new StatementSummary(statements.size(), last.getDueTotal(), last.getStatedOn());
     }
 }

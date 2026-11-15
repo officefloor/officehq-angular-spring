@@ -2,16 +2,19 @@ package net.officefloor.hq.app.rate;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** One of the sheet's rates for a grade: a percent with two decimals, in force from its from-date
  *  (from the beginning of time when it has none) through its to-date (for good when it has none). */
 @Entity
+@EntityListeners(HistoryListener.class)
 @Table(name = "rate")
 public class Rate {
 

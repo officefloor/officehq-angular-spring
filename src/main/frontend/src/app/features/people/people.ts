@@ -124,7 +124,10 @@ import { GRADES, PeopleApi, Person, csvLine, gradeOn, heldOn, holdError, isStale
                 <span data-testid="person-statement-count">{{ p.statementCount }}</span>
                 <span>Last <span data-testid="person-stated-total">{{ statedTotalOf(p) }}</span></span>
                 <span>on <span data-testid="person-statement-date">{{ p.statementDate ?? '' }}</span></span>
-                <button type="button" data-testid="person-statement" (click)="statement(p)"
+                <label [for]="'person-statement-asof-' + p.id" class="visually-hidden">Statement of {{ p.name }} as of</label>
+                <input [id]="'person-statement-asof-' + p.id" type="date" data-testid="person-statement-asof" #statementAsOf
+                  (input)="clearRowError(p.id)" />
+                <button type="button" data-testid="person-statement" (click)="statement(p, statementAsOf)"
                   [attr.aria-label]="'Take statement of ' + p.name">Statement</button>
                 <button type="button" data-testid="person-unstate" (click)="cancelStatement(p)"
                   [attr.aria-label]="'Cancel last statement of ' + p.name">Cancel statement</button>
@@ -545,13 +548,16 @@ export class People {
     return p.statementCount === 0 ? '' : (p.statedTotal ?? 'n/a');
   }
 
-  /** Take a statement of a person; the row then shows it and their claims as bound now. */
-  protected async statement(p: Person): Promise<void> {
+  /** Take a statement of a person, as of the date entered (blank: now), which is then cleared; the
+   *  row then shows it and their claims as bound now. */
+  protected async statement(p: Person, asOfInput: HTMLInputElement): Promise<void> {
     this.clearRowError(p.id);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
+    const asOf = asOfInput.value.trim();
+    asOfInput.value = '';
     try {
-      const taken = await this.api.statement(sheetId, p.id);
+      const taken = await this.api.statement(sheetId, p.id, asOf);
       if (this.session.sheetId() !== sheetId) return;
       this.taken(taken.person);
       this.claims.update((cs) => [...cs.filter((c) => c.personId !== p.id), ...taken.claims].sort(byListed));

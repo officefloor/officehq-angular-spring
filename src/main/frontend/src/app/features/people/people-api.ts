@@ -48,7 +48,7 @@ export interface Person {
   statementCount: number;
   /** The last statement's due-total, with two decimals; null when it was n/a or there is none. */
   statedTotal: string | null;
-  /** The sheet's today when the last statement was taken; null with none. */
+  /** The date the last statement was taken as of, else the sheet's today when it was taken; null with none. */
   statementDate: string | null;
   /** The date the person is retired from; null while not retired. Set, they count as retired. */
   retiredFrom: string | null;
@@ -104,10 +104,11 @@ export class PeopleApi {
     return firstValueFrom(this.http.put<Person>(`${this.url(sheetId)}/${id}`, form, { headers: this.headers() }));
   }
 
-  /** Take a statement of a person, binding their counting claims to the dues they show now. */
-  statement(sheetId: string, id: number): Promise<Statement> {
+  /** Take a statement of a person, binding their counting claims to the dues they show now, or as
+   *  of a date (blank: now) to the dues they showed at the end of it. */
+  statement(sheetId: string, id: number, asOf: string): Promise<Statement> {
     return firstValueFrom(
-      this.http.post<Statement>(`/api/sheets/${encodeURIComponent(sheetId)}/people/${id}/statement`, null,
+      this.http.post<Statement>(`/api/sheets/${encodeURIComponent(sheetId)}/people/${id}/statement`, { asOf: asOf || null },
         { headers: this.headers() }),
     );
   }
@@ -166,6 +167,8 @@ export function personError(e: unknown): string {
 }
 
 export function statementError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a date as yyyy-mm-dd or none.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'A statement is taken as of a date on or before the sheet\'s today, while the person was on the sheet.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   return otherError(e);
 }

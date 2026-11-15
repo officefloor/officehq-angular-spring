@@ -6,6 +6,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.DatedSetting;
 import net.officefloor.hq.app.sheet.Sheet;
@@ -53,15 +54,18 @@ public class SettingsService {
     private final SheetDelegationRepository delegations;
     private final SheetService sheets;
     private final RollupService rollup;
+    private final HistoryService history;
     private final Audit audit;
 
     public SettingsService(SheetRoleRepository roles, SheetPermissionRepository permissions,
-            SheetDelegationRepository delegations, SheetService sheets, RollupService rollup, Audit audit) {
+            SheetDelegationRepository delegations, SheetService sheets, RollupService rollup, HistoryService history,
+            Audit audit) {
         this.roles = roles;
         this.permissions = permissions;
         this.delegations = delegations;
         this.sheets = sheets;
         this.rollup = rollup;
+        this.history = history;
         this.audit = audit;
     }
 
@@ -87,6 +91,7 @@ public class SettingsService {
     private void record(Sheet sheet, String user, String key, String value, LocalDate from) {
         sheet.recordSetting(key, from != null ? from : sheet.getToday(), value.isEmpty() ? null : value);
         sheets.flush();
+        history.recordSheet(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheet.getId() + " by=" + user
                 + " key=" + key + " value=" + value + (from == null ? "" : " from=" + from));
     }
