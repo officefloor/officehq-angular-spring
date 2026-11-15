@@ -32,7 +32,7 @@ public class PasteClaimsService {
 
     /** Add a DRAFT claim for each line of name,amount,date,note, in order: the name of a person on
      *  the sheet (ignoring case and surrounding spaces), an amount, a date (blank: the sheet's
-     *  today) and a note that may hold commas or be absent; blank lines are skipped. Each line is
+     *  entry date while set, else its today) and a note that may hold commas or be absent; blank lines are skipped. Each line is
      *  taken by the claim form's rules; one change, so when any line is refused (400 when it is not
      *  a claim the form takes, 422 when its name is not on the sheet, else as the claim form
      *  refuses it) nothing is added. */

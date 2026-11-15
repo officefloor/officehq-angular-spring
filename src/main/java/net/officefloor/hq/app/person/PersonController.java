@@ -13,7 +13,9 @@ import java.util.stream.Collectors;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.session.CurrentUser;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.settings.ViewerAllowed;
+import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -104,10 +106,14 @@ public class PersonController {
 
     private final PersonService service;
     private final HistoryService history;
+    private final SettingsService settings;
+    private final SheetService sheets;
 
-    public PersonController(PersonService service, HistoryService history) {
+    public PersonController(PersonService service, HistoryService history, SettingsService settings, SheetService sheets) {
         this.service = service;
         this.history = history;
+        this.settings = settings;
+        this.sheets = sheets;
     }
 
     @GetMapping
@@ -165,11 +171,19 @@ public class PersonController {
                 body.gradeFrom(), body.termsDays()));
     }
 
+    /** Give the selected people the grade; a viewer, who may change nothing, changes no one. */
     @PostMapping("/bulk-grade")
+    @ViewerAllowed
     public BulkGradeView bulkGrade(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody BulkGradeForm body) {
+        if (sheets.archived(sheetId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The sheet is archived: nothing on it may change");
+        }
+        if (settings.isViewer(sheetId, user.trim())) {
+            return new BulkGradeView(0);
+        }
         return new BulkGradeView(service.grade(sheetId, user.trim(), body.ids(), body.grade(), body.from()));
     }
 
@@ -201,9 +215,8 @@ public class PersonController {
         return view(sheetId, user, service.addPatron(sheetId, user.trim(), id, body.patronId()));
     }
 
-    /** Start or stop watching the person as the signed-in user; a viewer may watch too. */
+    /** Start or stop watching the person as the signed-in user; refused for a viewer, who may change nothing. */
     @PostMapping("/{id}/watch")
-    @ViewerAllowed
     public PersonView watch(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @PathVariable long id,

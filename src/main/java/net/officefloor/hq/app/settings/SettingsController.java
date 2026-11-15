@@ -39,21 +39,21 @@ public class SettingsController {
      *  none, the floor with two decimals, the terms in days, the late percent with two decimals,
      *  the policy date, null when blank, the period numbering from-date, null when blank (off),
      *  the terms each grade has of its own, a grade without them left out, the cap with two
-     *  decimals, null for none, and the proof threshold with two decimals, null for none, the grace days, null when blank (off), each of the dated ones as in force on the sheet's today; and every
+     *  decimals, null for none, and the proof threshold with two decimals, null for none, the grace days, null when blank (off), the entry date, null when blank (off), each of the dated ones as in force on the sheet's today; and every
      *  value recorded for the dated settings, by key, each key's by from-date; and the permission
      *  matrix: the roles set for each action, comma separated, an action left blank left out. */
     public record SettingsView(String clerkLimit, String floor, int terms, String latePct, LocalDate policyDate,
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
-            Integer graceDays, Map<String, List<DatedValue>> dated, Map<String, String> permissions) {
+            Integer graceDays, LocalDate entryDate, Map<String, List<DatedValue>> dated, Map<String, String> permissions) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct, LocalDate policyDate,
                 LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, BigDecimal cap, BigDecimal proofThreshold,
-                Integer graceDays, Map<String, List<DatedSetting>> dated, Map<Permission, String> permissions) {
+                Integer graceDays, LocalDate entryDate, Map<String, List<DatedSetting>> dated, Map<Permission, String> permissions) {
             Map<String, String> perms = new TreeMap<>();
             permissions.forEach((action, roles) -> perms.put(action.key(), roles));
             return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms,
                     latePct.setScale(2).toPlainString(), policyDate, periodNumberingFrom, gradeTerms,
                     cap == null ? null : cap.setScale(2).toPlainString(),
-                    proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), graceDays, DatedValue.of(dated), perms);
+                    proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), graceDays, entryDate, DatedValue.of(dated), perms);
         }
     }
 
@@ -120,6 +120,10 @@ public class SettingsController {
 
     /** The period numbering from-date as the form submits it: a date as yyyy-mm-dd, blank for off. */
     public record PeriodNumberingFromForm(@NotNull @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String value) {
+    }
+
+    /** The entry date as the form submits it: a date as yyyy-mm-dd, blank for off. */
+    public record EntryDateForm(@NotNull @Pattern(regexp = "(\\d{4}-\\d{2}-\\d{2})?") String value) {
     }
 
     /** The grace days as the form submits them: a whole number of days, blank for off. */
@@ -294,6 +298,21 @@ public class SettingsController {
         return view(sheetId);
     }
 
+    @PutMapping("/settings/entry-date")
+    public SettingsView setEntryDate(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody EntryDateForm body) {
+        LocalDate entryDate;
+        try {
+            entryDate = body.value().isEmpty() ? null : LocalDate.parse(body.value());
+        } catch (DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a date");
+        }
+        service.setEntryDate(sheetId, user.trim(), entryDate);
+        return view(sheetId);
+    }
+
     @PutMapping("/settings/grace-days")
     public SettingsView setGraceDays(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
@@ -319,7 +338,7 @@ public class SettingsController {
     private SettingsView view(String sheetId) {
         return SettingsView.of(service.clerkLimit(sheetId), service.floor(sheetId), service.terms(sheetId),
                 service.latePct(sheetId), service.policyDate(sheetId), service.periodNumberingFrom(sheetId),
-                gradeTerms(sheetId), service.cap(sheetId), service.proofThreshold(sheetId), service.graceDays(sheetId), service.datedSettings(sheetId),
+                gradeTerms(sheetId), service.cap(sheetId), service.proofThreshold(sheetId), service.graceDays(sheetId), service.entryDate(sheetId), service.datedSettings(sheetId),
                 service.permissions(sheetId));
     }
 
@@ -335,7 +354,7 @@ public class SettingsController {
         }
         return SettingsView.of(sheet.getClerkLimit(), sheet.getFloor(), sheet.getTerms(), sheet.getLatePct(),
                 sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(), gradeTerms, sheet.getCap(),
-                sheet.getProofThreshold(), sheet.getGraceDays(), sheet.getDatedSettings(), then.permissions());
+                sheet.getProofThreshold(), sheet.getGraceDays(), sheet.getEntryDate(), sheet.getDatedSettings(), then.permissions());
     }
 
     /** A from-date as the form submits it; null when blank or left out (the sheet's today). */

@@ -120,7 +120,8 @@ public class ClaimService {
                 .toList();
     }
 
-    /** Add a claim for a person on the sheet; a missing date takes the sheet's today. Refused
+    /** Add a claim for a person on the sheet; a missing date takes the sheet's entry date while
+     *  set, else its today. Refused
      *  (423) when the date is in a closed period, (422) when it is after the person's
      *  retirement date, and (422) when it is a correction (a negative amount) that does not name
      *  the number of a SETTLED claim of the same person. */
@@ -129,7 +130,7 @@ public class ClaimService {
             String corrects) {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
-        LocalDate on = date != null ? date : sheets.today(sheetId);
+        LocalDate on = date != null ? date : sheets.entryDate(sheetId);
         refuseIfClosed(sheetId, on);
         refuseIfRetired(person, on);
         String corrected = correctedBy(sheetId, personId, amount, corrects);
@@ -151,7 +152,8 @@ public class ClaimService {
         return claim;
     }
 
-    /** Change a DRAFT claim's amount, date and note; a missing date takes the sheet's today.
+    /** Change a DRAFT claim's amount, date and note; a missing date takes the sheet's entry date
+     *  while set, else its today.
      *  Refused (409) once the claim is no longer a DRAFT (an open claim is voided and a new one
      *  added instead), and (423) when its old or new date is in a closed period, and (422) when the new
      *  date is after the person's retirement date, or when it is a correction that does not name
@@ -161,7 +163,7 @@ public class ClaimService {
             String corrects) {
         Claim claim = claims.findForUpdate(id, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such claim"));
-        LocalDate on = date != null ? date : sheets.today(sheetId);
+        LocalDate on = date != null ? date : sheets.entryDate(sheetId);
         refuseIfClosed(sheetId, claim.getDate());
         if (claim.getStatus() != ClaimStatus.DRAFT) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,

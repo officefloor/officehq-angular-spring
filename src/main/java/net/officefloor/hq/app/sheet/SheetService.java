@@ -53,6 +53,12 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::getToday).orElseGet(LocalDate::now);
     }
 
+    /** The date a new claim left undated takes: the sheet's entry date while set, else its today. */
+    @Transactional(readOnly = true)
+    public LocalDate entryDate(String id) {
+        return sheets.findById(id).map(Sheet::getEntryDateInForce).orElseGet(LocalDate::now);
+    }
+
     /** The sheet's floor in force on its today. */
     @Transactional(readOnly = true)
     public BigDecimal floor(String id) {

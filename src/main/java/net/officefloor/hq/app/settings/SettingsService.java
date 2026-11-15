@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** The sheet's settings (its permission matrix, its clerk limit, floor, terms, terms per grade, late percent, policy date, period numbering from-date, cap and proof threshold) and the role each user name holds on it. */
+/** The sheet's settings (its permission matrix, its clerk limit, floor, terms, terms per grade, late percent, policy date, period numbering from-date, entry date, cap and proof threshold) and the role each user name holds on it. */
 @Service
 public class SettingsService {
 
@@ -36,6 +36,9 @@ public class SettingsService {
 
     /** The key the period numbering from-date is audited under. */
     public static final String PERIOD_NUMBERING_FROM = "period-numbering-from";
+
+    /** The key the entry date is audited under. */
+    public static final String ENTRY_DATE = "entry-date";
 
     /** The key the grace days are audited under. */
     public static final String GRACE_DAYS = "grace-days";
@@ -214,6 +217,26 @@ public class SettingsService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + PERIOD_NUMBERING_FROM + " value=" + (from == null ? "" : from));
         return from;
+    }
+
+    /** The sheet's entry date; null when blank (off, a new claim left undated takes the sheet's today). */
+    @Transactional(readOnly = true)
+    public LocalDate entryDate(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getEntryDate).orElse(null);
+    }
+
+    /** Set the sheet's entry date (null: off), the sheet created first if it was never loaded; not
+     *  dated, it is the date a new claim left undated takes from now on, claims already added
+     *  staying as they are. */
+    @Transactional
+    public LocalDate setEntryDate(String sheetId, String user, LocalDate entryDate) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        sheet.setEntryDate(entryDate);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + ENTRY_DATE + " value=" + (entryDate == null ? "" : entryDate));
+        return entryDate;
     }
 
     /** The sheet's grace days; null when blank (off). */

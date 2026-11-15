@@ -83,6 +83,11 @@ public class Sheet {
     @Column(name = "period_numbering_from")
     private LocalDate periodNumberingFrom;
 
+    /** While set, a new claim left undated takes this date instead of the sheet's today; null
+     *  when blank (off). */
+    @Column(name = "entry_date")
+    private LocalDate entryDate;
+
     /** When the sheet's today changes, every open period whose to-date plus this many days is
      *  before the new today is closed; null when blank (off). */
     @Column(name = "grace_days")
@@ -217,6 +222,19 @@ public class Sheet {
 
     public void setPeriodNumberingFrom(LocalDate periodNumberingFrom) {
         this.periodNumberingFrom = periodNumberingFrom;
+    }
+
+    public LocalDate getEntryDate() {
+        return entryDate;
+    }
+
+    public void setEntryDate(LocalDate entryDate) {
+        this.entryDate = entryDate;
+    }
+
+    /** The date a new claim left undated takes: the entry date while set, else the sheet's today. */
+    public LocalDate getEntryDateInForce() {
+        return entryDate != null ? entryDate : today;
     }
 
     public Integer getGraceDays() {

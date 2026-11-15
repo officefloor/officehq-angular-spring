@@ -4,7 +4,7 @@ import { Session } from '../../core/session';
 import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTERN, POLICY_DATE_PATTERN, PermissionAction, ROLES, TERMS_PATTERN, Delegation, RoleGrant, SETTINGS_INVALID, SettingsApi, delegateError, roleError, settingsError } from './settings-api';
 
 // The sheet's settings (its permission matrix: the roles that may open, settle, void, reassign, close or reopen, each blank for its standing rule; its clerk limit: a clerk settles only claims whose due is at or below it;
-// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one.
+// its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its policy date: a claim dated before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim opened is numbered within its period; its entry date: while set, a new claim left undated takes it; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one.
 @Component({
   selector: 'app-settings',
   imports: [ReactiveFormsModule],
@@ -20,6 +20,7 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
       <p>Late percent in force <strong data-testid="setting-late-pct-current">{{ session.latePct() }}</strong></p>
       <p>Policy date in force (blank: the sheet's today) <strong data-testid="setting-policy-date-current">{{ session.policyDate() ?? '' }}</strong></p>
       <p>Period numbering from (blank: off) <strong data-testid="setting-period-numbering-from-current">{{ periodNumberingFrom() ?? '' }}</strong></p>
+      <p>Entry date: new claims left undated take it (blank: off, the sheet's today) <strong data-testid="setting-entry-date-current">{{ entryDate() ?? '' }}</strong></p>
       <p>Cap in force (blank: none) <strong data-testid="setting-cap-current">{{ session.cap() ?? '' }}</strong></p>
       <p>Proof threshold in force (blank: none) <strong data-testid="setting-proof-threshold-current">{{ session.proofThreshold() ?? '' }}</strong></p>
       <p>Note threshold in force (blank: none) <strong data-testid="setting-note-threshold-current">{{ session.noteThreshold() ?? '' }}</strong></p>
@@ -54,6 +55,8 @@ import { GRADES, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTER
         <input id="setting-policy-date" type="date" data-testid="setting-policy-date" formControlName="policyDate" />
         <label for="setting-period-numbering-from">Period numbering from: claims opened from it are numbered within their period (blank: off)</label>
         <input id="setting-period-numbering-from" type="date" data-testid="setting-period-numbering-from" formControlName="periodNumberingFrom" />
+        <label for="setting-entry-date">Entry date: a new claim left undated takes it instead of the sheet's today (blank: off)</label>
+        <input id="setting-entry-date" type="date" data-testid="setting-entry-date" formControlName="entryDate" />
         <label for="setting-cap">Cap on a person's due-total (blank: none)</label>
         <input id="setting-cap" data-testid="setting-cap" formControlName="cap" inputmode="decimal" autocomplete="off" />
         <label for="setting-cap-from">Cap from (blank: the sheet's today)</label>
@@ -134,6 +137,8 @@ export class Settings {
   protected readonly roleNames = ROLES.join(' or ');
   /** The sheet's period numbering from-date (yyyy-mm-dd); null when blank (off). */
   protected readonly periodNumberingFrom = signal<string | null>(null);
+  /** The sheet's entry date (yyyy-mm-dd); null when blank (off). */
+  protected readonly entryDate = signal<string | null>(null);
   /** The sheet's grace days; null when blank (off). */
   protected readonly graceDays = signal<number | null>(null);
   protected readonly grades = GRADES;
@@ -168,6 +173,7 @@ export class Settings {
     latePctFrom: new FormControl('', { nonNullable: true }),
     policyDate: new FormControl('', { nonNullable: true }),
     periodNumberingFrom: new FormControl('', { nonNullable: true }),
+    entryDate: new FormControl('', { nonNullable: true }),
     cap: new FormControl('', { nonNullable: true }),
     capFrom: new FormControl('', { nonNullable: true }),
     proofThreshold: new FormControl('', { nonNullable: true }),
@@ -220,6 +226,7 @@ export class Settings {
       this.session.loads();
       untracked(() => {
         this.periodNumberingFrom.set(null);
+        this.entryDate.set(null);
         this.graceDays.set(null);
         this.grants.set([]);
         this.permissions.set({});
@@ -230,7 +237,7 @@ export class Settings {
         this.delegateForm.reset({ user: '', from: '', to: '' }, { emitEvent: false });
         this.settingsForm.reset({
           clerkLimit: '', clerkLimitFrom: '', floor: '', floorFrom: '', terms: '', termsFrom: '', latePct: '', latePctFrom: '',
-          policyDate: '', periodNumberingFrom: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', noteThreshold: '', noteThresholdFrom: '', graceDays: '',
+          policyDate: '', periodNumberingFrom: '', entryDate: '', cap: '', capFrom: '', proofThreshold: '', proofThresholdFrom: '', noteThreshold: '', noteThresholdFrom: '', graceDays: '',
         }, { emitEvent: false });
         this.gradeTermsForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
         this.gradeTermsFromForm.reset({ A: '', B: '', C: '' }, { emitEvent: false });
@@ -254,7 +261,7 @@ export class Settings {
     this.settingsErr.set(null);
     const sheetId = this.session.sheetId();
     if (!sheetId) return;
-    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, cap, capFrom, proofThreshold, proofThresholdFrom, noteThreshold, noteThresholdFrom, graceDays } = this.settingsForm.controls;
+    const { clerkLimit, clerkLimitFrom, floor, floorFrom, terms, termsFrom, latePct, latePctFrom, policyDate, periodNumberingFrom, entryDate, cap, capFrom, proofThreshold, proofThresholdFrom, noteThreshold, noteThresholdFrom, graceDays } = this.settingsForm.controls;
     // only the settings typed into (or entered and left, as when one already blank is cleared),
     // or whose from-date was, since the last save are saved (the clerk limit when none is)
     const typed = (c: AbstractControl) => c.dirty || c.touched;
@@ -263,6 +270,7 @@ export class Settings {
     const saveLatePct = typed(latePct) || typed(latePctFrom);
     const savePolicyDate = typed(policyDate);
     const savePeriodNumberingFrom = typed(periodNumberingFrom);
+    const saveEntryDate = typed(entryDate);
     const saveCap = typed(cap) || typed(capFrom);
     const saveProofThreshold = typed(proofThreshold) || typed(proofThresholdFrom);
     const saveNoteThreshold = typed(noteThreshold) || typed(noteThresholdFrom);
@@ -281,7 +289,7 @@ export class Settings {
         typed: this.permissionsForm.controls[p.action].value.trim(),
       }));
     const saveLimit = typed(clerkLimit) || typed(clerkLimitFrom)
-      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveCap || saveProofThreshold || saveNoteThreshold || saveGraceDays);
+      || !(saveFloor || saveTerms || gradeTermsToSave.length > 0 || permissionsToSave.length > 0 || saveLatePct || savePolicyDate || savePeriodNumberingFrom || saveEntryDate || saveCap || saveProofThreshold || saveNoteThreshold || saveGraceDays);
     const limitFrom = clerkLimitFrom.value.trim();
     const floorFromValue = floorFrom.value.trim();
     const termsFromValue = termsFrom.value.trim();
@@ -296,6 +304,7 @@ export class Settings {
     const latePctValue = latePct.value.trim();
     const policyDateValue = policyDate.value.trim();
     const periodNumberingFromValue = periodNumberingFrom.value.trim();
+    const entryDateValue = entryDate.value.trim();
     const capValue = cap.value.trim();
     const proofThresholdValue = proofThreshold.value.trim();
     const noteThresholdValue = noteThreshold.value.trim();
@@ -307,6 +316,7 @@ export class Settings {
         || (saveLatePct && latePctValue !== '' && !LATE_PCT_PATTERN.test(latePctValue))
         || (savePolicyDate && policyDateValue !== '' && !POLICY_DATE_PATTERN.test(policyDateValue))
         || (savePeriodNumberingFrom && periodNumberingFromValue !== '' && !POLICY_DATE_PATTERN.test(periodNumberingFromValue))
+        || (saveEntryDate && entryDateValue !== '' && !POLICY_DATE_PATTERN.test(entryDateValue))
         || (saveCap && capValue !== '' && !LIMIT_PATTERN.test(capValue))
         || (saveProofThreshold && proofThresholdValue !== '' && !LIMIT_PATTERN.test(proofThresholdValue))
         || (saveNoteThreshold && noteThresholdValue !== '' && !LIMIT_PATTERN.test(noteThresholdValue))
@@ -360,6 +370,11 @@ export class Settings {
         const saved = await this.api.setPeriodNumberingFrom(sheetId, periodNumberingFromValue);
         if (periodNumberingFrom.value.trim() === periodNumberingFromValue) { periodNumberingFrom.markAsPristine(); periodNumberingFrom.markAsUntouched(); }
         if (this.session.sheetId() === sheetId) this.periodNumberingFrom.set(saved.periodNumberingFrom);
+      }
+      if (saveEntryDate) {
+        const saved = await this.api.setEntryDate(sheetId, entryDateValue);
+        if (entryDate.value.trim() === entryDateValue) { entryDate.markAsPristine(); entryDate.markAsUntouched(); }
+        if (this.session.sheetId() === sheetId) this.entryDate.set(saved.entryDate);
       }
       if (saveCap) {
         const saved = await this.api.setCap(sheetId, capValue, capFromValue);
@@ -463,6 +478,7 @@ export class Settings {
         this.session.dated.set(settings.dated);
         this.session.policyDate.set(settings.policyDate);
         this.periodNumberingFrom.set(settings.periodNumberingFrom);
+        this.entryDate.set(settings.entryDate);
         this.graceDays.set(settings.graceDays);
         // the cap's field starts at the cap in force, so clearing it is a change that saves "none"
         const cap = this.settingsForm.controls.cap;
