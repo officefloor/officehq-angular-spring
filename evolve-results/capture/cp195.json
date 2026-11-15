@@ -1,0 +1,64 @@
+{
+  "checkpoint": 195,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp195_statement-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button on each person's row downloads their statement as a CSV file: a header line\nnumber,date,amount,figure,status then one line per claim of theirs bound by their last statement,\noldest first, with the bound figure as the claim shows it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button on each person's row downloads their statement as a CSV file: a header line\nnumber,date,amount,figure,status then one line per claim of theirs bound by their last statement,\noldest first, with the bound figure as the claim shows it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "2def9684fa7a26925e0819311f4d3111ebf6eebb",
+  "reset_sha": "",
+  "preagent_sha": "088b89849d3d8729ac3a344b670dfdcb5db90e32",
+  "prev_sha": "088b89849d3d8729ac3a344b670dfdcb5db90e32",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4542114,
+    "input_tokens": 82,
+    "output_tokens": 16451,
+    "cache_read_tokens": 2410117,
+    "cache_creation_tokens": 80355,
+    "num_turns": 41,
+    "duration_ms": 500488,
+    "duration_api_ms": 182490,
+    "model": "claude-opus-5-5",
+    "session_id": "2cf202ee-fad3-4578-9e4c-76ab0f2aaa6d",
+    "stop_reason": "success",
+    "result_text": "I added a statement-download button to each person's row. Three of the four tests in the spec pass, including the main \"statement export\" test. The fourth, \"scenario 3\", still fails, at a check that has nothing to do with the export and depends on the real date.\n\n**The change** (only one file: `src/main/frontend/src/app/features/people/people.ts`)\n- Each person's row now has a **Statement (CSV)** button (`data-testid=\"person-export-statement\"`) next to \"Cancel statement\".\n- It downloads `statement-<sheet>-<person id>.csv`. The file starts with the header `number,date,amount,figure,status`, then has one line for each claim bound by the person's last statement, oldest first.\n- The figure is the due the claim shows: the settled due if it has one, otherwise the bound due (`n/a` when there isn't one). It is the same calculation the claim row's \"Due\" uses, so the two can't disagree.\n- I built it the same way as the existing \"Export people\" and \"Export claims\" buttons, from data the screen has already loaded. No server or database change was needed. Clicking it also clears any old error on that row.\n\n**Test results** (`bin/e2e`)\n- Passed: \"statement export\", \"scenario 1\" and \"scenario 2\". These hold all four of the spec's export checks: an empty statement, statements before and after a settle, and a re-read by a second user.\n- Failed: \"scenario 3\", at `acceptance.spec.ts:1530`. It expects the rate shown for grade A in April 2026 to be `12.50`, but the screen shows `n/a`. Scenario 3 never uses the export.\n\n**Why scenario 3 fails**\n- The test sets up a parent sheet whose today is never set, so it starts as the server's real date (now November 2026). The parent's rates are saved in the history under that date.\n- The test then views the child sheet as of 2026-03-20. In that view, the parent's rates are read as they stood on that date, and they didn't exist yet. I confirmed this against the running app: the parent's rates come back empty as of 2026-03-20 but are there as of 2026-11-16.\n- With no inherited rate, grade A has no rate after its 2026-03-25 end date, so April shows `n/a`. The spec appears to have been written when the real date was on or before 2026-03-20.\n\nI didn't change how parent-sheet rates are dated in the as-of view to force this test through. That would be a change to an unrelated feature that the request doesn't cover. If you'd rather I did, the place is `RateController.inherited` (and the matching code in `ClaimService.statementAsOf`), which date the parent's rates by the parent's own history.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4542114,
+        "num_turns": 41,
+        "duration_ms": 500488,
+        "duration_api_ms": 182490,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp195.agent.jsonl",
+  "agent_diff_file": "cp195.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
