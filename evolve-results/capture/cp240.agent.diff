@@ -1,0 +1,142 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 648d592b1..47e537011 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -14,7 +14,7 @@ import { Period, PeriodsApi, periodOn, personPeriodCarriedCents, personPeriodDue
+ import { Rates } from '../rates/rates';
+ import { STATUSES, Summary, SummaryPerson, statusCounts } from '../summary/summary';
+ import { ClassicSummary } from '../summary/classic-summary';
+-import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
++import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, holderPartCents, pctOn, plusDays } from '../rates/rates-api';
+ import { Dashboard, Header } from '../header/header';
+ import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkHoldError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, mergeUndoError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
+ 
+@@ -682,12 +682,13 @@ export class People {
+   });
+   /** The parts of shared claims' dues in cents moving into (or, negative, out of) each person's
+    *  figures, by person id: for each counting claim with shares (its due not n/a), each holder's part
+-   *  (the due times their share over 100, rounded half to even), and the same parts taken off the
+-   *  claim's own person; each with whether the claim is SETTLED. */
++   *  (see holderPartCents; a settled claim's kept frozen as its fixed due times their share over 100,
++   *  rounded half to even), and the same parts taken off the claim's own person; each with whether the
++   *  claim is SETTLED. */
+   private readonly sharedParts = computed(() => {
+     const out = new Map<number, { cents: number; settled: boolean }[]>();
+     const late = this.lateness();
+-    const onSheet = new Set(this.people().map((p) => p.id));
++    const byId = new Map(this.people().map((p) => [p.id, p]));
+     const add = (id: number, part: { cents: number; settled: boolean }) => out.set(id, [...(out.get(id) ?? []), part]);
+     for (const p of this.people()) {
+       for (const c of this.claimsOf(p.id).filter(this.countsLive())) {
+@@ -696,8 +697,10 @@ export class People {
+         if (due === null) continue;
+         const settled = c.status === 'SETTLED';
+         for (const s of c.shares) {
+-          if (!onSheet.has(s.personId)) continue;
+-          const part = sharePart(due, cents(s.share));
++          const holder = byId.get(s.personId);
++          if (!holder) continue;
++          const part = c.settledDue !== null ? sharePart(due, cents(s.share)) : this.holderPartCents(holder, c, cents(s.share));
++          if (part === null) continue;
+           add(s.personId, { cents: part, settled });
+           add(p.id, { cents: -part, settled });
+         }
+@@ -1395,6 +1398,16 @@ export class People {
+       roundsHalfUp(c, this.claimsOf(p.id), this.session.policyDate(), late.today, (d) => this.session.roundingOn(d)));
+   }
+ 
++  /** A holder's part in cents of an unsettled shared claim: its amount times their share over 100,
++   *  times the rate of the holder's own grade in force on its date (as the claim applies the rates)
++   *  over 100, rounded like the claim; null (0.00) when that grade has no rate then. */
++  private holderPartCents(holder: Person, c: Claim, share: number): number | null {
++    const grade = gradeOn(holder.grades, c.date);
++    const owner = this.claimsOf(c.personId);
++    return holderPartCents(this.rateLevels().forClaim(c.added).filter((r) => r.grade === grade), c, share,
++      roundsHalfUp(c, owner, this.session.policyDate(), this.lateness().today, (d) => this.session.roundingOn(d)));
++  }
++
+   /** A claim's grace days: those of the person's grade in force on the claim's date. */
+   private graceOf(p: Person, c: Claim): number {
+     return this.session.graceOn(gradeOn(p.grades, c.date), c.date);
+diff --git a/src/main/frontend/src/app/features/rates/rates-api.ts b/src/main/frontend/src/app/features/rates/rates-api.ts
+index a4b9581c5..55c4dc6d3 100644
+--- a/src/main/frontend/src/app/features/rates/rates-api.ts
++++ b/src/main/frontend/src/app/features/rates/rates-api.ts
+@@ -200,6 +200,21 @@ export function dueCents(cents: number, pctHundredths: number, halfUp = false):
+   return Number(product < 0n ? -rounded : rounded);
+ }
+ 
++/** A holder's part in cents of an unsettled shared claim: its amount times their share (in hundredths
++ *  of a percent) over 100, times the rate of the holder's own grade in force on the claim's date (`rates`:
++ *  those of that grade) over 100, rounded half up when `halfUp` (the claim's rounding policy) else half
++ *  to even; null (a part of 0.00) when that grade has no rate then. */
++export function holderPartCents(rates: readonly Rate[], c: Claim, shareHundredths: number, halfUp: boolean): number | null {
++  const pct = pctOn(rates, c.date);
++  if (pct === null) return null;
++  const product = BigInt(cents(c.amount)) * BigInt(shareHundredths) * BigInt(cents(pct));
++  const size = product < 0n ? -product : product;
++  const whole = size / 100000000n;
++  const rest = size % 100000000n;
++  const rounded = rest > 50000000n || (rest === 50000000n && (halfUp || whole % 2n === 1n)) ? whole + 1n : whole;
++  return Number(product < 0n ? -rounded : rounded);
++}
++
+ /** What a claim's late charge follows: the sheet's today and the late percent in force on each boundary date. */
+ export interface Lateness {
+   today: string | null;
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 88946accf..3ee87600e 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -21,6 +21,7 @@ import net.officefloor.hq.app.claim.Claim;
+ import net.officefloor.hq.app.claim.ClaimLog;
+ import net.officefloor.hq.app.claim.ClaimLogRepository;
+ import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimShare;
+ import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.claim.LateCharge;
+ import net.officefloor.hq.app.claim.Rounding;
+@@ -246,8 +247,9 @@ public class RollupService {
+     }
+ 
+     /** The parts of their counting claims' dues (n/a ones skipped) the people on the sheet share,
+-     *  by person id: each holder's part (the due times their share over 100, rounded half to even),
+-     *  and the same parts taken off the claim's own person. */
++     *  by person id: each holder's part (see {@link #holderPartOf}; a settled claim's kept frozen as
++     *  its settled due times their share over 100, rounded half to even), and the same parts taken
++     *  off the claim's own person. */
+     private static Map<Long, List<BigDecimal>> sharedParts(Map<Long, List<Claim>> counted, Map<Long, Person> sheetPeople,
+             RateChain.Levels sheetRates, Function<LocalDate, BigDecimal> floor, LateCharge late,
+             Function<Claim, RoundingMode> rounding) {
+@@ -266,7 +268,11 @@ public class RollupService {
+                     continue;
+                 }
+                 c.getShares().stream().filter(sh -> sheetPeople.containsKey(sh.getPersonId())).forEach(sh -> {
+-                    BigDecimal part = sh.partOf(due);
++                    BigDecimal part = c.getSettledDue() != null ? sh.partOf(due)
++                            : holderPartOf(c, sh, sheetPeople.get(sh.getPersonId()), sheetRates, rounding.apply(c));
++                    if (part == null) {
++                        return;
++                    }
+                     out.computeIfAbsent(sh.getPersonId(), k -> new ArrayList<>()).add(part);
+                     out.computeIfAbsent(ownerId, k -> new ArrayList<>()).add(part.negate());
+                 });
+@@ -275,6 +281,18 @@ public class RollupService {
+         return out;
+     }
+ 
++    /** A holder's part of an unsettled shared claim: its amount times their share over 100, times
++     *  the rate, in force on the claim's date, of the holder's own grade then (as the claim applies
++     *  the rates) over 100, rounded as the claim rounds; null (a part of 0.00, which they are not counted as holding)
++     *  when that grade has no rate then. */
++    private static BigDecimal holderPartOf(Claim c, ClaimShare share, Person holder, RateChain.Levels sheetRates,
++            RoundingMode mode) {
++        return inForce(holder, sheetRates.forClaim(c.getAdded()), c.getDate())
++                .map(r -> c.getAmount().multiply(share.getShare()).multiply(r.getPct())
++                        .divide(BigDecimal.valueOf(10000), 2, mode))
++                .orElse(null);
++    }
++
+     /** One line per grade of the sheet (A, B, C, then those added) comparing the sheet, as it is now or as it stood at the end of
+      *  {@code asOf} when given, with another sheet as it is now: the grade, then each sheet's summary
+      *  due-total for it (the due-totals of the people not retired on it, n/a skipped), zero for a
