@@ -101,6 +101,20 @@ public class PeriodController {
         return service.generate(sheetId, user.trim(), body.from(), body.to()).stream().map(PeriodView::of).toList();
     }
 
+    /** A fiscal year as the generate form submits it: the calendar year (yyyy) its first day falls in. */
+    public record GenerateFiscalYearForm(@NotNull @Pattern(regexp = "\\d{4}") String year) {
+    }
+
+    @PostMapping("/generate-fy")
+    @ResponseStatus(HttpStatus.CREATED)
+    public List<PeriodView> generateFiscalYear(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody GenerateFiscalYearForm body) {
+        return service.generateFiscalYear(sheetId, user.trim(), Integer.parseInt(body.year())).stream()
+                .map(PeriodView::of).toList();
+    }
+
     @PostMapping("/{id}/close")
     public PeriodView close(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,

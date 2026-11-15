@@ -62,6 +62,12 @@ export class PeriodsApi {
     return firstValueFrom(this.http.post<Period[]>(`${this.url(sheetId)}/generate`, { from, to }, { headers: this.headers() }));
   }
 
+  /** Make the twelve monthly periods of the fiscal year named by its first day's calendar year,
+   *  as {@link generate} does; returns the periods made. */
+  generateFiscalYear(sheetId: string, year: string): Promise<Period[]> {
+    return firstValueFrom(this.http.post<Period[]>(`${this.url(sheetId)}/generate-fy`, { year }, { headers: this.headers() }));
+  }
+
   close(sheetId: string, id: number): Promise<Period> {
     return firstValueFrom(this.http.post<Period>(`${this.url(sheetId)}/${id}/close`, null, { headers: this.headers() }));
   }
@@ -92,6 +98,11 @@ export function periodError(e: unknown): string {
 
 export function generateError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a from-date on or before the to-date, as yyyy-mm-dd.';
+  return otherError(e);
+}
+
+export function generateFiscalYearError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a fiscal year as yyyy.';
   return otherError(e);
 }
 

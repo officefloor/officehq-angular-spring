@@ -2,7 +2,7 @@ import { Component, effect, inject, input, output, signal, untracked } from '@an
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
-import { Period, PeriodsApi, closeError, generateError, periodDueCents, periodError, reopenError } from './periods-api';
+import { Period, PeriodsApi, closeError, generateError, generateFiscalYearError, periodDueCents, periodError, reopenError } from './periods-api';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -32,6 +32,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
         <label for="period-generate-to">To</label>
         <input id="period-generate-to" type="date" data-testid="period-generate-to" formControlName="to" />
         <button type="submit" data-testid="period-generate">Generate monthly periods</button>
+        <label for="period-generate-fy-year">Fiscal year (yyyy)</label>
+        <input id="period-generate-fy-year" data-testid="period-generate-fy-year" [formControl]="fyForm.controls.year" inputmode="numeric" autocomplete="off" />
+        <button type="button" data-testid="period-generate-fy" (click)="generateFiscalYear()">Generate fiscal year</button>
         @if (generated() !== null) {
           <p role="status">Made <strong data-testid="period-generated">{{ generated() }}</strong></p>
         }
@@ -41,7 +44,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
       </form>
       <table data-testid="periods-list">
         <thead>
-          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+          <tr><th scope="col">Name</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Due</th><th scope="col">Closed</th><th scope="col">Fiscal year</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (p of periods(); track p.id) {
@@ -51,6 +54,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
               <td data-testid="period-to">{{ p.to }}</td>
               <td data-testid="period-due-total">{{ dueOf(p) }}</td>
               <td data-testid="period-closed">{{ p.closed ? 'yes' : p.softClosed ? 'soft' : 'no' }}</td>
+              <td data-testid="period-fy">{{ session.fiscalYearOf(p.from) }}</td>
               <td>
                 <button type="button" data-testid="period-close" (click)="close(p)"
                   [attr.aria-label]="'Close period ' + p.name">Close</button>
@@ -70,7 +74,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
   `,
 })
 export class Periods {
-  private readonly session = inject(Session);
+  protected readonly session = inject(Session);
   private readonly api = inject(PeriodsApi);
 
   /** The sheet's periods, by from-date. */
@@ -97,6 +101,10 @@ export class Periods {
     from: new FormControl('', { nonNullable: true }),
     to: new FormControl('', { nonNullable: true }),
   });
+  /** The fiscal year whose twelve monthly periods are generated. */
+  protected readonly fyForm = new FormGroup({
+    year: new FormControl('', { nonNullable: true }),
+  });
   /** How many periods the last generate made; null while one runs or before the first. */
   protected readonly generated = signal<number | null>(null);
   protected readonly generateErr = signal<string | null>(null);
@@ -105,11 +113,13 @@ export class Periods {
   constructor() {
     this.form.valueChanges.subscribe(() => this.error.set(null));
     this.generateForm.valueChanges.subscribe(() => this.generateErr.set(null));
+    this.fyForm.valueChanges.subscribe(() => this.generateErr.set(null));
     effect(() => {
       this.session.sheetId();
       this.session.loads();
       untracked(() => {
         this.generateForm.reset({ from: '', to: '' });
+        this.fyForm.reset({ year: '' });
         this.generated.set(null);
         this.generateErr.set(null);
       });
@@ -141,6 +151,32 @@ export class Periods {
       this.generated.set(made.length);
     } catch (e) {
       this.generateErr.set(generateError(e));
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  /** Make the twelve monthly periods of a fiscal year as the month range generate does; then show
+   *  how many were made. */
+  protected async generateFiscalYear(): Promise<void> {
+    if (this.generating) return;
+    this.generated.set(null);
+    this.generateErr.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    const year = this.fyForm.controls.year.value.trim();
+    if (!/^\d{4}$/.test(year)) {
+      this.generateErr.set('Enter a fiscal year as yyyy.');
+      return;
+    }
+    this.generating = true;
+    try {
+      const made = await this.api.generateFiscalYear(sheetId, year);
+      if (this.session.sheetId() !== sheetId) return;
+      for (const period of made) this.saved.emit(period);
+      this.generated.set(made.length);
+    } catch (e) {
+      this.generateErr.set(generateFiscalYearError(e));
     } finally {
       this.generating = false;
     }

@@ -50,6 +50,8 @@ public class SettingsService {
 
     /** The key the pot is audited under. */
     public static final String POT = "pot";
+    /** The key the fiscal year's start month is audited under. */
+    public static final String FISCAL_START_MONTH = "fiscal-start-month";
 
     /** The key the parent sheet is audited under. */
     public static final String PARENT = "parent";
@@ -292,6 +294,25 @@ public class SettingsService {
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
                 + " key=" + GRACE_DAYS + " value=" + (graceDays == null ? "" : graceDays));
         return graceDays;
+    }
+
+    /** The month (1 to 12) the sheet's fiscal year starts in; 1 unless set. */
+    @Transactional(readOnly = true)
+    public int fiscalStartMonth(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getFiscalStartMonth).orElse(1);
+    }
+
+    /** Set the month (1 to 12) the sheet's fiscal year starts in, the sheet created first if it was
+     *  never loaded; not dated. */
+    @Transactional
+    public int setFiscalStartMonth(String sheetId, String user, int month) {
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        sheet.setFiscalStartMonth(month);
+        sheets.flush();
+        audit.recordOnCommit("SETTING_CHANGED sheet=" + sheetId + " by=" + user
+                + " key=" + FISCAL_START_MONTH + " value=" + month);
+        return month;
     }
 
     /** The sheet's pot; null when blank (none). */

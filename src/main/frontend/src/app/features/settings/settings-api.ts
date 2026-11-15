@@ -34,6 +34,8 @@ export const POLICY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Terms of a whole number of days. */
 export const TERMS_PATTERN = /^\d{1,4}$/;
+/** A fiscal year start month: 1 to 12. */
+export const FISCAL_START_MONTH_PATTERN = /^(0?[1-9]|1[0-2])$/;
 
 /** The grades a person can hold, each of which can have terms of its own. */
 export const GRADES = ['A', 'B', 'C'] as const;
@@ -61,6 +63,8 @@ export interface Settings {
   /** Two decimals, as the server formats it: each balanced pool's members cut it by their shares;
    *  null when blank (none). Not dated. */
   pot: string | null;
+  /** The month (1 to 12) the fiscal year starts in; 1 unless set. Not dated. */
+  fiscalStartMonth: number;
   /** Days, by grade: the terms a grade has of its own; a grade not here uses the sheet's terms. */
   gradeTerms: Record<string, number>;
   /** Two decimals, as the server formats it: a person's due-total is at most it; null when there is none. */
@@ -187,6 +191,12 @@ export class SettingsApi {
     );
   }
 
+  setFiscalStartMonth(sheetId: string, value: string): Promise<Settings> {
+    return firstValueFrom(
+      this.http.put<Settings>(`${this.url(sheetId)}/settings/fiscal-start-month`, { value }, { headers: this.headers() }),
+    );
+  }
+
   setPot(sheetId: string, value: string): Promise<Settings> {
     return firstValueFrom(
       this.http.put<Settings>(`${this.url(sheetId)}/settings/pot`, { value }, { headers: this.headers() }),
@@ -261,7 +271,7 @@ export class SettingsApi {
 }
 
 export const SETTINGS_INVALID =
-  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of business days (blank: 14) and terms for each grade of a whole number of business days (blank: the sheet\'s terms) and grace days for each grade of a whole number of days (blank: none) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off) and an entry date as yyyy-mm-dd (blank: off) and a cap of 0.00 or more with up to two decimals (blank: none) and a proof threshold of 0.00 or more with up to two decimals (blank: none) and grace days of a whole number of days (blank: off) and a pot of 0.00 or more with up to two decimals (blank: none) and a parent sheet id without spaces (blank: none) and the roles for each action as clerk and/or steward, comma separated (blank: the standing rule), each from-date as yyyy-mm-dd (blank: the sheet\'s today).';
+  'Enter a clerk limit of 0.00 or more with up to two decimals (blank: no limit) and a floor of 0.00 or more with up to two decimals (blank: 1.00) and terms of a whole number of business days (blank: 14) and terms for each grade of a whole number of business days (blank: the sheet\'s terms) and grace days for each grade of a whole number of days (blank: none) and a late percent of 0.00 or more with up to two decimals (blank: 0.00) and a policy date as yyyy-mm-dd (blank: the sheet\'s today) and a period numbering from-date as yyyy-mm-dd (blank: off) and an entry date as yyyy-mm-dd (blank: off) and a cap of 0.00 or more with up to two decimals (blank: none) and a proof threshold of 0.00 or more with up to two decimals (blank: none) and grace days of a whole number of days (blank: off) and a pot of 0.00 or more with up to two decimals (blank: none) and a fiscal start month from 1 to 12 and a parent sheet id without spaces (blank: none) and the roles for each action as clerk and/or steward, comma separated (blank: the standing rule), each from-date as yyyy-mm-dd (blank: the sheet\'s today).';
 
 export function settingsError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return SETTINGS_INVALID;

@@ -42,6 +42,9 @@ export class Session {
   /** The active sheet's pot (two decimals), null when blank (none): each balanced pool's members
    *  cut it by their shares. Not dated. */
   readonly pot = signal<string | null>(null);
+  /** The month (1 to 12) the active sheet's fiscal year starts in; 1 unless set. Not dated. A
+   *  fiscal year is named FY<yyyy> by the calendar year its first day falls in. */
+  readonly fiscalStartMonth = signal(1);
   /** The active sheet's void reasons, in the order they were added: while there are any, a claim
    *  is voided only with one of them. */
   readonly voidReasons = signal<string[]>([]);
@@ -68,6 +71,12 @@ export class Session {
   readonly shownAsOf = signal<string | null>(null);
   /** Bumped on every sheet load, so a load of the same id again re-reads what the sheet holds. */
   readonly loads = signal(0);
+
+  /** The fiscal year (FY<yyyy>) a date (yyyy-mm-dd) falls in, by the sheet's fiscal start month. */
+  fiscalYearOf(date: string): string {
+    const year = Number(date.slice(0, 4));
+    return `FY${Number(date.slice(5, 7)) >= this.fiscalStartMonth() ? year : year - 1}`;
+  }
 
   /** The floor (two decimals) in force on a date: a live due of a claim dated then is at least it;
    *  the starting 1.00 before every from-date. */
