@@ -7,6 +7,7 @@ import { PersonClaims } from '../claims/person-claims';
 import { PersonPlans } from '../plans/person-plans';
 import { PlansApi } from '../plans/plans-api';
 import { Pools } from '../pools/pools';
+import { Crews } from '../crews/crews';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn, personPeriodCarriedCents, personPeriodDueCents } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
@@ -16,14 +17,14 @@ import { Header } from '../header/header';
 import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
 import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, heldOn, holdError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, retireError, statementError, transferError, unretireError, watchError } from './people-api';
 
-// The sheet's rates; its periods, each with its due-total; its pools; the people on the active sheet, in the order they were added, each with their
+// The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
 // due-total and overdue claims; a header of counters repeating them; a summary of them by grade, period and status; and
 // the one form that adds a person or, with a
 // person's editor open, saves that person.
 @Component({
   selector: 'app-people',
-  imports: [FigurePipe, ReactiveFormsModule, Header, PersonClaims, PersonPlans, Periods, Pools, Rates, Summary, ClassicSummary],
+  imports: [FigurePipe, ReactiveFormsModule, Header, PersonClaims, PersonPlans, Periods, Pools, Crews, Rates, Summary, ClassicSummary],
   template: `
     <app-header [peopleCount]="people().length" [claims]="claims()" [dueTotal]="dueTotal()" [overdueTotal]="overdueTotal()" [consolidated]="consolidated()"
       [myDueTotal]="myFigures()?.dueTotal ?? null" [myOverdueTotal]="myFigures()?.overdueTotal ?? null" />
@@ -32,6 +33,7 @@ import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, bulkGradeErro
     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
     <app-classic-summary [periods]="periods()" [dueTotals]="classicDueByPeriod()" [dueTotal]="classicDueTotal()" />
     <app-pools [people]="people()" (cutTotals)="cutTotals.set($event)" />
+    <app-crews [people]="people()" [dueTotals]="dueByPerson()" />
     <section aria-labelledby="people-heading">
       <h2 id="people-heading">People</h2>
       <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-label]="editingId() === null ? 'Add person' : 'Edit person'">
@@ -560,7 +562,7 @@ export class People {
   });
   /** Each person's due-total in cents, by person id, held to the sheet's cap: the cap when their
    *  uncapped one is above it (n/a is not capped). */
-  private readonly dueByPerson = computed(() => {
+  protected readonly dueByPerson = computed(() => {
     const cap = this.session.cap();
     const capCents = cap === null ? null : cents(cap);
     const out = new Map<number, number | null>();

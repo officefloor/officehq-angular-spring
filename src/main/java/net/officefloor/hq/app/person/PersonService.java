@@ -28,6 +28,7 @@ import net.officefloor.hq.app.claim.RetiredNumber;
 import net.officefloor.hq.app.claim.RetiredNumberRepository;
 import net.officefloor.hq.app.pool.PoolMember;
 import net.officefloor.hq.app.pool.PoolMemberRepository;
+import net.officefloor.hq.app.crew.CrewService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.settings.Role;
 import net.officefloor.hq.app.settings.SettingsService;
@@ -53,6 +54,7 @@ public class PersonService {
     private final RetiredNumberRepository retiredNumbers;
     private final ClaimService claimService;
     private final PoolMemberRepository poolMembers;
+    private final CrewService crews;
     private final SettingsService settings;
     private final SheetService sheets;
     private final RollupService rollup;
@@ -61,7 +63,7 @@ public class PersonService {
     public PersonService(PersonRepository people, PersonStatementRepository statements,
             PersonPatronRepository patrons, PersonWatchRepository watches, ClaimRepository claims,
             ClaimLogRepository claimLog, ClaimCommentRepository claimComments, ClaimLineRepository claimLines, RetiredNumberRepository retiredNumbers,
-            ClaimService claimService, PoolMemberRepository poolMembers, SettingsService settings, SheetService sheets,
+            ClaimService claimService, PoolMemberRepository poolMembers, CrewService crews, SettingsService settings, SheetService sheets,
             RollupService rollup, Audit audit) {
         this.people = people;
         this.statements = statements;
@@ -74,6 +76,7 @@ public class PersonService {
         this.retiredNumbers = retiredNumbers;
         this.claimService = claimService;
         this.poolMembers = poolMembers;
+        this.crews = crews;
         this.settings = settings;
         this.sheets = sheets;
         this.rollup = rollup;
@@ -479,6 +482,7 @@ public class PersonService {
             }
         }
         poolMembers.flush();
+        crews.merge(from.getId(), into.getId());
 
         // claims: moved, listed after the other's in the order they were added, their bindings kept
         long listed = claims.findLastListed(sheetId);
@@ -687,6 +691,7 @@ public class PersonService {
         patrons.flush();
         poolMembers.flush();
         watches.flush();
+        crews.drop(person.getId());
         people.delete(person);
         try {
             people.flush();
