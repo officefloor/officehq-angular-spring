@@ -6,10 +6,14 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.session.CurrentUser;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,9 +37,14 @@ public class PeriodController {
             String closedTotal,
             Map<Long, String> closedPersonTotals) {
         static PeriodView of(Period p) {
+            return of(p.getId(), p);
+        }
+
+        /** The period of the id, which a version rebuilt from the sheet's history does not carry. */
+        static PeriodView of(long id, Period p) {
             Map<Long, String> personTotals = new LinkedHashMap<>();
-            p.getClosedPersonTotals().forEach((id, total) -> personTotals.put(id, total.setScale(2).toPlainString()));
-            return new PeriodView(p.getId(), p.getName(), p.getFrom(), p.getTo(), p.isClosed(), p.isSoftClosed(),
+            p.getClosedPersonTotals().forEach((personId, total) -> personTotals.put(personId, total.setScale(2).toPlainString()));
+            return new PeriodView(id, p.getName(), p.getFrom(), p.getTo(), p.isClosed(), p.isSoftClosed(),
                     p.getClosedTotal() == null ? null : p.getClosedTotal().setScale(2).toPlainString(), personTotals);
         }
     }
@@ -49,15 +58,23 @@ public class PeriodController {
     }
 
     private final PeriodService service;
+    private final HistoryService history;
 
-    public PeriodController(PeriodService service) {
+    public PeriodController(PeriodService service, HistoryService history) {
         this.service = service;
+        this.history = history;
     }
 
     @GetMapping
     public List<PeriodView> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            return history.asOf(sheetId, asOf).periods().entrySet().stream()
+                    .sorted(Comparator.comparing((Map.Entry<Long, Period> e) -> e.getValue().getFrom()))
+                    .map(e -> PeriodView.of(e.getKey(), e.getValue())).toList();
+        }
         return service.list(sheetId).stream().map(PeriodView::of).toList();
     }
 

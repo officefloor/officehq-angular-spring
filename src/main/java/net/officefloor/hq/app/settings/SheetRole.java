@@ -2,13 +2,16 @@ package net.officefloor.hq.app.settings;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** The role a user name holds on a sheet. */
 @Entity
+@EntityListeners(HistoryListener.class)
 @Table(name = "sheet_role")
 public class SheetRole {
 
@@ -44,5 +47,9 @@ public class SheetRole {
 
     public void setRole(Role role) {
         this.role = role.key();
+    }
+
+    public String getSheetId() {
+        return sheetId;
     }
 }

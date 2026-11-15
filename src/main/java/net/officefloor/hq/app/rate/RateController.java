@@ -9,7 +9,10 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.session.CurrentUser;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -43,16 +46,20 @@ public class RateController {
     }
 
     private final RateService service;
+    private final HistoryService history;
 
-    public RateController(RateService service) {
+    public RateController(RateService service, HistoryService history) {
         this.service = service;
+        this.history = history;
     }
 
     @GetMapping
     public List<RateView> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return service.list(sheetId).stream().map(RateView::of).toList();
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        List<Rate> rates = asOf == null ? service.list(sheetId) : history.asOf(sheetId, asOf).rates();
+        return rates.stream().map(RateView::of).toList();
     }
 
     @PutMapping("/{grade}")

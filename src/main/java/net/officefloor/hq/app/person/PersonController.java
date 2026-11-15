@@ -9,8 +9,12 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.session.CurrentUser;
 import net.officefloor.hq.app.settings.ViewerAllowed;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/sheets/{sheetId}/people")
@@ -39,7 +44,13 @@ public class PersonController {
             List<Long> patronIds, List<Person.DatedGrade> grades, boolean watched, Integer terms) {
         public static PersonView of(Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
                 boolean watched) {
-            return new PersonView(p.getId(), p.getName(), p.gradeOn(today), p.getVersion(), s.count(),
+            return of(p.getId(), p, today, s, patronIds, watched);
+        }
+
+        /** The person of the id, which a version rebuilt from the sheet's history does not carry. */
+        static PersonView of(long id, Person p, LocalDate today, StatementSummary s, List<Long> patronIds,
+                boolean watched) {
+            return new PersonView(id, p.getName(), p.gradeOn(today), p.getVersion(), s.count(),
                     s.lastDueTotal() == null ? null : s.lastDueTotal().setScale(2).toPlainString(), s.lastDate(),
                     p.getRetiredFrom(), p.isHeld(), p.getHolds(), patronIds, p.getGrades(), watched, p.getTerms());
         }
@@ -80,15 +91,22 @@ public class PersonController {
     }
 
     private final PersonService service;
+    private final HistoryService history;
 
-    public PersonController(PersonService service) {
+    public PersonController(PersonService service, HistoryService history) {
         this.service = service;
+        this.history = history;
     }
 
     @GetMapping
     public List<PersonView> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            HistoryService.AsOf then = history.asOf(sheetId, asOf);
+            return then.people().keySet().stream().map(id -> viewAsOf(then, asOf, user, id)).toList();
+        }
         Map<Long, StatementSummary> summaries = service.statementSummaries(sheetId);
         Map<Long, List<Long>> patrons = service.patronIds(sheetId);
         LocalDate today = service.today(sheetId);
@@ -103,7 +121,15 @@ public class PersonController {
     public PersonView get(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @PathVariable long id,
-            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            HistoryService.AsOf then = history.asOf(sheetId, asOf);
+            if (!then.people().containsKey(id)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person");
+            }
+            return viewAsOf(then, asOf, user, id);
+        }
         return view(sheetId, user, service.get(sheetId, id));
     }
 
@@ -164,6 +190,18 @@ public class PersonController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody WatchForm body) {
         return view(sheetId, user, service.watch(sheetId, user.trim(), id, body.on()));
+    }
+
+    /** The person of the id as they stood at the end of {@code asOf}, with the statements, patrons
+     *  and watches there were then. */
+    private static PersonView viewAsOf(HistoryService.AsOf then, LocalDate asOf, String user, long id) {
+        List<PersonStatement> theirs = then.statements().values().stream()
+                .filter(s -> s.getPersonId() == id).toList();
+        List<Long> patronIds = then.patrons().stream().filter(p -> p.getPersonId() == id)
+                .map(PersonPatron::getPatronId).collect(Collectors.toList());
+        boolean watched = then.watches().stream()
+                .anyMatch(w -> w.getPersonId() == id && w.getUserName().equals(user.trim()));
+        return PersonView.of(id, then.people().get(id), asOf, StatementSummary.of(theirs), patronIds, watched);
     }
 
     private PersonView view(String sheetId, String user, Person p) {

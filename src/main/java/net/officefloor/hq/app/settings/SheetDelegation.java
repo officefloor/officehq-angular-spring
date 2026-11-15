@@ -2,15 +2,18 @@ package net.officefloor.hq.app.settings;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** A steward's role delegated to a user name from a date to a date, inclusive, by the sheet's
  *  today: while the sheet's today is inside the range the user acts as a steward. */
 @Entity
+@EntityListeners(HistoryListener.class)
 @Table(name = "sheet_delegation")
 public class SheetDelegation {
 
@@ -67,5 +70,9 @@ public class SheetDelegation {
     /** Whether the date is inside the range, inclusive. */
     public boolean covers(LocalDate day) {
         return !day.isBefore(from) && !day.isAfter(to);
+    }
+
+    public String getSheetId() {
+        return sheetId;
     }
 }

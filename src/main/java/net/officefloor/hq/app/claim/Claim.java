@@ -262,6 +262,11 @@ public class Claim {
         return proofs;
     }
 
+    /** Set how many proofs the claim has: only for a version rebuilt from the sheet's history. */
+    public void setProofs(int proofs) {
+        this.proofs = proofs;
+    }
+
     /** Add a proof to the claim. */
     public void addProof() {
         proofs++;

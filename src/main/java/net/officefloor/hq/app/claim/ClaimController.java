@@ -9,12 +9,15 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.person.PersonController.PersonView;
 import net.officefloor.hq.app.person.PersonService;
 import net.officefloor.hq.app.session.CurrentUser;
 import net.officefloor.hq.app.settings.SettingsService;
-import net.officefloor.hq.app.sheet.SheetService;
 import net.officefloor.hq.app.settings.ViewerAllowed;
+import net.officefloor.hq.app.sheet.SheetService;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -47,7 +50,12 @@ public class ClaimController {
             LocalDate deferredUntil, int proofs, String splitFrom, String lockedBy,
             boolean lateEntry) {
         static ClaimView of(Claim c, List<ClaimLog> log) {
-            return new ClaimView(c.getId(), c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
+            return of(c.getId(), c, log);
+        }
+
+        /** The claim of the id, which a version rebuilt from the sheet's history does not carry. */
+        static ClaimView of(long id, Claim c, List<ClaimLog> log) {
+            return new ClaimView(id, c.getPersonId(), c.getAmount().setScale(2).toPlainString(),
                     c.getDate(), c.getNote(), c.getStatus(), c.getNumber(), money(c.getSettledDue()),
                     c.getOpenedBy(), c.isStated(), money(c.getStatedDue()), c.getCorrects(), c.getListed(), c.getDueBy(),
                     log.stream().map(LogLineView::of).toList(), c.getDeferredUntil(), c.getProofs(), c.getSplitFrom(), c.getLockedBy(),
@@ -135,19 +143,29 @@ public class ClaimController {
     private final PersonService people;
     private final SettingsService settings;
     private final SheetService sheets;
+    private final HistoryService history;
 
-    public ClaimController(ClaimService service, PersonService people, SettingsService settings, SheetService sheets) {
+    public ClaimController(ClaimService service, PersonService people, SettingsService settings, SheetService sheets,
+            HistoryService history) {
         this.service = service;
         this.people = people;
         this.settings = settings;
         this.sheets = sheets;
+        this.history = history;
     }
 
     @GetMapping("/claims")
     public List<ClaimView> list(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         Map<Long, List<ClaimLog>> logs = service.logs(sheetId);
+        if (asOf != null) {
+            return history.asOf(sheetId, asOf).claims().entrySet().stream()
+                    .map(e -> ClaimView.of(e.getKey(), e.getValue(), logs.getOrDefault(e.getKey(), List.of()).stream()
+                            .filter(l -> !l.getOn().isAfter(asOf)).toList()))
+                    .toList();
+        }
         return service.list(sheetId).stream().map(c -> ClaimView.of(c, logs.getOrDefault(c.getId(), List.of()))).toList();
     }
 

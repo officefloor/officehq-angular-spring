@@ -2,17 +2,20 @@ package net.officefloor.hq.app.person;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** A statement taken of a person: their due-total then (null when n/a), how many of their claims
  *  counted then, the sheet's today when it was taken, and the date it was taken as of (none: as the
  *  sheet stood when it was taken). */
 @Entity
+@EntityListeners(HistoryListener.class)
 @Table(name = "person_statement")
 public class PersonStatement {
 
@@ -80,8 +83,16 @@ public class PersonStatement {
         return asOf;
     }
 
+    public String getTakenBy() {
+        return takenBy;
+    }
+
     /** The date the statement shows: the one it was taken as of, else the sheet's today when taken. */
     public LocalDate getStatedOn() {
         return asOf != null ? asOf : takenOn;
+    }
+
+    public String getSheetId() {
+        return sheetId;
     }
 }

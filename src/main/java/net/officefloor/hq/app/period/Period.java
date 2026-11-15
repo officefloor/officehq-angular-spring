@@ -4,6 +4,7 @@ import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -15,11 +16,13 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** One of the sheet's periods: a name unique on the sheet and its from and to dates, inclusive;
  *  once closed (or soft-closed), its due-total and each person's due-total for it are fixed at the
  *  figures they had then; a soft-closed period still takes changes to the claims dated inside it. */
 @Entity
+@EntityListeners(HistoryListener.class)
 @Table(name = "period")
 public class Period {
 

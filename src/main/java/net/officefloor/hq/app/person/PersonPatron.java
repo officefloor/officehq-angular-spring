@@ -2,13 +2,16 @@ package net.officefloor.hq.app.person;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** A person named as another person's patron, on the same sheet. */
 @Entity
+@EntityListeners(HistoryListener.class)
 @Table(name = "person_patron")
 public class PersonPatron {
 
@@ -44,5 +47,9 @@ public class PersonPatron {
 
     public Long getPatronId() {
         return patronId;
+    }
+
+    public String getSheetId() {
+        return sheetId;
     }
 }

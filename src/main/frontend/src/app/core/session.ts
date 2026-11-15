@@ -36,6 +36,12 @@ export class Session {
   /** Whether the people list shows retired people too: off at first, and kept as it is when a
    *  sheet is loaded. */
   readonly showRetired = signal(false);
+  /** The date (yyyy-mm-dd) this user's screen shows the sheet as of, null when it shows the sheet
+   *  as it stands: while set, every figure is as it stood at the end of that date (its today that
+   *  date) and every change is refused. Kept as it is when a sheet is loaded. */
+  readonly asOf = signal<string | null>(null);
+  /** The as-of date the sheet on screen was loaded with; null when it shows the sheet as it stands. */
+  readonly shownAsOf = signal<string | null>(null);
   /** Bumped on every sheet load, so a load of the same id again re-reads what the sheet holds. */
   readonly loads = signal(0);
 
@@ -77,6 +83,7 @@ export class Session {
   async loadSheet(id: string): Promise<string | null> {
     const user = this.user();
     if (!user) return 'Sign in first.';
+    const asOf = this.asOf();
     try {
       const res = await firstValueFrom(
         this.http.post<SheetView>(`/api/sheets/${encodeURIComponent(id)}/load`, null, {
@@ -88,11 +95,21 @@ export class Session {
       this.dated.set(res.dated);
       this.policyDate.set(res.policyDate);
       this.archived.set(res.archived);
+      this.shownAsOf.set(asOf);
       this.loads.update((n) => n + 1);
       return null;
     } catch (e) {
       return message(e, 'Enter a sheet id without spaces.');
     }
+  }
+
+  /** Show the active sheet as of a date (null: as it stands), re-reading it; resolves to an error
+   *  message, or null. */
+  async showAsOf(date: string | null): Promise<string | null> {
+    const id = this.sheetId();
+    if (!id) return 'Load a sheet first.';
+    this.asOf.set(date);
+    return this.loadSheet(id);
   }
 
   /** Change the active sheet's today; resolves to an error message, or null. */
@@ -171,9 +188,12 @@ function message(e: unknown, invalid: string): string {
   return e instanceof HttpErrorResponse && e.status === 400 ? invalid : otherError(e);
 }
 
-/** The message for a failure no form names: a refusal (403) of a viewer, who may change nothing,
- *  else a plain try again. */
+/** The message for a failure no form names: a refusal (403) while the sheet is shown as of a date
+ *  (the server echoes the date), or of a viewer, who may change nothing, else a plain try again. */
 export function otherError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403 && e.headers.has('X-As-Of')) {
+    return 'The sheet is shown as of a date: clear the as-of date to change anything.';
+  }
   if (e instanceof HttpErrorResponse && e.status === 403) return 'Your role may not change anything on this sheet.';
   return 'Something went wrong; try again.';
 }

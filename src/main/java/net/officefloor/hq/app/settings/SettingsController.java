@@ -12,9 +12,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import net.officefloor.hq.app.history.AsOfGuard;
+import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.session.CurrentUser;
 import net.officefloor.hq.app.sheet.DatedSetting;
 import net.officefloor.hq.app.sheet.Sheet;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -138,7 +141,12 @@ public class SettingsController {
 
     public record DelegationView(long id, String user, String steward, LocalDate from, LocalDate to) {
         static DelegationView of(SheetDelegation d) {
-            return new DelegationView(d.getId(), d.getUser(), d.getSteward(), d.getFrom(), d.getTo());
+            return of(d.getId(), d);
+        }
+
+        /** The delegation of the id, which a version rebuilt from the sheet's history does not carry. */
+        static DelegationView of(long id, SheetDelegation d) {
+            return new DelegationView(id, d.getUser(), d.getSteward(), d.getFrom(), d.getTo());
         }
     }
 
@@ -154,16 +162,19 @@ public class SettingsController {
     private static final List<String> GRADES = List.of("A", "B", "C");
 
     private final SettingsService service;
+    private final HistoryService history;
 
-    public SettingsController(SettingsService service) {
+    public SettingsController(SettingsService service, HistoryService history) {
         this.service = service;
+        this.history = history;
     }
 
     @GetMapping("/settings")
     public SettingsView settings(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return view(sheetId);
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        return asOf == null ? view(sheetId) : viewAsOf(history.asOf(sheetId, asOf));
     }
 
     @PutMapping("/settings/clerk-limit")
@@ -296,6 +307,21 @@ public class SettingsController {
                 service.permissions(sheetId));
     }
 
+    /** The settings as they stood at the end of a date, that date the sheet's today. */
+    private static SettingsView viewAsOf(HistoryService.AsOf then) {
+        Sheet sheet = then.sheet();
+        Map<String, Integer> gradeTerms = new TreeMap<>();
+        for (String grade : GRADES) {
+            Integer terms = sheet.getGradeTerms(grade);
+            if (terms != null) {
+                gradeTerms.put(grade, terms);
+            }
+        }
+        return SettingsView.of(sheet.getClerkLimit(), sheet.getFloor(), sheet.getTerms(), sheet.getLatePct(),
+                sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(), gradeTerms, sheet.getCap(),
+                sheet.getProofThreshold(), sheet.getGraceDays(), sheet.getDatedSettings(), then.permissions());
+    }
+
     /** A from-date as the form submits it; null when blank or left out (the sheet's today). */
     private static LocalDate fromOf(String from) {
         if (from == null || from.isEmpty()) {
@@ -322,8 +348,10 @@ public class SettingsController {
     @GetMapping("/roles")
     public List<RoleView> roles(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
-        return service.roles(sheetId).stream().map(RoleView::of).toList();
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        List<SheetRole> roles = asOf == null ? service.roles(sheetId) : history.asOf(sheetId, asOf).roles();
+        return roles.stream().map(RoleView::of).toList();
     }
 
     @PutMapping("/roles")
@@ -337,7 +365,12 @@ public class SettingsController {
     @GetMapping("/delegations")
     public List<DelegationView> delegations(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
-            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf != null) {
+            return history.asOf(sheetId, asOf).delegations().entrySet().stream()
+                    .map(e -> DelegationView.of(e.getKey(), e.getValue())).toList();
+        }
         return service.delegations(sheetId).stream().map(DelegationView::of).toList();
     }
 

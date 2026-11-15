@@ -2,6 +2,7 @@ package net.officefloor.hq.app.settings;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
@@ -10,9 +11,11 @@ import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Objects;
 import java.util.Set;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** The roles that may take an action on a sheet, as its permission matrix sets them. */
 @Entity
+@EntityListeners(HistoryListener.class)
 @Table(name = "sheet_permission")
 @IdClass(SheetPermission.Key.class)
 public class SheetPermission {
@@ -74,5 +77,9 @@ public class SheetPermission {
         Set<Role> out = EnumSet.noneOf(Role.class);
         Arrays.stream(roles.split(",")).map(String::trim).filter(r -> !r.isEmpty()).map(Role::of).forEach(out::add);
         return out;
+    }
+
+    public String getSheetId() {
+        return sheetId;
     }
 }

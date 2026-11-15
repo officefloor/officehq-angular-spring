@@ -2,14 +2,17 @@ package net.officefloor.hq.app.person;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import net.officefloor.hq.app.history.HistoryListener;
 
 /** A user watching a person on a sheet: settling, approving or re-settling the person's claims
  *  notifies them. */
 @Entity
+@EntityListeners(HistoryListener.class)
 @Table(name = "person_watch")
 public class PersonWatch {
 
@@ -45,5 +48,9 @@ public class PersonWatch {
 
     public String getUserName() {
         return userName;
+    }
+
+    public String getSheetId() {
+        return sheetId;
     }
 }
