@@ -145,12 +145,19 @@ public class SheetService {
         return sheets.findById(id).map(Sheet::isPeriodNumberingOn).orElse(false);
     }
 
-    /** Take the sheet's next claim number (1 for the first), holding the sheet locked until the
-     *  transaction ends so numbers are never shared and, if it rolls back, never skipped. */
+    /** Take the sheet's next claim number: the sheets of a tree share one sequence, so it is the
+     *  next after the last number given on any sheet of the tree (1 for the first), holding the
+     *  sheets locked until the transaction ends so numbers are never shared and, if it rolls back,
+     *  never skipped. */
     @Transactional
     public int nextClaimNumber(String id) {
         Sheet sheet = sheets.findForUpdate(id).orElseThrow();
-        int number = sheet.nextClaimNumber();
+        int last = tree(id).stream().sorted()
+                .map(sheets::findForUpdate)
+                .flatMap(Optional::stream)
+                .mapToInt(Sheet::getLastClaimNumber)
+                .max().orElse(0);
+        int number = sheet.nextClaimNumberAfter(last);
         sheets.flush();
         return number;
     }
