@@ -141,6 +141,12 @@ public class Person {
         return retiredFrom != null && date.isAfter(retiredFrom);
     }
 
+    /** Whether the person's retirement date is reached on {@code today} (on or after it): their
+     *  open claims, unless bound by a statement, then count in no live total. */
+    public boolean retiredOn(LocalDate today) {
+        return retiredFrom != null && !today.isBefore(retiredFrom);
+    }
+
     /** A hold from a date to an optional one (null: open-ended), both inclusive. */
     @Embeddable
     public record Hold(@Column(name = "from_date", nullable = false) LocalDate from,

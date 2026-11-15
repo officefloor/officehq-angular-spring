@@ -726,11 +726,13 @@ public class ClaimService {
     }
 
     /** Whether a claim counts toward claimed and due totals: only OPEN (or PENDING) and SETTLED ones
-     *  do, but not an open one dated within a hold of its person unless bound by a statement, nor
-     *  one deferred on the sheet's today. */
+     *  do, but not an open one dated within a hold of its person, nor one of a person whose
+     *  retirement date the sheet's today has reached, unless bound by a statement, nor one deferred
+     *  on the sheet's today. */
     private static boolean counts(Claim c, Person person, LocalDate today) {
         return c.getStatus() == ClaimStatus.SETTLED
-                || (c.getStatus().isOpen() && !c.isDeferredOn(today) && (c.isBound() || !person.heldOn(c.getDate())));
+                || (c.getStatus().isOpen() && !c.isDeferredOn(today)
+                        && (c.isBound() || !(person.heldOn(c.getDate()) || person.retiredOn(today))));
     }
 
     /** The due a claim shows: the due fixed when it was settled, else its figure with its late

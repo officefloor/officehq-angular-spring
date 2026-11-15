@@ -183,7 +183,8 @@ public class RollupService {
 
     /** Whether a claim counts toward claimed and due totals: only OPEN (or PENDING) and SETTLED ones
      *  do, but not an open one dated within a hold of its person (by id in {@code held}) unless bound
-     *  by a statement, nor one deferred on the sheet's today. */
+     *  by a statement, nor (so unbound) any open one of a person whose retirement date the sheet's
+     *  today has reached, nor one deferred on the sheet's today. */
     private static boolean counts(Claim c, Map<Long, Person> held, LocalDate today) {
         if (c.getStatus() == ClaimStatus.SETTLED) {
             return true;
@@ -191,8 +192,7 @@ public class RollupService {
         if (!c.getStatus().isOpen() || c.isDeferredOn(today)) {
             return false;
         }
-        Person person = held.get(c.getPersonId());
-        return c.isBound() || person == null || !person.heldOn(c.getDate());
+        return c.isBound() || !leftOut(held.get(c.getPersonId()), c, today);
     }
 
     /** Whether a claim counts toward a period's due-total, taken in {@code status} (the one it had
@@ -207,9 +207,8 @@ public class RollupService {
         if (!status.isOpen() || c.isDeferredOn(today)) {
             return false;
         }
-        Person person = held.get(c.getPersonId());
-        // a hold leaves out a claim still open now, as the live due-total does
-        return !c.getStatus().isOpen() || c.isBound() || person == null || !person.heldOn(c.getDate());
+        // a hold or a reached retirement leaves out a claim still open now, as the live due-total does
+        return !c.getStatus().isOpen() || c.isBound() || !leftOut(held.get(c.getPersonId()), c, today);
     }
 
     /** The status each of the sheet's claims had at the end of {@code on}, by claim id, as their
@@ -224,8 +223,16 @@ public class RollupService {
         return out;
     }
 
+    /** Whether an unbound open claim of the person (null: one with neither a hold nor a retirement)
+     *  is left out of the live totals: dated within a hold of theirs, or their retirement date
+     *  reached on the sheet's today. */
+    private static boolean leftOut(Person person, Claim c, LocalDate today) {
+        return person != null && (person.heldOn(c.getDate()) || person.retiredOn(today));
+    }
+
+    /** The people with a hold or a retirement date, by id. */
     private static Map<Long, Person> heldPeople(List<Person> sheetPeople) {
-        return sheetPeople.stream().filter(Person::isHeld).collect(Collectors.toMap(Person::getId, p -> p));
+        return sheetPeople.stream().filter(p -> p.isHeld() || p.isRetired()).collect(Collectors.toMap(Person::getId, p -> p));
     }
 
     /** A person's due-total: the sum of the dues their counting claims show (n/a ones skipped);

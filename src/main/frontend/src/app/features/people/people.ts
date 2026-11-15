@@ -212,12 +212,28 @@ export class People {
   protected readonly claims = signal<Claim[]>([]);
   /** The holds of each person with any, by person id: their open (OPEN or PENDING) claims dated within one count in no live total. */
   private readonly holdsById = computed(() => new Map(this.people().filter((p) => p.held).map((p) => [p.id, p.holds])));
-  /** Whether a claim counts in the live totals: open (OPEN or PENDING) and SETTLED ones, but not a deferred one,
-   *  nor an open one dated within a hold of its person unless bound by a statement. */
-  private readonly countsLive = computed(() => {
+  /** The retirement date of each person with one, by person id: from the sheet's today on or after it, their
+   *  open (OPEN or PENDING) claims count in no live total unless bound by a statement. */
+  private readonly retiredFromById = computed(() =>
+    new Map(this.people().filter((p) => p.retiredFrom !== null).map((p) => [p.id, p.retiredFrom as string])));
+  /** Whether an unbound open claim is left out of the live totals: dated within a hold of its person, or its
+   *  person's retirement date reached on the sheet's today. */
+  private readonly leftOut = computed(() => {
     const holds = this.holdsById();
+    const retired = this.retiredFromById();
     const today = this.session.today();
-    return (c: Claim) => counts(c, today) && !(isOpen(c) && !isBound(c) && heldOn(holds.get(c.personId) ?? [], c.date));
+    return (c: Claim) => {
+      const from = retired.get(c.personId);
+      return heldOn(holds.get(c.personId) ?? [], c.date) || (from !== undefined && today !== null && from <= today);
+    };
+  });
+  /** Whether a claim counts in the live totals: open (OPEN or PENDING) and SETTLED ones, but not a deferred one,
+   *  nor an open one dated within a hold of its person, or of a person whose retirement date is reached,
+   *  unless bound by a statement. */
+  private readonly countsLive = computed(() => {
+    const leftOut = this.leftOut();
+    const today = this.session.today();
+    return (c: Claim) => counts(c, today) && !(isOpen(c) && !isBound(c) && leftOut(c));
   });
   /** The ids of the people who are active: with an open (OPEN or PENDING) claim that counts in the
    *  live totals, dated within the 30 days up to and including the sheet's today. */
@@ -309,15 +325,15 @@ export class People {
    *  the end of the period's last day: as the live totals count it in that status (one not yet
    *  added then does not count). */
   private readonly countsAtEnd = computed(() => {
-    const holds = this.holdsById();
+    const leftOut = this.leftOut();
     const today = this.session.today();
     return (c: Claim, end: string) => {
       const status = statusOn(c, end);
       if (status === null) return false;
       if (status === 'SETTLED') return true;
       if ((status !== 'OPEN' && status !== 'PENDING') || deferred(c, today)) return false;
-      // a hold leaves out a claim still open now, as the live due-total does
-      return !isOpen(c) || isBound(c) || !heldOn(holds.get(c.personId) ?? [], c.date);
+      // a hold or a reached retirement leaves out a claim still open now, as the live due-total does
+      return !isOpen(c) || isBound(c) || !leftOut(c);
     };
   });
   /** Each person's live due-total for each period in cents, by person id then period id: the dues
