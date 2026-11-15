@@ -4,6 +4,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.session.CurrentUser;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -19,8 +22,11 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class RollupController {
 
-    /** Figures added up over a sheet's descendants (or the sheet's own), the totals with two decimals. */
-    public record ConsolidatedView(int people, String dueTotal, String overdueTotal) {
+    /** Figures added up over a sheet's descendants (or the sheet's own), the totals with two
+     *  decimals: per grade the due-totals of the people on it (retired ones left out), and per
+     *  status how many claims are in it (only grades and statuses with some). */
+    public record ConsolidatedView(int people, String dueTotal, String overdueTotal,
+            Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts) {
     }
 
     private final RollupService service;
@@ -51,6 +57,10 @@ public class RollupController {
 
     private static ConsolidatedView view(RollupService.Consolidated c) {
         return new ConsolidatedView(c.people(), c.dueTotal().setScale(2).toPlainString(),
-                c.overdueTotal().setScale(2).toPlainString());
+                c.overdueTotal().setScale(2).toPlainString(),
+                c.gradeDueTotals().entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey,
+                        e -> e.getValue().setScale(2).toPlainString(), (a, b) -> a, TreeMap::new)),
+                c.statusCounts().entrySet().stream().collect(Collectors.toMap(e -> e.getKey().name(),
+                        Map.Entry::getValue, (a, b) -> a, TreeMap::new)));
     }
 }

@@ -138,13 +138,20 @@ export function personTags(p: Person): string[] {
 }
 
 // The people kept on the active sheet, read and written through the server.
-/** Figures added up over a sheet's descendants: how many people (retired ones too), and each
- *  sheet's due-total and overdue-total as that sheet shows it. */
+/** Figures added up over a sheet's descendants: how many people (retired ones too), each
+ *  sheet's due-total and overdue-total as that sheet shows it, per grade the due-totals of the
+ *  people on it (retired ones left out), and per status how many claims are in it (only grades and
+ *  statuses with some listed). */
 export interface DescendantFigures {
   people: number;
   dueTotal: string;
   overdueTotal: string;
+  gradeDueTotals: Record<string, string>;
+  statusCounts: Record<string, number>;
 }
+
+/** Figures with nothing in them. */
+export const NO_FIGURES: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {} };
 
 @Injectable({ providedIn: 'root' })
 export class PeopleApi {

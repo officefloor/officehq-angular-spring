@@ -12,11 +12,11 @@ import { Crew, crewIds } from '../crews/crews-api';
 import { Periods } from '../periods/periods';
 import { Period, PeriodsApi, periodOn, personPeriodCarriedCents, personPeriodDueCents } from '../periods/periods-api';
 import { Rates } from '../rates/rates';
-import { Summary, SummaryPerson } from '../summary/summary';
+import { STATUSES, Summary, SummaryPerson, statusCounts } from '../summary/summary';
 import { ClassicSummary } from '../summary/classic-summary';
 import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
 import { Dashboard, Header } from '../header/header';
-import { DescendantFigures, GRADES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
+import { DescendantFigures, GRADES, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap), its excess over the cap and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -883,7 +883,7 @@ export class People {
       sum + crewIds(c).reduce((s, id) => s + (dues.get(id) ?? 0), 0), 0));
   });
   /** The figures of the sheet's descendants added up, as last read from the store. */
-  private readonly descendants = signal<DescendantFigures>({ people: 0, dueTotal: '0.00', overdueTotal: '0.00' });
+  private readonly descendants = signal<DescendantFigures>(NO_FIGURES);
   /** The sheet's own figures as it stood at the end of the as-of date, read from the store while
    *  the screen shows it as of a date; null when it shows the sheet as it stands (the screen's own
    *  figures are then live). */
@@ -892,13 +892,25 @@ export class People {
    *  as it is now, or as it stood at the end of the as-of date. */
   protected readonly consolidated = computed<DescendantFigures>(() => {
     const d = this.descendants();
-    const own = this.ownLive() ?? {
-      people: this.people().length, dueTotal: this.dueTotal(), overdueTotal: this.overdueTotal(),
-    };
+    const own = this.ownLive() ?? this.ownFigures();
     return {
       people: own.people + d.people,
       dueTotal: money(cents(own.dueTotal) + cents(d.dueTotal)),
       overdueTotal: money(cents(own.overdueTotal) + cents(d.overdueTotal)),
+      gradeDueTotals: Object.fromEntries(GRADES.map((g) =>
+        [g, money(cents(own.gradeDueTotals[g] ?? '0.00') + cents(d.gradeDueTotals[g] ?? '0.00'))])),
+      statusCounts: Object.fromEntries(STATUSES.map((s) =>
+        [s, (own.statusCounts[s] ?? 0) + (d.statusCounts[s] ?? 0)])),
+    };
+  });
+  /** The sheet's own figures, live, as the consolidated figures add them up. */
+  private readonly ownFigures = computed<DescendantFigures>(() => {
+    const people = this.summaryPeople().filter((p) => !p.retired);
+    return {
+      people: this.people().length, dueTotal: this.dueTotal(), overdueTotal: this.overdueTotal(),
+      gradeDueTotals: Object.fromEntries(GRADES.map((g) =>
+        [g, money(people.filter((p) => p.grade === g).reduce((sum, p) => sum + (p.due ?? 0), 0))])),
+      statusCounts: Object.fromEntries(statusCounts(this.claims()).map((s) => [s.status, s.count])),
     };
   });
   protected readonly claimedTotal = computed(() =>
@@ -1114,7 +1126,7 @@ export class People {
         this.tagsUsed.set([]);
         this.rates.set([]);
         this.inherited.set([]);
-        this.descendants.set({ people: 0, dueTotal: '0.00', overdueTotal: '0.00' });
+        this.descendants.set(NO_FIGURES);
         this.ownLive.set(null);
         this.myRole.set(null);
         this.periods.set([]);

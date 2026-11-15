@@ -1,13 +1,14 @@
 import { Component, computed, input } from '@angular/core';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Claim } from '../claims/claims-api';
-import { DescendantFigures } from '../people/people-api';
-import { statusCounts } from '../summary/summary';
+import { DescendantFigures, GRADES } from '../people/people-api';
+import { STATUSES, statusCounts } from '../summary/summary';
 
 // The sheet's counters, shown at all times: how many people are on it (retired ones too), how many
 // claims are in each status (as the summary counts them), and its due-total and overdue-total (as
 // the sheet's totals show them); and the same figures consolidated over the sheet and all its
-// descendants (each sheet's totals as that sheet shows them, added up); and the signed-in user's own
+// descendants (each sheet's totals as that sheet shows them, added up, with per grade the due-totals
+// of the people on it, retired ones left out, and per status how many claims are in it); and the signed-in user's own
 // due-total and overdue-total, when a person on the sheet goes by their name, and their crew total,
 // when that person leads a crew; and, for a steward, their dashboard: how many claims are PENDING,
 // how many in REVIEW and how many counting ones are overdue (the cells empty for anyone else).
@@ -40,6 +41,16 @@ export interface Dashboard {
       <p>With its descendants: people <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong>,
         due total <strong data-testid="consolidated-due-total">{{ consolidated().dueTotal | figure }}</strong>,
         overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal | figure }}</strong></p>
+      <p>With its descendants, due total by grade:
+        @for (g of grades; track g) {
+          {{ g }} <strong [attr.data-testid]="'consolidated-grade-' + g + '-due-total'">{{ (consolidated().gradeDueTotals[g] ?? '0.00') | figure }}</strong>
+        }
+      </p>
+      <p>With its descendants, claims:
+        @for (s of statuses; track s) {
+          {{ s }} <strong [attr.data-testid]="'consolidated-status-' + s + '-count'">{{ consolidated().statusCounts[s] ?? 0 }}</strong>
+        }
+      </p>
     </header>
   `,
 })
@@ -49,6 +60,8 @@ export class Header {
   readonly dueTotal = input.required<string>();
   readonly overdueTotal = input.required<string>();
   readonly consolidated = input.required<DescendantFigures>();
+  protected readonly grades = GRADES;
+  protected readonly statuses = STATUSES;
   /** The signed-in user's own figures (of the person on the sheet going by their name); null when none. */
   readonly myDueTotal = input<string | null>(null);
   readonly myOverdueTotal = input<string | null>(null);
