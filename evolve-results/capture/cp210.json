@@ -1,0 +1,64 @@
+{
+  "checkpoint": 210,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp210_score-bands",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "The sheet has score thresholds (settings, whole numbers, not dated; SETTING_CHANGED key=score-mid\nand key=score-high). While both are set, each person shows a band: HIGH when the score is at or\nabove the high threshold, MID when at or above the mid one, else LOW; nothing while either is\nblank.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nThe sheet has score thresholds (settings, whole numbers, not dated; SETTING_CHANGED key=score-mid\nand key=score-high). While both are set, each person shows a band: HIGH when the score is at or\nabove the high threshold, MID when at or above the mid one, else LOW; nothing while either is\nblank.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "486b1279851784217df9d165ff02b5738512f162",
+  "reset_sha": "",
+  "preagent_sha": "67fe846630fba2346c4b7ab640f5ed63cc8487df",
+  "prev_sha": "67fe846630fba2346c4b7ab640f5ed63cc8487df",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.2716131999999996,
+    "input_tokens": 58,
+    "output_tokens": 12972,
+    "cache_read_tokens": 1749506,
+    "cache_creation_tokens": 82755,
+    "num_turns": 30,
+    "duration_ms": 427318,
+    "duration_api_ms": 133912,
+    "model": "claude-opus-5-5",
+    "session_id": "3d46c209-36b7-4692-b99e-f6718be13a67",
+    "stop_reason": "success",
+    "result_text": "Score bands are in, and `bin/e2e` passes all 4 tests in the spec.\n\n**How it works:** the sheet now has two new whole-number settings, `score-mid` and `score-high`. They have no from-date and can be left blank. Each person's row has a new **Band** column (`person-band`). It shows HIGH when the score is at or above the high threshold, MID when at or above the mid one, and LOW otherwise. It is blank while either threshold is blank. Saving a threshold writes `SETTING_CHANGED sheet=\u2026 by=\u2026 key=score-mid value=\u2026` (or `key=score-high`) to the audit file. I modelled both settings on the existing review-SLA and escalation-gap settings, which work the same way.\n\n**What changed:**\n- **Stored data:** a new migration `V108__score_thresholds.sql` adds two nullable columns, `score_mid` and `score_high`, to the sheet table.\n- **Server:**\n  - `Sheet` gets the two fields, and a cloned sheet copies them.\n  - The sheet's history now records and restores them, so viewing the sheet as of an earlier date shows the thresholds in force then.\n  - `SettingsService` saves each one and writes its audit record.\n  - `SettingsController` adds `PUT /settings/score-mid` and `PUT /settings/score-high` and returns both values with the rest of the settings.\n- **Front end:**\n  - The settings panel has two inputs (`setting-score-mid`, `setting-score-high`) and shows the saved values (`setting-score-mid-current`, `setting-score-high-current`).\n  - The values are kept in the session.\n  - The people list works out the band from the score it already calculates (`bandOf` in `people.ts`).\n\n**One decision for you:** I let the thresholds be negative (minus sign plus up to 6 digits), because scores can go below zero \u2014 the test shows a score of -5. The request only says \"whole numbers\", so if thresholds should never be negative, the change is one pattern on the server and one in the front end.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.2716131999999996,
+        "num_turns": 30,
+        "duration_ms": 427318,
+        "duration_api_ms": 133912,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp210.agent.jsonl",
+  "agent_diff_file": "cp210.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
