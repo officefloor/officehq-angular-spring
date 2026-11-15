@@ -359,6 +359,13 @@ export class PeopleApi {
   }
 
   /** Undo the transfer that brought the person here; resolves to the person as they arrived back. */
+  /** Undo the last merge into the person; resolves to the person restored. */
+  undoMerge(sheetId: string, id: number): Promise<Person> {
+    return firstValueFrom(
+      this.http.post<Person>(`${this.url(sheetId)}/${id}/merge-undo`, {}, { headers: this.headers() }),
+    );
+  }
+
   undoTransfer(sheetId: string, id: number): Promise<Person> {
     return firstValueFrom(
       this.http.post<Person>(`${this.url(sheetId)}/${id}/transfer-undo`, {}, { headers: this.headers() }),
@@ -523,6 +530,14 @@ export function transferError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'Their name or an alias is used by more than one person there or elsewhere in its tree, or their contact is already on that sheet.';
   if (e instanceof HttpErrorResponse && e.status === 422) return 'A person is transferred only to another sheet, not once retired, and not into a retired person there.';
+  return otherError(e);
+}
+
+export function mergeUndoError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only the steward who made the merge may undo it.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'That person is no longer on this sheet.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'Someone on the sheet now goes by the merged person\'s name.';
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'There is no merge into this person to undo today.';
   return otherError(e);
 }
 

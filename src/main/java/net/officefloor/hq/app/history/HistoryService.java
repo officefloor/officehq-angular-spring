@@ -197,6 +197,8 @@ public class HistoryService {
                     c.getReviewAssignee(), c.getPendingOn(),
                     c.getShares().stream().map(sh -> new ShareState(sh.getPersonId(), sh.getShare())).toList(),
                     c.isDueBySet(), c.isDeferredBound()));
+        } else if (entity instanceof Person p && p.getMergedInto() != null) {
+            writeText(p.getSheetId(), PERSON, String.valueOf(p.getId()), REMOVED); // merged away: gone from the sheet
         } else if (entity instanceof Person p) {
             List<Person.DatedGrade> all = p.getGrades();
             write(p.getSheetId(), PERSON, String.valueOf(p.getId()), new PersonState(p.getName(), all.get(0).grade(),

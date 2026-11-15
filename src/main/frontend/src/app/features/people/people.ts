@@ -16,7 +16,7 @@ import { STATUSES, Summary, SummaryPerson, statusCounts } from '../summary/summa
 import { ClassicSummary } from '../summary/classic-summary';
 import { Lateness, Rate, RateLevels, RatePreview, RatesApi, claimDueCents, pctOn, plusDays } from '../rates/rates-api';
 import { Dashboard, Header } from '../header/header';
-import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkHoldError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
+import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasError, approverError, bulkGradeError, bulkHoldError, bulkRetireError, csvLine, gradeError, gradeOn, holdError, flagError, importError, isStale, mergeError, mergeUndoError, moveError, patronError, personError, personTags, cancelStatementError, divideHalfEven, patronShares, retireError, statementError, transferError, transferUndoError, unretireError, watchError } from './people-api';
 
 // The sheet's rates; its periods, each with its due-total; its pools; its crews, each with its lead and due-total; the people on the active sheet, in the order they were added, each with their
 // claims, what they have claimed, their due-total (held to the sheet's cap less their cut total), its excess over that and its settled and open parts, their overdue claims, their open claims' dues by age, and their patrons with their shares and backing (their patrons' recent settled figures by share); the sheet's claimed-total,
@@ -531,6 +531,8 @@ import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasEr
                 </select>
                 <button type="button" data-testid="person-merge" (click)="merge(p, mergeInto.value)"
                   [attr.aria-label]="'Merge ' + p.name">Merge</button>
+                <button type="button" data-testid="person-merge-undo" (click)="undoMerge(p)"
+                  [attr.aria-label]="'Undo the last merge into ' + p.name">Undo merge</button>
                 <label [for]="'person-transfer-to-' + p.id" class="visually-hidden">Transfer {{ p.name }} to sheet</label>
                 <input [id]="'person-transfer-to-' + p.id" data-testid="person-transfer-to" #transferTo
                   placeholder="Sheet id" (input)="clearRowError(p.id)" />
@@ -1494,6 +1496,21 @@ export class People {
 
   /** Undo the transfer that brought a person here; the row then leaves the list, and the sheet's
    *  people and claims are read again. */
+  /** Undo the last merge into a person; the merged person is back at the end of the list, and the
+   *  sheet's people and claims are read again to show what each has now. */
+  protected async undoMerge(p: Person): Promise<void> {
+    this.clearRowError(p.id);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    try {
+      await this.api.undoMerge(sheetId, p.id);
+      if (this.session.sheetId() !== sheetId) return;
+      await this.read(sheetId);
+    } catch (e) {
+      this.rowErrors.update((errs) => ({ ...errs, [p.id]: mergeUndoError(e) }));
+    }
+  }
+
   protected async undoTransfer(p: Person): Promise<void> {
     this.clearRowError(p.id);
     const sheetId = this.session.sheetId();

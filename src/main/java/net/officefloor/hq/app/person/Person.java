@@ -28,11 +28,14 @@ import java.util.Set;
 import java.util.TreeMap;
 import net.officefloor.hq.app.history.HistoryListener;
 import org.hibernate.annotations.OptimisticLock;
+import org.hibernate.annotations.SQLRestriction;
 
-/** A person on a sheet, with a name and a dated grade (A, B or C). */
+/** A person on a sheet, with a name and a dated grade (A, B or C). A person merged into another is
+ *  kept, set aside, so the merge can be undone: they are no longer found on the sheet. */
 @Entity
 @EntityListeners(HistoryListener.class)
 @Table(name = "person")
+@SQLRestriction("merged_into IS NULL")
 public class Person {
 
     @Id
@@ -137,6 +140,10 @@ public class Person {
     /** The last day the flag is in force; null when never flagged. */
     @Column(name = "flag_until")
     private LocalDate flagUntil;
+
+    /** The id of the person this one is merged into, while the merge stands; null otherwise. */
+    @Column(name = "merged_into")
+    private Long mergedInto;
 
     /** Raised on every save, so an edit of a version someone else has since saved is refused. */
     @Version
@@ -300,6 +307,23 @@ public class Person {
 
     public void addAlias(String alias) {
         aliases.add(alias);
+    }
+
+    public void removeAlias(String alias) {
+        aliases.remove(alias);
+    }
+
+    public boolean hasAlias(String alias) {
+        return aliases.contains(alias);
+    }
+
+    /** The id of the person this one is merged into, while the merge stands; null otherwise. */
+    public Long getMergedInto() {
+        return mergedInto;
+    }
+
+    public void setMergedInto(Long mergedInto) {
+        this.mergedInto = mergedInto;
     }
 
     /** Whether the name or one of the aliases equals {@code name}, as names are compared. */

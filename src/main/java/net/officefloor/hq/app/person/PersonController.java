@@ -429,6 +429,15 @@ public class PersonController {
         return view(sheetId, user, service.merge(sheetId, user.trim(), id, body.intoId()));
     }
 
+    /** Undo the last merge into the person; answers with the person restored. */
+    @PostMapping("/{id}/merge-undo")
+    public PersonView undoMerge(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable long id,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user) {
+        return view(sheetId, user, service.undoMerge(sheetId, user.trim(), id));
+    }
+
     /** Transfer the person to another sheet; answers with the person as they arrived there. */
     @PostMapping("/{id}/transfer")
     public PersonView transfer(

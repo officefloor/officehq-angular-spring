@@ -38,4 +38,9 @@ public interface PersonRepository extends JpaRepository<Person, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Person p where p.id = :id and p.sheetId = :sheetId")
     Optional<Person> findForUpdate(Long id, String sheetId);
+
+    /** The person set aside by a merge into another that still stands (found by no other query). */
+    @Query(value = "SELECT * FROM person WHERE id = :id AND sheet_id = :sheetId AND merged_into = :intoId FOR UPDATE",
+            nativeQuery = true)
+    Optional<Person> findMergedForUpdate(Long id, String sheetId, Long intoId);
 }

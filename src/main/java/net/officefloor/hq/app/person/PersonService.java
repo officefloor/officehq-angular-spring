@@ -61,12 +61,13 @@ public class PersonService {
     private final RollupService rollup;
     private final PeriodRepository periods;
     private final Audit audit;
+    private final PersonMergeRepository merges;
 
     public PersonService(PersonRepository people, PersonStatementRepository statements,
             PersonPatronRepository patrons, PersonWatchRepository watches, ClaimRepository claims,
             ClaimLogRepository claimLog, ClaimCommentRepository claimComments, ClaimLineRepository claimLines, RetiredNumberRepository retiredNumbers,
             ClaimService claimService, PoolMemberRepository poolMembers, CrewService crews, SettingsService settings, SheetService sheets,
-            RollupService rollup, PeriodRepository periods, Audit audit) {
+            RollupService rollup, PeriodRepository periods, Audit audit, PersonMergeRepository merges) {
         this.people = people;
         this.statements = statements;
         this.patrons = patrons;
@@ -84,6 +85,7 @@ public class PersonService {
         this.rollup = rollup;
         this.periods = periods;
         this.audit = audit;
+        this.merges = merges;
     }
 
     @Transactional(readOnly = true)
@@ -644,21 +646,88 @@ public class PersonService {
         statements.flush();
         watches.flush();
 
+        // the merged person set aside (aliases and all), so the merge can be undone
         String fromName = from.getName();
-        List<String> fromAliases = from.getAliases();
-        people.delete(from);
+        Set<String> given = new LinkedHashSet<>();
+        given.add(fromName);
+        given.addAll(from.getAliases());
+        given.removeIf(into::hasAlias);
+        from.setMergedInto(into.getId());
         people.flush();
-        into.addAlias(fromName);
-        fromAliases.forEach(into::addAlias);
+        given.forEach(into::addAlias);
         try {
             people.flush();
         } catch (ObjectOptimisticLockingFailureException e) {
             throw savedByAnother(); // saved by another user at the same moment
         }
+        merges.save(new PersonMerge(sheetId, from.getId(), into.getId(), user, sheets.today(sheetId),
+                moved.stream().map(Claim::getId).collect(Collectors.toSet()), given));
         audit.recordOnCommit("PERSON_MERGED sheet=" + sheetId + " by=" + user + " from=" + fromName
                 + " into=" + into.getName());
         rollup.recordChanges(sheetId, user, before);
         return into;
+    }
+
+    /** Undo the last merge into a person, as the steward who made it, on the sheet's today it was
+     *  made: the merged person is back at the end of the list with the claims that came from them
+     *  (their numbers and status as they are now) and their own aliases, which leave the other's;
+     *  patron, pool and crew changes stay. Refused (404) for a person not on the sheet, (403)
+     *  unless the user acts as a steward and made the merge, (422) when there is no merge into
+     *  them to undo or it was made on another day, (409) when someone on the sheet now goes by
+     *  the merged person's name. */
+    @Transactional
+    public Person undoMerge(String sheetId, String user, long id) {
+        Person into = people.findForUpdate(id, sheetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may undo a merge");
+        }
+        PersonMerge merge = merges.findFirstBySheetIdAndIntoIdOrderByIdDesc(sheetId, into.getId())
+                .filter(m -> !m.isUndone())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "No merge to undo"));
+        if (!merge.getMadeBy().equals(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the one who made the merge may undo it");
+        }
+        if (!merge.getMadeOn().equals(sheets.today(sheetId))) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A merge is undone only on the day it was made");
+        }
+        Person from = people.findMergedForUpdate(merge.getFromId(), sheetId, into.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "No merge to undo"));
+        boolean clash = people.findBySheetIdOrderByPositionAscIdAsc(sheetId).stream()
+                .anyMatch(p -> !p.getId().equals(into.getId()) && p.goesBy(from.getName()));
+        if (clash) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Someone on the sheet goes by that name now");
+        }
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+
+        // the aliases the merge gave the other leave them
+        merge.getAliases().forEach(into::removeAlias);
+        try {
+            people.flush();
+        } catch (ObjectOptimisticLockingFailureException e) {
+            throw savedByAnother(); // saved by another user at the same moment
+        }
+
+        // the merged person back, at the end of the list
+        long position = people.nextPosition(sheetId);
+        from.setMergedInto(null);
+        from.setPosition(position);
+        people.flush();
+
+        // the claims that came from them, as they are now
+        for (Claim claim : claims.findByPersonForUpdate(into.getId(), sheetId)) {
+            if (merge.getClaimIds().contains(claim.getId())) {
+                claim.setPersonId(from.getId());
+            }
+        }
+        claims.flush();
+        merge.undo();
+        merges.flush();
+
+        audit.recordOnCommit("PERSON_MERGE_UNDONE sheet=" + sheetId + " by=" + user + " name=" + from.getName()
+                + " from=" + into.getName());
+        rollup.recordChanges(sheetId, user, before);
+        return from;
     }
 
     /** Transfer a person to another sheet (created first if it was never loaded), as a steward: they

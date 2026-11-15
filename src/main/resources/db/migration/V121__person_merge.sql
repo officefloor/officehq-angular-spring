@@ -1,0 +1,25 @@
+-- A person merged into another is kept, set aside, so the merge can be undone.
+ALTER TABLE person ADD COLUMN merged_into BIGINT;
+
+-- Each merge of a person into another on a sheet: who made it and on which sheet-today, the claims
+-- it moved and the aliases it gave the other; undone once a steward undoes it.
+CREATE TABLE person_merge (
+    id        BIGINT AUTO_INCREMENT PRIMARY KEY,
+    sheet_id  VARCHAR(100) NOT NULL REFERENCES sheet (id),
+    from_id   BIGINT       NOT NULL,
+    into_id   BIGINT       NOT NULL,
+    made_by   VARCHAR(100) NOT NULL,
+    made_on   DATE         NOT NULL,
+    undone    BOOLEAN      NOT NULL DEFAULT FALSE
+);
+CREATE INDEX person_merge_into ON person_merge (sheet_id, into_id, id);
+
+CREATE TABLE person_merge_claim (
+    merge_id BIGINT NOT NULL REFERENCES person_merge (id),
+    claim_id BIGINT NOT NULL
+);
+
+CREATE TABLE person_merge_alias (
+    merge_id BIGINT       NOT NULL REFERENCES person_merge (id),
+    alias    VARCHAR(200) NOT NULL
+);
