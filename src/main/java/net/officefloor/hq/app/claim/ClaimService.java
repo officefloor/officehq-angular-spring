@@ -239,7 +239,7 @@ public class ClaimService {
         Person person = people.findByIdAndSheetId(personId, sheetId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such person"));
         LocalDate on = date != null ? date : sheets.entryDate(sheetId);
-        int terms = termsOf(sheetId, person, on);
+        int terms = termsOf(sheetId, person);
         LocalDate dueBy = dueByOf(sheetId, on, terms);
         refuseIfClosed(sheetId, dueBy);
         refuseIfRetired(person, on);
@@ -922,7 +922,7 @@ public class ClaimService {
         LocalDate on = claim.getDate();
         claim.setAmount(claim.getAmount().subtract(amount));
         claim.unbind();
-        int terms = termsOf(sheetId, person, on);
+        int terms = claim.getTerms();
         Claim fresh = new Claim(sheetId, person.getId(), amount, on, dueByOf(sheetId, on, terms), claim.getNote());
         fresh.setTerms(terms);
         fresh.setStatus(ClaimStatus.OPEN);
@@ -1113,9 +1113,11 @@ public class ClaimService {
         return new Statement(person, StatementSummary.of(statements.findByPersonIdOrderByIdAsc(personId)), theirs);
     }
 
-    /** The terms a claim of the person dated {@code on} is fixed with as it is created: the
-     *  person's own terms in force on it, else those of their grade then in force on it, else the sheet's. */
-    private int termsOf(String sheetId, Person person, LocalDate on) {
+    /** The terms a claim of the person is fixed with as it is created, whatever its date: the
+     *  person's own terms in force on the sheet's today, else those of the grade they have then in
+     *  force then, else the sheet's then. */
+    private int termsOf(String sheetId, Person person) {
+        LocalDate on = sheets.today(sheetId);
         Integer own = person.termsOn(on);
         return own != null ? own
                 : sheets.find(sheetId).map(s -> s.termsFor(person.gradeOn(on), on)).orElse(Sheet.DEFAULT_TERMS);

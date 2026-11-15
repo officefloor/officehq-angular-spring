@@ -53,8 +53,8 @@ export interface Claim {
   /** Where the claim is listed, newest (highest) first: set when it is added, and again when it
    *  is reassigned, so a moved claim is its new person's newest. */
   listed: number;
-  /** yyyy-mm-dd: fixed when the claim was created, its date plus the terms of its person's grade
-   *  in force on that date; later changes to the terms or its date leave it. */
+  /** yyyy-mm-dd: fixed when the claim was created, its date plus its person's own terms, else
+   *  their grade's, else the sheet's, each in force on the sheet's today when it was created; later changes to the terms or its date leave it. */
   dueBy: string;
   /** The claim's status log, oldest first: one line per status it has had. */
   log: ClaimLogLine[];

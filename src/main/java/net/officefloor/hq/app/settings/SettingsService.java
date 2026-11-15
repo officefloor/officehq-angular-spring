@@ -169,8 +169,8 @@ public class SettingsService {
     }
 
     /** Set the sheet's terms in days from a date (null: the sheet's today), the sheet created first
-     *  if it was never loaded; they apply to claims created from now on, dated from then on to the
-     *  next from-date, in a grade without its own terms, while every claim's due-by, fixed when it
+     *  if it was never loaded; they apply to claims created from then on to the next from-date
+     *  (by the sheet's today, whatever their date), in a grade without its own terms, while every claim's due-by, fixed when it
      *  was created, stays as it is. */
     @Transactional
     public int setTerms(String sheetId, String user, int terms, LocalDate from) {
@@ -188,7 +188,7 @@ public class SettingsService {
 
     /** Set a grade's terms in days (null: none, the grade uses the sheet's terms), the sheet
      *  created first if it was never loaded; like the sheet's terms they apply to claims created
-     *  from now on, dated from the from-date (null: the sheet's today) on, while every claim's due-by
+     *  from the from-date (null: the sheet's today) on (by the sheet's today, whatever their date), while every claim's due-by
      *  stays as it is. */
     @Transactional
     public Integer setGradeTerms(String sheetId, String user, String grade, Integer terms, LocalDate from) {

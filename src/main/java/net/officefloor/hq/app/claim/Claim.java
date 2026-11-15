@@ -36,7 +36,8 @@ public class Claim {
     private LocalDate date;
 
     /** The date the claim is due by: fixed when it is created, its date plus its person's own
-     *  terms, else the terms of their grade in force on that date, else the sheet's then; later
+     *  terms, else the terms of their grade, else the sheet's, each as in force on the sheet's today
+     *  when it is created (a split-off part keeps the terms of the claim it is split from); later
      *  changes to the terms or its date leave it. A holiday added on or before it re-fixes it (while
      *  the claim is neither SETTLED nor VOID) from its date with {@link #terms}. */
     @Column(name = "due_by", nullable = false)
