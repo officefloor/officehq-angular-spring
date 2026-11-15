@@ -1,0 +1,64 @@
+{
+  "checkpoint": 157,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp157_user-locale",
+  "phase": "mid",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "Each user has a locale (a select on the screen, en unless chosen, saved per user, no audit line).\nUnder de, every figure the screen shows that user (amounts, due figures, totals, rates, shares,\ncuts: any cell whose whole text is a number with two decimals) is shown as 1.234,56 (a dot every\nthree digits, a comma before the decimals); under en as before. Entries are typed with a dot as\nbefore, and exports and audit lines are unchanged.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nEach user has a locale (a select on the screen, en unless chosen, saved per user, no audit line).\nUnder de, every figure the screen shows that user (amounts, due figures, totals, rates, shares,\ncuts: any cell whose whole text is a number with two decimals) is shown as 1.234,56 (a dot every\nthree digits, a comma before the decimals); under en as before. Entries are typed with a dot as\nbefore, and exports and audit lines are unchanged.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "699e77fd76eb5dc569b83a8b02ae8ba88d5e9b9f",
+  "reset_sha": "",
+  "preagent_sha": "2551df7d96045c1e0909872c780f404f28002494",
+  "prev_sha": "2551df7d96045c1e0909872c780f404f28002494",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.459325,
+    "input_tokens": 68,
+    "output_tokens": 17433,
+    "cache_read_tokens": 2174645,
+    "cache_creation_tokens": 84433,
+    "num_turns": 35,
+    "duration_ms": 642790,
+    "duration_api_ms": 176394,
+    "model": "claude-opus-5-5",
+    "session_id": "5be13125-1913-4c00-909e-9a64f13d57ca",
+    "stop_reason": "success",
+    "result_text": "All 4 tests in `bin/e2e` now pass: the locale test and the three scenario tests.\n\n**How it works**\n- **Saving the locale:** a new `user_locale` table (`V86__user_locale.sql`) and an endpoint at `/api/users/locale` (`session/UserLocaleController.java`). It is stored by user name and applies across all sheets. It defaults to `en`, accepts only `en` or `de`, and writes no audit line. It sits outside `/api/sheets/**`, so the viewer, archived and as-of checks don't block it.\n- **Screen:** a locale form under \"Signed in as\", with `user-locale`, `user-locale-save`, `user-locale-current` and an error element `user-locale-error`. The locale is read again at sign-in and on every sheet load, so a change made in another session shows after re-loading.\n- **Formatting:** a new `figure` pipe (`core/figure.pipe.ts`). Under `de` it turns any text matching `-?digits.dd` into `1.234,56`; anything else (blank, `n/a`, counts, dates) is left as it is. I applied it to every cell that shows only a figure: claim amount and due, person totals, rollups, header, summaries, rates, periods, settings, pools, templates and plans. Mixed text lines (log lines, search lines, snapshots) are left alone because the whole cell isn't a number. Typed entries, exports and audit lines still use the dot.\n\n**Two other fixes the tests needed**\n1. **Larger rates:** the test sets a rate of `12345.67`, but rates only allowed three digits before the decimal point. I widened the rate tables to `DECIMAL(9,2)` (`V87__rate_pct_wider.sql`) and raised the limit to 7 digits in `RateController`, `RateService` and the front end's `PCT_PATTERN`.\n2. **Plan generate by a viewer:** scenario 2 expects a viewer pressing \"generate plans\" to see a count of 0, but the server refused the request with an error. `PlanController.generate` now behaves like bulk-open: it is `@ViewerAllowed` and makes no claims for a viewer or on an archived sheet. This changes existing behaviour outside the locale request, so it's worth a look.\n\n**Choice for you:** \"saved per user\" could also mean per user on each sheet; I went with one locale per user. Because of that, the test's user \"uma\" changes the locale for every sheet they use. The test sets it back to `en` at the end, but if it fails partway, \"uma\" stays on `de` for later tests.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.459325,
+        "num_turns": 35,
+        "duration_ms": 642790,
+        "duration_api_ms": 176394,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp157.agent.jsonl",
+  "agent_diff_file": "cp157.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
