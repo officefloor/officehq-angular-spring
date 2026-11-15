@@ -1,0 +1,56 @@
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 5d5608b1a..e651a5e9b 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -90,6 +90,11 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, ClaimAction, ClaimLogLine,
+               [attr.aria-label]="'Void claim of ' + c.amount + ' on ' + c.date">Void</button>
+             <button type="button" data-testid="claim-edit" (click)="edit(c)"
+               [attr.aria-label]="'Edit claim of ' + c.amount + ' on ' + c.date">Edit</button>
++            <label [for]="'claim-inline-amount-' + c.id">Amount</label>
++            <input [id]="'claim-inline-amount-' + c.id" data-testid="claim-inline-amount" inputmode="decimal" autocomplete="off"
++              [value]="inlineAmounts()[c.id] ?? ''" (input)="inlineAmountChanged(c.id, $any($event.target).value)" />
++            <button type="button" data-testid="claim-inline-save" (click)="saveInline(c)"
++              [attr.aria-label]="'Save amount of claim of ' + c.amount + ' on ' + c.date">Save amount</button>
+             <label [for]="'claim-split-amount-' + c.id">Split off</label>
+             <input [id]="'claim-split-amount-' + c.id" data-testid="claim-split-amount" inputmode="decimal" autocomplete="off"
+               [value]="splitAmounts()[c.id] ?? ''" (input)="splitAmountChanged(c.id, $any($event.target).value)" />
+@@ -155,6 +160,8 @@ export class PersonClaims {
+   protected readonly redates = signal<Record<number, string>>({});
+   /** The amount typed for splitting off each OPEN claim, by claim id. */
+   protected readonly splitAmounts = signal<Record<number, string>>({});
++  /** The amount typed for changing each DRAFT claim's amount in its row, by claim id. */
++  protected readonly inlineAmounts = signal<Record<number, string>>({});
+   protected readonly fieldId = (name: string) => `claim-form-${name}-${this.personId()}`;
+ 
+   protected readonly form = new FormGroup({
+@@ -471,6 +478,30 @@ export class PersonClaims {
+     }
+   }
+ 
++  protected inlineAmountChanged(id: number, amount: string): void {
++    this.clearRowError(id);
++    this.inlineAmounts.update((as) => ({ ...as, [id]: amount }));
++  }
++
++  /** Change a DRAFT claim's amount to the one typed in its row, keeping its date, note and what
++   *  it corrects, by the claim form's rules; a refusal shows an error on the claim. */
++  protected async saveInline(c: Claim): Promise<void> {
++    this.clearRowError(c.id);
++    const sheetId = this.session.sheetId();
++    if (!sheetId) return;
++    const amount = (this.inlineAmounts()[c.id] ?? '').trim();
++    if (!CLAIM_AMOUNT_PATTERN.test(amount)) {
++      this.rowErrors.update((errs) => ({ ...errs, [c.id]: 'Enter an amount with up to two decimals.' }));
++      return;
++    }
++    try {
++      const claim = await this.api.update(sheetId, c.id, { amount, date: c.date, note: c.note, corrects: c.corrects });
++      if (this.session.sheetId() === sheetId) this.saved.emit(claim);
++    } catch (e) {
++      this.rowErrors.update((errs) => ({ ...errs, [c.id]: claimError(e, amount.startsWith('-')) }));
++    }
++  }
++
+   /** Move a claim to another person; a refusal shows an error on the claim. */
+   protected async reassign(c: Claim, personId: string): Promise<void> {
+     this.clearRowError(c.id);
