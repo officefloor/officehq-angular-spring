@@ -365,6 +365,13 @@ export class SettingsApi {
     );
   }
 
+  /** Retire a grade; resolves to the sheet's retired grades with it. */
+  retireGrade(sheetId: string, grade: string): Promise<{ retiredGrades: string[] }> {
+    return firstValueFrom(
+      this.http.post<{ retiredGrades: string[] }>(`${this.url(sheetId)}/grades/retire`, { grade }, { headers: this.headers() }),
+    );
+  }
+
   private url(sheetId: string): string {
     return `/api/sheets/${encodeURIComponent(sheetId)}`;
   }
@@ -404,5 +411,11 @@ export function voidReasonError(e: unknown): string {
 export function holidayError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a holiday as yyyy-mm-dd.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That date is a holiday already.';
+  return otherError(e);
+}
+
+export function retireGradeError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && (e.status === 400 || e.status === 422)) return 'Choose a grade: A, B or C.';
+  if (e instanceof HttpErrorResponse && e.status === 409) return 'That grade is retired already.';
   return otherError(e);
 }

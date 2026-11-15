@@ -354,6 +354,7 @@ export class PeopleApi {
 }
 
 export function personError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'That grade is retired: choose another.';
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Enter a name, choose a grade, enter a from-date as yyyy-mm-dd or none and terms as whole days or none.';
   if (isStale(e)) return 'Someone else saved this person since you opened it; the form now shows their values.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'That name, alias or contact is already in use on this sheet.';
@@ -367,6 +368,7 @@ export interface ImportedPeople {
 }
 
 export function importError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'That grade is retired: choose another.';
   if (e instanceof HttpErrorResponse && e.status === 400) {
     return 'Paste lines of name,grade,terms,contact: a name, a grade A, B or C, terms as whole days or blank, and a contact or blank.';
   }
@@ -377,6 +379,7 @@ export function importError(e: unknown): string {
 }
 
 export function bulkGradeError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 422) return 'That grade is retired: choose another.';
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Select people, choose a grade and enter a from-date as yyyy-mm-dd or none.';
   if (e instanceof HttpErrorResponse && e.status === 404) return 'A selected person is no longer on this sheet; reload it.';
   if (isStale(e)) return 'Someone else saved a selected person at the same moment; try again.';

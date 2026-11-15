@@ -80,6 +80,8 @@ export class Session {
   readonly proofKinds = signal<string | null>(null);
   /** The sheet's default grade: a person the quick-add bar adds is given it; null when blank (A). */
   readonly defaultGrade = signal<string | null>(null);
+  /** The sheet's retired grades, in the order retired: none may be chosen for a new person or in an edit. */
+  readonly retiredGrades = signal<string[]>([]);
   /** Whether the people list shows retired people too: off at first, and kept as it is when a
    *  sheet is loaded. */
   readonly showRetired = signal(false);
@@ -203,6 +205,7 @@ export class Session {
       this.parent.set(res.parent);
       this.proofKinds.set(res.proofKinds);
       this.defaultGrade.set(res.defaultGrade);
+      this.retiredGrades.set(res.retiredGrades);
       this.shownAsOf.set(asOf);
       this.loads.update((n) => n + 1);
       return null;
@@ -327,6 +330,7 @@ interface SheetView {
   parent: string | null;
   proofKinds: string | null;
   defaultGrade: string | null;
+  retiredGrades: string[];
 }
 
 /** A value recorded for a dated setting: in force from its from-date (yyyy-mm-dd) until the next

@@ -6,13 +6,14 @@ import { Activity } from '../audit/activity';
 import { People } from '../people/people';
 import { Search } from '../search/search';
 import { Settings } from '../settings/settings';
+import { Grades } from '../grades/grades';
 import { Notes } from '../notes/notes';
 import { Templates } from '../templates/templates';
 
 // The one screen: sign in by name, then load a sheet by id and work on its people.
 @Component({
   selector: 'app-home',
-  imports: [ReactiveFormsModule, Activity, AuditViewer, Notes, People, Search, Settings, Templates],
+  imports: [ReactiveFormsModule, Activity, AuditViewer, Grades, Notes, People, Search, Settings, Templates],
   template: `
     @if (session.user(); as user) {
       <p>Signed in as <strong data-testid="current-user">{{ user }}</strong></p>
@@ -66,6 +67,7 @@ import { Templates } from '../templates/templates';
           <button type="submit" data-testid="sheet-today-save">Save today</button>
         </form>
         <app-settings />
+        <app-grades />
         <app-notes />
         <app-templates />
         <app-people />

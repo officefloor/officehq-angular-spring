@@ -579,6 +579,32 @@ public class SettingsService {
         return value.isEmpty() ? null : value;
     }
 
+    /** Retire a grade on the sheet, the sheet created first if it was never loaded; not dated. It
+     *  cannot be chosen for a new person or in an edit from then on; the people on it keep it.
+     *  Refused (422) when it is not one of the grades, (409) when it is retired already. Resolves to
+     *  the sheet's retired grades, in the order retired. */
+    @Transactional
+    public List<String> retireGrade(String sheetId, String user, String grade) {
+        if (!GRADES.contains(grade)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+                    "A grade is one of " + String.join(", ", GRADES) + ", not " + grade);
+        }
+        Sheet sheet = sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        if (sheet.isGradeRetired(grade)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Grade " + grade + " is retired already");
+        }
+        sheet.retireGrade(grade);
+        sheets.flush();
+        audit.recordOnCommit("GRADE_RETIRED sheet=" + sheetId + " by=" + user + " grade=" + grade);
+        return retiredGrades(sheet);
+    }
+
+    /** The sheet's retired grades, in the order retired. */
+    public static List<String> retiredGrades(Sheet sheet) {
+        return sheet.getRetiredGrades() == null ? List.of() : List.of(sheet.getRetiredGrades().split(","));
+    }
+
     /** The id of the sheet's parent; null when blank (none). */
     @Transactional(readOnly = true)
     public String parent(String sheetId) {

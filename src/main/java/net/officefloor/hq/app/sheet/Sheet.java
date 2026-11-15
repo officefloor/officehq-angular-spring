@@ -12,6 +12,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -169,6 +170,11 @@ public class Sheet {
     @Column(name = "default_grade")
     private String defaultGrade;
 
+    /** The grades retired on the sheet, comma separated in the order retired: none may be chosen
+     *  for a new person or in an edit, while the people on one keep it; null when none. Not dated. */
+    @Column(name = "retired_grades")
+    private String retiredGrades;
+
     /** Whether a steward has archived the sheet: every change on it is refused. */
     @Column(name = "archived", nullable = false)
     private boolean archived;
@@ -205,6 +211,7 @@ public class Sheet {
         copy.source = this.id;
         copy.proofKinds = proofKinds;
         copy.defaultGrade = defaultGrade;
+        copy.retiredGrades = retiredGrades;
         return copy;
     }
 
@@ -456,6 +463,20 @@ public class Sheet {
 
     public void setDefaultGrade(String defaultGrade) {
         this.defaultGrade = defaultGrade;
+    }
+
+    public String getRetiredGrades() {
+        return retiredGrades;
+    }
+
+    /** Whether the grade has been retired on the sheet. */
+    public boolean isGradeRetired(String grade) {
+        return retiredGrades != null && Arrays.asList(retiredGrades.split(",")).contains(grade);
+    }
+
+    /** Retire the grade (it is not retired yet). */
+    public void retireGrade(String grade) {
+        retiredGrades = retiredGrades == null ? grade : retiredGrades + "," + grade;
     }
 
     public String getSource() {

@@ -12,8 +12,10 @@ import net.officefloor.hq.app.claim.ProofKind;
 import net.officefloor.hq.app.rollup.RollupService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class SheetService {
@@ -103,10 +105,20 @@ public class SheetService {
         return sheets.findById(id).map(s -> s.proofThresholdOn(on)).orElse(null);
     }
 
-    /** The grade a new person is given when none is named: the sheet's default grade, else A. */
+    /** The grade a new person is given when none is named: the sheet's default grade, else A (A
+     *  too while the default grade is retired). */
     @Transactional(readOnly = true)
     public String defaultGrade(String id) {
-        return sheets.findById(id).map(Sheet::getDefaultGrade).orElse("A");
+        return sheets.findById(id).filter(s -> s.getDefaultGrade() != null && !s.isGradeRetired(s.getDefaultGrade()))
+                .map(Sheet::getDefaultGrade).orElse("A");
+    }
+
+    /** Refuse (422) choosing a grade retired on the sheet. */
+    @Transactional(readOnly = true)
+    public void requireActiveGrade(String id, String grade) {
+        if (sheets.findById(id).map(s -> s.isGradeRetired(grade)).orElse(false)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Grade " + grade + " is retired");
+        }
     }
 
     /** The sheet's proof kinds, each of which a claim above the proof threshold needs a proof of;

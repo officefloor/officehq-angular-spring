@@ -238,6 +238,7 @@ public class PersonService {
     public Person add(String sheetId, String user, String name, String grade, Integer terms, String contact,
             String tags) {
         sheets.load(sheetId, user);
+        sheets.requireActiveGrade(sheetId, grade);
         RollupService.Snapshot before = rollup.snapshot(sheetId);
         String trimmed = name.trim();
         requireUnusedName(sheetId, null, trimmed);
@@ -299,6 +300,7 @@ public class PersonService {
         person.setContact(contact);
         person.setTags(tags);
         if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+            sheets.requireActiveGrade(sheetId, grade);
             person.recordGrade(grade, gradeFrom != null ? gradeFrom : today);
         }
         try {
@@ -329,6 +331,7 @@ public class PersonService {
         for (Person person : chosen) {
             RollupService.Snapshot before = rollup.snapshot(sheetId);
             if (gradeFrom != null || !grade.equals(person.gradeOn(today))) {
+                sheets.requireActiveGrade(sheetId, grade);
                 person.recordGrade(grade, gradeFrom != null ? gradeFrom : today);
             }
             try {

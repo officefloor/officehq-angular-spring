@@ -194,6 +194,14 @@ public class SettingsController {
     public record DefaultGradeForm(@NotNull @Size(max = 10) String value) {
     }
 
+    /** A grade to retire as the form submits it. */
+    public record RetireGradeForm(@NotNull @Size(max = 10) String grade) {
+    }
+
+    /** The sheet's retired grades, in the order retired. */
+    public record RetiredGradesView(List<String> retiredGrades) {
+    }
+
     /** The default grade as it is set; null when blank (A). */
     public record DefaultGradeView(String defaultGrade) {
     }
@@ -565,6 +573,14 @@ public class SettingsController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody DefaultGradeForm body) {
         return new DefaultGradeView(service.setDefaultGrade(sheetId, user.trim(), body.value()));
+    }
+
+    @PostMapping("/grades/retire")
+    public RetiredGradesView retireGrade(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @Valid @RequestBody RetireGradeForm body) {
+        return new RetiredGradesView(service.retireGrade(sheetId, user.trim(), body.grade().trim()));
     }
 
     @PutMapping("/settings/parent")
