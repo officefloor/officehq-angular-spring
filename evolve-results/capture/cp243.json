@@ -1,0 +1,64 @@
+{
+  "checkpoint": 243,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp243_person-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button on each person's row downloads their row as a CSV file: a header line cell,value then one\nline per cell for person-name, person-grade, person-claimed, person-due-total, person-statement-count,\nperson-overdue-total, person-hold, person-retired, person-aliases and person-score, in that order,\neach with the value as the row shows it.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button on each person's row downloads their row as a CSV file: a header line cell,value then one\nline per cell for person-name, person-grade, person-claimed, person-due-total, person-statement-count,\nperson-overdue-total, person-hold, person-retired, person-aliases and person-score, in that order,\neach with the value as the row shows it.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "7ea16e88f5c6818e45b7d6870545750170cbb065",
+  "reset_sha": "",
+  "preagent_sha": "91a43d36201e0e2570412a34218b5f8ee3f6f02f",
+  "prev_sha": "91a43d36201e0e2570412a34218b5f8ee3f6f02f",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 0.37491100000000005,
+    "input_tokens": 6,
+    "output_tokens": 565,
+    "cache_read_tokens": 78381,
+    "cache_creation_tokens": 1740,
+    "num_turns": 2,
+    "duration_ms": 7316,
+    "duration_api_ms": 37047,
+    "model": "claude-opus-5-5",
+    "session_id": "af72ab9a-76c0-455e-ac3c-621470cb8e6b",
+    "stop_reason": "success",
+    "result_text": "Each person's row now has a **Row (CSV)** button (`data-testid=\"person-export\"`) that downloads their row as a CSV file. `bin/e2e` passes all 4 tests.\n\nThe change is front-end only, in `src/main/frontend/src/app/features/people/people.ts`: the button, plus an `exportPerson` method next to the existing statement export. The file starts with a `cell,value` header, then one line for each of the ten cells in the order the request gives. It uses the same calculations as the row and the existing CSV helper, so values with commas are quoted (e.g. `\"Lee, Jo (B)\"`). The file is named `person-<sheet>-<id>.csv`.\n\nTwo choices you might want to change:\n\n- **Number format:** amounts in the file always use a dot (e.g. `10.00`). For a German-language user the screen shows `10,00`, so here the file doesn't match the row exactly. I did that because the code says all exports keep the dot. The test only uses English, so it passes either way. If you want the file to match the screen in every language, it's a one-line change.\n- **Hidden columns:** all ten cells are exported even if some of those columns are hidden on screen.",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 0.37491100000000005,
+        "num_turns": 2,
+        "duration_ms": 7316,
+        "duration_api_ms": 37047,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp243.agent.jsonl",
+  "agent_diff_file": "cp243.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}
