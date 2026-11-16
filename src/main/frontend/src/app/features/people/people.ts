@@ -415,6 +415,8 @@ import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasEr
                   [attr.aria-label]="'Cancel last statement of ' + p.name">Cancel statement</button>
                 <button type="button" data-testid="person-export-statement" (click)="exportStatement(p)"
                   [attr.aria-label]="'Download statement of ' + p.name + ' (CSV)'">Statement (CSV)</button>
+                <button type="button" data-testid="person-export" (click)="exportPerson(p)"
+                  [attr.aria-label]="'Download row of ' + p.name + ' (CSV)'">Row (CSV)</button>
               </td>
               <td>
                 <ul aria-label="Snapshots">
@@ -2052,6 +2054,26 @@ export class People {
       lines.push(csvLine([c.number ?? '', c.date, c.amount, figure === null ? 'n/a' : money(figure), c.status]));
     }
     this.download(lines.join(''), `statement-${this.session.sheetId()}-${p.id}.csv`);
+  }
+
+  /** Download a person's row as CSV: a cell,value header, then one line per cell with the value as the
+   *  row shows it (figures keep the dot, as every export does). */
+  protected exportPerson(p: Person): void {
+    this.clearRowError(p.id);
+    const cells: [string, string][] = [
+      ['person-name', `${p.name} (${this.gradeOf(p)})`],
+      ['person-grade', this.gradeOf(p)],
+      ['person-claimed', this.claimedBy(p.id)],
+      ['person-due-total', this.dueOf(p)],
+      ['person-statement-count', String(p.statementCount)],
+      ['person-overdue-total', money(this.overdueOf(p.id).cents)],
+      ['person-hold', p.held ? 'yes' : 'no'],
+      ['person-retired', p.retiredFrom === null ? 'no' : 'yes'],
+      ['person-aliases', p.aliases.join(', ')],
+      ['person-score', String(this.scoreOf(p.id))],
+    ];
+    const lines = [csvLine(['cell', 'value']), ...cells.map((c) => csvLine(c))];
+    this.download(lines.join(''), `person-${this.session.sheetId()}-${p.id}.csv`);
   }
 
   /** Hand the browser a CSV file to download. */
