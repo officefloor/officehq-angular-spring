@@ -155,11 +155,11 @@ public class ClaimController {
             @Size(max = 1000) String tags) {
     }
 
-    /** The reason a steward gives for rejecting a PENDING claim. */
     /** A void as the screen submits it: the reason chosen from the sheet's list, null or blank for none. */
     public record VoidForm(@Size(max = 200) String reason) {
     }
 
+    /** The reason a steward gives for rejecting a PENDING claim. */
     public record RejectForm(@NotBlank @Size(max = 500) String reason) {
     }
 
