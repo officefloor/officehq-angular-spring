@@ -167,6 +167,10 @@ export interface DescendantFigures {
   members: FigureMember[];
   /** How many counting claims are overdue. */
   overdueCount: number;
+  /** Everyone's settled-total, open-total and cut total, each trimmed. */
+  settledTotal: string;
+  openTotal: string;
+  cutTotal: string;
 }
 
 /** A person of a sheet's tree: the sheet they are on, their name, grade today and due-total (n/a: none). */
@@ -182,10 +186,14 @@ export interface FigureMember {
   names: string[];
   dueTotal: string | null;
   overdueTotal: string;
+  settledTotal: string;
+  openTotal: string;
+  cutTotal: string;
 }
 
 /** Figures with nothing in them. */
-export const NO_FIGURES: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {}, members: [], overdueCount: 0 };
+export const NO_FIGURES: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {}, members: [], overdueCount: 0,
+  settledTotal: '0.00', openTotal: '0.00', cutTotal: '0.00' };
 
 @Injectable({ providedIn: 'root' })
 export class PeopleApi {

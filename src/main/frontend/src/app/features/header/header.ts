@@ -47,6 +47,9 @@ export interface Dashboard {
       <p>With its descendants: people <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong>,
         due total <strong data-testid="consolidated-due-total">{{ consolidated().dueTotal | figure }}</strong>,
         overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal | figure }}</strong></p>
+      <p>With its descendants: settled total <strong data-testid="consolidated-settled-total">{{ consolidated().settledTotal | figure }}</strong>,
+        open total <strong data-testid="consolidated-open-total">{{ consolidated().openTotal | figure }}</strong>,
+        cut total <strong data-testid="consolidated-cut-total">{{ consolidated().cutTotal | figure }}</strong></p>
       <p>With its descendants, due total by grade:
         @for (g of grades(); track g) {
           {{ g }} <strong [attr.data-testid]="'consolidated-grade-' + g + '-due-total'">{{ (consolidated().gradeDueTotals[g] ?? '0.00') | figure }}</strong>

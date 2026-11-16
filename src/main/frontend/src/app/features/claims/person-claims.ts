@@ -961,9 +961,11 @@ export class PersonClaims {
     }
   }
 
-  /** The claim's holders as the row shows them: <name> <share>, comma and space separated. */
+  /** The claim's holders as the row shows them: <name> <share>, comma and space separated (the
+   *  claim's own person too, when it was reassigned to a holder). */
   protected sharesText(c: Claim): string {
     const names = new Map(this.others().map((o) => [o.id, o.name]));
+    names.set(this.personId(), this.personName());
     return (c.shares ?? []).map((s) => `${names.get(s.personId) ?? ''} ${s.share}`.trim()).join(', ');
   }
 

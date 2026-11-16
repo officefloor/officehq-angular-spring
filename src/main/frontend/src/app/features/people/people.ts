@@ -761,16 +761,17 @@ export class People {
   protected settledOpenOf(personId: number): { settled: number; open: number; scored: number } {
     return this.settledOpenByPerson().get(personId) ?? { settled: 0, open: 0, scored: 0 };
   }
-  /** Everyone's settled-total added up (not trimmed). */
+  /** Everyone's settled-total added up, trimmed. */
   protected readonly settledTotal = computed(() =>
-    money([...this.settledOpenByPerson().values()].reduce((sum, s) => sum + s.settled, 0)));
-  /** Everyone's open-total added up (not trimmed). */
+    money(trimmedSum(this.people().map((p) => this.settledOpenOf(p.id).settled))));
+  /** Everyone's open-total added up, trimmed. */
   protected readonly openTotal = computed(() =>
-    money([...this.settledOpenByPerson().values()].reduce((sum, s) => sum + s.open, 0)));
+    money(trimmedSum(this.people().map((p) => this.settledOpenOf(p.id).open))));
   /** Each person's cut total in cents, by person id, as the pools show their cuts. */
   protected readonly cutTotals = signal<Map<number, number>>(new Map());
-  /** Everyone's cut total added up. */
-  protected readonly cutTotal = computed(() => [...this.cutTotals().values()].reduce((sum, c) => sum + c, 0));
+  /** Everyone's cut total added up, trimmed. */
+  protected readonly cutTotal = computed(() =>
+    trimmedSum(this.people().map((p) => this.cutTotals().get(p.id) ?? 0)));
   /** The person's excess in cents: how far their uncapped due-total is above their capped one, the
    *  cap less their cut total (0 otherwise). */
   protected excessOf(personId: number): number {
@@ -1033,7 +1034,8 @@ export class People {
   private readonly ownLive = signal<DescendantFigures | null>(null);
   /** The sheet's own figures and its descendants' added up, each as the screen shows the sheet:
    *  as it is now, or as it stood at the end of the as-of date. The due-total and overdue-total are
-   *  everyone's over the whole tree, trimmed once; people whose names or aliases match count once. */
+   *  everyone's over the whole tree, trimmed once, and so are the settled-total, open-total and cut
+   *  total; people whose names or aliases match count once. */
   protected readonly consolidated = computed<DescendantFigures>(() => {
     const d = this.descendants();
     const own = this.ownLive() ?? this.ownFigures();
@@ -1048,6 +1050,9 @@ export class People {
         [s, (own.statusCounts[s] ?? 0) + (d.statusCounts[s] ?? 0)])),
       members,
       overdueCount: own.overdueCount + d.overdueCount,
+      settledTotal: money(trimmedSum(members.map((m) => cents(m.settledTotal)))),
+      openTotal: money(trimmedSum(members.map((m) => cents(m.openTotal)))),
+      cutTotal: money(trimmedSum(members.map((m) => cents(m.cutTotal)))),
     };
   });
   /** The sheet's own figures, live, as the consolidated figures add them up. */
@@ -1058,7 +1063,9 @@ export class People {
     const members = this.people().map((p) => {
       const due = dues.get(p.id) ?? null;
       return { names: [p.name, ...p.aliases], dueTotal: due === null ? null : money(due),
-        overdueTotal: money(overdues.get(p.id)?.cents ?? 0) };
+        overdueTotal: money(overdues.get(p.id)?.cents ?? 0),
+        settledTotal: money(this.settledOpenOf(p.id).settled), openTotal: money(this.settledOpenOf(p.id).open),
+        cutTotal: money(this.cutTotals().get(p.id) ?? 0) };
     });
     return {
       people: this.people().length, dueTotal: this.dueTotal(), overdueTotal: this.overdueTotal(),
@@ -1067,6 +1074,7 @@ export class People {
       statusCounts: Object.fromEntries(statusCounts(this.claims()).map((s) => [s.status, s.count])),
       members,
       overdueCount: this.overdueCount(),
+      settledTotal: this.settledTotal(), openTotal: this.openTotal(), cutTotal: money(this.cutTotal()),
     };
   });
   protected readonly claimedTotal = computed(() =>

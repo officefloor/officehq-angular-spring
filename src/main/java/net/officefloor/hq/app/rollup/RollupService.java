@@ -51,9 +51,12 @@ public class RollupService {
      *  overdue-total (the dues their overdue counting claims show, n/a ones skipped, not capped);
      *  with their grade on the sheet's today, whether they have a retirement date, and their aliases;
      *  and the dues (n/a ones skipped) their counting SETTLED claims that correct nothing show, and how many of their
-     *  counting claims are overdue. */
+     *  counting claims are overdue; and their settled-total (the dues, n/a ones skipped, their counting
+     *  SETTLED claims show, with the parts of shared ones), open-total (the same for their counting OPEN
+     *  and PENDING claims) and cut total. */
     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
-            String grade, boolean retired, List<String> aliases, BigDecimal settled, int overdueCount) {
+            String grade, boolean retired, List<String> aliases, BigDecimal settled, int overdueCount,
+            BigDecimal settledTotal, BigDecimal openTotal, BigDecimal cutTotal) {
         /** The score: the settled figures over 100, less 5 for each overdue claim, rounded half to
          *  even to a whole number. */
         BigDecimal score() {
@@ -107,7 +110,8 @@ public class RollupService {
             return people.values().stream().map(f -> {
                 List<String> names = new ArrayList<>(List.of(f.name()));
                 names.addAll(f.aliases());
-                return new Member(names, f.dueTotal(), f.overdueTotal());
+                return new Member(names, f.dueTotal(), f.overdueTotal(), f.settledTotal(), f.openTotal(),
+                        f.cutTotal());
             }).toList();
         }
     }
@@ -154,10 +158,9 @@ public class RollupService {
                 rateChain.levels(sheetId), cutTotals(sheetId, sheet, sheetPeople));
     }
 
-    /** Each person's cut total on the sheet now, by person id (none when the sheet has no cap, as
-     *  the cut totals then hold nothing). */
+    /** Each person's cut total on the sheet now, by person id (none when the sheet has no pot). */
     private Map<Long, BigDecimal> cutTotals(String sheetId, Optional<Sheet> sheet, Map<Long, Person> sheetPeople) {
-        if (sheet.map(Sheet::getCap).isEmpty()) {
+        if (sheet.isEmpty()) {
             return Map.of();
         }
         return cuts.of(sheetId, sheet.get().getPot(), sheetPeople, sheet.get().getToday());
@@ -187,7 +190,7 @@ public class RollupService {
         RateChain.Levels sheetRates = new RateChain.Levels(sheetId, then.rates(),
                 rateChain.ancestors(sheetId).stream().map(a -> history.asOf(a, on).rates()).toList());
         return snapshotOf(Optional.of(then.sheet()), then.people(), sheetClaims, sheetRates,
-                then.sheet().getCap() == null ? Map.of() : CutTotals.of(then));
+                CutTotals.of(then));
     }
 
     /** The figures of a sheet with these settings (none: the defaults, today the real date), people
@@ -215,11 +218,12 @@ public class RollupService {
                 claimedBy.merge(c.getPersonId(), c.getAmount(), BigDecimal::add);
             }
         }
-        Map<Long, List<BigDecimal>> parts = sharedParts(counted, sheetPeople, sheetRates, floor, late, rounding);
+        Map<Long, List<SharedPart>> parts = sharedParts(counted, sheetPeople, sheetRates, floor, late, rounding);
         Map<Long, Figures> out = new LinkedHashMap<>();
         sheetPeople.forEach((id, p) -> {
             List<Claim> theirs = counted.getOrDefault(id, List.of());
-            List<BigDecimal> shared = parts.getOrDefault(id, List.of());
+            List<SharedPart> sharedParts = parts.getOrDefault(id, List.of());
+            List<BigDecimal> shared = sharedParts.stream().map(SharedPart::part).toList();
             BigDecimal claimed = zero().add(claimedBy.getOrDefault(id, zero()));
             List<Claim> overdueClaims = theirs.stream()
                     .filter(c -> c.getStatus().isOpen() && late.isPast(c, p))
@@ -234,11 +238,27 @@ public class RollupService {
                     .map(c -> shownDueOf(c, p, sheetRates, floor, late, rounding))
                     .filter(Objects::nonNull)
                     .reduce(zero(), BigDecimal::add);
+            BigDecimal settledTotal = theirs.stream().filter(c -> c.getStatus() == ClaimStatus.SETTLED)
+                    .map(c -> shownDueOf(c, p, sheetRates, floor, late, rounding))
+                    .filter(Objects::nonNull)
+                    .reduce(zero(), BigDecimal::add);
+            BigDecimal openTotal = theirs.stream().filter(c -> c.getStatus().isOpen())
+                    .map(c -> shownDueOf(c, p, sheetRates, floor, late, rounding))
+                    .filter(Objects::nonNull)
+                    .reduce(zero(), BigDecimal::add);
+            for (SharedPart sp : sharedParts) {
+                if (sp.settled()) {
+                    settledTotal = settledTotal.add(sp.part());
+                } else {
+                    openTotal = openTotal.add(sp.part());
+                }
+            }
             int overdueCount = (int) overdueClaims.stream().filter(c -> !c.isDeferredOn(today)).count();
             out.put(id, new Figures(p.getName(), claimed,
                     Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding, shared),
                             capLessCut(cap, cutTotals.get(id))), overdue,
-                    p.gradeOn(today), p.isRetired(), List.copyOf(p.getAliases()), settled, overdueCount));
+                    p.gradeOn(today), p.isRetired(), List.copyOf(p.getAliases()), settled, overdueCount,
+                    settledTotal, openTotal, zero().add(cutTotals.getOrDefault(id, zero()))));
         });
         Map<ClaimStatus, Integer> statuses = new LinkedHashMap<>();
         sheetClaims.stream().map(Claim::getStatus).filter(Objects::nonNull)
@@ -249,11 +269,11 @@ public class RollupService {
     /** The parts of their counting claims' dues (n/a ones skipped) the people on the sheet share,
      *  by person id: each holder's part (see {@link #holderPartOf}; a settled claim's kept frozen as
      *  its settled due times their share over 100, rounded half to even), and the same parts taken
-     *  off the claim's own person. */
-    private static Map<Long, List<BigDecimal>> sharedParts(Map<Long, List<Claim>> counted, Map<Long, Person> sheetPeople,
+     *  off the claim's own person; each with whether the claim is SETTLED. */
+    private static Map<Long, List<SharedPart>> sharedParts(Map<Long, List<Claim>> counted, Map<Long, Person> sheetPeople,
             RateChain.Levels sheetRates, Function<LocalDate, BigDecimal> floor, LateCharge late,
             Function<Claim, RoundingMode> rounding) {
-        Map<Long, List<BigDecimal>> out = new LinkedHashMap<>();
+        Map<Long, List<SharedPart>> out = new LinkedHashMap<>();
         counted.forEach((ownerId, theirs) -> {
             Person owner = sheetPeople.get(ownerId);
             if (owner == null) {
@@ -273,12 +293,18 @@ public class RollupService {
                     if (part == null) {
                         return;
                     }
-                    out.computeIfAbsent(sh.getPersonId(), k -> new ArrayList<>()).add(part);
-                    out.computeIfAbsent(ownerId, k -> new ArrayList<>()).add(part.negate());
+                    boolean settled = c.getStatus() == ClaimStatus.SETTLED;
+                    out.computeIfAbsent(sh.getPersonId(), k -> new ArrayList<>()).add(new SharedPart(part, settled));
+                    out.computeIfAbsent(ownerId, k -> new ArrayList<>()).add(new SharedPart(part.negate(), settled));
                 });
             }
         });
         return out;
+    }
+
+    /** A part of a shared claim's due moving into (or, negative, out of) a person's figures, and
+     *  whether the claim is SETTLED. */
+    private record SharedPart(BigDecimal part, boolean settled) {
     }
 
     /** A holder's part of an unsettled shared claim: its amount times their share over 100, times
@@ -319,8 +345,9 @@ public class RollupService {
     }
 
     /** A person as the consolidated figures take them: their name and aliases, due-total held to
-     *  the cap (null: n/a) and overdue-total. */
-    public record Member(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal) {
+     *  the cap (null: n/a), overdue-total, settled-total, open-total and cut total. */
+    public record Member(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal settledTotal,
+            BigDecimal openTotal, BigDecimal cutTotal) {
     }
 
     /** The sheet's own figures as it is now, or as it stood at the end of {@code asOf} when given:

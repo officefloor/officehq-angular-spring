@@ -3,6 +3,7 @@ package net.officefloor.hq.app.rollup;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -28,14 +29,17 @@ public class RollupController {
     /** Figures added up over a sheet's descendants (or the sheet's own), the totals with two
      *  decimals: per grade the due-totals of the people on it (retired ones left out), and per
      *  status how many claims are in it (only grades and statuses with some), and each person's
-     *  names and figures, and how many counting claims are overdue. */
+     *  names and figures, and how many counting claims are overdue; and everyone's settled-total,
+     *  open-total and cut total, each trimmed. */
     public record ConsolidatedView(int people, String dueTotal, String overdueTotal,
             Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, List<MemberView> members,
-            int overdueCount) {
+            int overdueCount, String settledTotal, String openTotal, String cutTotal) {
     }
 
-    /** A person's name and aliases, due-total (null: n/a) and overdue-total, with two decimals. */
-    public record MemberView(List<String> names, String dueTotal, String overdueTotal) {
+    /** A person's name and aliases, due-total (null: n/a), overdue-total, settled-total, open-total
+     *  and cut total, with two decimals. */
+    public record MemberView(List<String> names, String dueTotal, String overdueTotal, String settledTotal,
+            String openTotal, String cutTotal) {
     }
 
     /** A person of the sheet's tree: the sheet they are on, their name, their grade today and
@@ -104,6 +108,16 @@ public class RollupController {
                         Map.Entry::getValue, (a, b) -> a, TreeMap::new)),
                 c.members().stream().map(m -> new MemberView(m.names(),
                         m.dueTotal() == null ? null : m.dueTotal().setScale(2).toPlainString(),
-                        m.overdueTotal().setScale(2).toPlainString())).toList(), c.overdueCount());
+                        m.overdueTotal().setScale(2).toPlainString(), m.settledTotal().setScale(2).toPlainString(),
+                        m.openTotal().setScale(2).toPlainString(), m.cutTotal().setScale(2).toPlainString()))
+                        .toList(), c.overdueCount(),
+                trimmed(c, RollupService.Member::settledTotal), trimmed(c, RollupService.Member::openTotal),
+                trimmed(c, RollupService.Member::cutTotal));
+    }
+
+    /** One figure of everyone's, added up and trimmed, with two decimals. */
+    private static String trimmed(RollupService.Consolidated c,
+            java.util.function.Function<RollupService.Member, BigDecimal> figure) {
+        return RollupService.trimmedSum(c.members().stream().map(figure).toList()).setScale(2).toPlainString();
     }
 }
