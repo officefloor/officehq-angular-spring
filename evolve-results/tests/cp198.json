@@ -1,0 +1,66 @@
+{
+  "checkpoint": 198,
+  "checkpoint_id": "cp198_duplicate-claims",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 8,
+  "branch": "evolve/202610271-as/just-solve/chain8",
+  "commit_sha": "08b029bf6bdbdc43a92309b39ca110782d560850",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-15T23:37:37",
+  "seconds": 185,
+  "build_log_file": "cp198.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp198_duplicate-claims.spec.ts::duplicate claims": true,
+      "cp198_duplicate-claims.spec.ts::duplicate claims scenario 1": true,
+      "cp198_duplicate-claims.spec.ts::duplicate claims scenario 2": true,
+      "cp198_duplicate-claims.spec.ts::duplicate claims scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp198_duplicate-claims.spec.ts::duplicate claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10171,
+        "failure": ""
+      },
+      {
+        "test_id": "cp198_duplicate-claims.spec.ts::duplicate claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29010,
+        "failure": ""
+      },
+      {
+        "test_id": "cp198_duplicate-claims.spec.ts::duplicate claims scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 36839,
+        "failure": ""
+      },
+      {
+        "test_id": "cp198_duplicate-claims.spec.ts::duplicate claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29004,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

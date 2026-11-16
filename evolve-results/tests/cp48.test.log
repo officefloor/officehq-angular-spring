@@ -1,0 +1,27 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp48-1rh48fcc
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit -15)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp48_dated-settings.spec.ts:6:7 › dated settings › dated settings (18.5s)
+  ✓  2 [chromium] › cp48_dated-settings.spec.ts:132:7 › dated settings › dated settings scenario 1 (17.6s)
+
+[gate attempt 1] no parseable Playwright JSON report (exit -15)
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 2, exit 0)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp48_dated-settings.spec.ts:6:7 › dated settings › dated settings (25.2s)
+  ✓  2 [chromium] › cp48_dated-settings.spec.ts:132:7 › dated settings › dated settings scenario 1 (20.0s)
+  ✓  3 [chromium] › cp48_dated-settings.spec.ts:426:7 › dated settings › dated settings scenario 2 (12.2s)
+  ✓  4 [chromium] › cp48_dated-settings.spec.ts:709:7 › dated settings › dated settings scenario 3 (14.4s)
+
+  Slow test file: [chromium] › cp48_dated-settings.spec.ts (1.2m)
+  Consider splitting slow test files to speed up parallel execution
+  4 passed (1.2m)

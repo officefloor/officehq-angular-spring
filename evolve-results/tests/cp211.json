@@ -1,0 +1,66 @@
+{
+  "checkpoint": 211,
+  "checkpoint_id": "cp211_score-lines",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 8,
+  "branch": "evolve/202610271-as/just-solve/chain8",
+  "commit_sha": "977c9547a86aa93222898d2b238a47473134119b",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-16T04:17:23",
+  "seconds": 266,
+  "build_log_file": "cp211.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp211_score-lines.spec.ts::score lines": true,
+      "cp211_score-lines.spec.ts::score lines scenario 1": true,
+      "cp211_score-lines.spec.ts::score lines scenario 2": true,
+      "cp211_score-lines.spec.ts::score lines scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp211_score-lines.spec.ts::score lines",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15657,
+        "failure": ""
+      },
+      {
+        "test_id": "cp211_score-lines.spec.ts::score lines scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 48606,
+        "failure": ""
+      },
+      {
+        "test_id": "cp211_score-lines.spec.ts::score lines scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29178,
+        "failure": ""
+      },
+      {
+        "test_id": "cp211_score-lines.spec.ts::score lines scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 69564,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}
