@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.HistoryService;
+import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.session.CurrentUser;
 import net.officefloor.hq.app.sheet.DatedSetting;
 import net.officefloor.hq.app.sheet.PolicyVersion;
@@ -78,11 +79,15 @@ public class SettingsController {
     /** A version of the sheet's policy as the screen lists it: its number, its from-date (null:
      *  none, counted on every date), the key of the setting its change set and the value it set
      *  (blank: none), and how many of the sheet's claims (DELETED ones left out) it is the policy
-     *  version of. */
-    public record PolicyVersionView(int number, LocalDate from, String key, String value, long claims) {
-        static List<PolicyVersionView> of(List<PolicyVersion> versions, Map<Integer, Long> claims) {
+     *  version of, and the dues of those of them that count (n/a ones skipped) added up, to two
+     *  decimals. */
+    public record PolicyVersionView(int number, LocalDate from, String key, String value, long claims,
+            String dueTotal) {
+        static List<PolicyVersionView> of(List<PolicyVersion> versions, Map<Integer, Long> claims,
+                Map<Integer, BigDecimal> dues) {
             return versions.stream().map(v -> new PolicyVersionView(v.getNumber(), v.getFrom(), v.getKey(),
-                    v.getValue() == null ? "" : v.getValue(), claims.getOrDefault(v.getNumber(), 0L))).toList();
+                    v.getValue() == null ? "" : v.getValue(), claims.getOrDefault(v.getNumber(), 0L),
+                    dues.getOrDefault(v.getNumber(), BigDecimal.ZERO).setScale(2).toPlainString())).toList();
         }
     }
 
@@ -300,10 +305,12 @@ public class SettingsController {
 
     private final SettingsService service;
     private final HistoryService history;
+    private final RollupService rollup;
 
-    public SettingsController(SettingsService service, HistoryService history) {
+    public SettingsController(SettingsService service, HistoryService history, RollupService rollup) {
         this.service = service;
         this.history = history;
+        this.rollup = rollup;
     }
 
     @GetMapping("/settings")
@@ -315,18 +322,20 @@ public class SettingsController {
     }
 
     /** Every version of the sheet's policy, oldest first, with how many claims each is the policy
-     *  version of. */
+     *  version of and the due of those that count, added up. */
     @GetMapping("/settings/policy-versions")
     public List<PolicyVersionView> policyVersions(
             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         if (asOf == null) {
-            return PolicyVersionView.of(service.policyVersions(sheetId), service.policyVersionClaims(sheetId));
+            return PolicyVersionView.of(service.policyVersions(sheetId), service.policyVersionClaims(sheetId),
+                    service.policyVersionDues(sheetId));
         }
         HistoryService.AsOf then = history.asOf(sheetId, asOf);
         return PolicyVersionView.of(then.sheet().getPolicyVersions(),
-                SettingsService.claimsByPolicyVersion(then.sheet(), then.claims().values()));
+                SettingsService.claimsByPolicyVersion(then.sheet(), then.claims().values()),
+                rollup.dueByPolicyVersionAsOf(sheetId, asOf));
     }
 
     @PutMapping("/settings/clerk-limit")

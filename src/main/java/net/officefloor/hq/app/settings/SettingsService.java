@@ -805,6 +805,13 @@ public class SettingsService {
                 .orElse(Map.of());
     }
 
+    /** The dues of the sheet's counting claims (n/a ones skipped) added up by the number of the
+     *  version of its policy in force on each claim's date. */
+    @Transactional(readOnly = true)
+    public Map<Integer, BigDecimal> policyVersionDues(String sheetId) {
+        return rollup.dueByPolicyVersion(sheetId);
+    }
+
     /** How many of the claims (DELETED ones left out) each version of the sheet's policy is the
      *  policy version of, by version number; a version without any left out. */
     public static Map<Integer, Long> claimsByPolicyVersion(Sheet sheet, Collection<Claim> claims) {

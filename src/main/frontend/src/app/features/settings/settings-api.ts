@@ -108,13 +108,15 @@ export interface Settings {
 
 /** A version of the sheet's policy: its number, its from-date (yyyy-mm-dd; null: none, counted on
  *  every date), the key of the setting its change set and the value it set (blank: none), and how
- *  many of the sheet's claims (DELETED ones left out) it is the policy version of. */
+ *  many of the sheet's claims (DELETED ones left out) it is the policy version of, and the
+ *  dues of those of them that count added up (two decimals). */
 export interface PolicyVersion {
   number: number;
   from: string | null;
   key: string;
   value: string;
   claims: number;
+  dueTotal: string;
 }
 
 export interface RoleGrant {

@@ -158,6 +158,51 @@ public class RollupService {
                 rateChain.levels(sheetId), cutTotals(sheetId, sheet, sheetPeople));
     }
 
+    /** The dues of the sheet's counting claims now (n/a ones skipped), added up by the number of
+     *  the policy version in force on each claim's date. */
+    public Map<Integer, BigDecimal> dueByPolicyVersion(String sheetId) {
+        Map<Long, Person> sheetPeople = new LinkedHashMap<>();
+        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> sheetPeople.put(p.getId(), p));
+        return sheets.findById(sheetId)
+                .map(sheet -> dueByPolicyVersion(sheet, sheetPeople, claims.findBySheetIdOrderByIdDesc(sheetId),
+                        rateChain.levels(sheetId)))
+                .orElse(Map.of());
+    }
+
+    /** The dues of the sheet's counting claims as it stood at the end of {@code on} (n/a ones
+     *  skipped), added up by the number of the policy version in force on each claim's date. */
+    public Map<Integer, BigDecimal> dueByPolicyVersionAsOf(String sheetId, LocalDate on) {
+        HistoryService.AsOf then = history.asOf(sheetId, on);
+        List<Claim> sheetClaims = then.claims().entrySet().stream()
+                .sorted(Map.Entry.<Long, Claim>comparingByKey().reversed())
+                .map(Map.Entry::getValue)
+                .toList();
+        RateChain.Levels sheetRates = new RateChain.Levels(sheetId, then.rates(),
+                rateChain.ancestors(sheetId).stream().map(a -> history.asOf(a, on).rates()).toList());
+        return dueByPolicyVersion(then.sheet(), then.people(), sheetClaims, sheetRates);
+    }
+
+    private static Map<Integer, BigDecimal> dueByPolicyVersion(Sheet sheet, Map<Long, Person> sheetPeople,
+            List<Claim> sheetClaims, RateChain.Levels sheetRates) {
+        Optional<Sheet> held = Optional.of(sheet);
+        LocalDate today = sheet.getToday();
+        Function<LocalDate, BigDecimal> floor = floorOf(held);
+        LateCharge late = LateCharge.of(held);
+        Function<Claim, RoundingMode> rounding = roundingOf(held, sheetClaims);
+        Map<Integer, BigDecimal> out = new LinkedHashMap<>();
+        for (Claim c : sheetClaims) {
+            Person p = sheetPeople.get(c.getPersonId());
+            if (p == null || !countsFor(c, p, today)) {
+                continue;
+            }
+            BigDecimal due = shownDueOf(c, p, sheetRates, floor, late, rounding);
+            if (due != null) {
+                out.merge(sheet.policyVersionOn(c.getDate()), due, BigDecimal::add);
+            }
+        }
+        return out;
+    }
+
     /** Each person's cut total on the sheet now, by person id (none when the sheet has no pot). */
     private Map<Long, BigDecimal> cutTotals(String sheetId, Optional<Sheet> sheet, Map<Long, Person> sheetPeople) {
         if (sheet.isEmpty()) {
