@@ -1,0 +1,326 @@
+diff --git a/src/main/frontend/src/app/features/claims/person-claims.ts b/src/main/frontend/src/app/features/claims/person-claims.ts
+index 8b3e89f35..12a7eb955 100644
+--- a/src/main/frontend/src/app/features/claims/person-claims.ts
++++ b/src/main/frontend/src/app/features/claims/person-claims.ts
+@@ -961,9 +961,11 @@ export class PersonClaims {
+     }
+   }
+ 
+-  /** The claim's holders as the row shows them: <name> <share>, comma and space separated. */
++  /** The claim's holders as the row shows them: <name> <share>, comma and space separated (the
++   *  claim's own person too, when it was reassigned to a holder). */
+   protected sharesText(c: Claim): string {
+     const names = new Map(this.others().map((o) => [o.id, o.name]));
++    names.set(this.personId(), this.personName());
+     return (c.shares ?? []).map((s) => `${names.get(s.personId) ?? ''} ${s.share}`.trim()).join(', ');
+   }
+ 
+diff --git a/src/main/frontend/src/app/features/header/header.ts b/src/main/frontend/src/app/features/header/header.ts
+index 97bbabc3f..7dbcd2015 100644
+--- a/src/main/frontend/src/app/features/header/header.ts
++++ b/src/main/frontend/src/app/features/header/header.ts
+@@ -47,6 +47,9 @@ export interface Dashboard {
+       <p>With its descendants: people <strong data-testid="consolidated-people-count">{{ consolidated().people }}</strong>,
+         due total <strong data-testid="consolidated-due-total">{{ consolidated().dueTotal | figure }}</strong>,
+         overdue total <strong data-testid="consolidated-overdue-total">{{ consolidated().overdueTotal | figure }}</strong></p>
++      <p>With its descendants: settled total <strong data-testid="consolidated-settled-total">{{ consolidated().settledTotal | figure }}</strong>,
++        open total <strong data-testid="consolidated-open-total">{{ consolidated().openTotal | figure }}</strong>,
++        cut total <strong data-testid="consolidated-cut-total">{{ consolidated().cutTotal | figure }}</strong></p>
+       <p>With its descendants, due total by grade:
+         @for (g of grades(); track g) {
+           {{ g }} <strong [attr.data-testid]="'consolidated-grade-' + g + '-due-total'">{{ (consolidated().gradeDueTotals[g] ?? '0.00') | figure }}</strong>
+diff --git a/src/main/frontend/src/app/features/people/people-api.ts b/src/main/frontend/src/app/features/people/people-api.ts
+index b228dd4bc..65aef3bb1 100644
+--- a/src/main/frontend/src/app/features/people/people-api.ts
++++ b/src/main/frontend/src/app/features/people/people-api.ts
+@@ -167,6 +167,10 @@ export interface DescendantFigures {
+   members: FigureMember[];
+   /** How many counting claims are overdue. */
+   overdueCount: number;
++  /** Everyone's settled-total, open-total and cut total, each trimmed. */
++  settledTotal: string;
++  openTotal: string;
++  cutTotal: string;
+ }
+ 
+ /** A person of a sheet's tree: the sheet they are on, their name, grade today and due-total (n/a: none). */
+@@ -182,10 +186,14 @@ export interface FigureMember {
+   names: string[];
+   dueTotal: string | null;
+   overdueTotal: string;
++  settledTotal: string;
++  openTotal: string;
++  cutTotal: string;
+ }
+ 
+ /** Figures with nothing in them. */
+-export const NO_FIGURES: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {}, members: [], overdueCount: 0 };
++export const NO_FIGURES: DescendantFigures = { people: 0, dueTotal: '0.00', overdueTotal: '0.00', gradeDueTotals: {}, statusCounts: {}, members: [], overdueCount: 0,
++  settledTotal: '0.00', openTotal: '0.00', cutTotal: '0.00' };
+ 
+ @Injectable({ providedIn: 'root' })
+ export class PeopleApi {
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 3a1597576..f3a9dacf1 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -761,16 +761,17 @@ export class People {
+   protected settledOpenOf(personId: number): { settled: number; open: number; scored: number } {
+     return this.settledOpenByPerson().get(personId) ?? { settled: 0, open: 0, scored: 0 };
+   }
+-  /** Everyone's settled-total added up (not trimmed). */
++  /** Everyone's settled-total added up, trimmed. */
+   protected readonly settledTotal = computed(() =>
+-    money([...this.settledOpenByPerson().values()].reduce((sum, s) => sum + s.settled, 0)));
+-  /** Everyone's open-total added up (not trimmed). */
++    money(trimmedSum(this.people().map((p) => this.settledOpenOf(p.id).settled))));
++  /** Everyone's open-total added up, trimmed. */
+   protected readonly openTotal = computed(() =>
+-    money([...this.settledOpenByPerson().values()].reduce((sum, s) => sum + s.open, 0)));
++    money(trimmedSum(this.people().map((p) => this.settledOpenOf(p.id).open))));
+   /** Each person's cut total in cents, by person id, as the pools show their cuts. */
+   protected readonly cutTotals = signal<Map<number, number>>(new Map());
+-  /** Everyone's cut total added up. */
+-  protected readonly cutTotal = computed(() => [...this.cutTotals().values()].reduce((sum, c) => sum + c, 0));
++  /** Everyone's cut total added up, trimmed. */
++  protected readonly cutTotal = computed(() =>
++    trimmedSum(this.people().map((p) => this.cutTotals().get(p.id) ?? 0)));
+   /** The person's excess in cents: how far their uncapped due-total is above their capped one, the
+    *  cap less their cut total (0 otherwise). */
+   protected excessOf(personId: number): number {
+@@ -1033,7 +1034,8 @@ export class People {
+   private readonly ownLive = signal<DescendantFigures | null>(null);
+   /** The sheet's own figures and its descendants' added up, each as the screen shows the sheet:
+    *  as it is now, or as it stood at the end of the as-of date. The due-total and overdue-total are
+-   *  everyone's over the whole tree, trimmed once; people whose names or aliases match count once. */
++   *  everyone's over the whole tree, trimmed once, and so are the settled-total, open-total and cut
++   *  total; people whose names or aliases match count once. */
+   protected readonly consolidated = computed<DescendantFigures>(() => {
+     const d = this.descendants();
+     const own = this.ownLive() ?? this.ownFigures();
+@@ -1048,6 +1050,9 @@ export class People {
+         [s, (own.statusCounts[s] ?? 0) + (d.statusCounts[s] ?? 0)])),
+       members,
+       overdueCount: own.overdueCount + d.overdueCount,
++      settledTotal: money(trimmedSum(members.map((m) => cents(m.settledTotal)))),
++      openTotal: money(trimmedSum(members.map((m) => cents(m.openTotal)))),
++      cutTotal: money(trimmedSum(members.map((m) => cents(m.cutTotal)))),
+     };
+   });
+   /** The sheet's own figures, live, as the consolidated figures add them up. */
+@@ -1058,7 +1063,9 @@ export class People {
+     const members = this.people().map((p) => {
+       const due = dues.get(p.id) ?? null;
+       return { names: [p.name, ...p.aliases], dueTotal: due === null ? null : money(due),
+-        overdueTotal: money(overdues.get(p.id)?.cents ?? 0) };
++        overdueTotal: money(overdues.get(p.id)?.cents ?? 0),
++        settledTotal: money(this.settledOpenOf(p.id).settled), openTotal: money(this.settledOpenOf(p.id).open),
++        cutTotal: money(this.cutTotals().get(p.id) ?? 0) };
+     });
+     return {
+       people: this.people().length, dueTotal: this.dueTotal(), overdueTotal: this.overdueTotal(),
+@@ -1067,6 +1074,7 @@ export class People {
+       statusCounts: Object.fromEntries(statusCounts(this.claims()).map((s) => [s.status, s.count])),
+       members,
+       overdueCount: this.overdueCount(),
++      settledTotal: this.settledTotal(), openTotal: this.openTotal(), cutTotal: money(this.cutTotal()),
+     };
+   });
+   protected readonly claimedTotal = computed(() =>
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+index 8dfb602a7..27082f401 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupController.java
+@@ -3,6 +3,7 @@ package net.officefloor.hq.app.rollup;
+ import jakarta.validation.constraints.NotBlank;
+ import jakarta.validation.constraints.Pattern;
+ import jakarta.validation.constraints.Size;
++import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.List;
+ import java.util.Map;
+@@ -28,14 +29,17 @@ public class RollupController {
+     /** Figures added up over a sheet's descendants (or the sheet's own), the totals with two
+      *  decimals: per grade the due-totals of the people on it (retired ones left out), and per
+      *  status how many claims are in it (only grades and statuses with some), and each person's
+-     *  names and figures, and how many counting claims are overdue. */
++     *  names and figures, and how many counting claims are overdue; and everyone's settled-total,
++     *  open-total and cut total, each trimmed. */
+     public record ConsolidatedView(int people, String dueTotal, String overdueTotal,
+             Map<String, String> gradeDueTotals, Map<String, Integer> statusCounts, List<MemberView> members,
+-            int overdueCount) {
++            int overdueCount, String settledTotal, String openTotal, String cutTotal) {
+     }
+ 
+-    /** A person's name and aliases, due-total (null: n/a) and overdue-total, with two decimals. */
+-    public record MemberView(List<String> names, String dueTotal, String overdueTotal) {
++    /** A person's name and aliases, due-total (null: n/a), overdue-total, settled-total, open-total
++     *  and cut total, with two decimals. */
++    public record MemberView(List<String> names, String dueTotal, String overdueTotal, String settledTotal,
++            String openTotal, String cutTotal) {
+     }
+ 
+     /** A person of the sheet's tree: the sheet they are on, their name, their grade today and
+@@ -104,6 +108,16 @@ public class RollupController {
+                         Map.Entry::getValue, (a, b) -> a, TreeMap::new)),
+                 c.members().stream().map(m -> new MemberView(m.names(),
+                         m.dueTotal() == null ? null : m.dueTotal().setScale(2).toPlainString(),
+-                        m.overdueTotal().setScale(2).toPlainString())).toList(), c.overdueCount());
++                        m.overdueTotal().setScale(2).toPlainString(), m.settledTotal().setScale(2).toPlainString(),
++                        m.openTotal().setScale(2).toPlainString(), m.cutTotal().setScale(2).toPlainString()))
++                        .toList(), c.overdueCount(),
++                trimmed(c, RollupService.Member::settledTotal), trimmed(c, RollupService.Member::openTotal),
++                trimmed(c, RollupService.Member::cutTotal));
++    }
++
++    /** One figure of everyone's, added up and trimmed, with two decimals. */
++    private static String trimmed(RollupService.Consolidated c,
++            java.util.function.Function<RollupService.Member, BigDecimal> figure) {
++        return RollupService.trimmedSum(c.members().stream().map(figure).toList()).setScale(2).toPlainString();
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 3ee87600e..1c1fb4ba6 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -51,9 +51,12 @@ public class RollupService {
+      *  overdue-total (the dues their overdue counting claims show, n/a ones skipped, not capped);
+      *  with their grade on the sheet's today, whether they have a retirement date, and their aliases;
+      *  and the dues (n/a ones skipped) their counting SETTLED claims that correct nothing show, and how many of their
+-     *  counting claims are overdue. */
++     *  counting claims are overdue; and their settled-total (the dues, n/a ones skipped, their counting
++     *  SETTLED claims show, with the parts of shared ones), open-total (the same for their counting OPEN
++     *  and PENDING claims) and cut total. */
+     public record Figures(String name, BigDecimal claimed, BigDecimal dueTotal, BigDecimal overdueTotal,
+-            String grade, boolean retired, List<String> aliases, BigDecimal settled, int overdueCount) {
++            String grade, boolean retired, List<String> aliases, BigDecimal settled, int overdueCount,
++            BigDecimal settledTotal, BigDecimal openTotal, BigDecimal cutTotal) {
+         /** The score: the settled figures over 100, less 5 for each overdue claim, rounded half to
+          *  even to a whole number. */
+         BigDecimal score() {
+@@ -107,7 +110,8 @@ public class RollupService {
+             return people.values().stream().map(f -> {
+                 List<String> names = new ArrayList<>(List.of(f.name()));
+                 names.addAll(f.aliases());
+-                return new Member(names, f.dueTotal(), f.overdueTotal());
++                return new Member(names, f.dueTotal(), f.overdueTotal(), f.settledTotal(), f.openTotal(),
++                        f.cutTotal());
+             }).toList();
+         }
+     }
+@@ -154,10 +158,9 @@ public class RollupService {
+                 rateChain.levels(sheetId), cutTotals(sheetId, sheet, sheetPeople));
+     }
+ 
+-    /** Each person's cut total on the sheet now, by person id (none when the sheet has no cap, as
+-     *  the cut totals then hold nothing). */
++    /** Each person's cut total on the sheet now, by person id (none when the sheet has no pot). */
+     private Map<Long, BigDecimal> cutTotals(String sheetId, Optional<Sheet> sheet, Map<Long, Person> sheetPeople) {
+-        if (sheet.map(Sheet::getCap).isEmpty()) {
++        if (sheet.isEmpty()) {
+             return Map.of();
+         }
+         return cuts.of(sheetId, sheet.get().getPot(), sheetPeople, sheet.get().getToday());
+@@ -187,7 +190,7 @@ public class RollupService {
+         RateChain.Levels sheetRates = new RateChain.Levels(sheetId, then.rates(),
+                 rateChain.ancestors(sheetId).stream().map(a -> history.asOf(a, on).rates()).toList());
+         return snapshotOf(Optional.of(then.sheet()), then.people(), sheetClaims, sheetRates,
+-                then.sheet().getCap() == null ? Map.of() : CutTotals.of(then));
++                CutTotals.of(then));
+     }
+ 
+     /** The figures of a sheet with these settings (none: the defaults, today the real date), people
+@@ -215,11 +218,12 @@ public class RollupService {
+                 claimedBy.merge(c.getPersonId(), c.getAmount(), BigDecimal::add);
+             }
+         }
+-        Map<Long, List<BigDecimal>> parts = sharedParts(counted, sheetPeople, sheetRates, floor, late, rounding);
++        Map<Long, List<SharedPart>> parts = sharedParts(counted, sheetPeople, sheetRates, floor, late, rounding);
+         Map<Long, Figures> out = new LinkedHashMap<>();
+         sheetPeople.forEach((id, p) -> {
+             List<Claim> theirs = counted.getOrDefault(id, List.of());
+-            List<BigDecimal> shared = parts.getOrDefault(id, List.of());
++            List<SharedPart> sharedParts = parts.getOrDefault(id, List.of());
++            List<BigDecimal> shared = sharedParts.stream().map(SharedPart::part).toList();
+             BigDecimal claimed = zero().add(claimedBy.getOrDefault(id, zero()));
+             List<Claim> overdueClaims = theirs.stream()
+                     .filter(c -> c.getStatus().isOpen() && late.isPast(c, p))
+@@ -234,11 +238,27 @@ public class RollupService {
+                     .map(c -> shownDueOf(c, p, sheetRates, floor, late, rounding))
+                     .filter(Objects::nonNull)
+                     .reduce(zero(), BigDecimal::add);
++            BigDecimal settledTotal = theirs.stream().filter(c -> c.getStatus() == ClaimStatus.SETTLED)
++                    .map(c -> shownDueOf(c, p, sheetRates, floor, late, rounding))
++                    .filter(Objects::nonNull)
++                    .reduce(zero(), BigDecimal::add);
++            BigDecimal openTotal = theirs.stream().filter(c -> c.getStatus().isOpen())
++                    .map(c -> shownDueOf(c, p, sheetRates, floor, late, rounding))
++                    .filter(Objects::nonNull)
++                    .reduce(zero(), BigDecimal::add);
++            for (SharedPart sp : sharedParts) {
++                if (sp.settled()) {
++                    settledTotal = settledTotal.add(sp.part());
++                } else {
++                    openTotal = openTotal.add(sp.part());
++                }
++            }
+             int overdueCount = (int) overdueClaims.stream().filter(c -> !c.isDeferredOn(today)).count();
+             out.put(id, new Figures(p.getName(), claimed,
+                     Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding, shared),
+                             capLessCut(cap, cutTotals.get(id))), overdue,
+-                    p.gradeOn(today), p.isRetired(), List.copyOf(p.getAliases()), settled, overdueCount));
++                    p.gradeOn(today), p.isRetired(), List.copyOf(p.getAliases()), settled, overdueCount,
++                    settledTotal, openTotal, zero().add(cutTotals.getOrDefault(id, zero()))));
+         });
+         Map<ClaimStatus, Integer> statuses = new LinkedHashMap<>();
+         sheetClaims.stream().map(Claim::getStatus).filter(Objects::nonNull)
+@@ -249,11 +269,11 @@ public class RollupService {
+     /** The parts of their counting claims' dues (n/a ones skipped) the people on the sheet share,
+      *  by person id: each holder's part (see {@link #holderPartOf}; a settled claim's kept frozen as
+      *  its settled due times their share over 100, rounded half to even), and the same parts taken
+-     *  off the claim's own person. */
+-    private static Map<Long, List<BigDecimal>> sharedParts(Map<Long, List<Claim>> counted, Map<Long, Person> sheetPeople,
++     *  off the claim's own person; each with whether the claim is SETTLED. */
++    private static Map<Long, List<SharedPart>> sharedParts(Map<Long, List<Claim>> counted, Map<Long, Person> sheetPeople,
+             RateChain.Levels sheetRates, Function<LocalDate, BigDecimal> floor, LateCharge late,
+             Function<Claim, RoundingMode> rounding) {
+-        Map<Long, List<BigDecimal>> out = new LinkedHashMap<>();
++        Map<Long, List<SharedPart>> out = new LinkedHashMap<>();
+         counted.forEach((ownerId, theirs) -> {
+             Person owner = sheetPeople.get(ownerId);
+             if (owner == null) {
+@@ -273,14 +293,20 @@ public class RollupService {
+                     if (part == null) {
+                         return;
+                     }
+-                    out.computeIfAbsent(sh.getPersonId(), k -> new ArrayList<>()).add(part);
+-                    out.computeIfAbsent(ownerId, k -> new ArrayList<>()).add(part.negate());
++                    boolean settled = c.getStatus() == ClaimStatus.SETTLED;
++                    out.computeIfAbsent(sh.getPersonId(), k -> new ArrayList<>()).add(new SharedPart(part, settled));
++                    out.computeIfAbsent(ownerId, k -> new ArrayList<>()).add(new SharedPart(part.negate(), settled));
+                 });
+             }
+         });
+         return out;
+     }
+ 
++    /** A part of a shared claim's due moving into (or, negative, out of) a person's figures, and
++     *  whether the claim is SETTLED. */
++    private record SharedPart(BigDecimal part, boolean settled) {
++    }
++
+     /** A holder's part of an unsettled shared claim: its amount times their share over 100, times
+      *  the rate, in force on the claim's date, of the holder's own grade then (as the claim applies
+      *  the rates) over 100, rounded as the claim rounds; null (a part of 0.00, which they are not counted as holding)
+@@ -319,8 +345,9 @@ public class RollupService {
+     }
+ 
+     /** A person as the consolidated figures take them: their name and aliases, due-total held to
+-     *  the cap (null: n/a) and overdue-total. */
+-    public record Member(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal) {
++     *  the cap (null: n/a), overdue-total, settled-total, open-total and cut total. */
++    public record Member(List<String> names, BigDecimal dueTotal, BigDecimal overdueTotal, BigDecimal settledTotal,
++            BigDecimal openTotal, BigDecimal cutTotal) {
+     }
+ 
+     /** The sheet's own figures as it is now, or as it stood at the end of {@code asOf} when given:
