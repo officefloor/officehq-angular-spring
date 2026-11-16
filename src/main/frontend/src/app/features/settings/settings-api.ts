@@ -106,6 +106,17 @@ export interface Settings {
   permissions: Partial<Record<PermissionAction, string>>;
 }
 
+/** A version of the sheet's policy: its number, its from-date (yyyy-mm-dd; null: none, counted on
+ *  every date), the key of the setting its change set and the value it set (blank: none), and how
+ *  many of the sheet's claims (DELETED ones left out) it is the policy version of. */
+export interface PolicyVersion {
+  number: number;
+  from: string | null;
+  key: string;
+  value: string;
+  claims: number;
+}
+
 export interface RoleGrant {
   user: string;
   role: string;
@@ -128,6 +139,11 @@ export class SettingsApi {
 
   get(sheetId: string): Promise<Settings> {
     return firstValueFrom(this.http.get<Settings>(`${this.url(sheetId)}/settings`, { headers: this.headers() }));
+  }
+
+  /** Every version of the sheet's policy, oldest first. */
+  policyVersions(sheetId: string): Promise<PolicyVersion[]> {
+    return firstValueFrom(this.http.get<PolicyVersion[]>(`${this.url(sheetId)}/settings/policy-versions`, { headers: this.headers() }));
   }
 
   /** Save the value from a date (blank: the sheet's today). */

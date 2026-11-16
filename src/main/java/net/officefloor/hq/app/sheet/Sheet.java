@@ -212,7 +212,7 @@ public class Sheet {
     public Sheet clonedTo(String id, String createdBy) {
         Sheet copy = new Sheet(id, createdBy, today);
         settings.forEach(d -> copy.settings.add(new DatedSetting(d.getKey(), d.getFrom(), d.getValue())));
-        policyVersions.forEach(v -> copy.policyVersions.add(new PolicyVersion(v.getNumber(), v.getKey(), v.getFrom())));
+        policyVersions.forEach(v -> copy.policyVersions.add(new PolicyVersion(v.getNumber(), v.getKey(), v.getFrom(), v.getValue())));
         copy.policyDate = policyDate;
         copy.periodNumberingFrom = periodNumberingFrom;
         copy.entryDate = entryDate;
@@ -269,9 +269,10 @@ public class Sheet {
     }
 
     /** Record a new version of the policy, numbered after the last one, for a change to a policy
-     *  setting in force from a date (null: none, the version counts on every date). */
-    public void recordPolicyVersion(String key, LocalDate from) {
-        policyVersions.add(new PolicyVersion(policyVersions.size() + 1, key, from));
+     *  setting in force from a date (null: none, the version counts on every date) that set a value
+     *  (null: blank, none). */
+    public void recordPolicyVersion(String key, LocalDate from, String value) {
+        policyVersions.add(new PolicyVersion(policyVersions.size() + 1, key, from, value));
     }
 
     /** Every version of the policy, by number. */

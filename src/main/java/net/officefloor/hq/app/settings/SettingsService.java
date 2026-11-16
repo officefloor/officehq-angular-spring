@@ -3,12 +3,17 @@ package net.officefloor.hq.app.settings;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import net.officefloor.hq.app.Audit;
+import net.officefloor.hq.app.claim.Claim;
+import net.officefloor.hq.app.claim.ClaimRepository;
+import net.officefloor.hq.app.claim.ClaimStatus;
 import net.officefloor.hq.app.claim.ProofKind;
 import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.rollup.RollupService;
@@ -120,11 +125,12 @@ public class SettingsService {
     private final HistoryService history;
     private final Audit audit;
     private final ApplicationEventPublisher events;
+    private final ClaimRepository claims;
 
     public SettingsService(SheetRoleRepository roles, SheetPermissionRepository permissions,
             SheetDelegationRepository delegations, SheetHolidayRepository holidays, SheetVoidReasonRepository voidReasons,
             SheetService sheets, RollupService rollup, HistoryService history, Audit audit,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events, ClaimRepository claims) {
         this.roles = roles;
         this.permissions = permissions;
         this.delegations = delegations;
@@ -135,6 +141,7 @@ public class SettingsService {
         this.history = history;
         this.audit = audit;
         this.events = events;
+        this.claims = claims;
     }
 
     /** The sheet's clerk limit in force on its today; null when there is none. */
@@ -174,7 +181,7 @@ public class SettingsService {
         LocalDate on = from != null ? from : sheet.getToday();
         sheet.recordSetting(key, on, value.isEmpty() ? null : value);
         if (Sheet.POLICY_KEYS.contains(key)) {
-            sheet.recordPolicyVersion(key, on);
+            sheet.recordPolicyVersion(key, on, value.isEmpty() ? null : value);
         }
         sheets.flush();
         history.recordSheet(sheet);
@@ -787,6 +794,22 @@ public class SettingsService {
     @Transactional(readOnly = true)
     public List<PolicyVersion> policyVersions(String sheetId) {
         return sheets.find(sheetId).map(Sheet::getPolicyVersions).orElse(List.of());
+    }
+
+    /** How many of the sheet's claims (DELETED ones left out) each version of its policy is the
+     *  policy version of (the one in force on the claim's date), by version number. */
+    @Transactional(readOnly = true)
+    public Map<Integer, Long> policyVersionClaims(String sheetId) {
+        return sheets.find(sheetId)
+                .map(sheet -> claimsByPolicyVersion(sheet, claims.findBySheetIdOrderByIdDesc(sheetId)))
+                .orElse(Map.of());
+    }
+
+    /** How many of the claims (DELETED ones left out) each version of the sheet's policy is the
+     *  policy version of, by version number; a version without any left out. */
+    public static Map<Integer, Long> claimsByPolicyVersion(Sheet sheet, Collection<Claim> claims) {
+        return claims.stream().filter(c -> c.getStatus() != ClaimStatus.DELETED)
+                .collect(Collectors.groupingBy(c -> sheet.policyVersionOn(c.getDate()), Collectors.counting()));
     }
 
     /** Every value recorded for the sheet's dated settings, by key, each key's by from-date. */

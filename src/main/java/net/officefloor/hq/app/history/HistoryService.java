@@ -72,8 +72,9 @@ public class HistoryService {
             Integer pendingSla, List<PolicyVersionState> policyVersions) {
     }
 
-    /** A version of the sheet's policy; none in states written before the policy was versioned. */
-    record PolicyVersionState(int number, String key, LocalDate from) {
+    /** A version of the sheet's policy; none in states written before the policy was versioned, the
+     *  value null in states written before it was kept. */
+    record PolicyVersionState(int number, String key, LocalDate from, String value) {
     }
 
     record GradeState(LocalDate from, String grade) {
@@ -181,7 +182,7 @@ public class HistoryService {
                 sheet.getReviewSla(), sheet.getProofKinds(), sheet.getDefaultGrade(),
                 sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), sheet.getMaxOpen(),
                 sheet.getPendingSla(), sheet.getPolicyVersions().stream()
-                        .map(v -> new PolicyVersionState(v.getNumber(), v.getKey(), v.getFrom())).toList()));
+                        .map(v -> new PolicyVersionState(v.getNumber(), v.getKey(), v.getFrom(), v.getValue())).toList()));
     }
 
     /** Write the version of a claim now, if it differs from the last one: a change to its shares
@@ -355,7 +356,7 @@ public class HistoryService {
                     sheet.setPolicyDate(s.policyDate());
                     s.settings().forEach(d -> sheet.recordSetting(d.key(), d.from(), d.value()));
                     if (s.policyVersions() != null) {
-                        s.policyVersions().forEach(v -> sheet.recordPolicyVersion(v.key(), v.from()));
+                        s.policyVersions().forEach(v -> sheet.recordPolicyVersion(v.key(), v.from(), v.value()));
                     }
                     sheet.setPeriodNumberingFrom(s.periodNumberingFrom());
                     sheet.setGraceDays(s.graceDays());

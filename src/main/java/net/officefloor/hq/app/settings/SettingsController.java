@@ -75,6 +75,17 @@ public class SettingsController {
         return versions.stream().map(PolicyVersion::getFrom).toList();
     }
 
+    /** A version of the sheet's policy as the screen lists it: its number, its from-date (null:
+     *  none, counted on every date), the key of the setting its change set and the value it set
+     *  (blank: none), and how many of the sheet's claims (DELETED ones left out) it is the policy
+     *  version of. */
+    public record PolicyVersionView(int number, LocalDate from, String key, String value, long claims) {
+        static List<PolicyVersionView> of(List<PolicyVersion> versions, Map<Integer, Long> claims) {
+            return versions.stream().map(v -> new PolicyVersionView(v.getNumber(), v.getFrom(), v.getKey(),
+                    v.getValue() == null ? "" : v.getValue(), claims.getOrDefault(v.getNumber(), 0L))).toList();
+        }
+    }
+
     /** A value recorded for a dated setting: in force from its from-date until the next one of its
      *  key; null for none. */
     public record DatedValue(LocalDate from, String value) {
@@ -301,6 +312,21 @@ public class SettingsController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
         return asOf == null ? view(sheetId) : viewAsOf(history.asOf(sheetId, asOf));
+    }
+
+    /** Every version of the sheet's policy, oldest first, with how many claims each is the policy
+     *  version of. */
+    @GetMapping("/settings/policy-versions")
+    public List<PolicyVersionView> policyVersions(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+        if (asOf == null) {
+            return PolicyVersionView.of(service.policyVersions(sheetId), service.policyVersionClaims(sheetId));
+        }
+        HistoryService.AsOf then = history.asOf(sheetId, asOf);
+        return PolicyVersionView.of(then.sheet().getPolicyVersions(),
+                SettingsService.claimsByPolicyVersion(then.sheet(), then.claims().values()));
     }
 
     @PutMapping("/settings/clerk-limit")
