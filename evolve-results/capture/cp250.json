@@ -1,0 +1,64 @@
+{
+  "checkpoint": 250,
+  "stack": {
+    "repo": "/home/daniel/officehq-angular-spring",
+    "origin": "git@github.com:officefloor/officehq-angular-spring.git",
+    "name": "officehq-angular-spring",
+    "base_ref": "base-empty",
+    "base_commit": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250"
+  },
+  "checkpoint_id": "cp250_policy-export",
+  "phase": "late",
+  "type": "additive",
+  "mutates": [],
+  "replaced_tests": [],
+  "request": {
+    "spec": "A button downloads the policy versions as a CSV file: a header line\nversion,from,key,value,claims,due-total then one line per version with its claims' count and the\ndue of those that count, added up.\n",
+    "prompt": "You are implementing ONE change to this application.\n\nFIRST read AGENTS.md \u2014 it states the working rules and how the app is tested, and sends you to\nDESIGN.md for the app's stack and conventions. Follow both.\n\nTHE CHANGE REQUEST:\nA button downloads the policy versions as a CSV file: a header line\nversion,from,key,value,claims,due-total then one line per version with its claims' count and the\ndue of those that count, added up.\n\nYour work is verified by an automated Playwright UI test already installed under e2e/specs/.\nRead that spec: it declares the exact data-testid anchors, values, test data and any audit\nrecords it expects \u2014 match them. Run `bin/e2e` to build the app, start it, and run the test as\nyou work; iterate until it passes. Change whatever the request needs across the app \u2014 its stored\ndata, its server and its front end. Do NOT edit bin/build, bin/start, bin/stop, bin/e2e,\nAGENTS.md, CLAUDE.md, DESIGN.md, e2e/support/ or the test spec.\n"
+  },
+  "commit_sha": "d1607bc6a51568f238810b598b6b6467b5166d74",
+  "reset_sha": "",
+  "preagent_sha": "67207af48fb8924ecf13865b8dee34e7a587d119",
+  "prev_sha": "67207af48fb8924ecf13865b8dee34e7a587d119",
+  "base_sha": "65cb8233ea38b2dfa6cfd18709e30cd18fdf3250",
+  "agent": {
+    "ok": true,
+    "cost_usd": 1.4554593999999996,
+    "input_tokens": 18,
+    "output_tokens": 3052,
+    "cache_read_tokens": 651872,
+    "cache_creation_tokens": 8922,
+    "num_turns": 8,
+    "duration_ms": 37801,
+    "duration_api_ms": 184844,
+    "model": "claude-opus-5-5",
+    "session_id": "ba4f5ca6-7ef0-48bf-af6c-0a1ca1cae85f",
+    "stop_reason": "success",
+    "result_text": "The new export works and its test passes. One other test in the spec file still fails, at a step my change doesn't touch.\n\n**`bin/e2e` result:** 3 of 4 tests pass, including the \"policy export\" test for this request. \"policy export scenario 2\" fails at `acceptance.spec.ts:947`. The test expects user `vic` (role `restricted`, with the close permission set to `clerk`) to be refused when soft-closing period 2026-04, but the app lets it through. The app's own rule (`SettingsService.mayTake`, documented in `Role.java`) says a restricted user acts as a clerk, so the soft-close is allowed. My change doesn't touch periods or permissions; the step fails before any export is run, and it failed the same way in both runs. I couldn't find what rule the test wants there, so I left that behaviour alone rather than guess at a permission change.\n\n**What I added:**\n- **Front end** (`features/settings/policy-versions.ts`): an \"Export policy versions (CSV)\" button, `data-testid=\"export-policy\"`. It re-reads the versions from the server and downloads `policy-<sheet>.csv` with the header `version,from,key,value,claims,due-total` and one line per version. A version with no from-date gets a blank `from`. If the request fails, the existing `policy-error` element shows it.\n- **Server:**\n  - `RollupService.dueByPolicyVersion` (plus an as-of-date version) adds up the dues of the claims that count, grouped by the policy version in force on each claim's date. \"Claims that count\" and \"due\" follow the same rules the due-totals already use, and claims whose due is n/a are skipped.\n  - It is called through a new read-only `SettingsService.policyVersionDues`.\n  - The `/settings/policy-versions` response now has a `dueTotal` field (two decimals) next to the existing `claims` count. The front-end `PolicyVersion` type has the matching field.\n- No database change was needed, and nothing is written to the audit file for the export.\n\nDo you want me to dig further into the scenario 2 refusal, or leave it as it is?",
+    "error": "",
+    "attempts": [
+      {
+        "ok": true,
+        "limit_reached": false,
+        "retryable": false,
+        "timed_out": false,
+        "cost_usd": 1.4554593999999996,
+        "num_turns": 8,
+        "duration_ms": 37801,
+        "duration_api_ms": 184844,
+        "error": ""
+      }
+    ]
+  },
+  "agent_stream_file": "cp250.agent.jsonl",
+  "agent_diff_file": "cp250.agent.diff",
+  "build_log_file": null,
+  "tests": {
+    "gated": false,
+    "queued": true
+  },
+  "probe": null,
+  "pinned_touched": [],
+  "acceptance_touched": [],
+  "impact_gate": null
+}

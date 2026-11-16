@@ -1,0 +1,226 @@
+diff --git a/src/main/frontend/src/app/features/settings/policy-versions.ts b/src/main/frontend/src/app/features/settings/policy-versions.ts
+index c62553b92..2a7d2bdf6 100644
+--- a/src/main/frontend/src/app/features/settings/policy-versions.ts
++++ b/src/main/frontend/src/app/features/settings/policy-versions.ts
+@@ -1,14 +1,17 @@
+-import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { DOCUMENT, Component, effect, inject, signal, untracked } from '@angular/core';
+ import { Session, otherError } from '../../core/session';
++import { csvLine } from '../people/people-api';
+ import { PolicyVersion, SettingsApi } from './settings-api';
+ 
+ // The sheet's policy versions, shown on request: one line per version, oldest first, as its number,
+ // its from-date (or "start" when it has none), the setting it changed as key=value, and how many
+-// claims it is the policy version of.
++// claims it is the policy version of. They also download as CSV: a version,from,key,value,claims,due-total
++// header, then one line per version with the due of its claims that count, added up.
+ @Component({
+   selector: 'app-policy-versions',
+   template: `
+     <button type="button" data-testid="policy-show" (click)="show()">Show policy versions</button>
++    <button type="button" data-testid="export-policy" (click)="exportCsv()">Export policy versions (CSV)</button>
+     @if (error()) {
+       <p role="alert" data-testid="policy-error">{{ error() }}</p>
+     }
+@@ -24,6 +27,7 @@ import { PolicyVersion, SettingsApi } from './settings-api';
+ export class PolicyVersions {
+   private readonly session = inject(Session);
+   private readonly api = inject(SettingsApi);
++  private readonly document = inject(DOCUMENT);
+ 
+   protected readonly versions = signal<PolicyVersion[]>([]);
+   protected readonly error = signal<string | null>(null);
+@@ -50,4 +54,28 @@ export class PolicyVersions {
+       this.error.set(otherError(e));
+     }
+   }
++
++  /** Download the policy versions, re-read from the store, as CSV. */
++  protected async exportCsv(): Promise<void> {
++    const id = this.session.sheetId();
++    this.error.set(null);
++    if (!id) return;
++    let versions: PolicyVersion[];
++    try {
++      versions = await this.api.policyVersions(id);
++    } catch (e) {
++      this.error.set(otherError(e));
++      return;
++    }
++    const lines = [csvLine(['version', 'from', 'key', 'value', 'claims', 'due-total'])];
++    for (const v of versions) {
++      lines.push(csvLine([String(v.number), v.from ?? '', v.key, v.value, String(v.claims), v.dueTotal]));
++    }
++    const url = URL.createObjectURL(new Blob([lines.join('')], { type: 'text/csv' }));
++    const link = this.document.createElement('a');
++    link.href = url;
++    link.download = `policy-${id}.csv`;
++    link.click();
++    setTimeout(() => URL.revokeObjectURL(url));
++  }
+ }
+diff --git a/src/main/frontend/src/app/features/settings/settings-api.ts b/src/main/frontend/src/app/features/settings/settings-api.ts
+index 07f04be04..895e40d76 100644
+--- a/src/main/frontend/src/app/features/settings/settings-api.ts
++++ b/src/main/frontend/src/app/features/settings/settings-api.ts
+@@ -108,13 +108,15 @@ export interface Settings {
+ 
+ /** A version of the sheet's policy: its number, its from-date (yyyy-mm-dd; null: none, counted on
+  *  every date), the key of the setting its change set and the value it set (blank: none), and how
+- *  many of the sheet's claims (DELETED ones left out) it is the policy version of. */
++ *  many of the sheet's claims (DELETED ones left out) it is the policy version of, and the
++ *  dues of those of them that count added up (two decimals). */
+ export interface PolicyVersion {
+   number: number;
+   from: string | null;
+   key: string;
+   value: string;
+   claims: number;
++  dueTotal: string;
+ }
+ 
+ export interface RoleGrant {
+diff --git a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+index 5546040dc..d7bc3d29a 100644
+--- a/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
++++ b/src/main/java/net/officefloor/hq/app/rollup/RollupService.java
+@@ -158,6 +158,51 @@ public class RollupService {
+                 rateChain.levels(sheetId), cutTotals(sheetId, sheet, sheetPeople));
+     }
+ 
++    /** The dues of the sheet's counting claims now (n/a ones skipped), added up by the number of
++     *  the policy version in force on each claim's date. */
++    public Map<Integer, BigDecimal> dueByPolicyVersion(String sheetId) {
++        Map<Long, Person> sheetPeople = new LinkedHashMap<>();
++        people.findBySheetIdOrderByPositionAscIdAsc(sheetId).forEach(p -> sheetPeople.put(p.getId(), p));
++        return sheets.findById(sheetId)
++                .map(sheet -> dueByPolicyVersion(sheet, sheetPeople, claims.findBySheetIdOrderByIdDesc(sheetId),
++                        rateChain.levels(sheetId)))
++                .orElse(Map.of());
++    }
++
++    /** The dues of the sheet's counting claims as it stood at the end of {@code on} (n/a ones
++     *  skipped), added up by the number of the policy version in force on each claim's date. */
++    public Map<Integer, BigDecimal> dueByPolicyVersionAsOf(String sheetId, LocalDate on) {
++        HistoryService.AsOf then = history.asOf(sheetId, on);
++        List<Claim> sheetClaims = then.claims().entrySet().stream()
++                .sorted(Map.Entry.<Long, Claim>comparingByKey().reversed())
++                .map(Map.Entry::getValue)
++                .toList();
++        RateChain.Levels sheetRates = new RateChain.Levels(sheetId, then.rates(),
++                rateChain.ancestors(sheetId).stream().map(a -> history.asOf(a, on).rates()).toList());
++        return dueByPolicyVersion(then.sheet(), then.people(), sheetClaims, sheetRates);
++    }
++
++    private static Map<Integer, BigDecimal> dueByPolicyVersion(Sheet sheet, Map<Long, Person> sheetPeople,
++            List<Claim> sheetClaims, RateChain.Levels sheetRates) {
++        Optional<Sheet> held = Optional.of(sheet);
++        LocalDate today = sheet.getToday();
++        Function<LocalDate, BigDecimal> floor = floorOf(held);
++        LateCharge late = LateCharge.of(held);
++        Function<Claim, RoundingMode> rounding = roundingOf(held, sheetClaims);
++        Map<Integer, BigDecimal> out = new LinkedHashMap<>();
++        for (Claim c : sheetClaims) {
++            Person p = sheetPeople.get(c.getPersonId());
++            if (p == null || !countsFor(c, p, today)) {
++                continue;
++            }
++            BigDecimal due = shownDueOf(c, p, sheetRates, floor, late, rounding);
++            if (due != null) {
++                out.merge(sheet.policyVersionOn(c.getDate()), due, BigDecimal::add);
++            }
++        }
++        return out;
++    }
++
+     /** Each person's cut total on the sheet now, by person id (none when the sheet has no pot). */
+     private Map<Long, BigDecimal> cutTotals(String sheetId, Optional<Sheet> sheet, Map<Long, Person> sheetPeople) {
+         if (sheet.isEmpty()) {
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index e69eba7ec..39ae8822e 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -14,6 +14,7 @@ import java.util.Map;
+ import java.util.TreeMap;
+ import net.officefloor.hq.app.history.AsOfGuard;
+ import net.officefloor.hq.app.history.HistoryService;
++import net.officefloor.hq.app.rollup.RollupService;
+ import net.officefloor.hq.app.session.CurrentUser;
+ import net.officefloor.hq.app.sheet.DatedSetting;
+ import net.officefloor.hq.app.sheet.PolicyVersion;
+@@ -78,11 +79,15 @@ public class SettingsController {
+     /** A version of the sheet's policy as the screen lists it: its number, its from-date (null:
+      *  none, counted on every date), the key of the setting its change set and the value it set
+      *  (blank: none), and how many of the sheet's claims (DELETED ones left out) it is the policy
+-     *  version of. */
+-    public record PolicyVersionView(int number, LocalDate from, String key, String value, long claims) {
+-        static List<PolicyVersionView> of(List<PolicyVersion> versions, Map<Integer, Long> claims) {
++     *  version of, and the dues of those of them that count (n/a ones skipped) added up, to two
++     *  decimals. */
++    public record PolicyVersionView(int number, LocalDate from, String key, String value, long claims,
++            String dueTotal) {
++        static List<PolicyVersionView> of(List<PolicyVersion> versions, Map<Integer, Long> claims,
++                Map<Integer, BigDecimal> dues) {
+             return versions.stream().map(v -> new PolicyVersionView(v.getNumber(), v.getFrom(), v.getKey(),
+-                    v.getValue() == null ? "" : v.getValue(), claims.getOrDefault(v.getNumber(), 0L))).toList();
++                    v.getValue() == null ? "" : v.getValue(), claims.getOrDefault(v.getNumber(), 0L),
++                    dues.getOrDefault(v.getNumber(), BigDecimal.ZERO).setScale(2).toPlainString())).toList();
+         }
+     }
+ 
+@@ -300,10 +305,12 @@ public class SettingsController {
+ 
+     private final SettingsService service;
+     private final HistoryService history;
++    private final RollupService rollup;
+ 
+-    public SettingsController(SettingsService service, HistoryService history) {
++    public SettingsController(SettingsService service, HistoryService history, RollupService rollup) {
+         this.service = service;
+         this.history = history;
++        this.rollup = rollup;
+     }
+ 
+     @GetMapping("/settings")
+@@ -315,18 +322,20 @@ public class SettingsController {
+     }
+ 
+     /** Every version of the sheet's policy, oldest first, with how many claims each is the policy
+-     *  version of. */
++     *  version of and the due of those that count, added up. */
+     @GetMapping("/settings/policy-versions")
+     public List<PolicyVersionView> policyVersions(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+             @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+         if (asOf == null) {
+-            return PolicyVersionView.of(service.policyVersions(sheetId), service.policyVersionClaims(sheetId));
++            return PolicyVersionView.of(service.policyVersions(sheetId), service.policyVersionClaims(sheetId),
++                    service.policyVersionDues(sheetId));
+         }
+         HistoryService.AsOf then = history.asOf(sheetId, asOf);
+         return PolicyVersionView.of(then.sheet().getPolicyVersions(),
+-                SettingsService.claimsByPolicyVersion(then.sheet(), then.claims().values()));
++                SettingsService.claimsByPolicyVersion(then.sheet(), then.claims().values()),
++                rollup.dueByPolicyVersionAsOf(sheetId, asOf));
+     }
+ 
+     @PutMapping("/settings/clerk-limit")
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index c38c4b48d..cdc9fe197 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -805,6 +805,13 @@ public class SettingsService {
+                 .orElse(Map.of());
+     }
+ 
++    /** The dues of the sheet's counting claims (n/a ones skipped) added up by the number of the
++     *  version of its policy in force on each claim's date. */
++    @Transactional(readOnly = true)
++    public Map<Integer, BigDecimal> policyVersionDues(String sheetId) {
++        return rollup.dueByPolicyVersion(sheetId);
++    }
++
+     /** How many of the claims (DELETED ones left out) each version of the sheet's policy is the
+      *  policy version of, by version number; a version without any left out. */
+     public static Map<Integer, Long> claimsByPolicyVersion(Sheet sheet, Collection<Claim> claims) {
