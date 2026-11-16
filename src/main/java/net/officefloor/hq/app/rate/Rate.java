@@ -182,6 +182,24 @@ public class Rate {
         this.version++;
     }
 
+    /** Withdraw the newest version, the version before it ({@code previous}: its percent and
+     *  to-date) applying again, the version count going down by one: for a forward-only newest
+     *  version the earlier version kept for claims added before it is the one restored. */
+    public void withdrawTo(RateVersion previous) {
+        if (afterClaim != null && !earlier.isEmpty()) {
+            Earlier restored = earlier.remove(0);
+            this.pct = restored.pct();
+            this.to = restored.to();
+            this.afterClaim = restored.afterClaim();
+        } else {
+            earlier.clear();
+            this.pct = previous.getPct();
+            this.to = previous.getTo();
+            this.afterClaim = null;
+        }
+        this.version--;
+    }
+
     /** The rate as it applies to a claim added as {@code added} (null: one added now): the newest
      *  version, else the newest earlier one that applies to it; none when no version does. */
     public Optional<Rate> forClaim(Long added) {

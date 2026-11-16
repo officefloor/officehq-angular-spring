@@ -3,7 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
 import { Session } from '../../core/session';
 import { money } from '../claims/claims-api';
-import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rateError } from './rates-api';
+import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rateError, withdrawRateError } from './rates-api';
 
 // The rate in force on the sheet's today for each grade, every rate the sheet has for each grade by
 // from-date, the form that sets a grade's rate from a date, optionally through a date, an import box
@@ -105,7 +105,7 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
       <table data-testid="rates-list">
         <caption>All rates</caption>
         <thead>
-          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th></tr>
+          <tr><th scope="col">Grade</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Rate (%)</th><th scope="col">Versions</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
         </thead>
         <tbody>
           @for (r of sorted(); track r.grade + '-' + (r.from ?? 'start')) {
@@ -115,6 +115,10 @@ import { PCT_PATTERN, Rate, RatePreview, RatesApi, importRatesError, pctOn, rate
               <td data-testid="rate-to">{{ r.to ?? '' }}</td>
               <td data-testid="rate-pct">{{ r.pct | figure }}</td>
               <td data-testid="rate-version">{{ r.version ?? 1 }}</td>
+              <td>
+                <button type="button" data-testid="rate-withdraw" (click)="withdraw(r)"
+                  [attr.aria-label]="'Withdraw rate ' + r.grade + ' from ' + (r.from ?? 'start')">Withdraw</button>
+              </td>
             </tr>
           }
         </tbody>
@@ -135,6 +139,8 @@ export class Rates {
     a.grade.localeCompare(b.grade) || (a.from ?? '').localeCompare(b.from ?? '')));
   /** A rate just set, for the sheet to take in. */
   readonly saved = output<Rate>();
+  /** A rate just withdrawn: its grade and from-date, and the version that applies again (null: gone). */
+  readonly withdrawn = output<{ grade: string; from: string | null; rate: Rate | null }>();
 
   protected readonly grades = this.session.grades;
   protected readonly error = signal<string | null>(null);
@@ -262,6 +268,23 @@ export class Rates {
       this.form.reset({ grade, pct: '', from: '', to: '' }, { emitEvent: false });
     } catch (e) {
       this.error.set(rateError(e));
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  /** Withdraw a rate's newest version, the one before it applying again; refused unless a steward. */
+  protected async withdraw(r: Rate): Promise<void> {
+    if (this.submitting) return;
+    this.error.set(null);
+    const sheetId = this.session.sheetId();
+    if (!sheetId) return;
+    this.submitting = true;
+    try {
+      const rate = await this.api.withdraw(sheetId, r.grade, r.from);
+      if (this.session.sheetId() === sheetId) this.withdrawn.emit({ grade: r.grade, from: r.from, rate });
+    } catch (e) {
+      this.error.set(withdrawRateError(e));
     } finally {
       this.submitting = false;
     }

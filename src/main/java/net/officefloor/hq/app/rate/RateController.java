@@ -14,6 +14,8 @@ import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.session.CurrentUser;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -101,6 +104,18 @@ public class RateController {
             @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
             @Valid @RequestBody RateForm body) {
         return RateView.of(service.set(sheetId, user.trim(), grade, body.from(), body.to(), new BigDecimal(body.pct())));
+    }
+
+    /** Withdraw the grade's rate for a from-date (absent: the undated one): the rate as it now
+     *  stands, or none when it is gone. */
+    @DeleteMapping("/{grade}")
+    public ResponseEntity<RateView> withdraw(
+            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+            @PathVariable @Pattern(regexp = "[A-Z]{1,3}") String grade,
+            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from) {
+        return service.withdraw(sheetId, user.trim(), grade, from).map(RateView::of)
+                .map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     /** The rates set by an import, in the order of their lines. */

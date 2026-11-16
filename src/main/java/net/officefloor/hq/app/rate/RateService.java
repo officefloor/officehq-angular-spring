@@ -5,10 +5,13 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Pattern;
 import net.officefloor.hq.app.Audit;
 import net.officefloor.hq.app.claim.ClaimRepository;
 import net.officefloor.hq.app.rollup.RollupService;
+import net.officefloor.hq.app.settings.Role;
+import net.officefloor.hq.app.settings.SettingsService;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -33,10 +36,12 @@ public class RateService {
     private final SheetService sheets;
     private final ClaimRepository claims;
     private final RollupService rollup;
+    private final SettingsService settings;
     private final Audit audit;
 
     public RateService(RateRepository rates, RateVersionRepository versions, SheetService sheets,
-            ClaimRepository claims, RollupService rollup, Audit audit) {
+            ClaimRepository claims, RollupService rollup, SettingsService settings, Audit audit) {
+        this.settings = settings;
         this.rates = rates;
         this.claims = claims;
         this.versions = versions;
@@ -80,6 +85,41 @@ public class RateService {
                 + (to != null ? " to=" + to : ""));
         rollup.recordChanges(sheetId, user, before);
         return rate;
+    }
+
+    /** Withdraw a grade's rate for a from-date (null: the undated rate): its newest version is
+     *  removed and the version before it applies again; with no version before it the rate is gone.
+     *  Refused (403) unless the user acts as a steward, and (404) when the grade has no rate for the
+     *  from-date. Resolves to the rate as it now stands, or empty when it is gone. */
+    @Transactional
+    public Optional<Rate> withdraw(String sheetId, String user, String grade, LocalDate from) {
+        sheets.load(sheetId, user);
+        sheets.lock(sheetId);
+        if (settings.roleOf(sheetId, user) != Role.STEWARD) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only a steward may withdraw a rate");
+        }
+        Rate rate = rates.findBySheetIdAndGradeAndFrom(sheetId, grade, from)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such rate"));
+        RollupService.Snapshot before = rollup.snapshot(sheetId);
+        Optional<RateVersion> previous = rate.getVersion() > 1
+                ? versions.findByRateIdAndVersion(rate.getId(), rate.getVersion() - 1)
+                : Optional.empty();
+        Optional<Rate> left;
+        if (previous.isPresent()) {
+            rate.withdrawTo(previous.get());
+            versions.delete(previous.get());
+            rates.flush();
+            left = Optional.of(rate);
+        } else {
+            versions.deleteAll(versions.findByRateIdOrderByVersionAsc(rate.getId()));
+            rates.delete(rate);
+            rates.flush();
+            left = Optional.empty();
+        }
+        audit.recordOnCommit("RATE_WITHDRAWN sheet=" + sheetId + " by=" + user
+                + " grade=" + grade + (from != null ? " from=" + from : ""));
+        rollup.recordChanges(sheetId, user, before);
+        return left;
     }
 
     /** One pasted line as the rate form would submit it. */

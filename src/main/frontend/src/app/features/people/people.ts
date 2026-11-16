@@ -31,7 +31,7 @@ import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasEr
       [myDueTotal]="myFigures()?.dueTotal ?? null" [myOverdueTotal]="myFigures()?.overdueTotal ?? null"
       [myCrewDueTotal]="myCrewDueTotal()" [watchedDueTotal]="watchedDueTotal()" [dashboard]="dashboard()"
       [user]="session.user()" />
-    <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" />
+    <app-rates [rates]="rates()" [effective]="effectiveRates()" [preview]="previewRate" (saved)="rateSaved($event)" (withdrawn)="rateWithdrawn($event)" />
     <app-periods [periods]="periods()" [dueTotals]="dueByPeriod()" [claimCounts]="claimCountByPeriod()" (saved)="periodSaved($event)" (replaced)="periods.set($event)" />
     <app-summary [people]="summaryPeople()" [claims]="claims()" [periods]="periods()" [dueTotals]="dueByPeriod()" />
     <app-classic-summary [periods]="periods()" [dueTotals]="classicDueByPeriod()" [dueTotal]="classicDueTotal()" />
@@ -1738,6 +1738,11 @@ export class People {
   /** Take in a rate just set, in place of the grade's old one for the same from-date. */
   protected rateSaved(rate: Rate): void {
     this.rates.update((rs) => [...rs.filter((r) => r.grade !== rate.grade || r.from !== rate.from), rate]);
+  }
+
+  /** Take in a rate just withdrawn: the version before it in its place, or the rate gone. */
+  protected rateWithdrawn(w: { grade: string; from: string | null; rate: Rate | null }): void {
+    this.rates.update((rs) => [...rs.filter((r) => r.grade !== w.grade || r.from !== w.from), ...(w.rate ? [w.rate] : [])]);
   }
 
   /** Take in a period just added or closed, in its place by from-date. */

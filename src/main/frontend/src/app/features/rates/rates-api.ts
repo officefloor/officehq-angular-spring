@@ -160,6 +160,16 @@ export class RatesApi {
     );
   }
 
+  /** Withdraw the grade's rate for a from-date (null: the undated one): the rate as it now stands,
+   *  its version before applying again, or null when it had none and is gone. */
+  async withdraw(sheetId: string, grade: string, from: string | null): Promise<Rate | null> {
+    const params: Record<string, string> = from === null ? {} : { from };
+    const rate = await firstValueFrom(
+      this.http.delete<Rate | null>(`${this.url(sheetId)}/${encodeURIComponent(grade)}`, { headers: this.headers(), params }),
+    );
+    return rate ?? null;
+  }
+
   /** Set a rate for each pasted line of grade,rate,from,to, all or none; the rates set, in line order. */
   importRates(sheetId: string, text: string): Promise<Rate[]> {
     return firstValueFrom(this.http.post<Rate[]>(`${this.url(sheetId)}/import`, { text }, { headers: this.headers() }));
@@ -177,6 +187,12 @@ export class RatesApi {
 export function rateError(e: unknown): string {
   if (e instanceof HttpErrorResponse && e.status === 400) return 'Choose a grade, enter a percent of 0.00 or more with up to two decimals and a from-date and to-date as yyyy-mm-dd or none, the to-date not before the from-date.';
   if (e instanceof HttpErrorResponse && e.status === 409) return 'The rate was changed at the same moment; try again.';
+  return otherError(e);
+}
+
+export function withdrawRateError(e: unknown): string {
+  if (e instanceof HttpErrorResponse && e.status === 403) return 'Only a steward may withdraw a rate.';
+  if (e instanceof HttpErrorResponse && e.status === 404) return 'The rate is gone already; reload the sheet.';
   return otherError(e);
 }
 
