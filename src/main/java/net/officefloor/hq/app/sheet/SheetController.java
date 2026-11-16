@@ -12,6 +12,7 @@ import net.officefloor.hq.app.history.AsOfAllowed;
 import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.session.CurrentUser;
+import net.officefloor.hq.app.settings.SettingsController;
 import net.officefloor.hq.app.settings.SettingsController.DatedValue;
 import net.officefloor.hq.app.settings.Permission;
 import net.officefloor.hq.app.settings.SettingsService;
@@ -37,10 +38,11 @@ public class SheetController {
      *  by key, each key's by from-date; whether it is archived; and its parent sheet's id (null when
      *  none), as it is now even when the sheet is shown as of a date; and its proof kinds, comma
      *  separated (null when none); and its default grade (null when blank: A); and its retired grades, in the
-     *  order retired; and its grades, A, B and C then those added in the order added. */
+     *  order retired; and its grades, A, B and C then those added in the order added; and the from-date
+     *  of each version of its policy, by number (null: none, counted on every date). */
     public record SheetView(String id, LocalDate today, String floor, int terms, String latePct, LocalDate policyDate,
             String cap, Map<String, List<DatedValue>> dated, boolean archived, String parent, String proofKinds,
-            String defaultGrade, List<String> retiredGrades, List<String> grades) {
+            String defaultGrade, List<String> retiredGrades, List<String> grades, List<LocalDate> policyVersions) {
         static SheetView of(Sheet sheet) {
             return of(sheet, sheet.getParent(), sheet.getGrades());
         }
@@ -50,7 +52,8 @@ public class SheetController {
                     sheet.getLatePct().setScale(2).toPlainString(), sheet.getPolicyDate(),
                     sheet.getCap() == null ? null : sheet.getCap().setScale(2).toPlainString(),
                     DatedValue.of(sheet.getDatedSettings()), sheet.isArchived(), parent, sheet.getProofKinds(),
-                    sheet.getDefaultGrade(), SettingsService.retiredGrades(sheet), grades);
+                    sheet.getDefaultGrade(), SettingsService.retiredGrades(sheet), grades,
+                    SettingsController.policyVersionsOf(sheet.getPolicyVersions()));
         }
     }
 

@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -63,6 +64,8 @@ public class Sheet {
     public static final String REVIEW_THRESHOLD = "review-threshold";
     /** The key of the rounding mode's dated values. */
     public static final String ROUNDING = "rounding";
+    /** The keys of the policy settings: every change to one of them is a new version of the policy. */
+    public static final Set<String> POLICY_KEYS = Set.of(ROUNDING, FLOOR, CAP, TERMS, LATE_PCT, CLERK_LIMIT);
 
     @Id
     private String id;
@@ -83,6 +86,11 @@ public class Sheet {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sheet_setting", joinColumns = @JoinColumn(name = "sheet_id"))
     private Set<DatedSetting> settings = new HashSet<>();
+
+    /** The versions of the sheet's policy, one for every change to a policy setting. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sheet_policy_version", joinColumns = @JoinColumn(name = "sheet_id"))
+    private Set<PolicyVersion> policyVersions = new HashSet<>();
 
     /** A claim dated before this rounds half up, one on or after it half to even; null when blank,
      *  when the sheet's today is the policy date. */
@@ -204,6 +212,7 @@ public class Sheet {
     public Sheet clonedTo(String id, String createdBy) {
         Sheet copy = new Sheet(id, createdBy, today);
         settings.forEach(d -> copy.settings.add(new DatedSetting(d.getKey(), d.getFrom(), d.getValue())));
+        policyVersions.forEach(v -> copy.policyVersions.add(new PolicyVersion(v.getNumber(), v.getKey(), v.getFrom())));
         copy.policyDate = policyDate;
         copy.periodNumberingFrom = periodNumberingFrom;
         copy.entryDate = entryDate;
@@ -259,6 +268,27 @@ public class Sheet {
         settings.add(new DatedSetting(key, from, value));
     }
 
+    /** Record a new version of the policy, numbered after the last one, for a change to a policy
+     *  setting in force from a date (null: none, the version counts on every date). */
+    public void recordPolicyVersion(String key, LocalDate from) {
+        policyVersions.add(new PolicyVersion(policyVersions.size() + 1, key, from));
+    }
+
+    /** Every version of the policy, by number. */
+    public List<PolicyVersion> getPolicyVersions() {
+        return policyVersions.stream().sorted(Comparator.comparingInt(PolicyVersion::getNumber)).toList();
+    }
+
+    /** The current version of the policy: how many there are (0 before the first change). */
+    public int getPolicyVersion() {
+        return policyVersions.size();
+    }
+
+    /** The version of the policy in force on a date: how many versions count on it. */
+    public int policyVersionOn(LocalDate on) {
+        return (int) policyVersions.stream().filter(v -> v.countsOn(on)).count();
+    }
+
     /** Every value recorded for the dated settings, by key, each key's by from-date. */
     public Map<String, List<DatedSetting>> getDatedSettings() {
         Map<String, List<DatedSetting>> out = new TreeMap<>();
@@ -279,11 +309,16 @@ public class Sheet {
         return amountOn(CLERK_LIMIT, getToday(), null);
     }
 
-    /** The clerk limit in force on the sheet's today for a grade: its own then when one is set,
-     *  else the sheet's; null when there is none. */
-    public BigDecimal clerkLimitFor(String grade) {
-        BigDecimal own = grade == null ? null : amountOn(CLERK_LIMIT_OF_GRADE + grade, getToday(), null);
-        return own != null ? own : getClerkLimit();
+    /** The clerk limit in force on a date: a claim dated then is held to it; null when there is none. */
+    public BigDecimal clerkLimitOn(LocalDate on) {
+        return amountOn(CLERK_LIMIT, on, null);
+    }
+
+    /** The clerk limit in force on a date (a claim's own) for a grade: its own then when one is
+     *  set, else the sheet's then; null when there is none. */
+    public BigDecimal clerkLimitFor(String grade, LocalDate on) {
+        BigDecimal own = grade == null ? null : amountOn(CLERK_LIMIT_OF_GRADE + grade, on, null);
+        return own != null ? own : clerkLimitOn(on);
     }
 
     /** The floor in force on the sheet's today. */
@@ -551,7 +586,18 @@ public class Sheet {
 
     /** The cap in force on the sheet's today; null when there is none. */
     public BigDecimal getCap() {
-        return amountOn(CAP, getToday(), null);
+        return capOn(getToday());
+    }
+
+    /** The cap in force on a date; null when there is none. */
+    public BigDecimal capOn(LocalDate on) {
+        return amountOn(CAP, on, null);
+    }
+
+    /** The cap a person's due-total is held to: the one in force on the latest of the dates of
+     *  their claims that count (none: on the sheet's today); null when there is none. */
+    public BigDecimal capFor(Collection<LocalDate> countedDates) {
+        return capOn(countedDates.stream().max(Comparator.naturalOrder()).orElse(getToday()));
     }
 
     /** The proof threshold in force on the sheet's today; null when there is none. */

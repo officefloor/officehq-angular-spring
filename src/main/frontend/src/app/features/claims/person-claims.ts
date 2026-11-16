@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
-import { Session, otherError } from '../../core/session';
+import { Session, otherError, policyVersionOn } from '../../core/session';
 import { Period, periodOn } from '../periods/periods-api';
 import { DatedGrade, gradeOn } from '../people/people-api';
 import { RateLevels, claimDueCents } from '../rates/rates-api';
@@ -60,6 +60,7 @@ import { AMOUNT_PATTERN, CLAIM_AMOUNT_PATTERN, Claim, PROOF_KINDS, ClaimAction, 
             <span>Tags <span data-testid="claim-tags">{{ tagsOf(c).join(', ') }}</span></span>
             <span>Corrects No. <span data-testid="claim-corrects">{{ c.corrects ?? '' }}</span></span>
             <span>Due <span data-testid="claim-due">{{ dueOf(c) | figure }}</span></span>
+            <span>Policy version <span data-testid="claim-policy">{{ policyOf(c) }}</span></span>
             <span>Status <span data-testid="claim-status">{{ c.status }}</span></span>
             <span>Batch <span data-testid="claim-batch">{{ c.batch ?? '' }}</span></span>
             <span>Shared with <span data-testid="claim-shares">{{ sharesText(c) }}</span></span>
@@ -343,6 +344,11 @@ export class PersonClaims {
    *  by the claim's rounding policy (half up before the sheet's policy date, else half to even), or the figure a statement
    *  bound it to), with its late charge on top when it is an overdue open (OPEN or PENDING) claim, then raised to the
    *  sheet's floor in force on its date; n/a with no rate in force then. A claim settled with a due shows the due fixed then. */
+  /** The policy version in force on the claim's date. */
+  protected policyOf(c: Claim): number {
+    return policyVersionOn(this.session.policyVersions(), c.date);
+  }
+
   protected dueOf(c: Claim): string {
     const grade = gradeOn(this.grades(), c.date);
     const due = claimDueCents(this.rates().forClaim(c.added).filter((r) => r.grade === grade), c, cents(this.session.floorOn(c.date)), {

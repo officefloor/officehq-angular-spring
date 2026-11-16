@@ -472,7 +472,7 @@ public class ClaimService {
             // before the clerk limit: a claim needing a proof never goes to PENDING
             refuseIfUnproven(claim, person, settling);
         }
-        if (to == ClaimStatus.SETTLED && !settings.maySettle(sheetId, user, person.gradeOn(sheets.today(sheetId)), settling)) {
+        if (to == ClaimStatus.SETTLED && !settings.maySettle(sheetId, user, person.gradeOn(sheets.today(sheetId)), claim.getDate(), settling)) {
             // above the clerk limit: a steward approves or rejects it
             to = ClaimStatus.PENDING;
         }
@@ -1226,7 +1226,7 @@ public class ClaimService {
         // the due-total as the person shows it: their parts of claims shared with them included
         RollupService.Figures shown = before.people().get(personId);
         BigDecimal dueTotal = shown != null ? shown.dueTotal() : Sheet.capped(dueTotalOf(counted, person, today),
-                RollupService.capLessCut(sheets.cap(sheetId), rollup.cutTotals(sheetId).get(personId)));
+                RollupService.capLessCut(RollupService.capOf(sheets.find(sheetId), counted), rollup.cutTotals(sheetId).get(personId)));
         for (Claim c : theirs) {
             if (counts(c, person, today)) {
                 // the statement binds the due as shown, late charge included (a bound one stays as it is)
@@ -1263,7 +1263,7 @@ public class ClaimService {
         RollupService.Stated stated = RollupService.statedOn(then.sheet(), was, personId,
                 List.copyOf(then.claims().values()), new RateChain.Levels(sheetId, then.rates(),
                         rateChain.ancestors(sheetId).stream().map(a -> history.asOf(a, asOf).rates()).toList()),
-                then.sheet().getCap() == null ? null : CutTotals.of(then).get(personId));
+                CutTotals.of(then).get(personId));
         Map<Long, BigDecimal> bound = new HashMap<>();
         then.claims().forEach((id, c) -> {
             if (stated.counted().containsKey(c)) {

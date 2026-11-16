@@ -13,6 +13,7 @@ import net.officefloor.hq.app.claim.ProofKind;
 import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.rollup.RollupService;
 import net.officefloor.hq.app.sheet.DatedSetting;
+import net.officefloor.hq.app.sheet.PolicyVersion;
 import net.officefloor.hq.app.sheet.Sheet;
 import net.officefloor.hq.app.sheet.SheetService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -167,9 +168,14 @@ public class SettingsService {
     }
 
     /** Record a dated setting's value (blank: none) from a date (null: the sheet's today), replacing
-     *  one recorded from the same date, and audit it, with the from-date when one was given. */
+     *  one recorded from the same date, and audit it, with the from-date when one was given; a
+     *  change to a policy setting is a new version of the policy, counted from the same date. */
     private void record(Sheet sheet, String user, String key, String value, LocalDate from) {
-        sheet.recordSetting(key, from != null ? from : sheet.getToday(), value.isEmpty() ? null : value);
+        LocalDate on = from != null ? from : sheet.getToday();
+        sheet.recordSetting(key, on, value.isEmpty() ? null : value);
+        if (Sheet.POLICY_KEYS.contains(key)) {
+            sheet.recordPolicyVersion(key, on);
+        }
         sheets.flush();
         history.recordSheet(sheet);
         audit.recordOnCommit("SETTING_CHANGED sheet=" + sheet.getId() + " by=" + user
@@ -777,6 +783,12 @@ public class SettingsService {
         return scaled;
     }
 
+    /** Every version of the sheet's policy, by number; none when it was never loaded. */
+    @Transactional(readOnly = true)
+    public List<PolicyVersion> policyVersions(String sheetId) {
+        return sheets.find(sheetId).map(Sheet::getPolicyVersions).orElse(List.of());
+    }
+
     /** Every value recorded for the sheet's dated settings, by key, each key's by from-date. */
     @Transactional(readOnly = true)
     public Map<String, List<DatedSetting>> datedSettings(String sheetId) {
@@ -932,15 +944,16 @@ public class SettingsService {
         return held;
     }
 
-    /** Whether a user may settle a claim showing a due (null: n/a, within any limit) whose person
-     *  has a grade on the sheet's today: a steward settles anything, a clerk only a due at or below
-     *  the clerk limit in force (the grade's own when one is set, else the sheet's), if there is one. */
+    /** Whether a user may settle a claim dated {@code on} showing a due (null: n/a, within any
+     *  limit) whose person has a grade on the sheet's today: a steward settles anything, a clerk only
+     *  a due at or below the clerk limit in force on the claim's date (the grade's own when one is
+     *  set, else the sheet's), if there is one. */
     @Transactional(readOnly = true)
-    public boolean maySettle(String sheetId, String user, String grade, BigDecimal due) {
+    public boolean maySettle(String sheetId, String user, String grade, LocalDate on, BigDecimal due) {
         if (due == null || roleOf(sheetId, user) == Role.STEWARD) {
             return true;
         }
-        BigDecimal limit = sheets.find(sheetId).map(s -> s.clerkLimitFor(grade)).orElse(null);
+        BigDecimal limit = sheets.find(sheetId).map(s -> s.clerkLimitFor(grade, on)).orElse(null);
         return limit == null || due.compareTo(limit) <= 0;
     }
 

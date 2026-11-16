@@ -69,7 +69,11 @@ public class HistoryService {
             Integer graceDays, boolean archived, LocalDate entryDate, BigDecimal pot, Integer fiscalStartMonth,
             BigDecimal alertThreshold, Integer escalateAfter, Integer reviewSla, String proofKinds,
             String defaultGrade, Integer scoreMid, Integer scoreHigh, Boolean scoreLog, Integer maxOpen,
-            Integer pendingSla) {
+            Integer pendingSla, List<PolicyVersionState> policyVersions) {
+    }
+
+    /** A version of the sheet's policy; none in states written before the policy was versioned. */
+    record PolicyVersionState(int number, String key, LocalDate from) {
     }
 
     record GradeState(LocalDate from, String grade) {
@@ -176,7 +180,8 @@ public class HistoryService {
                 sheet.getPot(), sheet.getFiscalStartMonth(), sheet.getAlertThreshold(), sheet.getEscalateAfter(),
                 sheet.getReviewSla(), sheet.getProofKinds(), sheet.getDefaultGrade(),
                 sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), sheet.getMaxOpen(),
-                sheet.getPendingSla()));
+                sheet.getPendingSla(), sheet.getPolicyVersions().stream()
+                        .map(v -> new PolicyVersionState(v.getNumber(), v.getKey(), v.getFrom())).toList()));
     }
 
     /** Write the version of a claim now, if it differs from the last one: a change to its shares
@@ -349,6 +354,9 @@ public class HistoryService {
                     SheetState s = json.readValue(state, SheetState.class);
                     sheet.setPolicyDate(s.policyDate());
                     s.settings().forEach(d -> sheet.recordSetting(d.key(), d.from(), d.value()));
+                    if (s.policyVersions() != null) {
+                        s.policyVersions().forEach(v -> sheet.recordPolicyVersion(v.key(), v.from()));
+                    }
                     sheet.setPeriodNumberingFrom(s.periodNumberingFrom());
                     sheet.setGraceDays(s.graceDays());
                     sheet.setEscalateAfter(s.escalateAfter());

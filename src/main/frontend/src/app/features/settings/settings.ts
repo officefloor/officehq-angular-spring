@@ -13,6 +13,7 @@ import { PROOF_KINDS } from '../claims/claims-api';
   template: `
     <section aria-labelledby="settings-heading">
       <h2 id="settings-heading">Settings</h2>
+      <p>Policy version (each change to the rounding mode, floor, cap, terms, late percent or clerk limit is one) <strong data-testid="policy-version">{{ session.policyVersion() }}</strong></p>
       <p>Clerk limit in force <strong data-testid="setting-clerk-limit-current">{{ (session.clerkLimit() ?? '') | figure }}</strong></p>
       @for (g of grades(); track g) {
         <p>Clerk limit in force for grade {{ g }} (blank: none, the sheet's) <strong [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ (session.gradeClerkLimitOn(g, session.today()) ?? '') | figure }}</strong></p>
@@ -595,43 +596,43 @@ export class Settings {
         const saved = await this.api.setClerkLimit(sheetId, limitValue, limitFrom);
         settled(clerkLimit, limitValue);
         settled(clerkLimitFrom, limitFrom);
-        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+        if (this.session.sheetId() === sheetId) this.session.setDated(saved);
       }
       for (const t of gradeClerkLimitToSave) {
         const saved = await this.api.setGradeClerkLimit(sheetId, t.grade, t.value, t.from);
         settled(t.control, t.value);
         settled(t.fromControl, t.from);
-        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+        if (this.session.sheetId() === sheetId) this.session.setDated(saved);
       }
       if (saveFloor) {
         const saved = await this.api.setFloor(sheetId, floorValue, floorFromValue);
         settled(floor, floorValue);
         settled(floorFrom, floorFromValue);
-        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+        if (this.session.sheetId() === sheetId) this.session.setDated(saved);
       }
       if (saveTerms) {
         const saved = await this.api.setTerms(sheetId, termsValue, termsFromValue);
         settled(terms, termsValue);
         settled(termsFrom, termsFromValue);
-        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+        if (this.session.sheetId() === sheetId) this.session.setDated(saved);
       }
       for (const t of gradeTermsToSave) {
         const saved = await this.api.setGradeTerms(sheetId, t.grade, t.value, t.from);
         settled(t.control, t.value);
         settled(t.fromControl, t.from);
-        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+        if (this.session.sheetId() === sheetId) this.session.setDated(saved);
       }
       for (const t of gradeGraceToSave) {
         const saved = await this.api.setGradeGrace(sheetId, t.grade, t.value, t.from);
         settled(t.control, t.value);
         settled(t.fromControl, t.from);
-        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+        if (this.session.sheetId() === sheetId) this.session.setDated(saved);
       }
       if (saveLatePct) {
         const saved = await this.api.setLatePct(sheetId, latePctValue, latePctFromValue);
         settled(latePct, latePctValue);
         settled(latePctFrom, latePctFromValue);
-        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+        if (this.session.sheetId() === sheetId) this.session.setDated(saved);
       }
       if (savePolicyDate) {
         const saved = await this.api.setPolicyDate(sheetId, policyDateValue);
@@ -652,37 +653,37 @@ export class Settings {
         const saved = await this.api.setCap(sheetId, capValue, capFromValue);
         settled(cap, capValue);
         settled(capFrom, capFromValue);
-        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+        if (this.session.sheetId() === sheetId) this.session.setDated(saved);
       }
       if (saveProofThreshold) {
         const saved = await this.api.setProofThreshold(sheetId, proofThresholdValue, proofThresholdFromValue);
         settled(proofThreshold, proofThresholdValue);
         settled(proofThresholdFrom, proofThresholdFromValue);
-        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+        if (this.session.sheetId() === sheetId) this.session.setDated(saved);
       }
       for (const t of gradeProofThresholdToSave) {
         const saved = await this.api.setGradeProofThreshold(sheetId, t.grade, t.value, t.from);
         settled(t.control, t.value);
         settled(t.fromControl, t.from);
-        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+        if (this.session.sheetId() === sheetId) this.session.setDated(saved);
       }
       if (saveRounding) {
         const saved = await this.api.setRounding(sheetId, roundingValue, roundingFromValue);
         settled(rounding, roundingValue);
         settled(roundingFrom, roundingFromValue);
-        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+        if (this.session.sheetId() === sheetId) this.session.setDated(saved);
       }
       if (saveNoteThreshold) {
         const saved = await this.api.setNoteThreshold(sheetId, noteThresholdValue, noteThresholdFromValue);
         settled(noteThreshold, noteThresholdValue);
         settled(noteThresholdFrom, noteThresholdFromValue);
-        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+        if (this.session.sheetId() === sheetId) this.session.setDated(saved);
       }
       if (saveReviewThreshold) {
         const saved = await this.api.setReviewThreshold(sheetId, reviewThresholdValue, reviewThresholdFromValue);
         settled(reviewThreshold, reviewThresholdValue);
         settled(reviewThresholdFrom, reviewThresholdFromValue);
-        if (this.session.sheetId() === sheetId) this.session.dated.set(saved.dated);
+        if (this.session.sheetId() === sheetId) this.session.setDated(saved);
       }
       if (saveGraceDays) {
         const saved = await this.api.setGraceDays(sheetId, graceDaysValue);
@@ -882,6 +883,7 @@ export class Settings {
       ]);
       if (seq === this.readSeq) {
         this.session.dated.set(settings.dated);
+        this.session.policyVersions.set(settings.policyVersions);
         this.session.policyDate.set(settings.policyDate);
         this.periodNumberingFrom.set(settings.periodNumberingFrom);
         this.entryDate.set(settings.entryDate);

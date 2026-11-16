@@ -1,7 +1,7 @@
 import { DOCUMENT, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { FigurePipe } from '../../core/figure.pipe';
-import { PEOPLE_COLUMNS, PeopleColumn, Session, otherError } from '../../core/session';
+import { PEOPLE_COLUMNS, PeopleColumn, Session, otherError, valueOn } from '../../core/session';
 import { AMOUNT_PATTERN, Claim, ClaimsApi, byListed, cents, counts, deferred, dueBy, isBound, isOpen, money, overdue, pasteError, quickAddError, roundsHalfUp, statusOn, tagsOf } from '../claims/claims-api';
 import { PersonClaims } from '../claims/person-claims';
 import { PersonPlans } from '../plans/person-plans';
@@ -735,15 +735,18 @@ export class People {
     }
     return out;
   });
-  /** Each person's due-total in cents, by person id, held to the sheet's cap less their cut total
+  /** Each person's due-total in cents, by person id, held to the sheet's cap (the one in force on
+   *  the date of their latest claim that counts, none: on the sheet's today) less their cut total
    *  (not below 0.00): that when their uncapped one is above it (n/a is not capped). */
   protected readonly dueByPerson = computed(() => {
-    const cap = this.session.cap();
-    const capCents = cap === null ? null : cents(cap);
+    const dated = this.session.dated();
+    const today = this.session.today();
     const cuts = this.cutTotals();
     const out = new Map<number, number | null>();
     for (const [id, due] of this.uncappedDueByPerson()) {
-      const held = capCents === null ? null : Math.max(capCents - (cuts.get(id) ?? 0), 0);
+      const latest = this.claimsOf(id).filter(this.countsLive()).reduce<string | null>((max, c) => max === null || c.date > max ? c.date : max, null);
+      const cap = valueOn(dated, 'cap', latest ?? today)?.value ?? null;
+      const held = cap === null ? null : Math.max(cents(cap) - (cuts.get(id) ?? 0), 0);
       out.set(id, due === null || held === null ? due : Math.min(due, held));
     }
     return out;

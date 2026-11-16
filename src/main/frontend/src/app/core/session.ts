@@ -26,6 +26,17 @@ export class Session {
   /** Every value recorded for the active sheet's dated settings (its clerk limit, floor, terms,
    *  terms per grade, late percent, cap, proof threshold and proof threshold per grade), by key, each key's by from-date. */
   readonly dated = signal<DatedSettings>({});
+  /** The from-date (yyyy-mm-dd) of each version of the active sheet's policy, by number (null:
+   *  none, counted on every date): every change to its rounding mode, floor, cap, terms, late percent
+   *  or clerk limit is one. */
+  readonly policyVersions = signal<(string | null)[]>([]);
+  /** Take the dated settings and policy versions a settings change answered with. */
+  setDated(saved: { dated: DatedSettings; policyVersions: (string | null)[] }): void {
+    this.dated.set(saved.dated);
+    this.policyVersions.set(saved.policyVersions);
+  }
+  /** The active sheet's current policy version: how many there are (0 before the first change). */
+  readonly policyVersion = computed(() => this.policyVersions().length);
   /** The active sheet's floor (two decimals) in force on its today. */
   readonly floor = computed(() => this.floorOn(this.today()));
   /** The active sheet's terms in days in force on its today: a claim created in a grade without terms of its own is due by its date plus them. */
@@ -216,6 +227,7 @@ export class Session {
       this.realToday.set(res.today);
       this.shownPreview.set(preview);
       this.dated.set(res.dated);
+      this.policyVersions.set(res.policyVersions);
       this.policyDate.set(res.policyDate);
       this.archived.set(res.archived);
       this.parent.set(res.parent);
@@ -357,6 +369,7 @@ interface SheetView {
   policyDate: string | null;
   cap: string | null;
   dated: DatedSettings;
+  policyVersions: (string | null)[];
   archived: boolean;
   parent: string | null;
   proofKinds: string | null;
@@ -374,6 +387,11 @@ export interface DatedValue {
 
 /** Every value recorded for a sheet's dated settings, by key, each key's by from-date. */
 export type DatedSettings = Record<string, DatedValue[]>;
+
+/** The policy version in force on a date: how many versions have no from-date or one on or before it. */
+export function policyVersionOn(versions: (string | null)[], date: string): number {
+  return versions.filter((from) => from === null || from <= date).length;
+}
 
 /** The value of a dated setting in force on a date: the one recorded from the latest from-date on
  *  or before it; null before every from-date (or with no date). */

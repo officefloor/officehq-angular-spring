@@ -16,6 +16,7 @@ import net.officefloor.hq.app.history.AsOfGuard;
 import net.officefloor.hq.app.history.HistoryService;
 import net.officefloor.hq.app.session.CurrentUser;
 import net.officefloor.hq.app.sheet.DatedSetting;
+import net.officefloor.hq.app.sheet.PolicyVersion;
 import net.officefloor.hq.app.sheet.Sheet;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -50,12 +51,12 @@ public class SettingsController {
             LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, String cap, String proofThreshold,
             Integer graceDays, LocalDate entryDate, String pot, String alertThreshold, int fiscalStartMonth, Map<String, List<DatedValue>> dated, Map<String, String> permissions,
             Integer escalateAfter, Integer reviewSla, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Integer maxOpen,
-            Integer pendingSla) {
+            Integer pendingSla, List<LocalDate> policyVersions) {
         static SettingsView of(BigDecimal clerkLimit, BigDecimal floor, int terms, BigDecimal latePct, LocalDate policyDate,
                 LocalDate periodNumberingFrom, Map<String, Integer> gradeTerms, BigDecimal cap, BigDecimal proofThreshold,
                 Integer graceDays, LocalDate entryDate, BigDecimal pot, BigDecimal alertThreshold, int fiscalStartMonth, Map<String, List<DatedSetting>> dated, Map<Permission, String> permissions,
                 Integer escalateAfter, Integer reviewSla, Integer scoreMid, Integer scoreHigh, boolean scoreLog, Integer maxOpen,
-            Integer pendingSla) {
+            Integer pendingSla, List<PolicyVersion> policyVersions) {
             Map<String, String> perms = new TreeMap<>();
             permissions.forEach((action, roles) -> perms.put(action.key(), roles));
             return new SettingsView(clerkLimit == null ? null : clerkLimit.toPlainString(), floor.toPlainString(), terms,
@@ -64,8 +65,14 @@ public class SettingsController {
                     proofThreshold == null ? null : proofThreshold.setScale(2).toPlainString(), graceDays, entryDate,
                     pot == null ? null : pot.setScale(2).toPlainString(),
                     alertThreshold == null ? null : alertThreshold.setScale(2).toPlainString(), fiscalStartMonth, DatedValue.of(dated), perms,
-                    escalateAfter, reviewSla, scoreMid, scoreHigh, scoreLog, maxOpen, pendingSla);
+                    escalateAfter, reviewSla, scoreMid, scoreHigh, scoreLog, maxOpen, pendingSla,
+                    policyVersionsOf(policyVersions));
         }
+    }
+
+    /** The from-date of each version of a sheet's policy, by number (null: none, counted on every date). */
+    public static List<LocalDate> policyVersionsOf(List<PolicyVersion> versions) {
+        return versions.stream().map(PolicyVersion::getFrom).toList();
     }
 
     /** A value recorded for a dated setting: in force from its from-date until the next one of its
@@ -640,7 +647,7 @@ public class SettingsController {
                 gradeTerms(sheetId), service.cap(sheetId), service.proofThreshold(sheetId), service.graceDays(sheetId), service.entryDate(sheetId), service.pot(sheetId), service.alertThreshold(sheetId), service.fiscalStartMonth(sheetId), service.datedSettings(sheetId),
                 service.permissions(sheetId), service.escalateAfter(sheetId), service.reviewSla(sheetId),
                 service.scoreMid(sheetId), service.scoreHigh(sheetId), service.scoreLog(sheetId), service.maxOpen(sheetId),
-                service.pendingSla(sheetId));
+                service.pendingSla(sheetId), service.policyVersions(sheetId));
     }
 
     /** The settings as they stood at the end of a date, that date the sheet's today. */
@@ -657,7 +664,7 @@ public class SettingsController {
                 sheet.getPolicyDate(), sheet.getPeriodNumberingFrom(), gradeTerms, sheet.getCap(),
                 sheet.getProofThreshold(), sheet.getGraceDays(), sheet.getEntryDate(), sheet.getPot(), sheet.getAlertThreshold(), sheet.getFiscalStartMonth(), sheet.getDatedSettings(), then.permissions(),
                 sheet.getEscalateAfter(), sheet.getReviewSla(), sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), sheet.getMaxOpen(),
-                sheet.getPendingSla());
+                sheet.getPendingSla(), sheet.getPolicyVersions());
     }
 
     /** A from-date as the form submits it; null when blank or left out (the sheet's today). */

@@ -100,6 +100,8 @@ export interface Settings {
   proofThreshold: string | null;
   /** Every value recorded for the dated settings, by key, each key's by from-date. */
   dated: DatedSettings;
+  /** The from-date of each version of the sheet's policy, by number (null: none). */
+  policyVersions: (string | null)[];
   /** The roles set for each action, comma separated; an action left blank (its standing rule) is not here. */
   permissions: Partial<Record<PermissionAction, string>>;
 }

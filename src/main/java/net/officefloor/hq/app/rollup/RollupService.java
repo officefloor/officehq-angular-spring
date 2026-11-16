@@ -173,6 +173,12 @@ public class RollupService {
         return cutTotals(sheetId, sheets.findById(sheetId), sheetPeople);
     }
 
+    /** The sheet's cap a person with these counting claims is held to: the one in force on the date
+     *  of their latest one (none: on the sheet's today); null when there is none. */
+    public static BigDecimal capOf(Optional<Sheet> sheet, Collection<Claim> counted) {
+        return sheet.map(s -> s.capFor(counted.stream().map(Claim::getDate).toList())).orElse(null);
+    }
+
     /** The cap a person's due-total is held to: the sheet's cap less their cut total, not below
      *  0.00 (null: no cap). */
     public static BigDecimal capLessCut(BigDecimal cap, BigDecimal cut) {
@@ -199,7 +205,6 @@ public class RollupService {
             RateChain.Levels sheetRates, Map<Long, BigDecimal> cutTotals) {
         LocalDate today = sheet.map(Sheet::getToday).orElseGet(LocalDate::now);
         Function<LocalDate, BigDecimal> floor = floorOf(sheet);
-        BigDecimal cap = sheet.map(Sheet::getCap).orElse(null);
         LateCharge late = LateCharge.of(sheet);
         Map<Long, Person> held = new LinkedHashMap<>();
         sheetPeople.forEach((id, p) -> {
@@ -256,7 +261,7 @@ public class RollupService {
             int overdueCount = (int) overdueClaims.stream().filter(c -> !c.isDeferredOn(today)).count();
             out.put(id, new Figures(p.getName(), claimed,
                     Sheet.capped(dueTotalOf(theirs, p, sheetRates, today, floor, late, rounding, shared),
-                            capLessCut(cap, cutTotals.get(id))), overdue,
+                            capLessCut(capOf(sheet, theirs), cutTotals.get(id))), overdue,
                     p.gradeOn(today), p.isRetired(), List.copyOf(p.getAliases()), settled, overdueCount,
                     settledTotal, openTotal, zero().add(cutTotals.getOrDefault(id, zero()))));
         });
@@ -507,7 +512,7 @@ public class RollupService {
                 .filter(c -> c.getPersonId().equals(personId) && countsFor(c, person, today))
                 .forEach(c -> counted.put(c, shownDueOf(c, person, sheetRates, floor, late, rounding)));
         BigDecimal dueTotal = dueTotalOf(List.copyOf(counted.keySet()), person, sheetRates, today, floor, late, rounding, List.of());
-        return new Stated(counted, Sheet.capped(dueTotal, capLessCut(sheet.getCap(), cutTotal)));
+        return new Stated(counted, Sheet.capped(dueTotal, capLessCut(capOf(Optional.of(sheet), counted.keySet()), cutTotal)));
     }
 
     /** The due a claim of a person shows on a sheet that is not stored (one rebuilt as it stood at
