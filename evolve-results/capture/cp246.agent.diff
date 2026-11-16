@@ -1,0 +1,70 @@
+diff --git a/src/main/frontend/src/app/features/people/people.ts b/src/main/frontend/src/app/features/people/people.ts
+index 0504edce2..df6e21a6b 100644
+--- a/src/main/frontend/src/app/features/people/people.ts
++++ b/src/main/frontend/src/app/features/people/people.ts
+@@ -297,6 +297,7 @@ import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasEr
+             @if (shows('terms')) { <th scope="col">Terms</th> }
+             @if (shows('contact')) { <th scope="col">Contact</th> }
+             <th scope="col">Tags</th>
++            <th scope="col">Claims by status</th>
+             @if (shows('claimed')) { <th scope="col">Claimed</th> }
+             @if (shows('due-total')) { <th scope="col">Due</th> }
+             <th scope="col">Cut</th><th scope="col">By period</th>
+@@ -358,6 +359,10 @@ import { DescendantFigures, FigureMember, NO_FIGURES, PeopleApi, Person, aliasEr
+                 <td data-testid="person-contact">{{ p.contact ?? '' }}</td>
+               }
+               <td data-testid="person-tags">{{ personTags(p).join(', ') }}</td>
++              <td>
++                <span>open <span data-testid="person-claims-OPEN-count">{{ statusCountOf(p.id, 'OPEN') }}</span></span>
++                <span>settled <span data-testid="person-claims-SETTLED-count">{{ statusCountOf(p.id, 'SETTLED') }}</span></span>
++              </td>
+               @if (shows('claimed')) {
+                 <td data-testid="person-claimed">{{ claimedBy(p.id) | figure }}</td>
+               }
+@@ -576,11 +581,15 @@ export class People {
+    *  restricted user, only the person who goes by their name and the people of the crews that person leads or
+    *  belongs to. */
+   protected readonly shownPeople = computed(() => {
+-    const visible = this.visibleIds();
+-    const listed = visible ? this.people().filter((p) => visible.has(p.id)) : this.people();
++    const listed = this.listedPeople();
+     const shown = this.session.showRetired() ? listed : listed.filter((p) => p.retiredFrom === null);
+     return this.sorted(shown);
+   });
++  /** The people the user may see, retired ones too, in no particular order. */
++  private readonly listedPeople = computed(() => {
++    const visible = this.visibleIds();
++    return visible ? this.people().filter((p) => visible.has(p.id)) : this.people();
++  });
+   /** The ids of the people a restricted user may see on the list; null when the user is not restricted. */
+   private readonly visibleIds = computed<Set<number> | null>(() => {
+     if (this.myRole() !== 'restricted') return null;
+@@ -661,6 +670,10 @@ export class People {
+     }
+     return out;
+   });
++  /** How many of a person's claims have a status (OPEN or SETTLED), as the header counts the sheet's. */
++  protected statusCountOf(personId: number, status: string): number {
++    return this.claimsOf(personId).filter((c) => c.status === status).length;
++  }
+   /** The sheet's rates (a percent with two decimals), each for a grade from a from-date. */
+   protected readonly rates = signal<Rate[]>([]);
+   /** The rates of each of the sheet's ancestors, its parent's first. */
+@@ -1115,7 +1128,7 @@ export class People {
+   });
+   /** The from-date and to-date of the snapshot comparison last asked for; null before any. */
+   protected readonly snapshotRange = signal<{ from: string; to: string } | null>(null);
+-  /** The snapshot comparison, one line per person in list order: "<name> <then> <now>", then the
++  /** The snapshot comparison, one line per person in list order (retired ones too, shown or not): "<name> <then> <now>", then the
+    *  due-total of the snapshot taken leaving the from-date, now that of the to-date (or the live
+    *  due-total when the to-date is blank); a missing snapshot is empty, and the line is trimmed. */
+   protected readonly snapshotLines = computed(() => {
+@@ -1125,7 +1138,7 @@ export class People {
+       const sn = p.snapshots.filter((s) => s.day === day).at(-1);
+       return sn ? sn.dueTotal ?? 'n/a' : '';
+     };
+-    return this.shownPeople().map((p) =>
++    return this.sorted(this.listedPeople()).map((p) =>
+       [p.name, at(p, range.from), range.to ? at(p, range.to) : this.dueOf(p)].join(' ').trim());
+   });
+   /** Compare the snapshots of the two dates, with the people (and their snapshots) as the
