@@ -1,0 +1,365 @@
+diff --git a/src/main/frontend/src/app/features/settings/policy-versions.ts b/src/main/frontend/src/app/features/settings/policy-versions.ts
+new file mode 100644
+index 000000000..c62553b92
+--- /dev/null
++++ b/src/main/frontend/src/app/features/settings/policy-versions.ts
+@@ -0,0 +1,53 @@
++import { Component, effect, inject, signal, untracked } from '@angular/core';
++import { Session, otherError } from '../../core/session';
++import { PolicyVersion, SettingsApi } from './settings-api';
++
++// The sheet's policy versions, shown on request: one line per version, oldest first, as its number,
++// its from-date (or "start" when it has none), the setting it changed as key=value, and how many
++// claims it is the policy version of.
++@Component({
++  selector: 'app-policy-versions',
++  template: `
++    <button type="button" data-testid="policy-show" (click)="show()">Show policy versions</button>
++    @if (error()) {
++      <p role="alert" data-testid="policy-error">{{ error() }}</p>
++    }
++    @if (versions().length > 0) {
++      <ol aria-label="Policy versions">
++        @for (v of versions(); track v.number) {
++          <li data-testid="policy-line">{{ v.number }} {{ v.from ?? 'start' }} {{ v.key }}={{ v.value }} {{ v.claims }}</li>
++        }
++      </ol>
++    }
++  `,
++})
++export class PolicyVersions {
++  private readonly session = inject(Session);
++  private readonly api = inject(SettingsApi);
++
++  protected readonly versions = signal<PolicyVersion[]>([]);
++  protected readonly error = signal<string | null>(null);
++
++  constructor() {
++    effect(() => {
++      this.session.sheetId();
++      this.session.loads();
++      untracked(() => {
++        this.versions.set([]);
++        this.error.set(null);
++      });
++    });
++  }
++
++  protected async show(): Promise<void> {
++    const id = this.session.sheetId();
++    this.versions.set([]);
++    this.error.set(null);
++    if (!id) return;
++    try {
++      this.versions.set(await this.api.policyVersions(id));
++    } catch (e) {
++      this.error.set(otherError(e));
++    }
++  }
++}
+diff --git a/src/main/frontend/src/app/features/settings/settings-api.ts b/src/main/frontend/src/app/features/settings/settings-api.ts
+index b524a4c22..07f04be04 100644
+--- a/src/main/frontend/src/app/features/settings/settings-api.ts
++++ b/src/main/frontend/src/app/features/settings/settings-api.ts
+@@ -106,6 +106,17 @@ export interface Settings {
+   permissions: Partial<Record<PermissionAction, string>>;
+ }
+ 
++/** A version of the sheet's policy: its number, its from-date (yyyy-mm-dd; null: none, counted on
++ *  every date), the key of the setting its change set and the value it set (blank: none), and how
++ *  many of the sheet's claims (DELETED ones left out) it is the policy version of. */
++export interface PolicyVersion {
++  number: number;
++  from: string | null;
++  key: string;
++  value: string;
++  claims: number;
++}
++
+ export interface RoleGrant {
+   user: string;
+   role: string;
+@@ -130,6 +141,11 @@ export class SettingsApi {
+     return firstValueFrom(this.http.get<Settings>(`${this.url(sheetId)}/settings`, { headers: this.headers() }));
+   }
+ 
++  /** Every version of the sheet's policy, oldest first. */
++  policyVersions(sheetId: string): Promise<PolicyVersion[]> {
++    return firstValueFrom(this.http.get<PolicyVersion[]>(`${this.url(sheetId)}/settings/policy-versions`, { headers: this.headers() }));
++  }
++
+   /** Save the value from a date (blank: the sheet's today). */
+   setClerkLimit(sheetId: string, value: string, from = ''): Promise<Settings> {
+     return firstValueFrom(
+diff --git a/src/main/frontend/src/app/features/settings/settings.ts b/src/main/frontend/src/app/features/settings/settings.ts
+index 4a657efe9..4fd20ca0a 100644
+--- a/src/main/frontend/src/app/features/settings/settings.ts
++++ b/src/main/frontend/src/app/features/settings/settings.ts
+@@ -4,16 +4,18 @@ import { FigurePipe } from '../../core/figure.pipe';
+ import { Session } from '../../core/session';
+ import { FISCAL_START_MONTH_PATTERN, LATE_PCT_PATTERN, LIMIT_PATTERN, PERMISSIONS, PERMISSION_PATTERN, POLICY_DATE_PATTERN, ROUNDING_PATTERN, PermissionAction, ROLES, TERMS_PATTERN, SCORE_PATTERN, Delegation, RoleGrant, SETTINGS_INVALID, SettingsApi, delegateError, holidayError, roleError, settingsError, voidReasonError } from './settings-api';
+ import { PROOF_KINDS } from '../claims/claims-api';
++import { PolicyVersions } from './policy-versions';
+ 
+ // The sheet's settings (its permission matrix: the roles that may open, settle, void, reassign, close, reopen or change the sheet's today, each blank for its standing rule; its clerk limit: a clerk settles only claims whose due is at or below it, or below their person's grade's own when one is in force;
+ // its floor: a claim's live due is at least it; its terms: a claim created is due by its date plus them, unless its person's grade has terms of its own; its late percent: an overdue claim's due gains it for every full 30 days overdue; its rounding mode: a claim dated while one is in force rounds its live figures by it (half-up or half-even); its policy date: a claim dated with no rounding mode in force before it rounds half up, one on or after it half to even; its period numbering from-date: from it a claim settled is numbered within its period; its entry date: while set, a new claim left undated takes it; its cap: a person's due-total is at most it; its proof threshold: a claim whose due is above it cannot be settled or approved without a proof; its grace days: when its today changes, every open period ended more than them before is closed; its fiscal start month: each period shows the fiscal year its from-date falls in; its pot: each balanced pool's members cut it by their shares; its alert threshold: a change that takes a person's due-total above it alerts) with the form that saves the ones changed in it (each one carrying a figure from a from-date, and shown as in force on the sheet's today), and the role each user name holds with the form that sets one, and the steward role's delegations with the form that makes one, and the sheet's holidays (a claim's due-by, as it is created, is moved past them) with the form that adds one, and the sheet's void reasons (while there are any, a claim is voided only with one of them) with the form that adds one.
+ @Component({
+   selector: 'app-settings',
+-  imports: [FigurePipe, ReactiveFormsModule],
++  imports: [FigurePipe, PolicyVersions, ReactiveFormsModule],
+   template: `
+     <section aria-labelledby="settings-heading">
+       <h2 id="settings-heading">Settings</h2>
+       <p>Policy version (each change to the rounding mode, floor, cap, terms, late percent or clerk limit is one) <strong data-testid="policy-version">{{ session.policyVersion() }}</strong></p>
++      <app-policy-versions />
+       <p>Clerk limit in force <strong data-testid="setting-clerk-limit-current">{{ (session.clerkLimit() ?? '') | figure }}</strong></p>
+       @for (g of grades(); track g) {
+         <p>Clerk limit in force for grade {{ g }} (blank: none, the sheet's) <strong [attr.data-testid]="'setting-clerk-limit-' + g + '-current'">{{ (session.gradeClerkLimitOn(g, session.today()) ?? '') | figure }}</strong></p>
+diff --git a/src/main/java/net/officefloor/hq/app/history/HistoryService.java b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+index 80971f624..b941046a3 100644
+--- a/src/main/java/net/officefloor/hq/app/history/HistoryService.java
++++ b/src/main/java/net/officefloor/hq/app/history/HistoryService.java
+@@ -72,8 +72,9 @@ public class HistoryService {
+             Integer pendingSla, List<PolicyVersionState> policyVersions) {
+     }
+ 
+-    /** A version of the sheet's policy; none in states written before the policy was versioned. */
+-    record PolicyVersionState(int number, String key, LocalDate from) {
++    /** A version of the sheet's policy; none in states written before the policy was versioned, the
++     *  value null in states written before it was kept. */
++    record PolicyVersionState(int number, String key, LocalDate from, String value) {
+     }
+ 
+     record GradeState(LocalDate from, String grade) {
+@@ -181,7 +182,7 @@ public class HistoryService {
+                 sheet.getReviewSla(), sheet.getProofKinds(), sheet.getDefaultGrade(),
+                 sheet.getScoreMid(), sheet.getScoreHigh(), sheet.isScoreLog(), sheet.getMaxOpen(),
+                 sheet.getPendingSla(), sheet.getPolicyVersions().stream()
+-                        .map(v -> new PolicyVersionState(v.getNumber(), v.getKey(), v.getFrom())).toList()));
++                        .map(v -> new PolicyVersionState(v.getNumber(), v.getKey(), v.getFrom(), v.getValue())).toList()));
+     }
+ 
+     /** Write the version of a claim now, if it differs from the last one: a change to its shares
+@@ -355,7 +356,7 @@ public class HistoryService {
+                     sheet.setPolicyDate(s.policyDate());
+                     s.settings().forEach(d -> sheet.recordSetting(d.key(), d.from(), d.value()));
+                     if (s.policyVersions() != null) {
+-                        s.policyVersions().forEach(v -> sheet.recordPolicyVersion(v.key(), v.from()));
++                        s.policyVersions().forEach(v -> sheet.recordPolicyVersion(v.key(), v.from(), v.value()));
+                     }
+                     sheet.setPeriodNumberingFrom(s.periodNumberingFrom());
+                     sheet.setGraceDays(s.graceDays());
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+index 81dcb43d2..e69eba7ec 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsController.java
+@@ -75,6 +75,17 @@ public class SettingsController {
+         return versions.stream().map(PolicyVersion::getFrom).toList();
+     }
+ 
++    /** A version of the sheet's policy as the screen lists it: its number, its from-date (null:
++     *  none, counted on every date), the key of the setting its change set and the value it set
++     *  (blank: none), and how many of the sheet's claims (DELETED ones left out) it is the policy
++     *  version of. */
++    public record PolicyVersionView(int number, LocalDate from, String key, String value, long claims) {
++        static List<PolicyVersionView> of(List<PolicyVersion> versions, Map<Integer, Long> claims) {
++            return versions.stream().map(v -> new PolicyVersionView(v.getNumber(), v.getFrom(), v.getKey(),
++                    v.getValue() == null ? "" : v.getValue(), claims.getOrDefault(v.getNumber(), 0L))).toList();
++        }
++    }
++
+     /** A value recorded for a dated setting: in force from its from-date until the next one of its
+      *  key; null for none. */
+     public record DatedValue(LocalDate from, String value) {
+@@ -303,6 +314,21 @@ public class SettingsController {
+         return asOf == null ? view(sheetId) : viewAsOf(history.asOf(sheetId, asOf));
+     }
+ 
++    /** Every version of the sheet's policy, oldest first, with how many claims each is the policy
++     *  version of. */
++    @GetMapping("/settings/policy-versions")
++    public List<PolicyVersionView> policyVersions(
++            @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
++            @RequestHeader(CurrentUser.HEADER) @NotBlank @Size(max = 100) String user,
++            @RequestHeader(value = AsOfGuard.HEADER, required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
++        if (asOf == null) {
++            return PolicyVersionView.of(service.policyVersions(sheetId), service.policyVersionClaims(sheetId));
++        }
++        HistoryService.AsOf then = history.asOf(sheetId, asOf);
++        return PolicyVersionView.of(then.sheet().getPolicyVersions(),
++                SettingsService.claimsByPolicyVersion(then.sheet(), then.claims().values()));
++    }
++
+     @PutMapping("/settings/clerk-limit")
+     public SettingsView setClerkLimit(
+             @PathVariable @NotBlank @Size(max = 100) @Pattern(regexp = "\\S+") String sheetId,
+diff --git a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+index f7f849b8a..c38c4b48d 100644
+--- a/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
++++ b/src/main/java/net/officefloor/hq/app/settings/SettingsService.java
+@@ -3,12 +3,17 @@ package net.officefloor.hq.app.settings;
+ import java.math.BigDecimal;
+ import java.time.LocalDate;
+ import java.util.Arrays;
++import java.util.Collection;
+ import java.util.EnumMap;
+ import java.util.HashSet;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
++import java.util.stream.Collectors;
+ import net.officefloor.hq.app.Audit;
++import net.officefloor.hq.app.claim.Claim;
++import net.officefloor.hq.app.claim.ClaimRepository;
++import net.officefloor.hq.app.claim.ClaimStatus;
+ import net.officefloor.hq.app.claim.ProofKind;
+ import net.officefloor.hq.app.history.HistoryService;
+ import net.officefloor.hq.app.rollup.RollupService;
+@@ -120,11 +125,12 @@ public class SettingsService {
+     private final HistoryService history;
+     private final Audit audit;
+     private final ApplicationEventPublisher events;
++    private final ClaimRepository claims;
+ 
+     public SettingsService(SheetRoleRepository roles, SheetPermissionRepository permissions,
+             SheetDelegationRepository delegations, SheetHolidayRepository holidays, SheetVoidReasonRepository voidReasons,
+             SheetService sheets, RollupService rollup, HistoryService history, Audit audit,
+-            ApplicationEventPublisher events) {
++            ApplicationEventPublisher events, ClaimRepository claims) {
+         this.roles = roles;
+         this.permissions = permissions;
+         this.delegations = delegations;
+@@ -135,6 +141,7 @@ public class SettingsService {
+         this.history = history;
+         this.audit = audit;
+         this.events = events;
++        this.claims = claims;
+     }
+ 
+     /** The sheet's clerk limit in force on its today; null when there is none. */
+@@ -174,7 +181,7 @@ public class SettingsService {
+         LocalDate on = from != null ? from : sheet.getToday();
+         sheet.recordSetting(key, on, value.isEmpty() ? null : value);
+         if (Sheet.POLICY_KEYS.contains(key)) {
+-            sheet.recordPolicyVersion(key, on);
++            sheet.recordPolicyVersion(key, on, value.isEmpty() ? null : value);
+         }
+         sheets.flush();
+         history.recordSheet(sheet);
+@@ -789,6 +796,22 @@ public class SettingsService {
+         return sheets.find(sheetId).map(Sheet::getPolicyVersions).orElse(List.of());
+     }
+ 
++    /** How many of the sheet's claims (DELETED ones left out) each version of its policy is the
++     *  policy version of (the one in force on the claim's date), by version number. */
++    @Transactional(readOnly = true)
++    public Map<Integer, Long> policyVersionClaims(String sheetId) {
++        return sheets.find(sheetId)
++                .map(sheet -> claimsByPolicyVersion(sheet, claims.findBySheetIdOrderByIdDesc(sheetId)))
++                .orElse(Map.of());
++    }
++
++    /** How many of the claims (DELETED ones left out) each version of the sheet's policy is the
++     *  policy version of, by version number; a version without any left out. */
++    public static Map<Integer, Long> claimsByPolicyVersion(Sheet sheet, Collection<Claim> claims) {
++        return claims.stream().filter(c -> c.getStatus() != ClaimStatus.DELETED)
++                .collect(Collectors.groupingBy(c -> sheet.policyVersionOn(c.getDate()), Collectors.counting()));
++    }
++
+     /** Every value recorded for the sheet's dated settings, by key, each key's by from-date. */
+     @Transactional(readOnly = true)
+     public Map<String, List<DatedSetting>> datedSettings(String sheetId) {
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/PolicyVersion.java b/src/main/java/net/officefloor/hq/app/sheet/PolicyVersion.java
+index 49ba31fbb..f82556981 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/PolicyVersion.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/PolicyVersion.java
+@@ -7,7 +7,8 @@ import java.util.Objects;
+ 
+ /** A version of the sheet's policy: the change to one of its policy settings (see
+  *  {@link Sheet#POLICY_KEYS}) that made it, numbered from 1 in the order made, with the from-date
+- *  the changed value is in force from (null: none, the version counts on every date). */
++ *  the changed value is in force from (null: none, the version counts on every date), and the value
++ *  it set (null: blank, none). */
+ @Embeddable
+ public class PolicyVersion {
+ 
+@@ -20,13 +21,17 @@ public class PolicyVersion {
+     @Column(name = "from_date")
+     private LocalDate from;
+ 
++    @Column(name = "setting_value")
++    private String value;
++
+     protected PolicyVersion() {
+     }
+ 
+-    public PolicyVersion(int number, String key, LocalDate from) {
++    public PolicyVersion(int number, String key, LocalDate from, String value) {
+         this.number = number;
+         this.key = key;
+         this.from = from;
++        this.value = value;
+     }
+ 
+     public int getNumber() {
+@@ -41,6 +46,10 @@ public class PolicyVersion {
+         return from;
+     }
+ 
++    public String getValue() {
++        return value;
++    }
++
+     /** Whether the version is in force on a date: it has no from-date, or one on or before it. */
+     public boolean countsOn(LocalDate on) {
+         return from == null || !from.isAfter(on);
+@@ -49,11 +58,11 @@ public class PolicyVersion {
+     @Override
+     public boolean equals(Object o) {
+         return o instanceof PolicyVersion other && number == other.number && key.equals(other.key)
+-                && Objects.equals(from, other.from);
++                && Objects.equals(from, other.from) && Objects.equals(value, other.value);
+     }
+ 
+     @Override
+     public int hashCode() {
+-        return Objects.hash(number, key, from);
++        return Objects.hash(number, key, from, value);
+     }
+ }
+diff --git a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+index 4510e656c..45e4cfa2c 100644
+--- a/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
++++ b/src/main/java/net/officefloor/hq/app/sheet/Sheet.java
+@@ -212,7 +212,7 @@ public class Sheet {
+     public Sheet clonedTo(String id, String createdBy) {
+         Sheet copy = new Sheet(id, createdBy, today);
+         settings.forEach(d -> copy.settings.add(new DatedSetting(d.getKey(), d.getFrom(), d.getValue())));
+-        policyVersions.forEach(v -> copy.policyVersions.add(new PolicyVersion(v.getNumber(), v.getKey(), v.getFrom())));
++        policyVersions.forEach(v -> copy.policyVersions.add(new PolicyVersion(v.getNumber(), v.getKey(), v.getFrom(), v.getValue())));
+         copy.policyDate = policyDate;
+         copy.periodNumberingFrom = periodNumberingFrom;
+         copy.entryDate = entryDate;
+@@ -269,9 +269,10 @@ public class Sheet {
+     }
+ 
+     /** Record a new version of the policy, numbered after the last one, for a change to a policy
+-     *  setting in force from a date (null: none, the version counts on every date). */
+-    public void recordPolicyVersion(String key, LocalDate from) {
+-        policyVersions.add(new PolicyVersion(policyVersions.size() + 1, key, from));
++     *  setting in force from a date (null: none, the version counts on every date) that set a value
++     *  (null: blank, none). */
++    public void recordPolicyVersion(String key, LocalDate from, String value) {
++        policyVersions.add(new PolicyVersion(policyVersions.size() + 1, key, from, value));
+     }
+ 
+     /** Every version of the policy, by number. */
+diff --git a/src/main/resources/db/migration/V123__policy_version_value.sql b/src/main/resources/db/migration/V123__policy_version_value.sql
+new file mode 100644
+index 000000000..1a229ebf9
+--- /dev/null
++++ b/src/main/resources/db/migration/V123__policy_version_value.sql
+@@ -0,0 +1,3 @@
++-- Each version of the sheet's policy keeps the value its change set (NULL: blank, none, or a
++-- version made before the value was kept).
++ALTER TABLE sheet_policy_version ADD COLUMN setting_value VARCHAR(100);
