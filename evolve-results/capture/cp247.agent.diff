@@ -1,0 +1,17 @@
+diff --git a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+index 3b2d6f085..b9a77c356 100644
+--- a/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
++++ b/src/main/java/net/officefloor/hq/app/claim/ClaimController.java
+@@ -155,11 +155,11 @@ public class ClaimController {
+             @Size(max = 1000) String tags) {
+     }
+ 
+-    /** The reason a steward gives for rejecting a PENDING claim. */
+     /** A void as the screen submits it: the reason chosen from the sheet's list, null or blank for none. */
+     public record VoidForm(@Size(max = 200) String reason) {
+     }
+ 
++    /** The reason a steward gives for rejecting a PENDING claim. */
+     public record RejectForm(@NotBlank @Size(max = 500) String reason) {
+     }
+ 
