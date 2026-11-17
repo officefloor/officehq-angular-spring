@@ -1,0 +1,66 @@
+{
+  "checkpoint": 242,
+  "checkpoint_id": "cp242_person-timeline",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 9,
+  "branch": "evolve/202610271-as/just-solve/chain9",
+  "commit_sha": "4e76bea29bca4cdce97621356edaa4e557b410bf",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-17T21:49:25",
+  "seconds": 121,
+  "build_log_file": "cp242.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp242_person-timeline.spec.ts::person timeline": true,
+      "cp242_person-timeline.spec.ts::person timeline scenario 1": true,
+      "cp242_person-timeline.spec.ts::person timeline scenario 2": true,
+      "cp242_person-timeline.spec.ts::person timeline scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp242_person-timeline.spec.ts::person timeline",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6121,
+        "failure": ""
+      },
+      {
+        "test_id": "cp242_person-timeline.spec.ts::person timeline scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17523,
+        "failure": ""
+      },
+      {
+        "test_id": "cp242_person-timeline.spec.ts::person timeline scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33925,
+        "failure": ""
+      },
+      {
+        "test_id": "cp242_person-timeline.spec.ts::person timeline scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21855,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

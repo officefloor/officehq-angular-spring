@@ -1,0 +1,66 @@
+{
+  "checkpoint": 191,
+  "checkpoint_id": "cp191_clerk-limit-per-grade",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 9,
+  "branch": "evolve/202610271-as/just-solve/chain9",
+  "commit_sha": "a8f93d7babbd9b0fb06d664faa73a8a607b0b50d",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-17T11:11:49",
+  "seconds": 126,
+  "build_log_file": "cp191.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade": true,
+      "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 1": false,
+      "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 2": true,
+      "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11886,
+        "failure": ""
+      },
+      {
+        "test_id": "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 20724,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  221 |     expect(await ui.claimAction(pg_uma, c_cam_1, \"open\")).toBe(false);\n  222 |     await ui.refresh(pg_vic);\n> 223 |     expect(await ui.reassign(pg_vic, c_cam_1, \"Ben\")).toBe(true);\n      |                                                       ^\n  224 |     await ui.setAsOf(pg_vic, \"2026-03-09\");\n  225 |     await ui.refresh(pg_vic);\n  226 |     await expect(pg_vic.getByTestId(\"sheet-archived\")).toHaveText(\"no\");\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp191_clerk-limit-per-grade.spec.ts:223:55 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22670,
+        "failure": ""
+      },
+      {
+        "test_id": "cp191_clerk-limit-per-grade.spec.ts::clerk limit per grade scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21380,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

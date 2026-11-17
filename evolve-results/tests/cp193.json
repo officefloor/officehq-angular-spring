@@ -1,0 +1,66 @@
+{
+  "checkpoint": 193,
+  "checkpoint_id": "cp193_sheet-age-buckets",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 9,
+  "branch": "evolve/202610271-as/just-solve/chain9",
+  "commit_sha": "bdcd875318c63bc8e61b7f1a7e3ed5d4af46c1bb",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-17T11:17:14",
+  "seconds": 118,
+  "build_log_file": "cp193.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp193_sheet-age-buckets.spec.ts::sheet age buckets": true,
+      "cp193_sheet-age-buckets.spec.ts::sheet age buckets scenario 1": true,
+      "cp193_sheet-age-buckets.spec.ts::sheet age buckets scenario 2": true,
+      "cp193_sheet-age-buckets.spec.ts::sheet age buckets scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp193_sheet-age-buckets.spec.ts::sheet age buckets",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7088,
+        "failure": ""
+      },
+      {
+        "test_id": "cp193_sheet-age-buckets.spec.ts::sheet age buckets scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25556,
+        "failure": ""
+      },
+      {
+        "test_id": "cp193_sheet-age-buckets.spec.ts::sheet age buckets scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18257,
+        "failure": ""
+      },
+      {
+        "test_id": "cp193_sheet-age-buckets.spec.ts::sheet age buckets scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17600,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

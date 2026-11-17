@@ -1,0 +1,62 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp228-uiefw34e
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp228_rollover-soft-closes.spec.ts:6:7 › rollover soft closes › rollover soft closes (8.2s)
+  ✓  2 [chromium] › cp228_rollover-soft-closes.spec.ts:421:7 › rollover soft closes › rollover soft closes scenario 1 (27.7s)
+  ✓  3 [chromium] › cp228_rollover-soft-closes.spec.ts:1192:7 › rollover soft closes › rollover soft closes scenario 2 (15.3s)
+  ✘  4 [chromium] › cp228_rollover-soft-closes.spec.ts:1762:7 › rollover soft closes › rollover soft closes scenario 3 (19.0s)
+
+
+  1) [chromium] › cp228_rollover-soft-closes.spec.ts:1762:7 › rollover soft closes › rollover soft closes scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('pool-member-C1-6').getByTestId('pool-share')
+    Expected string: [32m"33.34"[39m
+    Received string: [31m"50.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('pool-member-C1-6').getByTestId('pool-share')[22m
+    [2m  -   locator resolved to <span data-testid="pool-share">50.00</span>[22m
+    [2m  -   unexpected value "50.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-share">50.00</span>[22m
+    [2m  -   unexpected value "50.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-share">50.00</span>[22m
+    [2m  -   unexpected value "50.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-share">50.00</span>[22m
+    [2m  -   unexpected value "50.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-share">50.00</span>[22m
+    [2m  -   unexpected value "50.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-share">50.00</span>[22m
+    [2m  -   unexpected value "50.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-share">50.00</span>[22m
+    [2m  -   unexpected value "50.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-share">50.00</span>[22m
+    [2m  -   unexpected value "50.00"[22m
+    [2m  -   locator resolved to <span data-testid="pool-share">50.00</span>[22m
+    [2m  -   unexpected value "50.00"[22m
+
+
+      2050 |     await expect(pg_wes.getByTestId("pool-row-C1").getByTestId("pool-total-share")).toHaveText("100.00");
+      2051 |     await expect(pg_wes.getByTestId("pool-row-C1").getByTestId("pool-balanced")).toHaveText("yes");
+    > 2052 |     await expect(pg_wes.getByTestId("pool-member-C1-" + p_ada).getByTestId("pool-share")).toHaveText("33.34");
+           |                                                                                           ^
+      2053 |     await expect(pg_wes.getByTestId("pool-member-C1-" + p_ada).getByTestId("pool-cut")).toHaveText("");
+      2054 |     await ui.clearAsOf(pg_wes);
+      2055 |     await ui.refresh(pg_wes);
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp228_rollover-soft-closes.spec.ts:2052:91
+
+  Slow test file: [chromium] › cp228_rollover-soft-closes.spec.ts (1.2m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp228_rollover-soft-closes.spec.ts:1762:7 › rollover soft closes › rollover soft closes scenario 3 
+  3 passed (1.2m)

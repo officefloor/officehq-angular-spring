@@ -1,0 +1,66 @@
+{
+  "checkpoint": 151,
+  "checkpoint_id": "cp151_rounding-mode",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 9,
+  "branch": "evolve/202610271-as/just-solve/chain9",
+  "commit_sha": "bcf10f24cd1b91734d79618236a2f01b520379bd",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-17T03:03:25",
+  "seconds": 126,
+  "build_log_file": "cp151.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp151_rounding-mode.spec.ts::rounding mode": true,
+      "cp151_rounding-mode.spec.ts::rounding mode scenario 1": true,
+      "cp151_rounding-mode.spec.ts::rounding mode scenario 2": true,
+      "cp151_rounding-mode.spec.ts::rounding mode scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp151_rounding-mode.spec.ts::rounding mode",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15160,
+        "failure": ""
+      },
+      {
+        "test_id": "cp151_rounding-mode.spec.ts::rounding mode scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24409,
+        "failure": ""
+      },
+      {
+        "test_id": "cp151_rounding-mode.spec.ts::rounding mode scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23087,
+        "failure": ""
+      },
+      {
+        "test_id": "cp151_rounding-mode.spec.ts::rounding mode scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14509,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

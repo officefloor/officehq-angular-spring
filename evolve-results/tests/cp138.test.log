@@ -1,0 +1,60 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp138-5atcxc5u
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp138_inline-grade.spec.ts:6:7 › inline grade › inline grade (10.8s)
+  ✘  2 [chromium] › cp138_inline-grade.spec.ts:81:7 › inline grade › inline grade scenario 1 (20.8s)
+  ✓  3 [chromium] › cp138_inline-grade.spec.ts:433:7 › inline grade › inline grade scenario 2 (29.1s)
+  ✓  4 [chromium] › cp138_inline-grade.spec.ts:923:7 › inline grade › inline grade scenario 3 (20.5s)
+
+
+  1) [chromium] › cp138_inline-grade.spec.ts:81:7 › inline grade › inline grade scenario 1 ─────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('header-people-count')
+    Expected string: [32m"1"[39m
+    Received string: [31m"0"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('header-people-count')[22m
+    [2m  -   locator resolved to <dd data-testid="header-people-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="header-people-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="header-people-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="header-people-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="header-people-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="header-people-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="header-people-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="header-people-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+    [2m  -   locator resolved to <dd data-testid="header-people-count">0</dd>[22m
+    [2m  -   unexpected value "0"[22m
+
+
+      217 |     await expect(pg_wes.getByTestId("bulk-settle-batch")).toHaveText("");
+      218 |     await expect(pg_wes.getByTestId("rollup-cut-total")).toHaveText("0.00");
+    > 219 |     await expect(pg_wes.getByTestId("header-people-count")).toHaveText("1");
+          |                                                             ^
+      220 |     await expect(pg_wes.getByTestId("header-claims-DRAFT-count")).toHaveText("1");
+      221 |     await expect(pg_wes.getByTestId("header-claims-OPEN-count")).toHaveText("0");
+      222 |     await expect(pg_wes.getByTestId("header-claims-PENDING-count")).toHaveText("0");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp138_inline-grade.spec.ts:219:61
+
+  1 failed
+    [chromium] › cp138_inline-grade.spec.ts:81:7 › inline grade › inline grade scenario 1 ──────────
+  3 passed (1.4m)

@@ -1,0 +1,210 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp40-x32g63_3
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 148 tests using 3 workers
+
+  ✓  1 [chromium] › cp01_signin-and-sheet.spec.ts:6:7 › signin and sheet › signin and sheet (3.6s)
+  ✓  2 [chromium] › cp02_sheet-today.spec.ts:6:7 › sheet today › sheet today (3.9s)
+  ✓  3 [chromium] › cp03_people.spec.ts:6:7 › people › people (10.6s)
+  ✓  5 [chromium] › cp05_claims.spec.ts:6:7 › claims › claims (9.5s)
+  ✓  4 [chromium] › cp04_name-uniqueness.spec.ts:6:7 › name uniqueness › name uniqueness (12.3s)
+  ✓  6 [chromium] › cp06_audit.spec.ts:6:7 › audit › audit (6.9s)
+  ✓  8 [chromium] › cp07_rates-and-due.spec.ts:6:7 › rates and due › rates and due (5.5s)
+  ✓  7 [chromium] › cp05_claims.spec.ts:34:7 › claims › claims scenario 1 (11.0s)
+  ✓  9 [chromium] › cp06_audit.spec.ts:29:7 › audit › audit scenario 1 (11.3s)
+  ✓  10 [chromium] › cp07_rates-and-due.spec.ts:74:7 › rates and due › rates and due scenario 1 (13.4s)
+  ✓  11 [chromium] › cp05_claims.spec.ts:103:7 › claims › claims scenario 2 (11.0s)
+  ✓  12 [chromium] › cp06_audit.spec.ts:128:7 › audit › audit scenario 2 (10.8s)
+  ✓  13 [chromium] › cp07_rates-and-due.spec.ts:223:7 › rates and due › rates and due scenario 2 (11.8s)
+  ✓  14 [chromium] › cp05_claims.spec.ts:172:7 › claims › claims scenario 3 (14.9s)
+  ✓  15 [chromium] › cp06_audit.spec.ts:222:7 › audit › audit scenario 3 (15.9s)
+  ✓  18 [chromium] › cp09_numbering.spec.ts:6:7 › numbering › numbering (5.5s)
+  ✓  16 [chromium] › cp07_rates-and-due.spec.ts:348:7 › rates and due › rates and due scenario 3 (15.7s)
+  ✓  17 [chromium] › cp08_workflow.spec.ts:6:7 › workflow › workflow (12.0s)
+  ✓  20 [chromium] › cp10_settle-freezes-due.spec.ts:6:7 › settle freezes due › settle freezes due (3.9s)
+  ✓  19 [chromium] › cp09_numbering.spec.ts:34:7 › numbering › numbering scenario 1 (13.5s)
+  ✓  21 [chromium] › cp08_workflow.spec.ts:57:7 › workflow › workflow scenario 1 (13.2s)
+  ✓  22 [chromium] › cp10_settle-freezes-due.spec.ts:43:7 › settle freezes due › settle freezes due scenario 1 (10.9s)
+  ✓  24 [chromium] › cp08_workflow.spec.ts:228:7 › workflow › workflow scenario 2 (8.4s)
+  ✓  25 [chromium] › cp10_settle-freezes-due.spec.ts:167:7 › settle freezes due › settle freezes due scenario 2 (8.9s)
+  ✓  23 [chromium] › cp09_numbering.spec.ts:180:7 › numbering › numbering scenario 2 (16.4s)
+  ✓  27 [chromium] › cp10_settle-freezes-due.spec.ts:276:7 › settle freezes due › settle freezes due scenario 3 (12.2s)
+  ✓  26 [chromium] › cp08_workflow.spec.ts:372:7 › workflow › workflow scenario 3 (15.5s)
+  ✓  30 [chromium] › cp12_half-even.spec.ts:6:7 › half even › half even (3.2s)
+  ✓  28 [chromium] › cp09_numbering.spec.ts:326:7 › numbering › numbering scenario 3 (11.8s)
+  ✓  29 [chromium] › cp11_rates-effective-dated.spec.ts:6:7 › rates effective dated › rates effective dated (5.3s)
+  ✓  32 [chromium] › cp13_four-eyes.spec.ts:6:7 › four eyes › four eyes (7.7s)
+  ✓  33 [chromium] › cp11_rates-effective-dated.spec.ts:70:7 › rates effective dated › rates effective dated scenario 1 (8.0s)
+  ✓  31 [chromium] › cp12_half-even.spec.ts:26:7 › half even › half even scenario 1 (9.2s)
+  ✓  34 [chromium] › cp13_four-eyes.spec.ts:43:7 › four eyes › four eyes scenario 1 (9.0s)
+  ✓  35 [chromium] › cp11_rates-effective-dated.spec.ts:236:7 › rates effective dated › rates effective dated scenario 2 (10.5s)
+  ✓  36 [chromium] › cp12_half-even.spec.ts:150:7 › half even › half even scenario 2 (12.9s)
+  ✓  38 [chromium] › cp11_rates-effective-dated.spec.ts:410:7 › rates effective dated › rates effective dated scenario 3 (9.9s)
+  ✓  37 [chromium] › cp13_four-eyes.spec.ts:181:7 › four eyes › four eyes scenario 2 (12.9s)
+  ✓  39 [chromium] › cp12_half-even.spec.ts:330:7 › half even › half even scenario 3 (8.4s)
+  ✓  40 [chromium] › cp14_edit-conflict.spec.ts:6:7 › edit conflict › edit conflict (5.9s)
+  ✓  42 [chromium] › cp15_statements.spec.ts:6:7 › statements › statements (5.3s)
+  ✓  41 [chromium] › cp13_four-eyes.spec.ts:343:7 › four eyes › four eyes scenario 3 (9.7s)
+  ✓  45 [chromium] › cp16_rollup-audit.spec.ts:6:7 › rollup audit › rollup audit (9.5s)
+  ✓  44 [chromium] › cp15_statements.spec.ts:104:7 › statements › statements scenario 1 (14.9s)
+  ✓  43 [chromium] › cp14_edit-conflict.spec.ts:34:7 › edit conflict › edit conflict scenario 1 (17.1s)
+  ✓  46 [chromium] › cp16_rollup-audit.spec.ts:79:7 › rollup audit › rollup audit scenario 1 (11.7s)
+  ✓  47 [chromium] › cp15_statements.spec.ts:338:7 › statements › statements scenario 2 (11.4s)
+  ✓  48 [chromium] › cp14_edit-conflict.spec.ts:184:7 › edit conflict › edit conflict scenario 2 (16.4s)
+  ✓  49 [chromium] › cp16_rollup-audit.spec.ts:261:7 › rollup audit › rollup audit scenario 2 (14.8s)
+  ✓  50 [chromium] › cp15_statements.spec.ts:512:7 › statements › statements scenario 3 (14.2s)
+  ✓  51 [chromium] › cp14_edit-conflict.spec.ts:355:7 › edit conflict › edit conflict scenario 3 (17.7s)
+  ✓  53 [chromium] › cp17_periods.spec.ts:6:7 › periods › periods (12.0s)
+  ✓  52 [chromium] › cp16_rollup-audit.spec.ts:425:7 › rollup audit › rollup audit scenario 3 (13.2s)
+  ✓  56 [chromium] › cp19_quick-add.spec.ts:6:7 › quick add › quick add (8.9s)
+  ✓  55 [chromium] › cp17_periods.spec.ts:52:7 › periods › periods scenario 1 (12.2s)
+  ✓  54 [chromium] › cp18_close-period.spec.ts:6:7 › close period › close period (17.9s)
+  ✓  57 [chromium] › cp19_quick-add.spec.ts:48:7 › quick add › quick add scenario 1 (13.9s)
+  ✓  58 [chromium] › cp17_periods.spec.ts:215:7 › periods › periods scenario 2 (14.8s)
+  ✓  59 [chromium] › cp18_close-period.spec.ts:61:7 › close period › close period scenario 1 (17.0s)
+  ✓  60 [chromium] › cp19_quick-add.spec.ts:236:7 › quick add › quick add scenario 2 (12.2s)
+  ✓  61 [chromium] › cp17_periods.spec.ts:378:7 › periods › periods scenario 3 (13.8s)
+  ✓  64 [chromium] › cp20_open-claims-immutable.spec.ts:6:7 › open claims immutable › open claims immutable (3.6s)
+  ✓  62 [chromium] › cp18_close-period.spec.ts:184:7 › close period › close period scenario 2 (15.8s)
+  ✓  63 [chromium] › cp19_quick-add.spec.ts:394:7 › quick add › quick add scenario 3 (16.4s)
+  ✓  67 [chromium] › cp21_retire.spec.ts:6:7 › retire › retire (6.5s)
+  ✓  65 [chromium] › cp20_open-claims-immutable.spec.ts:45:7 › open claims immutable › open claims immutable scenario 1 (14.8s)
+  ✓  66 [chromium] › cp18_close-period.spec.ts:316:7 › close period › close period scenario 3 (13.4s)
+  ✓  70 [chromium] › cp22_hold.spec.ts:6:7 › hold › hold (4.8s)
+  ✓  69 [chromium] › cp20_open-claims-immutable.spec.ts:306:7 › open claims immutable › open claims immutable scenario 2 (9.6s)
+  ✓  68 [chromium] › cp21_retire.spec.ts:61:7 › retire › retire scenario 1 (11.3s)
+  ✓  71 [chromium] › cp22_hold.spec.ts:63:7 › hold › hold scenario 1 (15.6s)
+  ✓  73 [chromium] › cp21_retire.spec.ts:178:7 › retire › retire scenario 2 (14.0s)
+  ✓  72 [chromium] › cp20_open-claims-immutable.spec.ts:465:7 › open claims immutable › open claims immutable scenario 3 (17.0s)
+  ✓  74 [chromium] › cp22_hold.spec.ts:262:7 › hold › hold scenario 2 (12.3s)
+  ✓  76 [chromium] › cp23_roles-and-clerk-limit.spec.ts:6:7 › roles and clerk limit › roles and clerk limit (11.4s)
+  ✓  75 [chromium] › cp21_retire.spec.ts:367:7 › retire › retire scenario 3 (14.7s)
+  ✓  79 [chromium] › cp24_floor.spec.ts:6:7 › floor › floor (6.4s)
+  ✓  78 [chromium] › cp23_roles-and-clerk-limit.spec.ts:72:7 › roles and clerk limit › roles and clerk limit scenario 1 (8.1s)
+  ✓  77 [chromium] › cp22_hold.spec.ts:397:7 › hold › hold scenario 3 (14.4s)
+  ✓  82 [chromium] › cp25_due-by-and-overdue.spec.ts:6:7 › due by and overdue › due by and overdue (5.2s)
+  ✓  81 [chromium] › cp23_roles-and-clerk-limit.spec.ts:222:7 › roles and clerk limit › roles and clerk limit scenario 2 (10.6s)
+  ✓  80 [chromium] › cp24_floor.spec.ts:98:7 › floor › floor scenario 1 (15.3s)
+  ✓  83 [chromium] › cp25_due-by-and-overdue.spec.ts:84:7 › due by and overdue › due by and overdue scenario 1 (13.1s)
+  ✓  84 [chromium] › cp23_roles-and-clerk-limit.spec.ts:386:7 › roles and clerk limit › roles and clerk limit scenario 3 (13.2s)
+  ✓  87 [chromium] › cp26_late-charge.spec.ts:6:7 › late charge › late charge (7.8s)
+  ✓  85 [chromium] › cp24_floor.spec.ts:260:7 › floor › floor scenario 2 (17.6s)
+  ✓  88 [chromium] › cp26_late-charge.spec.ts:88:7 › late charge › late charge scenario 1 (13.9s)
+  ✓  89 [chromium] › cp24_floor.spec.ts:408:7 › floor › floor scenario 3 (17.8s)
+  ✓  86 [chromium] › cp25_due-by-and-overdue.spec.ts:300:7 › due by and overdue › due by and overdue scenario 2 (30.9s)
+  ✓  91 [chromium] › cp27_patrons-and-backing.spec.ts:6:7 › patrons and backing › patrons and backing (10.7s)
+  ✓  90 [chromium] › cp26_late-charge.spec.ts:283:7 › late charge › late charge scenario 2 (22.3s)
+  ✓  92 [chromium] › cp25_due-by-and-overdue.spec.ts:453:7 › due by and overdue › due by and overdue scenario 3 (26.7s)
+  ✓  93 [chromium] › cp27_patrons-and-backing.spec.ts:74:7 › patrons and backing › patrons and backing scenario 1 (19.5s)
+  ✘  94 [chromium] › cp26_late-charge.spec.ts:445:7 › late charge › late charge scenario 3 (14.7s)
+  ✓  95 [chromium] › cp28_grade-dated.spec.ts:6:7 › grade dated › grade dated (4.6s)
+  ✓  96 [chromium] › cp27_patrons-and-backing.spec.ts:247:7 › patrons and backing › patrons and backing scenario 2 (15.4s)
+  ✓  98 [chromium] › cp29_reopen-period.spec.ts:6:7 › reopen period › reopen period (11.2s)
+  ✓  97 [chromium] › cp28_grade-dated.spec.ts:66:7 › grade dated › grade dated scenario 1 (14.1s)
+  ✓  100 [chromium] › cp29_reopen-period.spec.ts:76:7 › reopen period › reopen period scenario 1 (16.1s)
+  ✓  101 [chromium] › cp28_grade-dated.spec.ts:225:7 › grade dated › grade dated scenario 2 (15.9s)
+  ✓  102 [chromium] › cp29_reopen-period.spec.ts:241:7 › reopen period › reopen period scenario 2 (10.2s)
+  ✓  99 [chromium] › cp27_patrons-and-backing.spec.ts:424:7 › patrons and backing › patrons and backing scenario 3 (27.8s)
+  ✓  103 [chromium] › cp28_grade-dated.spec.ts:422:7 › grade dated › grade dated scenario 3 (14.5s)
+  ✓  104 [chromium] › cp29_reopen-period.spec.ts:388:7 › reopen period › reopen period scenario 3 (9.5s)
+  ✓  105 [chromium] › cp30_corrections.spec.ts:6:7 › corrections › corrections (10.4s)
+  ✓  106 [chromium] › cp31_summary.spec.ts:6:7 › summary › summary (5.9s)
+  ✓  107 [chromium] › cp32_rounding-policy-date.spec.ts:6:7 › rounding policy date › rounding policy date (8.4s)
+  ✓  108 [chromium] › cp30_corrections.spec.ts:70:7 › corrections › corrections scenario 1 (12.3s)
+  ✓  110 [chromium] › cp32_rounding-policy-date.spec.ts:121:7 › rounding policy date › rounding policy date scenario 1 (11.3s)
+  ✓  109 [chromium] › cp31_summary.spec.ts:51:7 › summary › summary scenario 1 (17.4s)
+  ✓  111 [chromium] › cp30_corrections.spec.ts:281:7 › corrections › corrections scenario 2 (16.5s)
+  ✓  113 [chromium] › cp31_summary.spec.ts:213:7 › summary › summary scenario 2 (15.2s)
+  ✓  112 [chromium] › cp32_rounding-policy-date.spec.ts:405:7 › rounding policy date › rounding policy date scenario 2 (16.6s)
+  ✓  114 [chromium] › cp30_corrections.spec.ts:485:7 › corrections › corrections scenario 3 (10.5s)
+  ✓  117 [chromium] › cp33_export-people.spec.ts:6:7 › export people › export people (2.6s)
+  ✓  116 [chromium] › cp32_rounding-policy-date.spec.ts:618:7 › rounding policy date › rounding policy date scenario 3 (8.0s)
+  ✓  115 [chromium] › cp31_summary.spec.ts:397:7 › summary › summary scenario 3 (11.8s)
+  ✓  119 [chromium] › cp34_bulk-open.spec.ts:6:7 › bulk open › bulk open (3.7s)
+  ✓  120 [chromium] › cp35_numbering-per-period.spec.ts:6:7 › numbering per period › numbering per period (4.8s)
+  ✓  118 [chromium] › cp33_export-people.spec.ts:22:7 › export people › export people scenario 1 (11.8s)
+  ✓  121 [chromium] › cp34_bulk-open.spec.ts:55:7 › bulk open › bulk open scenario 1 (10.1s)
+  ✓  122 [chromium] › cp35_numbering-per-period.spec.ts:77:7 › numbering per period › numbering per period scenario 1 (10.6s)
+  ✓  123 [chromium] › cp33_export-people.spec.ts:248:7 › export people › export people scenario 2 (11.7s)
+  ✓  124 [chromium] › cp34_bulk-open.spec.ts:299:7 › bulk open › bulk open scenario 2 (11.5s)
+  ✓  125 [chromium] › cp35_numbering-per-period.spec.ts:378:7 › numbering per period › numbering per period scenario 2 (10.6s)
+  ✓  126 [chromium] › cp33_export-people.spec.ts:457:7 › export people › export people scenario 3 (10.5s)
+  ✓  128 [chromium] › cp35_numbering-per-period.spec.ts:647:7 › numbering per period › numbering per period scenario 3 (9.0s)
+  ✓  127 [chromium] › cp34_bulk-open.spec.ts:484:7 › bulk open › bulk open scenario 3 (15.5s)
+  ✓  131 [chromium] › cp38_terms-per-grade.spec.ts:6:7 › terms per grade › terms per grade (3.5s)
+  ✓  129 [chromium] › cp36_approvals.spec.ts:6:7 › approvals › approvals (10.9s)
+  ✓  130 [chromium] › cp37_reassign-claim.spec.ts:6:7 › reassign claim › reassign claim (9.6s)
+  ✓  134 [chromium] › cp37_reassign-claim.spec.ts:76:7 › reassign claim › reassign claim scenario 1 (9.0s)
+  ✓  132 [chromium] › cp38_terms-per-grade.spec.ts:61:7 › terms per grade › terms per grade scenario 1 (12.4s)
+  ✓  133 [chromium] › cp36_approvals.spec.ts:99:7 › approvals › approvals scenario 1 (18.3s)
+  ✓  136 [chromium] › cp38_terms-per-grade.spec.ts:282:7 › terms per grade › terms per grade scenario 2 (15.2s)
+  ✓  135 [chromium] › cp37_reassign-claim.spec.ts:287:7 › reassign claim › reassign claim scenario 2 (20.9s)
+  ✓  137 [chromium] › cp36_approvals.spec.ts:248:7 › approvals › approvals scenario 2 (16.1s)
+  ✓  138 [chromium] › cp38_terms-per-grade.spec.ts:533:7 › terms per grade › terms per grade scenario 3 (17.6s)
+  ✓  140 [chromium] › cp36_approvals.spec.ts:532:7 › approvals › approvals scenario 3 (13.4s)
+  ✓  141 [chromium] › cp39_claim-log.spec.ts:6:7 › claim log › claim log (5.2s)
+  ✓  139 [chromium] › cp37_reassign-claim.spec.ts:506:7 › reassign claim › reassign claim scenario 3 (20.2s)
+  ✓  142 [chromium] › cp40_hold-interval.spec.ts:6:7 › hold interval › hold interval (8.3s)
+  ✓  143 [chromium] › cp39_claim-log.spec.ts:31:7 › claim log › claim log scenario 1 (16.0s)
+  ✓  144 [chromium] › cp40_hold-interval.spec.ts:90:7 › hold interval › hold interval scenario 1 (12.4s)
+  ✓  145 [chromium] › cp39_claim-log.spec.ts:326:7 › claim log › claim log scenario 2 (9.7s)
+  ✓  147 [chromium] › cp39_claim-log.spec.ts:515:7 › claim log › claim log scenario 3 (11.9s)
+  ✓  146 [chromium] › cp40_hold-interval.spec.ts:390:7 › hold interval › hold interval scenario 2 (25.4s)
+  ✓  148 [chromium] › cp40_hold-interval.spec.ts:614:7 › hold interval › hold interval scenario 3 (8.3s)
+
+
+  1) [chromium] › cp26_late-charge.spec.ts:445:7 › late charge › late charge scenario 3 ────────────
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-213').getByTestId('person-claimed')
+    Expected string: [32m"0.00"[39m
+    Received string: [31m"99.95"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-213').getByTestId('person-claimed')[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">99.95</td>[22m
+    [2m  -   unexpected value "99.95"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">99.95</td>[22m
+    [2m  -   unexpected value "99.95"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">99.95</td>[22m
+    [2m  -   unexpected value "99.95"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">99.95</td>[22m
+    [2m  -   unexpected value "99.95"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">99.95</td>[22m
+    [2m  -   unexpected value "99.95"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">99.95</td>[22m
+    [2m  -   unexpected value "99.95"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">99.95</td>[22m
+    [2m  -   unexpected value "99.95"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">99.95</td>[22m
+    [2m  -   unexpected value "99.95"[22m
+    [2m  -   locator resolved to <td data-testid="person-claimed">99.95</td>[22m
+    [2m  -   unexpected value "99.95"[22m
+
+
+      486 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-status")).toHaveText("OPEN");
+      487 |     await expect(pg_wes.getByTestId("claim-row-" + c_ben_0).getByTestId("claim-stated")).toHaveText("no");
+    > 488 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-claimed")).toHaveText("0.00");
+          |                                                                                           ^
+      489 |     await expect(pg_wes.getByTestId("person-row-" + p_cam).getByTestId("person-due-total")).toHaveText("0.00");
+      490 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-due")).toHaveText("10.00");
+      491 |     await expect(pg_wes.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-status")).toHaveText("PENDING");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp26_late-charge.spec.ts:488:91
+
+  Slow test file: [chromium] › cp25_due-by-and-overdue.spec.ts (1.3m)
+  Slow test file: [chromium] › cp27_patrons-and-backing.spec.ts (1.2m)
+  Slow test file: [chromium] › cp18_close-period.spec.ts (1.1m)
+  Slow test file: [chromium] › cp37_reassign-claim.spec.ts (59.8s)
+  Slow test file: [chromium] › cp26_late-charge.spec.ts (58.7s)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp26_late-charge.spec.ts:445:7 › late charge › late charge scenario 3 ─────────────
+  147 passed (10.5m)

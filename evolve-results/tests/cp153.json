@@ -1,0 +1,66 @@
+{
+  "checkpoint": 153,
+  "checkpoint_id": "cp153_rate-versions",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 9,
+  "branch": "evolve/202610271-as/just-solve/chain9",
+  "commit_sha": "0e83b7c68b5760ef58f17307f1ff5edab9aca0da",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-17T03:07:34",
+  "seconds": 137,
+  "build_log_file": "cp153.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp153_rate-versions.spec.ts::rate versions": true,
+      "cp153_rate-versions.spec.ts::rate versions scenario 1": true,
+      "cp153_rate-versions.spec.ts::rate versions scenario 2": true,
+      "cp153_rate-versions.spec.ts::rate versions scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp153_rate-versions.spec.ts::rate versions",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13081,
+        "failure": ""
+      },
+      {
+        "test_id": "cp153_rate-versions.spec.ts::rate versions scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17787,
+        "failure": ""
+      },
+      {
+        "test_id": "cp153_rate-versions.spec.ts::rate versions scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21858,
+        "failure": ""
+      },
+      {
+        "test_id": "cp153_rate-versions.spec.ts::rate versions scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27316,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

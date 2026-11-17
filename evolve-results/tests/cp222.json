@@ -1,0 +1,66 @@
+{
+  "checkpoint": 222,
+  "checkpoint_id": "cp222_dashboard-over-tree",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 9,
+  "branch": "evolve/202610271-as/just-solve/chain9",
+  "commit_sha": "93bc4b0574bfdc20b95ed67ffb2a8d1479574c79",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-17T17:55:00",
+  "seconds": 105,
+  "build_log_file": "cp222.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp222_dashboard-over-tree.spec.ts::dashboard over tree": true,
+      "cp222_dashboard-over-tree.spec.ts::dashboard over tree scenario 1": true,
+      "cp222_dashboard-over-tree.spec.ts::dashboard over tree scenario 2": true,
+      "cp222_dashboard-over-tree.spec.ts::dashboard over tree scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp222_dashboard-over-tree.spec.ts::dashboard over tree",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12727,
+        "failure": ""
+      },
+      {
+        "test_id": "cp222_dashboard-over-tree.spec.ts::dashboard over tree scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17721,
+        "failure": ""
+      },
+      {
+        "test_id": "cp222_dashboard-over-tree.spec.ts::dashboard over tree scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15015,
+        "failure": ""
+      },
+      {
+        "test_id": "cp222_dashboard-over-tree.spec.ts::dashboard over tree scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17529,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

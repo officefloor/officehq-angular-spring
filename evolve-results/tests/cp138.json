@@ -1,0 +1,66 @@
+{
+  "checkpoint": 138,
+  "checkpoint_id": "cp138_inline-grade",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 9,
+  "branch": "evolve/202610271-as/just-solve/chain9",
+  "commit_sha": "6e4d4cbdd6fd0a9c8f63b16ad2091ea8154ec35c",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-17T00:42:03",
+  "seconds": 135,
+  "build_log_file": "cp138.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp138_inline-grade.spec.ts::inline grade": true,
+      "cp138_inline-grade.spec.ts::inline grade scenario 1": false,
+      "cp138_inline-grade.spec.ts::inline grade scenario 2": true,
+      "cp138_inline-grade.spec.ts::inline grade scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10757,
+        "failure": ""
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 20800,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('header-people-count')\nExpected string: \u001b[32m\"1\"\u001b[39m\nReceived string: \u001b[31m\"0\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('header-people-count')\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\n\n  217 |     await expect(pg_wes.getByTestId(\"bulk-settle-batch\")).toHaveText(\"\");\n  218 |     await expect(pg_wes.getByTestId(\"rollup-cut-total\")).toHaveText(\"0.00\");\n> 219 |     await expect(pg_wes.getByTestId(\"header-people-count\")).toHaveText(\"1\");\n      |                                                             ^\n  220 |     await expect(pg_wes.getByTestId(\"header-claims-DRAFT-count\")).toHaveText(\"1\");\n  221 |     await expect(pg_wes.getByTestId(\"header-claims-OPEN-count\")).toHaveText(\"0\");\n  222 |     await expect(pg_wes.getByTestId(\"header-claims-PENDING-count\")).toHaveText(\"0\");\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp138_inline-grade.spec.ts:219:61 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('header-people-count')\nExpected string: \u001b[32m\"1\"\u001b[39m\nReceived string: \u001b[31m\"0\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('header-people-count')\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n\u001b[2m  -   locator resolved to <dd data-testid=\"header-people-count\">0</dd>\u001b[22m\n\u001b[2m  -   unexpected value \"0\"\u001b[22m\n"
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29140,
+        "failure": ""
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20492,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}
