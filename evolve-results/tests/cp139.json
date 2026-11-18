@@ -1,0 +1,66 @@
+{
+  "checkpoint": 139,
+  "checkpoint_id": "cp139_tree-audit",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 10,
+  "branch": "evolve/202610271-as/just-solve/chain10",
+  "commit_sha": "06871ae73fcb84fd125afe337c69e58a6d60583e",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-18T07:24:25",
+  "seconds": 92,
+  "build_log_file": "cp139.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp139_tree-audit.spec.ts::tree audit": true,
+      "cp139_tree-audit.spec.ts::tree audit scenario 1": true,
+      "cp139_tree-audit.spec.ts::tree audit scenario 2": true,
+      "cp139_tree-audit.spec.ts::tree audit scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp139_tree-audit.spec.ts::tree audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6377,
+        "failure": ""
+      },
+      {
+        "test_id": "cp139_tree-audit.spec.ts::tree audit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18905,
+        "failure": ""
+      },
+      {
+        "test_id": "cp139_tree-audit.spec.ts::tree audit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17445,
+        "failure": ""
+      },
+      {
+        "test_id": "cp139_tree-audit.spec.ts::tree audit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11513,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

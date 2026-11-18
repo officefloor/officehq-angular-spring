@@ -1,0 +1,66 @@
+{
+  "checkpoint": 235,
+  "checkpoint_id": "cp235_bulk-hold",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 10,
+  "branch": "evolve/202610271-as/just-solve/chain10",
+  "commit_sha": "b02bcf92f1cff948d9211256e037781b55f56472",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-18T22:46:10",
+  "seconds": 115,
+  "build_log_file": "cp235.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp235_bulk-hold.spec.ts::bulk hold": true,
+      "cp235_bulk-hold.spec.ts::bulk hold scenario 1": true,
+      "cp235_bulk-hold.spec.ts::bulk hold scenario 2": true,
+      "cp235_bulk-hold.spec.ts::bulk hold scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp235_bulk-hold.spec.ts::bulk hold",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7417,
+        "failure": ""
+      },
+      {
+        "test_id": "cp235_bulk-hold.spec.ts::bulk hold scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17177,
+        "failure": ""
+      },
+      {
+        "test_id": "cp235_bulk-hold.spec.ts::bulk hold scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20456,
+        "failure": ""
+      },
+      {
+        "test_id": "cp235_bulk-hold.spec.ts::bulk hold scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26467,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 218,
+  "checkpoint_id": "cp218_review-assignment",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 10,
+  "branch": "evolve/202610271-as/just-solve/chain10",
+  "commit_sha": "96c8d931f23855e3fe0ade56301f235dc7b4ea0a",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-18T19:00:33",
+  "seconds": 121,
+  "build_log_file": "cp218.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp218_review-assignment.spec.ts::review assignment": true,
+      "cp218_review-assignment.spec.ts::review assignment scenario 1": false,
+      "cp218_review-assignment.spec.ts::review assignment scenario 2": true,
+      "cp218_review-assignment.spec.ts::review assignment scenario 3": false
+    },
+    "detail": [
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11436,
+        "failure": ""
+      },
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment scenario 1",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 23879,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-4').getByTestId('person-period-2026-03-carried')\nExpected string: \u001b[32m\"\u001b[7m1\u001b[27m.00\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7m0\u001b[27m.00\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-4').getByTestId('person-period-2026-03-carried')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\n\n  300 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-period-2026-04-due-total\")).toHaveText(\"0.00\");\n  301 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-period-2026-02-carried\")).toHaveText(\"0.00\");\n> 302 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-period-2026-03-carried\")).toHaveText(\"1.00\");\n      |                                                                                                          ^\n  303 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_cam).getByTestId(\"person-period-2026-04-carried\")).toHaveText(\"0.00\");\n  304 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_cam_0).getByTestId(\"claim-amount\")).toHaveText(\"12.50\");\n  305 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_cam_0).getByTestId(\"claim-date\")).toHaveText(\"2026-03-09\");\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp218_review-assignment.spec.ts:302:106 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-4').getByTestId('person-period-2026-03-carried')\nExpected string: \u001b[32m\"\u001b[7m1\u001b[27m.00\"\u001b[39m\nReceived string: \u001b[31m\"\u001b[7m0\u001b[27m.00\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-4').getByTestId('person-period-2026-03-carried')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"person-period-2026-03-carried\">0.00</span>\u001b[22m\n\u001b[2m  -   unexpected value \"0.00\"\u001b[22m\n"
+      },
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20759,
+        "failure": ""
+      },
+      {
+        "test_id": "cp218_review-assignment.spec.ts::review assignment scenario 3",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 21937,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('bulk-settle-batch')\nExpected string: \u001b[32m\"1\"\u001b[39m\nReceived string: \u001b[31m\"\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('bulk-settle-batch')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\n\n  1681 |     await expect(pg_vic.getByTestId(\"rollup-settled-total\")).toHaveText(\"0.00\");\n  1682 |     await expect(pg_vic.getByTestId(\"rollup-open-total\")).toHaveText(\"0.00\");\n> 1683 |     await expect(pg_vic.getByTestId(\"bulk-settle-batch\")).toHaveText(\"1\");\n       |                                                           ^\n  1684 |     await expect(pg_vic.getByTestId(\"rollup-cut-total\")).toHaveText(\"0.00\");\n  1685 |     await expect(pg_vic.getByTestId(\"rollup-aged-0-30\")).toHaveText(\"0.00\");\n  1686 |     await expect(pg_vic.getByTestId(\"rollup-aged-31-60\")).toHaveText(\"0.00\");\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp218_review-assignment.spec.ts:1683:59 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('bulk-settle-batch')\nExpected string: \u001b[32m\"1\"\u001b[39m\nReceived string: \u001b[31m\"\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('bulk-settle-batch')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"bulk-settle-batch\"></span>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n"
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

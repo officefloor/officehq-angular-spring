@@ -1,0 +1,5378 @@
+{
+  "checkpoint": 170,
+  "checkpoint_id": "cp170_rate-calendar",
+  "kind": "full",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 10,
+  "branch": "evolve/202610271-as/just-solve/chain10",
+  "commit_sha": "8894e1390ffbf2ddf4ec86a64c9ece0efab62df6",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-18T11:03:21",
+  "seconds": 3936,
+  "build_log_file": "cp170.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "full",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 668,
+    "results": {
+      "cp01_signin-and-sheet.spec.ts::signin and sheet": true,
+      "cp02_sheet-today.spec.ts::sheet today": true,
+      "cp03_people.spec.ts::people": true,
+      "cp04_name-uniqueness.spec.ts::name uniqueness": true,
+      "cp05_claims.spec.ts::claims": true,
+      "cp05_claims.spec.ts::claims scenario 1": true,
+      "cp05_claims.spec.ts::claims scenario 2": true,
+      "cp05_claims.spec.ts::claims scenario 3": true,
+      "cp06_audit.spec.ts::audit": true,
+      "cp06_audit.spec.ts::audit scenario 1": true,
+      "cp06_audit.spec.ts::audit scenario 2": true,
+      "cp06_audit.spec.ts::audit scenario 3": true,
+      "cp07_rates-and-due.spec.ts::rates and due": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 1": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 2": true,
+      "cp07_rates-and-due.spec.ts::rates and due scenario 3": true,
+      "cp08_workflow.spec.ts::workflow": true,
+      "cp08_workflow.spec.ts::workflow scenario 1": true,
+      "cp08_workflow.spec.ts::workflow scenario 2": true,
+      "cp08_workflow.spec.ts::workflow scenario 3": true,
+      "cp09_numbering.spec.ts::numbering": true,
+      "cp09_numbering.spec.ts::numbering scenario 1": true,
+      "cp09_numbering.spec.ts::numbering scenario 2": true,
+      "cp09_numbering.spec.ts::numbering scenario 3": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 1": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 2": true,
+      "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 3": true,
+      "cp100_batch-all-or-nothing.spec.ts::batch all or nothing": true,
+      "cp100_batch-all-or-nothing.spec.ts::batch all or nothing scenario 1": true,
+      "cp100_batch-all-or-nothing.spec.ts::batch all or nothing scenario 2": true,
+      "cp100_batch-all-or-nothing.spec.ts::batch all or nothing scenario 3": true,
+      "cp101_audit-viewer.spec.ts::audit viewer": true,
+      "cp101_audit-viewer.spec.ts::audit viewer scenario 1": true,
+      "cp101_audit-viewer.spec.ts::audit viewer scenario 2": true,
+      "cp101_audit-viewer.spec.ts::audit viewer scenario 3": true,
+      "cp102_aliases.spec.ts::aliases": true,
+      "cp102_aliases.spec.ts::aliases scenario 1": true,
+      "cp102_aliases.spec.ts::aliases scenario 2": true,
+      "cp102_aliases.spec.ts::aliases scenario 3": true,
+      "cp103_claim-templates.spec.ts::claim templates": true,
+      "cp103_claim-templates.spec.ts::claim templates scenario 1": true,
+      "cp103_claim-templates.spec.ts::claim templates scenario 2": true,
+      "cp103_claim-templates.spec.ts::claim templates scenario 3": true,
+      "cp104_reassign-renumbers.spec.ts::reassign renumbers": true,
+      "cp104_reassign-renumbers.spec.ts::reassign renumbers scenario 1": true,
+      "cp104_reassign-renumbers.spec.ts::reassign renumbers scenario 2": true,
+      "cp104_reassign-renumbers.spec.ts::reassign renumbers scenario 3": true,
+      "cp105_pools.spec.ts::pools": true,
+      "cp105_pools.spec.ts::pools scenario 1": true,
+      "cp105_pools.spec.ts::pools scenario 2": true,
+      "cp105_pools.spec.ts::pools scenario 3": true,
+      "cp106_pool-cuts.spec.ts::pool cuts": true,
+      "cp106_pool-cuts.spec.ts::pool cuts scenario 1": true,
+      "cp106_pool-cuts.spec.ts::pool cuts scenario 2": true,
+      "cp106_pool-cuts.spec.ts::pool cuts scenario 3": true,
+      "cp107_merge-people.spec.ts::merge people": true,
+      "cp107_merge-people.spec.ts::merge people scenario 1": true,
+      "cp107_merge-people.spec.ts::merge people scenario 2": true,
+      "cp107_merge-people.spec.ts::merge people scenario 3": true,
+      "cp108_patron-shares.spec.ts::patron shares": true,
+      "cp108_patron-shares.spec.ts::patron shares scenario 1": true,
+      "cp108_patron-shares.spec.ts::patron shares scenario 2": true,
+      "cp108_patron-shares.spec.ts::patron shares scenario 3": true,
+      "cp109_parent-sheet-rates.spec.ts::parent sheet rates": true,
+      "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 1": true,
+      "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 2": true,
+      "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 3": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 1": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 2": true,
+      "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 3": true,
+      "cp110_consolidated-figures.spec.ts::consolidated figures": true,
+      "cp110_consolidated-figures.spec.ts::consolidated figures scenario 1": true,
+      "cp110_consolidated-figures.spec.ts::consolidated figures scenario 2": true,
+      "cp110_consolidated-figures.spec.ts::consolidated figures scenario 3": true,
+      "cp111_transfer-person.spec.ts::transfer person": false,
+      "cp111_transfer-person.spec.ts::transfer person scenario 1": true,
+      "cp111_transfer-person.spec.ts::transfer person scenario 2": true,
+      "cp111_transfer-person.spec.ts::transfer person scenario 3": true,
+      "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree": true,
+      "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 1": true,
+      "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 2": true,
+      "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 3": true,
+      "cp113_import-people.spec.ts::import people": true,
+      "cp113_import-people.spec.ts::import people scenario 1": true,
+      "cp113_import-people.spec.ts::import people scenario 2": true,
+      "cp113_import-people.spec.ts::import people scenario 3": true,
+      "cp114_delete-and-restore-draft.spec.ts::delete and restore draft": true,
+      "cp114_delete-and-restore-draft.spec.ts::delete and restore draft scenario 1": true,
+      "cp114_delete-and-restore-draft.spec.ts::delete and restore draft scenario 2": true,
+      "cp114_delete-and-restore-draft.spec.ts::delete and restore draft scenario 3": true,
+      "cp115_nested-pools.spec.ts::nested pools": true,
+      "cp115_nested-pools.spec.ts::nested pools scenario 1": true,
+      "cp115_nested-pools.spec.ts::nested pools scenario 2": true,
+      "cp115_nested-pools.spec.ts::nested pools scenario 3": true,
+      "cp116_import-upserts.spec.ts::import upserts": true,
+      "cp116_import-upserts.spec.ts::import upserts scenario 1": true,
+      "cp116_import-upserts.spec.ts::import upserts scenario 2": true,
+      "cp116_import-upserts.spec.ts::import upserts scenario 3": true,
+      "cp117_list-positions.spec.ts::list positions": true,
+      "cp117_list-positions.spec.ts::list positions scenario 1": true,
+      "cp117_list-positions.spec.ts::list positions scenario 2": true,
+      "cp117_list-positions.spec.ts::list positions scenario 3": true,
+      "cp118_import-rates.spec.ts::import rates": true,
+      "cp118_import-rates.spec.ts::import rates scenario 1": true,
+      "cp118_import-rates.spec.ts::import rates scenario 2": true,
+      "cp118_import-rates.spec.ts::import rates scenario 3": true,
+      "cp119_cut-totals.spec.ts::cut totals": true,
+      "cp119_cut-totals.spec.ts::cut totals scenario 1": true,
+      "cp119_cut-totals.spec.ts::cut totals scenario 2": true,
+      "cp119_cut-totals.spec.ts::cut totals scenario 3": true,
+      "cp12_half-even.spec.ts::half even": true,
+      "cp12_half-even.spec.ts::half even scenario 1": true,
+      "cp12_half-even.spec.ts::half even scenario 2": true,
+      "cp12_half-even.spec.ts::half even scenario 3": true,
+      "cp120_hold-pauses-cuts.spec.ts::hold pauses cuts": true,
+      "cp120_hold-pauses-cuts.spec.ts::hold pauses cuts scenario 1": true,
+      "cp120_hold-pauses-cuts.spec.ts::hold pauses cuts scenario 2": true,
+      "cp120_hold-pauses-cuts.spec.ts::hold pauses cuts scenario 3": true,
+      "cp121_history-follows.spec.ts::history follows": true,
+      "cp121_history-follows.spec.ts::history follows scenario 1": true,
+      "cp121_history-follows.spec.ts::history follows scenario 2": true,
+      "cp121_history-follows.spec.ts::history follows scenario 3": true,
+      "cp122_pool-membership-dated.spec.ts::pool membership dated": true,
+      "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 1": true,
+      "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 2": true,
+      "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 3": true,
+      "cp123_bulk-retire.spec.ts::bulk retire": true,
+      "cp123_bulk-retire.spec.ts::bulk retire scenario 1": true,
+      "cp123_bulk-retire.spec.ts::bulk retire scenario 2": true,
+      "cp123_bulk-retire.spec.ts::bulk retire scenario 3": true,
+      "cp124_retired-share-reallocates.spec.ts::retired share reallocates": true,
+      "cp124_retired-share-reallocates.spec.ts::retired share reallocates scenario 1": true,
+      "cp124_retired-share-reallocates.spec.ts::retired share reallocates scenario 2": true,
+      "cp124_retired-share-reallocates.spec.ts::retired share reallocates scenario 3": true,
+      "cp125_unretire.spec.ts::unretire": true,
+      "cp125_unretire.spec.ts::unretire scenario 1": true,
+      "cp125_unretire.spec.ts::unretire scenario 2": true,
+      "cp125_unretire.spec.ts::unretire scenario 3": true,
+      "cp126_clone-sheet.spec.ts::clone sheet": true,
+      "cp126_clone-sheet.spec.ts::clone sheet scenario 1": true,
+      "cp126_clone-sheet.spec.ts::clone sheet scenario 2": true,
+      "cp126_clone-sheet.spec.ts::clone sheet scenario 3": true,
+      "cp127_my-figures.spec.ts::my figures": true,
+      "cp127_my-figures.spec.ts::my figures scenario 1": true,
+      "cp127_my-figures.spec.ts::my figures scenario 2": true,
+      "cp127_my-figures.spec.ts::my figures scenario 3": true,
+      "cp128_transfer-merges.spec.ts::transfer merges": true,
+      "cp128_transfer-merges.spec.ts::transfer merges scenario 1": true,
+      "cp128_transfer-merges.spec.ts::transfer merges scenario 2": true,
+      "cp128_transfer-merges.spec.ts::transfer merges scenario 3": true,
+      "cp129_export-claims.spec.ts::export claims": true,
+      "cp129_export-claims.spec.ts::export claims scenario 1": true,
+      "cp129_export-claims.spec.ts::export claims scenario 2": true,
+      "cp129_export-claims.spec.ts::export claims scenario 3": true,
+      "cp13_four-eyes.spec.ts::four eyes": true,
+      "cp13_four-eyes.spec.ts::four eyes scenario 1": true,
+      "cp13_four-eyes.spec.ts::four eyes scenario 2": true,
+      "cp13_four-eyes.spec.ts::four eyes scenario 3": true,
+      "cp130_period-comparison.spec.ts::period comparison": true,
+      "cp130_period-comparison.spec.ts::period comparison scenario 1": true,
+      "cp130_period-comparison.spec.ts::period comparison scenario 2": true,
+      "cp130_period-comparison.spec.ts::period comparison scenario 3": true,
+      "cp131_plans.spec.ts::plans": true,
+      "cp131_plans.spec.ts::plans scenario 1": true,
+      "cp131_plans.spec.ts::plans scenario 2": true,
+      "cp131_plans.spec.ts::plans scenario 3": true,
+      "cp132_tree-numbering.spec.ts::tree numbering": true,
+      "cp132_tree-numbering.spec.ts::tree numbering scenario 1": true,
+      "cp132_tree-numbering.spec.ts::tree numbering scenario 2": true,
+      "cp132_tree-numbering.spec.ts::tree numbering scenario 3": true,
+      "cp133_person-tags.spec.ts::person tags": true,
+      "cp133_person-tags.spec.ts::person tags scenario 1": true,
+      "cp133_person-tags.spec.ts::person tags scenario 2": true,
+      "cp133_person-tags.spec.ts::person tags scenario 3": true,
+      "cp134_sorting.spec.ts::sorting": true,
+      "cp134_sorting.spec.ts::sorting scenario 1": true,
+      "cp134_sorting.spec.ts::sorting scenario 2": true,
+      "cp134_sorting.spec.ts::sorting scenario 3": true,
+      "cp135_export-pools.spec.ts::export pools": true,
+      "cp135_export-pools.spec.ts::export pools scenario 1": true,
+      "cp135_export-pools.spec.ts::export pools scenario 2": true,
+      "cp135_export-pools.spec.ts::export pools scenario 3": true,
+      "cp136_bindings-follow.spec.ts::bindings follow": true,
+      "cp136_bindings-follow.spec.ts::bindings follow scenario 1": true,
+      "cp136_bindings-follow.spec.ts::bindings follow scenario 2": true,
+      "cp136_bindings-follow.spec.ts::bindings follow scenario 3": true,
+      "cp137_claim-lines.spec.ts::claim lines": true,
+      "cp137_claim-lines.spec.ts::claim lines scenario 1": true,
+      "cp137_claim-lines.spec.ts::claim lines scenario 2": true,
+      "cp137_claim-lines.spec.ts::claim lines scenario 3": true,
+      "cp138_inline-grade.spec.ts::inline grade": true,
+      "cp138_inline-grade.spec.ts::inline grade scenario 1": true,
+      "cp138_inline-grade.spec.ts::inline grade scenario 2": true,
+      "cp138_inline-grade.spec.ts::inline grade scenario 3": true,
+      "cp139_tree-audit.spec.ts::tree audit": true,
+      "cp139_tree-audit.spec.ts::tree audit scenario 1": true,
+      "cp139_tree-audit.spec.ts::tree audit scenario 2": true,
+      "cp139_tree-audit.spec.ts::tree audit scenario 3": true,
+      "cp14_edit-conflict.spec.ts::edit conflict": true,
+      "cp14_edit-conflict.spec.ts::edit conflict scenario 1": true,
+      "cp14_edit-conflict.spec.ts::edit conflict scenario 2": true,
+      "cp14_edit-conflict.spec.ts::edit conflict scenario 3": true,
+      "cp140_remainder-to-smallest.spec.ts::remainder to smallest": true,
+      "cp140_remainder-to-smallest.spec.ts::remainder to smallest scenario 1": true,
+      "cp140_remainder-to-smallest.spec.ts::remainder to smallest scenario 2": true,
+      "cp140_remainder-to-smallest.spec.ts::remainder to smallest scenario 3": true,
+      "cp141_monthly-plans.spec.ts::monthly plans": true,
+      "cp141_monthly-plans.spec.ts::monthly plans scenario 1": true,
+      "cp141_monthly-plans.spec.ts::monthly plans scenario 2": true,
+      "cp141_monthly-plans.spec.ts::monthly plans scenario 3": true,
+      "cp142_plan-preview.spec.ts::plan preview": true,
+      "cp142_plan-preview.spec.ts::plan preview scenario 1": true,
+      "cp142_plan-preview.spec.ts::plan preview scenario 2": true,
+      "cp142_plan-preview.spec.ts::plan preview scenario 3": true,
+      "cp143_fiscal-year.spec.ts::fiscal year": true,
+      "cp143_fiscal-year.spec.ts::fiscal year scenario 1": true,
+      "cp143_fiscal-year.spec.ts::fiscal year scenario 2": true,
+      "cp143_fiscal-year.spec.ts::fiscal year scenario 3": true,
+      "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year": true,
+      "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year scenario 1": true,
+      "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year scenario 2": true,
+      "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year scenario 3": true,
+      "cp145_bulk-redate.spec.ts::bulk redate": true,
+      "cp145_bulk-redate.spec.ts::bulk redate scenario 1": true,
+      "cp145_bulk-redate.spec.ts::bulk redate scenario 2": true,
+      "cp145_bulk-redate.spec.ts::bulk redate scenario 3": true,
+      "cp146_over-threshold-alert.spec.ts::over threshold alert": true,
+      "cp146_over-threshold-alert.spec.ts::over threshold alert scenario 1": true,
+      "cp146_over-threshold-alert.spec.ts::over threshold alert scenario 2": true,
+      "cp146_over-threshold-alert.spec.ts::over threshold alert scenario 3": true,
+      "cp147_snapshot-lines.spec.ts::snapshot lines": true,
+      "cp147_snapshot-lines.spec.ts::snapshot lines scenario 1": true,
+      "cp147_snapshot-lines.spec.ts::snapshot lines scenario 2": true,
+      "cp147_snapshot-lines.spec.ts::snapshot lines scenario 3": true,
+      "cp148_claimed-without-corrections.spec.ts::claimed without corrections": true,
+      "cp148_claimed-without-corrections.spec.ts::claimed without corrections scenario 1": true,
+      "cp148_claimed-without-corrections.spec.ts::claimed without corrections scenario 2": true,
+      "cp148_claimed-without-corrections.spec.ts::claimed without corrections scenario 3": true,
+      "cp149_period-claim-cap.spec.ts::period claim cap": true,
+      "cp149_period-claim-cap.spec.ts::period claim cap scenario 1": true,
+      "cp149_period-claim-cap.spec.ts::period claim cap scenario 2": true,
+      "cp149_period-claim-cap.spec.ts::period claim cap scenario 3": true,
+      "cp15_statements.spec.ts::statements": true,
+      "cp15_statements.spec.ts::statements scenario 1": true,
+      "cp15_statements.spec.ts::statements scenario 2": true,
+      "cp15_statements.spec.ts::statements scenario 3": true,
+      "cp150_tree-search.spec.ts::tree search": true,
+      "cp150_tree-search.spec.ts::tree search scenario 1": true,
+      "cp150_tree-search.spec.ts::tree search scenario 2": true,
+      "cp150_tree-search.spec.ts::tree search scenario 3": true,
+      "cp151_rounding-mode.spec.ts::rounding mode": true,
+      "cp151_rounding-mode.spec.ts::rounding mode scenario 1": true,
+      "cp151_rounding-mode.spec.ts::rounding mode scenario 2": true,
+      "cp151_rounding-mode.spec.ts::rounding mode scenario 3": true,
+      "cp152_imported-claims-open.spec.ts::imported claims open": true,
+      "cp152_imported-claims-open.spec.ts::imported claims open scenario 1": true,
+      "cp152_imported-claims-open.spec.ts::imported claims open scenario 2": true,
+      "cp152_imported-claims-open.spec.ts::imported claims open scenario 3": true,
+      "cp153_rate-versions.spec.ts::rate versions": true,
+      "cp153_rate-versions.spec.ts::rate versions scenario 1": true,
+      "cp153_rate-versions.spec.ts::rate versions scenario 2": true,
+      "cp153_rate-versions.spec.ts::rate versions scenario 3": true,
+      "cp154_classic-summary.spec.ts::classic summary": true,
+      "cp154_classic-summary.spec.ts::classic summary scenario 1": true,
+      "cp154_classic-summary.spec.ts::classic summary scenario 2": true,
+      "cp154_classic-summary.spec.ts::classic summary scenario 3": true,
+      "cp155_review-state.spec.ts::review state": true,
+      "cp155_review-state.spec.ts::review state scenario 1": true,
+      "cp155_review-state.spec.ts::review state scenario 2": true,
+      "cp155_review-state.spec.ts::review state scenario 3": true,
+      "cp156_forward-only-rates.spec.ts::forward only rates": true,
+      "cp156_forward-only-rates.spec.ts::forward only rates scenario 1": true,
+      "cp156_forward-only-rates.spec.ts::forward only rates scenario 2": true,
+      "cp156_forward-only-rates.spec.ts::forward only rates scenario 3": true,
+      "cp157_user-locale.spec.ts::user locale": true,
+      "cp157_user-locale.spec.ts::user locale scenario 1": true,
+      "cp157_user-locale.spec.ts::user locale scenario 2": true,
+      "cp157_user-locale.spec.ts::user locale scenario 3": true,
+      "cp158_column-chooser.spec.ts::column chooser": false,
+      "cp158_column-chooser.spec.ts::column chooser scenario 1": true,
+      "cp158_column-chooser.spec.ts::column chooser scenario 2": true,
+      "cp158_column-chooser.spec.ts::column chooser scenario 3": true,
+      "cp159_carried-figures.spec.ts::carried figures": true,
+      "cp159_carried-figures.spec.ts::carried figures scenario 1": true,
+      "cp159_carried-figures.spec.ts::carried figures scenario 2": true,
+      "cp159_carried-figures.spec.ts::carried figures scenario 3": true,
+      "cp16_rollup-audit.spec.ts::rollup audit": true,
+      "cp16_rollup-audit.spec.ts::rollup audit scenario 1": true,
+      "cp16_rollup-audit.spec.ts::rollup audit scenario 2": true,
+      "cp16_rollup-audit.spec.ts::rollup audit scenario 3": true,
+      "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree": true,
+      "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree scenario 1": true,
+      "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree scenario 2": true,
+      "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree scenario 3": true,
+      "cp161_as-of-exports.spec.ts::as of exports": true,
+      "cp161_as-of-exports.spec.ts::as of exports scenario 1": true,
+      "cp161_as-of-exports.spec.ts::as of exports scenario 2": true,
+      "cp161_as-of-exports.spec.ts::as of exports scenario 3": true,
+      "cp162_claim-timeline.spec.ts::claim timeline": true,
+      "cp162_claim-timeline.spec.ts::claim timeline scenario 1": true,
+      "cp162_claim-timeline.spec.ts::claim timeline scenario 2": true,
+      "cp162_claim-timeline.spec.ts::claim timeline scenario 3": true,
+      "cp163_statement-lines.spec.ts::statement lines": true,
+      "cp163_statement-lines.spec.ts::statement lines scenario 1": true,
+      "cp163_statement-lines.spec.ts::statement lines scenario 2": false,
+      "cp163_statement-lines.spec.ts::statement lines scenario 3": true,
+      "cp164_correction-limit.spec.ts::correction limit": true,
+      "cp164_correction-limit.spec.ts::correction limit scenario 1": true,
+      "cp164_correction-limit.spec.ts::correction limit scenario 2": true,
+      "cp164_correction-limit.spec.ts::correction limit scenario 3": true,
+      "cp165_escalate.spec.ts::escalate": true,
+      "cp165_escalate.spec.ts::escalate scenario 1": true,
+      "cp165_escalate.spec.ts::escalate scenario 2": true,
+      "cp165_escalate.spec.ts::escalate scenario 3": true,
+      "cp166_crews.spec.ts::crews": true,
+      "cp166_crews.spec.ts::crews scenario 1": true,
+      "cp166_crews.spec.ts::crews scenario 2": true,
+      "cp166_crews.spec.ts::crews scenario 3": true,
+      "cp167_crew-lead-total.spec.ts::crew lead total": true,
+      "cp167_crew-lead-total.spec.ts::crew lead total scenario 1": true,
+      "cp167_crew-lead-total.spec.ts::crew lead total scenario 2": true,
+      "cp167_crew-lead-total.spec.ts::crew lead total scenario 3": true,
+      "cp168_crews-are-pools.spec.ts::crews are pools": true,
+      "cp168_crews-are-pools.spec.ts::crews are pools scenario 1": true,
+      "cp168_crews-are-pools.spec.ts::crews are pools scenario 2": true,
+      "cp168_crews-are-pools.spec.ts::crews are pools scenario 3": true,
+      "cp169_person-terms-dated.spec.ts::person terms dated": true,
+      "cp169_person-terms-dated.spec.ts::person terms dated scenario 1": true,
+      "cp169_person-terms-dated.spec.ts::person terms dated scenario 2": true,
+      "cp169_person-terms-dated.spec.ts::person terms dated scenario 3": true,
+      "cp17_periods.spec.ts::periods": true,
+      "cp17_periods.spec.ts::periods scenario 1": true,
+      "cp17_periods.spec.ts::periods scenario 2": true,
+      "cp17_periods.spec.ts::periods scenario 3": true,
+      "cp170_rate-calendar.spec.ts::rate calendar": true,
+      "cp170_rate-calendar.spec.ts::rate calendar scenario 1": true,
+      "cp170_rate-calendar.spec.ts::rate calendar scenario 2": true,
+      "cp170_rate-calendar.spec.ts::rate calendar scenario 3": true,
+      "cp18_close-period.spec.ts::close period": true,
+      "cp18_close-period.spec.ts::close period scenario 1": true,
+      "cp18_close-period.spec.ts::close period scenario 2": true,
+      "cp18_close-period.spec.ts::close period scenario 3": true,
+      "cp19_quick-add.spec.ts::quick add": true,
+      "cp19_quick-add.spec.ts::quick add scenario 1": true,
+      "cp19_quick-add.spec.ts::quick add scenario 2": true,
+      "cp19_quick-add.spec.ts::quick add scenario 3": true,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable": true,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 1": true,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 2": true,
+      "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 3": true,
+      "cp21_retire.spec.ts::retire": true,
+      "cp21_retire.spec.ts::retire scenario 1": true,
+      "cp21_retire.spec.ts::retire scenario 2": true,
+      "cp21_retire.spec.ts::retire scenario 3": true,
+      "cp22_hold.spec.ts::hold": true,
+      "cp22_hold.spec.ts::hold scenario 1": true,
+      "cp22_hold.spec.ts::hold scenario 2": true,
+      "cp22_hold.spec.ts::hold scenario 3": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 1": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 2": true,
+      "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 3": true,
+      "cp24_floor.spec.ts::floor": true,
+      "cp24_floor.spec.ts::floor scenario 1": true,
+      "cp24_floor.spec.ts::floor scenario 2": true,
+      "cp24_floor.spec.ts::floor scenario 3": true,
+      "cp25_due-by-and-overdue.spec.ts::due by and overdue": true,
+      "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 1": true,
+      "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 2": true,
+      "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 3": true,
+      "cp26_late-charge.spec.ts::late charge": true,
+      "cp26_late-charge.spec.ts::late charge scenario 1": true,
+      "cp26_late-charge.spec.ts::late charge scenario 2": true,
+      "cp26_late-charge.spec.ts::late charge scenario 3": true,
+      "cp27_patrons-and-backing.spec.ts::patrons and backing": true,
+      "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 1": true,
+      "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2": true,
+      "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 3": true,
+      "cp28_grade-dated.spec.ts::grade dated": true,
+      "cp28_grade-dated.spec.ts::grade dated scenario 1": true,
+      "cp28_grade-dated.spec.ts::grade dated scenario 2": true,
+      "cp28_grade-dated.spec.ts::grade dated scenario 3": true,
+      "cp29_reopen-period.spec.ts::reopen period": true,
+      "cp29_reopen-period.spec.ts::reopen period scenario 1": true,
+      "cp29_reopen-period.spec.ts::reopen period scenario 2": true,
+      "cp29_reopen-period.spec.ts::reopen period scenario 3": true,
+      "cp30_corrections.spec.ts::corrections": true,
+      "cp30_corrections.spec.ts::corrections scenario 1": true,
+      "cp30_corrections.spec.ts::corrections scenario 2": true,
+      "cp30_corrections.spec.ts::corrections scenario 3": true,
+      "cp31_summary.spec.ts::summary": true,
+      "cp31_summary.spec.ts::summary scenario 1": true,
+      "cp31_summary.spec.ts::summary scenario 2": true,
+      "cp31_summary.spec.ts::summary scenario 3": true,
+      "cp32_rounding-policy-date.spec.ts::rounding policy date": true,
+      "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1": true,
+      "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 2": true,
+      "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 3": true,
+      "cp33_export-people.spec.ts::export people": true,
+      "cp33_export-people.spec.ts::export people scenario 1": true,
+      "cp33_export-people.spec.ts::export people scenario 2": true,
+      "cp33_export-people.spec.ts::export people scenario 3": true,
+      "cp34_bulk-open.spec.ts::bulk open": true,
+      "cp34_bulk-open.spec.ts::bulk open scenario 1": true,
+      "cp34_bulk-open.spec.ts::bulk open scenario 2": true,
+      "cp34_bulk-open.spec.ts::bulk open scenario 3": true,
+      "cp35_numbering-per-period.spec.ts::numbering per period": true,
+      "cp35_numbering-per-period.spec.ts::numbering per period scenario 1": true,
+      "cp35_numbering-per-period.spec.ts::numbering per period scenario 2": true,
+      "cp35_numbering-per-period.spec.ts::numbering per period scenario 3": true,
+      "cp36_approvals.spec.ts::approvals": true,
+      "cp36_approvals.spec.ts::approvals scenario 1": true,
+      "cp36_approvals.spec.ts::approvals scenario 2": true,
+      "cp36_approvals.spec.ts::approvals scenario 3": true,
+      "cp37_reassign-claim.spec.ts::reassign claim": true,
+      "cp37_reassign-claim.spec.ts::reassign claim scenario 1": true,
+      "cp37_reassign-claim.spec.ts::reassign claim scenario 2": true,
+      "cp37_reassign-claim.spec.ts::reassign claim scenario 3": true,
+      "cp38_terms-per-grade.spec.ts::terms per grade": true,
+      "cp38_terms-per-grade.spec.ts::terms per grade scenario 1": true,
+      "cp38_terms-per-grade.spec.ts::terms per grade scenario 2": true,
+      "cp38_terms-per-grade.spec.ts::terms per grade scenario 3": true,
+      "cp39_claim-log.spec.ts::claim log": true,
+      "cp39_claim-log.spec.ts::claim log scenario 1": true,
+      "cp39_claim-log.spec.ts::claim log scenario 2": true,
+      "cp39_claim-log.spec.ts::claim log scenario 3": true,
+      "cp40_hold-interval.spec.ts::hold interval": true,
+      "cp40_hold-interval.spec.ts::hold interval scenario 1": true,
+      "cp40_hold-interval.spec.ts::hold interval scenario 2": true,
+      "cp40_hold-interval.spec.ts::hold interval scenario 3": true,
+      "cp41_header-counters.spec.ts::header counters": true,
+      "cp41_header-counters.spec.ts::header counters scenario 1": true,
+      "cp41_header-counters.spec.ts::header counters scenario 2": true,
+      "cp41_header-counters.spec.ts::header counters scenario 3": true,
+      "cp42_rate-end-dates.spec.ts::rate end dates": true,
+      "cp42_rate-end-dates.spec.ts::rate end dates scenario 1": true,
+      "cp42_rate-end-dates.spec.ts::rate end dates scenario 2": true,
+      "cp42_rate-end-dates.spec.ts::rate end dates scenario 3": true,
+      "cp43_cap.spec.ts::cap": true,
+      "cp43_cap.spec.ts::cap scenario 1": true,
+      "cp43_cap.spec.ts::cap scenario 2": true,
+      "cp43_cap.spec.ts::cap scenario 3": true,
+      "cp44_rollup-overdue.spec.ts::rollup overdue": true,
+      "cp44_rollup-overdue.spec.ts::rollup overdue scenario 1": true,
+      "cp44_rollup-overdue.spec.ts::rollup overdue scenario 2": true,
+      "cp44_rollup-overdue.spec.ts::rollup overdue scenario 3": true,
+      "cp45_bulk-settle.spec.ts::bulk settle": true,
+      "cp45_bulk-settle.spec.ts::bulk settle scenario 1": true,
+      "cp45_bulk-settle.spec.ts::bulk settle scenario 2": true,
+      "cp45_bulk-settle.spec.ts::bulk settle scenario 3": true,
+      "cp46_re-settle.spec.ts::re settle": true,
+      "cp46_re-settle.spec.ts::re settle scenario 1": true,
+      "cp46_re-settle.spec.ts::re settle scenario 2": true,
+      "cp46_re-settle.spec.ts::re settle scenario 3": true,
+      "cp47_person-period-figures.spec.ts::person period figures": true,
+      "cp47_person-period-figures.spec.ts::person period figures scenario 1": true,
+      "cp47_person-period-figures.spec.ts::person period figures scenario 2": true,
+      "cp47_person-period-figures.spec.ts::person period figures scenario 3": true,
+      "cp48_dated-settings.spec.ts::dated settings": true,
+      "cp48_dated-settings.spec.ts::dated settings scenario 1": true,
+      "cp48_dated-settings.spec.ts::dated settings scenario 2": true,
+      "cp48_dated-settings.spec.ts::dated settings scenario 3": true,
+      "cp49_paste-claims.spec.ts::paste claims": true,
+      "cp49_paste-claims.spec.ts::paste claims scenario 1": true,
+      "cp49_paste-claims.spec.ts::paste claims scenario 2": true,
+      "cp49_paste-claims.spec.ts::paste claims scenario 3": true,
+      "cp50_deferred-claims.spec.ts::deferred claims": true,
+      "cp50_deferred-claims.spec.ts::deferred claims scenario 1": true,
+      "cp50_deferred-claims.spec.ts::deferred claims scenario 2": true,
+      "cp50_deferred-claims.spec.ts::deferred claims scenario 3": true,
+      "cp51_proofs.spec.ts::proofs": true,
+      "cp51_proofs.spec.ts::proofs scenario 1": true,
+      "cp51_proofs.spec.ts::proofs scenario 2": true,
+      "cp51_proofs.spec.ts::proofs scenario 3": true,
+      "cp52_period-status-as-of-end.spec.ts::period status as of end": true,
+      "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 1": true,
+      "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2": true,
+      "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 3": true,
+      "cp53_permission-matrix.spec.ts::permission matrix": true,
+      "cp53_permission-matrix.spec.ts::permission matrix scenario 1": true,
+      "cp53_permission-matrix.spec.ts::permission matrix scenario 2": true,
+      "cp53_permission-matrix.spec.ts::permission matrix scenario 3": true,
+      "cp54_viewer-role.spec.ts::viewer role": true,
+      "cp54_viewer-role.spec.ts::viewer role scenario 1": true,
+      "cp54_viewer-role.spec.ts::viewer role scenario 2": true,
+      "cp54_viewer-role.spec.ts::viewer role scenario 3": true,
+      "cp55_auto-close.spec.ts::auto close": true,
+      "cp55_auto-close.spec.ts::auto close scenario 1": true,
+      "cp55_auto-close.spec.ts::auto close scenario 2": true,
+      "cp55_auto-close.spec.ts::auto close scenario 3": true,
+      "cp56_late-per-boundary.spec.ts::late per boundary": true,
+      "cp56_late-per-boundary.spec.ts::late per boundary scenario 1": true,
+      "cp56_late-per-boundary.spec.ts::late per boundary scenario 2": true,
+      "cp56_late-per-boundary.spec.ts::late per boundary scenario 3": true,
+      "cp57_split-claim.spec.ts::split claim": true,
+      "cp57_split-claim.spec.ts::split claim scenario 1": true,
+      "cp57_split-claim.spec.ts::split claim scenario 2": true,
+      "cp57_split-claim.spec.ts::split claim scenario 3": true,
+      "cp58_watch-and-notify.spec.ts::watch and notify": true,
+      "cp58_watch-and-notify.spec.ts::watch and notify scenario 1": true,
+      "cp58_watch-and-notify.spec.ts::watch and notify scenario 2": true,
+      "cp58_watch-and-notify.spec.ts::watch and notify scenario 3": true,
+      "cp59_period-templates.spec.ts::period templates": true,
+      "cp59_period-templates.spec.ts::period templates scenario 1": true,
+      "cp59_period-templates.spec.ts::period templates scenario 2": true,
+      "cp59_period-templates.spec.ts::period templates scenario 3": true,
+      "cp60_trimmed-totals.spec.ts::trimmed totals": true,
+      "cp60_trimmed-totals.spec.ts::trimmed totals scenario 1": true,
+      "cp60_trimmed-totals.spec.ts::trimmed totals scenario 2": true,
+      "cp60_trimmed-totals.spec.ts::trimmed totals scenario 3": true,
+      "cp61_delegation.spec.ts::delegation": true,
+      "cp61_delegation.spec.ts::delegation scenario 1": true,
+      "cp61_delegation.spec.ts::delegation scenario 2": true,
+      "cp61_delegation.spec.ts::delegation scenario 3": true,
+      "cp62_archive-sheet.spec.ts::archive sheet": true,
+      "cp62_archive-sheet.spec.ts::archive sheet scenario 1": true,
+      "cp62_archive-sheet.spec.ts::archive sheet scenario 2": true,
+      "cp62_archive-sheet.spec.ts::archive sheet scenario 3": true,
+      "cp63_person-terms.spec.ts::person terms": true,
+      "cp63_person-terms.spec.ts::person terms scenario 1": true,
+      "cp63_person-terms.spec.ts::person terms scenario 2": true,
+      "cp63_person-terms.spec.ts::person terms scenario 3": true,
+      "cp64_floor-after-late.spec.ts::floor after late": true,
+      "cp64_floor-after-late.spec.ts::floor after late scenario 1": true,
+      "cp64_floor-after-late.spec.ts::floor after late scenario 2": true,
+      "cp64_floor-after-late.spec.ts::floor after late scenario 3": true,
+      "cp65_void-settled.spec.ts::void settled": true,
+      "cp65_void-settled.spec.ts::void settled scenario 1": true,
+      "cp65_void-settled.spec.ts::void settled scenario 2": true,
+      "cp65_void-settled.spec.ts::void settled scenario 3": true,
+      "cp66_redate-claim.spec.ts::redate claim": true,
+      "cp66_redate-claim.spec.ts::redate claim scenario 1": true,
+      "cp66_redate-claim.spec.ts::redate claim scenario 2": true,
+      "cp66_redate-claim.spec.ts::redate claim scenario 3": true,
+      "cp67_active-people.spec.ts::active people": true,
+      "cp67_active-people.spec.ts::active people scenario 1": true,
+      "cp67_active-people.spec.ts::active people scenario 2": true,
+      "cp67_active-people.spec.ts::active people scenario 3": true,
+      "cp68_backing-recent-settled.spec.ts::backing recent settled": true,
+      "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 1": true,
+      "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 2": true,
+      "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 3": true,
+      "cp69_claim-lock.spec.ts::claim lock": true,
+      "cp69_claim-lock.spec.ts::claim lock scenario 1": true,
+      "cp69_claim-lock.spec.ts::claim lock scenario 2": true,
+      "cp69_claim-lock.spec.ts::claim lock scenario 3": true,
+      "cp70_soft-close.spec.ts::soft close": true,
+      "cp70_soft-close.spec.ts::soft close scenario 1": true,
+      "cp70_soft-close.spec.ts::soft close scenario 2": true,
+      "cp70_soft-close.spec.ts::soft close scenario 3": true,
+      "cp71_cancel-statement.spec.ts::cancel statement": true,
+      "cp71_cancel-statement.spec.ts::cancel statement scenario 1": true,
+      "cp71_cancel-statement.spec.ts::cancel statement scenario 2": true,
+      "cp71_cancel-statement.spec.ts::cancel statement scenario 3": true,
+      "cp72_retired-leave-totals.spec.ts::retired leave totals": true,
+      "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 1": true,
+      "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 2": true,
+      "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 3": true,
+      "cp73_statement-as-of.spec.ts::statement as of": true,
+      "cp73_statement-as-of.spec.ts::statement as of scenario 1": true,
+      "cp73_statement-as-of.spec.ts::statement as of scenario 2": true,
+      "cp73_statement-as-of.spec.ts::statement as of scenario 3": true,
+      "cp74_as-of-view.spec.ts::as of view": true,
+      "cp74_as-of-view.spec.ts::as of view scenario 1": true,
+      "cp74_as-of-view.spec.ts::as of view scenario 2": true,
+      "cp74_as-of-view.spec.ts::as of view scenario 3": true,
+      "cp75_bulk-grade.spec.ts::bulk grade": true,
+      "cp75_bulk-grade.spec.ts::bulk grade scenario 1": true,
+      "cp75_bulk-grade.spec.ts::bulk grade scenario 2": true,
+      "cp75_bulk-grade.spec.ts::bulk grade scenario 3": true,
+      "cp76_snapshots.spec.ts::snapshots": true,
+      "cp76_snapshots.spec.ts::snapshots scenario 1": true,
+      "cp76_snapshots.spec.ts::snapshots scenario 2": true,
+      "cp76_snapshots.spec.ts::snapshots scenario 3": true,
+      "cp77_note-required.spec.ts::note required": true,
+      "cp77_note-required.spec.ts::note required scenario 1": true,
+      "cp77_note-required.spec.ts::note required scenario 2": true,
+      "cp77_note-required.spec.ts::note required scenario 3": true,
+      "cp78_age-buckets.spec.ts::age buckets": true,
+      "cp78_age-buckets.spec.ts::age buckets scenario 1": true,
+      "cp78_age-buckets.spec.ts::age buckets scenario 2": true,
+      "cp78_age-buckets.spec.ts::age buckets scenario 3": true,
+      "cp79_entry-date.spec.ts::entry date": true,
+      "cp79_entry-date.spec.ts::entry date scenario 1": true,
+      "cp79_entry-date.spec.ts::entry date scenario 2": true,
+      "cp79_entry-date.spec.ts::entry date scenario 3": true,
+      "cp80_period-by-due-by.spec.ts::period by due by": true,
+      "cp80_period-by-due-by.spec.ts::period by due by scenario 1": true,
+      "cp80_period-by-due-by.spec.ts::period by due by scenario 2": true,
+      "cp80_period-by-due-by.spec.ts::period by due by scenario 3": true,
+      "cp81_remind.spec.ts::remind": true,
+      "cp81_remind.spec.ts::remind scenario 1": true,
+      "cp81_remind.spec.ts::remind scenario 2": true,
+      "cp81_remind.spec.ts::remind scenario 3": true,
+      "cp82_settled-and-open-totals.spec.ts::settled and open totals": true,
+      "cp82_settled-and-open-totals.spec.ts::settled and open totals scenario 1": true,
+      "cp82_settled-and-open-totals.spec.ts::settled and open totals scenario 2": true,
+      "cp82_settled-and-open-totals.spec.ts::settled and open totals scenario 3": true,
+      "cp83_holidays.spec.ts::holidays": true,
+      "cp83_holidays.spec.ts::holidays scenario 1": true,
+      "cp83_holidays.spec.ts::holidays scenario 2": true,
+      "cp83_holidays.spec.ts::holidays scenario 3": true,
+      "cp84_business-day-terms.spec.ts::business day terms": true,
+      "cp84_business-day-terms.spec.ts::business day terms scenario 1": true,
+      "cp84_business-day-terms.spec.ts::business day terms scenario 2": true,
+      "cp84_business-day-terms.spec.ts::business day terms scenario 3": true,
+      "cp85_grace-per-grade.spec.ts::grace per grade": true,
+      "cp85_grace-per-grade.spec.ts::grace per grade scenario 1": true,
+      "cp85_grace-per-grade.spec.ts::grace per grade scenario 2": true,
+      "cp85_grace-per-grade.spec.ts::grace per grade scenario 3": true,
+      "cp86_inline-amount.spec.ts::inline amount": true,
+      "cp86_inline-amount.spec.ts::inline amount scenario 1": true,
+      "cp86_inline-amount.spec.ts::inline amount scenario 2": true,
+      "cp86_inline-amount.spec.ts::inline amount scenario 3": true,
+      "cp87_external-reference.spec.ts::external reference": true,
+      "cp87_external-reference.spec.ts::external reference scenario 1": true,
+      "cp87_external-reference.spec.ts::external reference scenario 2": true,
+      "cp87_external-reference.spec.ts::external reference scenario 3": true,
+      "cp88_compound-late-charge.spec.ts::compound late charge": true,
+      "cp88_compound-late-charge.spec.ts::compound late charge scenario 1": true,
+      "cp88_compound-late-charge.spec.ts::compound late charge scenario 2": true,
+      "cp88_compound-late-charge.spec.ts::compound late charge scenario 3": true,
+      "cp89_claim-tags.spec.ts::claim tags": true,
+      "cp89_claim-tags.spec.ts::claim tags scenario 1": true,
+      "cp89_claim-tags.spec.ts::claim tags scenario 2": true,
+      "cp89_claim-tags.spec.ts::claim tags scenario 3": true,
+      "cp90_void-reasons.spec.ts::void reasons": true,
+      "cp90_void-reasons.spec.ts::void reasons scenario 1": true,
+      "cp90_void-reasons.spec.ts::void reasons scenario 2": true,
+      "cp90_void-reasons.spec.ts::void reasons scenario 3": true,
+      "cp91_claim-comments.spec.ts::claim comments": true,
+      "cp91_claim-comments.spec.ts::claim comments scenario 1": true,
+      "cp91_claim-comments.spec.ts::claim comments scenario 2": true,
+      "cp91_claim-comments.spec.ts::claim comments scenario 3": true,
+      "cp92_four-eyes-editor.spec.ts::four eyes editor": true,
+      "cp92_four-eyes-editor.spec.ts::four eyes editor scenario 1": true,
+      "cp92_four-eyes-editor.spec.ts::four eyes editor scenario 2": true,
+      "cp92_four-eyes-editor.spec.ts::four eyes editor scenario 3": true,
+      "cp93_bulk-reassign.spec.ts::bulk reassign": true,
+      "cp93_bulk-reassign.spec.ts::bulk reassign scenario 1": true,
+      "cp93_bulk-reassign.spec.ts::bulk reassign scenario 2": true,
+      "cp93_bulk-reassign.spec.ts::bulk reassign scenario 3": true,
+      "cp94_proof-threshold-per-grade.spec.ts::proof threshold per grade": true,
+      "cp94_proof-threshold-per-grade.spec.ts::proof threshold per grade scenario 1": true,
+      "cp94_proof-threshold-per-grade.spec.ts::proof threshold per grade scenario 2": true,
+      "cp94_proof-threshold-per-grade.spec.ts::proof threshold per grade scenario 3": true,
+      "cp95_rate-preview.spec.ts::rate preview": true,
+      "cp95_rate-preview.spec.ts::rate preview scenario 1": true,
+      "cp95_rate-preview.spec.ts::rate preview scenario 2": true,
+      "cp95_rate-preview.spec.ts::rate preview scenario 3": true,
+      "cp96_holidays-redate.spec.ts::holidays redate": true,
+      "cp96_holidays-redate.spec.ts::holidays redate scenario 1": true,
+      "cp96_holidays-redate.spec.ts::holidays redate scenario 2": true,
+      "cp96_holidays-redate.spec.ts::holidays redate scenario 3": true,
+      "cp97_monthly-totals.spec.ts::monthly totals": true,
+      "cp97_monthly-totals.spec.ts::monthly totals scenario 1": true,
+      "cp97_monthly-totals.spec.ts::monthly totals scenario 2": true,
+      "cp97_monthly-totals.spec.ts::monthly totals scenario 3": true,
+      "cp98_settle-batches.spec.ts::settle batches": true,
+      "cp98_settle-batches.spec.ts::settle batches scenario 1": true,
+      "cp98_settle-batches.spec.ts::settle batches scenario 2": true,
+      "cp98_settle-batches.spec.ts::settle batches scenario 3": true,
+      "cp99_person-contact.spec.ts::person contact": true,
+      "cp99_person-contact.spec.ts::person contact scenario 1": true,
+      "cp99_person-contact.spec.ts::person contact scenario 2": true,
+      "cp99_person-contact.spec.ts::person contact scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp01_signin-and-sheet.spec.ts::signin and sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4305,
+        "failure": ""
+      },
+      {
+        "test_id": "cp02_sheet-today.spec.ts::sheet today",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3662,
+        "failure": ""
+      },
+      {
+        "test_id": "cp03_people.spec.ts::people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9194,
+        "failure": ""
+      },
+      {
+        "test_id": "cp04_name-uniqueness.spec.ts::name uniqueness",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7422,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9055,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11745,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11594,
+        "failure": ""
+      },
+      {
+        "test_id": "cp05_claims.spec.ts::claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14057,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7300,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12509,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11247,
+        "failure": ""
+      },
+      {
+        "test_id": "cp06_audit.spec.ts::audit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14985,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6664,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14313,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11048,
+        "failure": ""
+      },
+      {
+        "test_id": "cp07_rates-and-due.spec.ts::rates and due scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14849,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10353,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12200,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9849,
+        "failure": ""
+      },
+      {
+        "test_id": "cp08_workflow.spec.ts::workflow scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15712,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4995,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12717,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16725,
+        "failure": ""
+      },
+      {
+        "test_id": "cp09_numbering.spec.ts::numbering scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12338,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3538,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11200,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10378,
+        "failure": ""
+      },
+      {
+        "test_id": "cp10_settle-freezes-due.spec.ts::settle freezes due scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12032,
+        "failure": ""
+      },
+      {
+        "test_id": "cp100_batch-all-or-nothing.spec.ts::batch all or nothing",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10371,
+        "failure": ""
+      },
+      {
+        "test_id": "cp100_batch-all-or-nothing.spec.ts::batch all or nothing scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15078,
+        "failure": ""
+      },
+      {
+        "test_id": "cp100_batch-all-or-nothing.spec.ts::batch all or nothing scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21298,
+        "failure": ""
+      },
+      {
+        "test_id": "cp100_batch-all-or-nothing.spec.ts::batch all or nothing scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20408,
+        "failure": ""
+      },
+      {
+        "test_id": "cp101_audit-viewer.spec.ts::audit viewer",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6051,
+        "failure": ""
+      },
+      {
+        "test_id": "cp101_audit-viewer.spec.ts::audit viewer scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22236,
+        "failure": ""
+      },
+      {
+        "test_id": "cp101_audit-viewer.spec.ts::audit viewer scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23881,
+        "failure": ""
+      },
+      {
+        "test_id": "cp101_audit-viewer.spec.ts::audit viewer scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 40686,
+        "failure": ""
+      },
+      {
+        "test_id": "cp102_aliases.spec.ts::aliases",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16844,
+        "failure": ""
+      },
+      {
+        "test_id": "cp102_aliases.spec.ts::aliases scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11956,
+        "failure": ""
+      },
+      {
+        "test_id": "cp102_aliases.spec.ts::aliases scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20920,
+        "failure": ""
+      },
+      {
+        "test_id": "cp102_aliases.spec.ts::aliases scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27717,
+        "failure": ""
+      },
+      {
+        "test_id": "cp103_claim-templates.spec.ts::claim templates",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10150,
+        "failure": ""
+      },
+      {
+        "test_id": "cp103_claim-templates.spec.ts::claim templates scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12757,
+        "failure": ""
+      },
+      {
+        "test_id": "cp103_claim-templates.spec.ts::claim templates scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14038,
+        "failure": ""
+      },
+      {
+        "test_id": "cp103_claim-templates.spec.ts::claim templates scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20338,
+        "failure": ""
+      },
+      {
+        "test_id": "cp104_reassign-renumbers.spec.ts::reassign renumbers",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6134,
+        "failure": ""
+      },
+      {
+        "test_id": "cp104_reassign-renumbers.spec.ts::reassign renumbers scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23525,
+        "failure": ""
+      },
+      {
+        "test_id": "cp104_reassign-renumbers.spec.ts::reassign renumbers scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 35273,
+        "failure": ""
+      },
+      {
+        "test_id": "cp104_reassign-renumbers.spec.ts::reassign renumbers scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16880,
+        "failure": ""
+      },
+      {
+        "test_id": "cp105_pools.spec.ts::pools",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17356,
+        "failure": ""
+      },
+      {
+        "test_id": "cp105_pools.spec.ts::pools scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22813,
+        "failure": ""
+      },
+      {
+        "test_id": "cp105_pools.spec.ts::pools scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 42760,
+        "failure": ""
+      },
+      {
+        "test_id": "cp105_pools.spec.ts::pools scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14885,
+        "failure": ""
+      },
+      {
+        "test_id": "cp106_pool-cuts.spec.ts::pool cuts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6894,
+        "failure": ""
+      },
+      {
+        "test_id": "cp106_pool-cuts.spec.ts::pool cuts scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17855,
+        "failure": ""
+      },
+      {
+        "test_id": "cp106_pool-cuts.spec.ts::pool cuts scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22183,
+        "failure": ""
+      },
+      {
+        "test_id": "cp106_pool-cuts.spec.ts::pool cuts scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17082,
+        "failure": ""
+      },
+      {
+        "test_id": "cp107_merge-people.spec.ts::merge people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13583,
+        "failure": ""
+      },
+      {
+        "test_id": "cp107_merge-people.spec.ts::merge people scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23186,
+        "failure": ""
+      },
+      {
+        "test_id": "cp107_merge-people.spec.ts::merge people scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27032,
+        "failure": ""
+      },
+      {
+        "test_id": "cp107_merge-people.spec.ts::merge people scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21438,
+        "failure": ""
+      },
+      {
+        "test_id": "cp108_patron-shares.spec.ts::patron shares",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7539,
+        "failure": ""
+      },
+      {
+        "test_id": "cp108_patron-shares.spec.ts::patron shares scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29700,
+        "failure": ""
+      },
+      {
+        "test_id": "cp108_patron-shares.spec.ts::patron shares scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 32132,
+        "failure": ""
+      },
+      {
+        "test_id": "cp108_patron-shares.spec.ts::patron shares scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22282,
+        "failure": ""
+      },
+      {
+        "test_id": "cp109_parent-sheet-rates.spec.ts::parent sheet rates",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15589,
+        "failure": ""
+      },
+      {
+        "test_id": "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17983,
+        "failure": ""
+      },
+      {
+        "test_id": "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15259,
+        "failure": ""
+      },
+      {
+        "test_id": "cp109_parent-sheet-rates.spec.ts::parent sheet rates scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15512,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4638,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9754,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10853,
+        "failure": ""
+      },
+      {
+        "test_id": "cp11_rates-effective-dated.spec.ts::rates effective dated scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10307,
+        "failure": ""
+      },
+      {
+        "test_id": "cp110_consolidated-figures.spec.ts::consolidated figures",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7962,
+        "failure": ""
+      },
+      {
+        "test_id": "cp110_consolidated-figures.spec.ts::consolidated figures scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15242,
+        "failure": ""
+      },
+      {
+        "test_id": "cp110_consolidated-figures.spec.ts::consolidated figures scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17407,
+        "failure": ""
+      },
+      {
+        "test_id": "cp110_consolidated-figures.spec.ts::consolidated figures scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19194,
+        "failure": ""
+      },
+      {
+        "test_id": "cp111_transfer-person.spec.ts::transfer person",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 19651,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-178').getByTestId('person-aliases')\nExpected string: \u001b[32m\"Ada\"\u001b[39m\nReceived string: \u001b[31m\"\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-178').getByTestId('person-aliases')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\n\n  144 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_tom_0).getByTestId(\"claim-status\")).toHaveText(\"OPEN\");\n  145 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_ada).getByTestId(\"person-name\")).toHaveText(\"Ada\");\n> 146 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_ada).getByTestId(\"person-aliases\")).toHaveText(\"Ada\");\n      |                                                                                           ^\n  147 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_ada).getByTestId(\"person-claimed\")).toHaveText(\"0.00\");\n  148 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_ben_2).getByTestId(\"person-name\")).toHaveText(\"Ben\");\n  149 |     await expect(pg_vic.getByTestId(\"person-row-\" + p_ben_2).getByTestId(\"person-aliases\")).toHaveText(\"Benny\");\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp111_transfer-person.spec.ts:146:91 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('person-row-178').getByTestId('person-aliases')\nExpected string: \u001b[32m\"Ada\"\u001b[39m\nReceived string: \u001b[31m\"\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('person-row-178').getByTestId('person-aliases')\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n\u001b[2m  -   locator resolved to <td data-testid=\"person-aliases\"></td>\u001b[22m\n\u001b[2m  -   unexpected value \"\"\u001b[22m\n"
+      },
+      {
+        "test_id": "cp111_transfer-person.spec.ts::transfer person scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23018,
+        "failure": ""
+      },
+      {
+        "test_id": "cp111_transfer-person.spec.ts::transfer person scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22174,
+        "failure": ""
+      },
+      {
+        "test_id": "cp111_transfer-person.spec.ts::transfer person scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20030,
+        "failure": ""
+      },
+      {
+        "test_id": "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22147,
+        "failure": ""
+      },
+      {
+        "test_id": "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33619,
+        "failure": ""
+      },
+      {
+        "test_id": "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15493,
+        "failure": ""
+      },
+      {
+        "test_id": "cp112_uniqueness-across-tree.spec.ts::uniqueness across tree scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 30501,
+        "failure": ""
+      },
+      {
+        "test_id": "cp113_import-people.spec.ts::import people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15034,
+        "failure": ""
+      },
+      {
+        "test_id": "cp113_import-people.spec.ts::import people scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25648,
+        "failure": ""
+      },
+      {
+        "test_id": "cp113_import-people.spec.ts::import people scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23143,
+        "failure": ""
+      },
+      {
+        "test_id": "cp113_import-people.spec.ts::import people scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20010,
+        "failure": ""
+      },
+      {
+        "test_id": "cp114_delete-and-restore-draft.spec.ts::delete and restore draft",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14986,
+        "failure": ""
+      },
+      {
+        "test_id": "cp114_delete-and-restore-draft.spec.ts::delete and restore draft scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17322,
+        "failure": ""
+      },
+      {
+        "test_id": "cp114_delete-and-restore-draft.spec.ts::delete and restore draft scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33013,
+        "failure": ""
+      },
+      {
+        "test_id": "cp114_delete-and-restore-draft.spec.ts::delete and restore draft scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19793,
+        "failure": ""
+      },
+      {
+        "test_id": "cp115_nested-pools.spec.ts::nested pools",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17646,
+        "failure": ""
+      },
+      {
+        "test_id": "cp115_nested-pools.spec.ts::nested pools scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 47805,
+        "failure": ""
+      },
+      {
+        "test_id": "cp115_nested-pools.spec.ts::nested pools scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 35609,
+        "failure": ""
+      },
+      {
+        "test_id": "cp115_nested-pools.spec.ts::nested pools scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20214,
+        "failure": ""
+      },
+      {
+        "test_id": "cp116_import-upserts.spec.ts::import upserts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11148,
+        "failure": ""
+      },
+      {
+        "test_id": "cp116_import-upserts.spec.ts::import upserts scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14471,
+        "failure": ""
+      },
+      {
+        "test_id": "cp116_import-upserts.spec.ts::import upserts scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26343,
+        "failure": ""
+      },
+      {
+        "test_id": "cp116_import-upserts.spec.ts::import upserts scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21118,
+        "failure": ""
+      },
+      {
+        "test_id": "cp117_list-positions.spec.ts::list positions",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10778,
+        "failure": ""
+      },
+      {
+        "test_id": "cp117_list-positions.spec.ts::list positions scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17453,
+        "failure": ""
+      },
+      {
+        "test_id": "cp117_list-positions.spec.ts::list positions scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 76746,
+        "failure": ""
+      },
+      {
+        "test_id": "cp117_list-positions.spec.ts::list positions scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18443,
+        "failure": ""
+      },
+      {
+        "test_id": "cp118_import-rates.spec.ts::import rates",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12237,
+        "failure": ""
+      },
+      {
+        "test_id": "cp118_import-rates.spec.ts::import rates scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20044,
+        "failure": ""
+      },
+      {
+        "test_id": "cp118_import-rates.spec.ts::import rates scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26283,
+        "failure": ""
+      },
+      {
+        "test_id": "cp118_import-rates.spec.ts::import rates scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17038,
+        "failure": ""
+      },
+      {
+        "test_id": "cp119_cut-totals.spec.ts::cut totals",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6324,
+        "failure": ""
+      },
+      {
+        "test_id": "cp119_cut-totals.spec.ts::cut totals scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25559,
+        "failure": ""
+      },
+      {
+        "test_id": "cp119_cut-totals.spec.ts::cut totals scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23297,
+        "failure": ""
+      },
+      {
+        "test_id": "cp119_cut-totals.spec.ts::cut totals scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16182,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2710,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10113,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13036,
+        "failure": ""
+      },
+      {
+        "test_id": "cp12_half-even.spec.ts::half even scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8822,
+        "failure": ""
+      },
+      {
+        "test_id": "cp120_hold-pauses-cuts.spec.ts::hold pauses cuts",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5823,
+        "failure": ""
+      },
+      {
+        "test_id": "cp120_hold-pauses-cuts.spec.ts::hold pauses cuts scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16183,
+        "failure": ""
+      },
+      {
+        "test_id": "cp120_hold-pauses-cuts.spec.ts::hold pauses cuts scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23257,
+        "failure": ""
+      },
+      {
+        "test_id": "cp120_hold-pauses-cuts.spec.ts::hold pauses cuts scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17846,
+        "failure": ""
+      },
+      {
+        "test_id": "cp121_history-follows.spec.ts::history follows",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5746,
+        "failure": ""
+      },
+      {
+        "test_id": "cp121_history-follows.spec.ts::history follows scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18885,
+        "failure": ""
+      },
+      {
+        "test_id": "cp121_history-follows.spec.ts::history follows scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 51392,
+        "failure": ""
+      },
+      {
+        "test_id": "cp121_history-follows.spec.ts::history follows scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22379,
+        "failure": ""
+      },
+      {
+        "test_id": "cp122_pool-membership-dated.spec.ts::pool membership dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6779,
+        "failure": ""
+      },
+      {
+        "test_id": "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27939,
+        "failure": ""
+      },
+      {
+        "test_id": "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13357,
+        "failure": ""
+      },
+      {
+        "test_id": "cp122_pool-membership-dated.spec.ts::pool membership dated scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24196,
+        "failure": ""
+      },
+      {
+        "test_id": "cp123_bulk-retire.spec.ts::bulk retire",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6713,
+        "failure": ""
+      },
+      {
+        "test_id": "cp123_bulk-retire.spec.ts::bulk retire scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33448,
+        "failure": ""
+      },
+      {
+        "test_id": "cp123_bulk-retire.spec.ts::bulk retire scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 32665,
+        "failure": ""
+      },
+      {
+        "test_id": "cp123_bulk-retire.spec.ts::bulk retire scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27146,
+        "failure": ""
+      },
+      {
+        "test_id": "cp124_retired-share-reallocates.spec.ts::retired share reallocates",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5283,
+        "failure": ""
+      },
+      {
+        "test_id": "cp124_retired-share-reallocates.spec.ts::retired share reallocates scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 42183,
+        "failure": ""
+      },
+      {
+        "test_id": "cp124_retired-share-reallocates.spec.ts::retired share reallocates scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27434,
+        "failure": ""
+      },
+      {
+        "test_id": "cp124_retired-share-reallocates.spec.ts::retired share reallocates scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19483,
+        "failure": ""
+      },
+      {
+        "test_id": "cp125_unretire.spec.ts::unretire",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13154,
+        "failure": ""
+      },
+      {
+        "test_id": "cp125_unretire.spec.ts::unretire scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19889,
+        "failure": ""
+      },
+      {
+        "test_id": "cp125_unretire.spec.ts::unretire scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23405,
+        "failure": ""
+      },
+      {
+        "test_id": "cp125_unretire.spec.ts::unretire scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21937,
+        "failure": ""
+      },
+      {
+        "test_id": "cp126_clone-sheet.spec.ts::clone sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15985,
+        "failure": ""
+      },
+      {
+        "test_id": "cp126_clone-sheet.spec.ts::clone sheet scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12199,
+        "failure": ""
+      },
+      {
+        "test_id": "cp126_clone-sheet.spec.ts::clone sheet scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19783,
+        "failure": ""
+      },
+      {
+        "test_id": "cp126_clone-sheet.spec.ts::clone sheet scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16667,
+        "failure": ""
+      },
+      {
+        "test_id": "cp127_my-figures.spec.ts::my figures",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6935,
+        "failure": ""
+      },
+      {
+        "test_id": "cp127_my-figures.spec.ts::my figures scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15188,
+        "failure": ""
+      },
+      {
+        "test_id": "cp127_my-figures.spec.ts::my figures scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33530,
+        "failure": ""
+      },
+      {
+        "test_id": "cp127_my-figures.spec.ts::my figures scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16736,
+        "failure": ""
+      },
+      {
+        "test_id": "cp128_transfer-merges.spec.ts::transfer merges",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6342,
+        "failure": ""
+      },
+      {
+        "test_id": "cp128_transfer-merges.spec.ts::transfer merges scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16011,
+        "failure": ""
+      },
+      {
+        "test_id": "cp128_transfer-merges.spec.ts::transfer merges scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20101,
+        "failure": ""
+      },
+      {
+        "test_id": "cp128_transfer-merges.spec.ts::transfer merges scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23456,
+        "failure": ""
+      },
+      {
+        "test_id": "cp129_export-claims.spec.ts::export claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4732,
+        "failure": ""
+      },
+      {
+        "test_id": "cp129_export-claims.spec.ts::export claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22117,
+        "failure": ""
+      },
+      {
+        "test_id": "cp129_export-claims.spec.ts::export claims scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21422,
+        "failure": ""
+      },
+      {
+        "test_id": "cp129_export-claims.spec.ts::export claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25061,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7630,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8695,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12881,
+        "failure": ""
+      },
+      {
+        "test_id": "cp13_four-eyes.spec.ts::four eyes scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7891,
+        "failure": ""
+      },
+      {
+        "test_id": "cp130_period-comparison.spec.ts::period comparison",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4588,
+        "failure": ""
+      },
+      {
+        "test_id": "cp130_period-comparison.spec.ts::period comparison scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 38848,
+        "failure": ""
+      },
+      {
+        "test_id": "cp130_period-comparison.spec.ts::period comparison scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 38368,
+        "failure": ""
+      },
+      {
+        "test_id": "cp130_period-comparison.spec.ts::period comparison scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22253,
+        "failure": ""
+      },
+      {
+        "test_id": "cp131_plans.spec.ts::plans",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11298,
+        "failure": ""
+      },
+      {
+        "test_id": "cp131_plans.spec.ts::plans scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23484,
+        "failure": ""
+      },
+      {
+        "test_id": "cp131_plans.spec.ts::plans scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23725,
+        "failure": ""
+      },
+      {
+        "test_id": "cp131_plans.spec.ts::plans scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22141,
+        "failure": ""
+      },
+      {
+        "test_id": "cp132_tree-numbering.spec.ts::tree numbering",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7908,
+        "failure": ""
+      },
+      {
+        "test_id": "cp132_tree-numbering.spec.ts::tree numbering scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17969,
+        "failure": ""
+      },
+      {
+        "test_id": "cp132_tree-numbering.spec.ts::tree numbering scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15915,
+        "failure": ""
+      },
+      {
+        "test_id": "cp132_tree-numbering.spec.ts::tree numbering scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29780,
+        "failure": ""
+      },
+      {
+        "test_id": "cp133_person-tags.spec.ts::person tags",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8124,
+        "failure": ""
+      },
+      {
+        "test_id": "cp133_person-tags.spec.ts::person tags scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20078,
+        "failure": ""
+      },
+      {
+        "test_id": "cp133_person-tags.spec.ts::person tags scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 36718,
+        "failure": ""
+      },
+      {
+        "test_id": "cp133_person-tags.spec.ts::person tags scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 30113,
+        "failure": ""
+      },
+      {
+        "test_id": "cp134_sorting.spec.ts::sorting",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7550,
+        "failure": ""
+      },
+      {
+        "test_id": "cp134_sorting.spec.ts::sorting scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20912,
+        "failure": ""
+      },
+      {
+        "test_id": "cp134_sorting.spec.ts::sorting scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21491,
+        "failure": ""
+      },
+      {
+        "test_id": "cp134_sorting.spec.ts::sorting scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14601,
+        "failure": ""
+      },
+      {
+        "test_id": "cp135_export-pools.spec.ts::export pools",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2794,
+        "failure": ""
+      },
+      {
+        "test_id": "cp135_export-pools.spec.ts::export pools scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25951,
+        "failure": ""
+      },
+      {
+        "test_id": "cp135_export-pools.spec.ts::export pools scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24672,
+        "failure": ""
+      },
+      {
+        "test_id": "cp135_export-pools.spec.ts::export pools scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17740,
+        "failure": ""
+      },
+      {
+        "test_id": "cp136_bindings-follow.spec.ts::bindings follow",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7765,
+        "failure": ""
+      },
+      {
+        "test_id": "cp136_bindings-follow.spec.ts::bindings follow scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20220,
+        "failure": ""
+      },
+      {
+        "test_id": "cp136_bindings-follow.spec.ts::bindings follow scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15224,
+        "failure": ""
+      },
+      {
+        "test_id": "cp136_bindings-follow.spec.ts::bindings follow scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26138,
+        "failure": ""
+      },
+      {
+        "test_id": "cp137_claim-lines.spec.ts::claim lines",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21478,
+        "failure": ""
+      },
+      {
+        "test_id": "cp137_claim-lines.spec.ts::claim lines scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18570,
+        "failure": ""
+      },
+      {
+        "test_id": "cp137_claim-lines.spec.ts::claim lines scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21280,
+        "failure": ""
+      },
+      {
+        "test_id": "cp137_claim-lines.spec.ts::claim lines scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20518,
+        "failure": ""
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11562,
+        "failure": ""
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26391,
+        "failure": ""
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27618,
+        "failure": ""
+      },
+      {
+        "test_id": "cp138_inline-grade.spec.ts::inline grade scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18895,
+        "failure": ""
+      },
+      {
+        "test_id": "cp139_tree-audit.spec.ts::tree audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5073,
+        "failure": ""
+      },
+      {
+        "test_id": "cp139_tree-audit.spec.ts::tree audit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21725,
+        "failure": ""
+      },
+      {
+        "test_id": "cp139_tree-audit.spec.ts::tree audit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19450,
+        "failure": ""
+      },
+      {
+        "test_id": "cp139_tree-audit.spec.ts::tree audit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15750,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3599,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14540,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12092,
+        "failure": ""
+      },
+      {
+        "test_id": "cp14_edit-conflict.spec.ts::edit conflict scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12965,
+        "failure": ""
+      },
+      {
+        "test_id": "cp140_remainder-to-smallest.spec.ts::remainder to smallest",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5555,
+        "failure": ""
+      },
+      {
+        "test_id": "cp140_remainder-to-smallest.spec.ts::remainder to smallest scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18486,
+        "failure": ""
+      },
+      {
+        "test_id": "cp140_remainder-to-smallest.spec.ts::remainder to smallest scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16525,
+        "failure": ""
+      },
+      {
+        "test_id": "cp140_remainder-to-smallest.spec.ts::remainder to smallest scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19359,
+        "failure": ""
+      },
+      {
+        "test_id": "cp141_monthly-plans.spec.ts::monthly plans",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15902,
+        "failure": ""
+      },
+      {
+        "test_id": "cp141_monthly-plans.spec.ts::monthly plans scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24167,
+        "failure": ""
+      },
+      {
+        "test_id": "cp141_monthly-plans.spec.ts::monthly plans scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25168,
+        "failure": ""
+      },
+      {
+        "test_id": "cp141_monthly-plans.spec.ts::monthly plans scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19532,
+        "failure": ""
+      },
+      {
+        "test_id": "cp142_plan-preview.spec.ts::plan preview",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3888,
+        "failure": ""
+      },
+      {
+        "test_id": "cp142_plan-preview.spec.ts::plan preview scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21437,
+        "failure": ""
+      },
+      {
+        "test_id": "cp142_plan-preview.spec.ts::plan preview scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20798,
+        "failure": ""
+      },
+      {
+        "test_id": "cp142_plan-preview.spec.ts::plan preview scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14966,
+        "failure": ""
+      },
+      {
+        "test_id": "cp143_fiscal-year.spec.ts::fiscal year",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10614,
+        "failure": ""
+      },
+      {
+        "test_id": "cp143_fiscal-year.spec.ts::fiscal year scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23052,
+        "failure": ""
+      },
+      {
+        "test_id": "cp143_fiscal-year.spec.ts::fiscal year scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 31130,
+        "failure": ""
+      },
+      {
+        "test_id": "cp143_fiscal-year.spec.ts::fiscal year scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22081,
+        "failure": ""
+      },
+      {
+        "test_id": "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9840,
+        "failure": ""
+      },
+      {
+        "test_id": "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27275,
+        "failure": ""
+      },
+      {
+        "test_id": "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21684,
+        "failure": ""
+      },
+      {
+        "test_id": "cp144_numbering-per-fiscal-year.spec.ts::numbering per fiscal year scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22267,
+        "failure": ""
+      },
+      {
+        "test_id": "cp145_bulk-redate.spec.ts::bulk redate",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6466,
+        "failure": ""
+      },
+      {
+        "test_id": "cp145_bulk-redate.spec.ts::bulk redate scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15425,
+        "failure": ""
+      },
+      {
+        "test_id": "cp145_bulk-redate.spec.ts::bulk redate scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19777,
+        "failure": ""
+      },
+      {
+        "test_id": "cp145_bulk-redate.spec.ts::bulk redate scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23069,
+        "failure": ""
+      },
+      {
+        "test_id": "cp146_over-threshold-alert.spec.ts::over threshold alert",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8881,
+        "failure": ""
+      },
+      {
+        "test_id": "cp146_over-threshold-alert.spec.ts::over threshold alert scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20299,
+        "failure": ""
+      },
+      {
+        "test_id": "cp146_over-threshold-alert.spec.ts::over threshold alert scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21833,
+        "failure": ""
+      },
+      {
+        "test_id": "cp146_over-threshold-alert.spec.ts::over threshold alert scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20197,
+        "failure": ""
+      },
+      {
+        "test_id": "cp147_snapshot-lines.spec.ts::snapshot lines",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3584,
+        "failure": ""
+      },
+      {
+        "test_id": "cp147_snapshot-lines.spec.ts::snapshot lines scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16857,
+        "failure": ""
+      },
+      {
+        "test_id": "cp147_snapshot-lines.spec.ts::snapshot lines scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19030,
+        "failure": ""
+      },
+      {
+        "test_id": "cp147_snapshot-lines.spec.ts::snapshot lines scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21932,
+        "failure": ""
+      },
+      {
+        "test_id": "cp148_claimed-without-corrections.spec.ts::claimed without corrections",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5049,
+        "failure": ""
+      },
+      {
+        "test_id": "cp148_claimed-without-corrections.spec.ts::claimed without corrections scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17310,
+        "failure": ""
+      },
+      {
+        "test_id": "cp148_claimed-without-corrections.spec.ts::claimed without corrections scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 39944,
+        "failure": ""
+      },
+      {
+        "test_id": "cp148_claimed-without-corrections.spec.ts::claimed without corrections scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22615,
+        "failure": ""
+      },
+      {
+        "test_id": "cp149_period-claim-cap.spec.ts::period claim cap",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9948,
+        "failure": ""
+      },
+      {
+        "test_id": "cp149_period-claim-cap.spec.ts::period claim cap scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24268,
+        "failure": ""
+      },
+      {
+        "test_id": "cp149_period-claim-cap.spec.ts::period claim cap scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16972,
+        "failure": ""
+      },
+      {
+        "test_id": "cp149_period-claim-cap.spec.ts::period claim cap scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22504,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_statements.spec.ts::statements",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5250,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_statements.spec.ts::statements scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12066,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_statements.spec.ts::statements scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9099,
+        "failure": ""
+      },
+      {
+        "test_id": "cp15_statements.spec.ts::statements scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9328,
+        "failure": ""
+      },
+      {
+        "test_id": "cp150_tree-search.spec.ts::tree search",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5804,
+        "failure": ""
+      },
+      {
+        "test_id": "cp150_tree-search.spec.ts::tree search scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 36082,
+        "failure": ""
+      },
+      {
+        "test_id": "cp150_tree-search.spec.ts::tree search scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20615,
+        "failure": ""
+      },
+      {
+        "test_id": "cp150_tree-search.spec.ts::tree search scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14916,
+        "failure": ""
+      },
+      {
+        "test_id": "cp151_rounding-mode.spec.ts::rounding mode",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10884,
+        "failure": ""
+      },
+      {
+        "test_id": "cp151_rounding-mode.spec.ts::rounding mode scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19188,
+        "failure": ""
+      },
+      {
+        "test_id": "cp151_rounding-mode.spec.ts::rounding mode scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21987,
+        "failure": ""
+      },
+      {
+        "test_id": "cp151_rounding-mode.spec.ts::rounding mode scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19071,
+        "failure": ""
+      },
+      {
+        "test_id": "cp152_imported-claims-open.spec.ts::imported claims open",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13640,
+        "failure": ""
+      },
+      {
+        "test_id": "cp152_imported-claims-open.spec.ts::imported claims open scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22898,
+        "failure": ""
+      },
+      {
+        "test_id": "cp152_imported-claims-open.spec.ts::imported claims open scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15556,
+        "failure": ""
+      },
+      {
+        "test_id": "cp152_imported-claims-open.spec.ts::imported claims open scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19852,
+        "failure": ""
+      },
+      {
+        "test_id": "cp153_rate-versions.spec.ts::rate versions",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8733,
+        "failure": ""
+      },
+      {
+        "test_id": "cp153_rate-versions.spec.ts::rate versions scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20784,
+        "failure": ""
+      },
+      {
+        "test_id": "cp153_rate-versions.spec.ts::rate versions scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27658,
+        "failure": ""
+      },
+      {
+        "test_id": "cp153_rate-versions.spec.ts::rate versions scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26932,
+        "failure": ""
+      },
+      {
+        "test_id": "cp154_classic-summary.spec.ts::classic summary",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8986,
+        "failure": ""
+      },
+      {
+        "test_id": "cp154_classic-summary.spec.ts::classic summary scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24544,
+        "failure": ""
+      },
+      {
+        "test_id": "cp154_classic-summary.spec.ts::classic summary scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33700,
+        "failure": ""
+      },
+      {
+        "test_id": "cp154_classic-summary.spec.ts::classic summary scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25227,
+        "failure": ""
+      },
+      {
+        "test_id": "cp155_review-state.spec.ts::review state",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16130,
+        "failure": ""
+      },
+      {
+        "test_id": "cp155_review-state.spec.ts::review state scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23791,
+        "failure": ""
+      },
+      {
+        "test_id": "cp155_review-state.spec.ts::review state scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14658,
+        "failure": ""
+      },
+      {
+        "test_id": "cp155_review-state.spec.ts::review state scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15236,
+        "failure": ""
+      },
+      {
+        "test_id": "cp156_forward-only-rates.spec.ts::forward only rates",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7230,
+        "failure": ""
+      },
+      {
+        "test_id": "cp156_forward-only-rates.spec.ts::forward only rates scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 62442,
+        "failure": ""
+      },
+      {
+        "test_id": "cp156_forward-only-rates.spec.ts::forward only rates scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 30733,
+        "failure": ""
+      },
+      {
+        "test_id": "cp156_forward-only-rates.spec.ts::forward only rates scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18319,
+        "failure": ""
+      },
+      {
+        "test_id": "cp157_user-locale.spec.ts::user locale",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6169,
+        "failure": ""
+      },
+      {
+        "test_id": "cp157_user-locale.spec.ts::user locale scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22461,
+        "failure": ""
+      },
+      {
+        "test_id": "cp157_user-locale.spec.ts::user locale scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 38449,
+        "failure": ""
+      },
+      {
+        "test_id": "cp157_user-locale.spec.ts::user locale scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21750,
+        "failure": ""
+      },
+      {
+        "test_id": "cp158_column-chooser.spec.ts::column chooser",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 8803,
+        "failure": "Error: set rate: neither a result nor an error appeared within 8000ms\n\n   at ../support/ui.ts:136\n\n  134 |   if (await done()) return true;\n  135 |   if (await error.isVisible().catch(() => false)) return false;\n> 136 |   throw new Error(`${what}: neither a result nor an error appeared within ${WAIT}ms`);\n      |         ^\n  137 | }\n  138 |\n  139 | async function sleep(ms: number): Promise<void> {\n\n    at until (/home/daniel/ui-work/runs/202610271-as/testing/e2e/support/ui.ts:136:9)\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp158_column-chooser.spec.ts:10:12 | Error: set rate: neither a result nor an error appeared within 8000ms"
+      },
+      {
+        "test_id": "cp158_column-chooser.spec.ts::column chooser scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17976,
+        "failure": ""
+      },
+      {
+        "test_id": "cp158_column-chooser.spec.ts::column chooser scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26880,
+        "failure": ""
+      },
+      {
+        "test_id": "cp158_column-chooser.spec.ts::column chooser scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20143,
+        "failure": ""
+      },
+      {
+        "test_id": "cp159_carried-figures.spec.ts::carried figures",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8044,
+        "failure": ""
+      },
+      {
+        "test_id": "cp159_carried-figures.spec.ts::carried figures scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 45820,
+        "failure": ""
+      },
+      {
+        "test_id": "cp159_carried-figures.spec.ts::carried figures scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12296,
+        "failure": ""
+      },
+      {
+        "test_id": "cp159_carried-figures.spec.ts::carried figures scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28644,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_rollup-audit.spec.ts::rollup audit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7213,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_rollup-audit.spec.ts::rollup audit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10253,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_rollup-audit.spec.ts::rollup audit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9064,
+        "failure": ""
+      },
+      {
+        "test_id": "cp16_rollup-audit.spec.ts::rollup audit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8355,
+        "failure": ""
+      },
+      {
+        "test_id": "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9468,
+        "failure": ""
+      },
+      {
+        "test_id": "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19833,
+        "failure": ""
+      },
+      {
+        "test_id": "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23038,
+        "failure": ""
+      },
+      {
+        "test_id": "cp160_frozen-carried-and-as-of-tree.spec.ts::frozen carried and as of tree scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21659,
+        "failure": ""
+      },
+      {
+        "test_id": "cp161_as-of-exports.spec.ts::as of exports",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3712,
+        "failure": ""
+      },
+      {
+        "test_id": "cp161_as-of-exports.spec.ts::as of exports scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22833,
+        "failure": ""
+      },
+      {
+        "test_id": "cp161_as-of-exports.spec.ts::as of exports scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18940,
+        "failure": ""
+      },
+      {
+        "test_id": "cp161_as-of-exports.spec.ts::as of exports scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28865,
+        "failure": ""
+      },
+      {
+        "test_id": "cp162_claim-timeline.spec.ts::claim timeline",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6998,
+        "failure": ""
+      },
+      {
+        "test_id": "cp162_claim-timeline.spec.ts::claim timeline scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14511,
+        "failure": ""
+      },
+      {
+        "test_id": "cp162_claim-timeline.spec.ts::claim timeline scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22770,
+        "failure": ""
+      },
+      {
+        "test_id": "cp162_claim-timeline.spec.ts::claim timeline scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21890,
+        "failure": ""
+      },
+      {
+        "test_id": "cp163_statement-lines.spec.ts::statement lines",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4115,
+        "failure": ""
+      },
+      {
+        "test_id": "cp163_statement-lines.spec.ts::statement lines scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20162,
+        "failure": ""
+      },
+      {
+        "test_id": "cp163_statement-lines.spec.ts::statement lines scenario 2",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 29562,
+        "failure": "Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('claim-row-1159').getByTestId('claim-due')\nExpected string: \u001b[32m\"1.29\"\u001b[39m\nReceived string: \u001b[31m\"n/a\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('claim-row-1159').getByTestId('claim-due')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\n\n  798 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_cam_0_2).getByTestId(\"claim-date\")).toHaveText(\"2026-03-01\");\n  799 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_cam_0_2).getByTestId(\"claim-note\")).toHaveText(\"n\");\n> 800 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_cam_0_2).getByTestId(\"claim-due\")).toHaveText(\"1.29\");\n      |                                                                                         ^\n  801 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_cam_0_2).getByTestId(\"claim-status\")).toHaveText(\"DRAFT\");\n  802 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_cam_0_2).getByTestId(\"claim-number\")).toHaveText(\"\");\n  803 |     await expect(pg_vic.getByTestId(\"claim-row-\" + c_cam_0_2).getByTestId(\"claim-opened-by\")).toHaveText(\"\");\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp163_statement-lines.spec.ts:800:89 | Error: \u001b[31mTimed out 5000ms waiting for \u001b[39m\u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nLocator: getByTestId('claim-row-1159').getByTestId('claim-due')\nExpected string: \u001b[32m\"1.29\"\u001b[39m\nReceived string: \u001b[31m\"n/a\"\u001b[39m\nCall log:\n  \u001b[2m- expect.toHaveText with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('claim-row-1159').getByTestId('claim-due')\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n\u001b[2m  -   locator resolved to <span data-testid=\"claim-due\">n/a</span>\u001b[22m\n\u001b[2m  -   unexpected value \"n/a\"\u001b[22m\n"
+      },
+      {
+        "test_id": "cp163_statement-lines.spec.ts::statement lines scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16947,
+        "failure": ""
+      },
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9585,
+        "failure": ""
+      },
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17876,
+        "failure": ""
+      },
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 61534,
+        "failure": ""
+      },
+      {
+        "test_id": "cp164_correction-limit.spec.ts::correction limit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25789,
+        "failure": ""
+      },
+      {
+        "test_id": "cp165_escalate.spec.ts::escalate",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14950,
+        "failure": ""
+      },
+      {
+        "test_id": "cp165_escalate.spec.ts::escalate scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18739,
+        "failure": ""
+      },
+      {
+        "test_id": "cp165_escalate.spec.ts::escalate scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24190,
+        "failure": ""
+      },
+      {
+        "test_id": "cp165_escalate.spec.ts::escalate scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20822,
+        "failure": ""
+      },
+      {
+        "test_id": "cp166_crews.spec.ts::crews",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14590,
+        "failure": ""
+      },
+      {
+        "test_id": "cp166_crews.spec.ts::crews scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17280,
+        "failure": ""
+      },
+      {
+        "test_id": "cp166_crews.spec.ts::crews scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33459,
+        "failure": ""
+      },
+      {
+        "test_id": "cp166_crews.spec.ts::crews scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22936,
+        "failure": ""
+      },
+      {
+        "test_id": "cp167_crew-lead-total.spec.ts::crew lead total",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8224,
+        "failure": ""
+      },
+      {
+        "test_id": "cp167_crew-lead-total.spec.ts::crew lead total scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21762,
+        "failure": ""
+      },
+      {
+        "test_id": "cp167_crew-lead-total.spec.ts::crew lead total scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18124,
+        "failure": ""
+      },
+      {
+        "test_id": "cp167_crew-lead-total.spec.ts::crew lead total scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23245,
+        "failure": ""
+      },
+      {
+        "test_id": "cp168_crews-are-pools.spec.ts::crews are pools",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9897,
+        "failure": ""
+      },
+      {
+        "test_id": "cp168_crews-are-pools.spec.ts::crews are pools scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17452,
+        "failure": ""
+      },
+      {
+        "test_id": "cp168_crews-are-pools.spec.ts::crews are pools scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23385,
+        "failure": ""
+      },
+      {
+        "test_id": "cp168_crews-are-pools.spec.ts::crews are pools scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 34409,
+        "failure": ""
+      },
+      {
+        "test_id": "cp169_person-terms-dated.spec.ts::person terms dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7416,
+        "failure": ""
+      },
+      {
+        "test_id": "cp169_person-terms-dated.spec.ts::person terms dated scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 35851,
+        "failure": ""
+      },
+      {
+        "test_id": "cp169_person-terms-dated.spec.ts::person terms dated scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20480,
+        "failure": ""
+      },
+      {
+        "test_id": "cp169_person-terms-dated.spec.ts::person terms dated scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 30615,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9548,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8874,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12260,
+        "failure": ""
+      },
+      {
+        "test_id": "cp17_periods.spec.ts::periods scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11855,
+        "failure": ""
+      },
+      {
+        "test_id": "cp170_rate-calendar.spec.ts::rate calendar",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3961,
+        "failure": ""
+      },
+      {
+        "test_id": "cp170_rate-calendar.spec.ts::rate calendar scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25401,
+        "failure": ""
+      },
+      {
+        "test_id": "cp170_rate-calendar.spec.ts::rate calendar scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22902,
+        "failure": ""
+      },
+      {
+        "test_id": "cp170_rate-calendar.spec.ts::rate calendar scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20450,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6771,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11403,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9464,
+        "failure": ""
+      },
+      {
+        "test_id": "cp18_close-period.spec.ts::close period scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12420,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6654,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10921,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8939,
+        "failure": ""
+      },
+      {
+        "test_id": "cp19_quick-add.spec.ts::quick add scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14648,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 2655,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13663,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9377,
+        "failure": ""
+      },
+      {
+        "test_id": "cp20_open-claims-immutable.spec.ts::open claims immutable scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15594,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6439,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11086,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13394,
+        "failure": ""
+      },
+      {
+        "test_id": "cp21_retire.spec.ts::retire scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14082,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5300,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13892,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7685,
+        "failure": ""
+      },
+      {
+        "test_id": "cp22_hold.spec.ts::hold scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14365,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11400,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8555,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9281,
+        "failure": ""
+      },
+      {
+        "test_id": "cp23_roles-and-clerk-limit.spec.ts::roles and clerk limit scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10601,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5941,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13552,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12951,
+        "failure": ""
+      },
+      {
+        "test_id": "cp24_floor.spec.ts::floor scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13555,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_due-by-and-overdue.spec.ts::due by and overdue",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4835,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10320,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13516,
+        "failure": ""
+      },
+      {
+        "test_id": "cp25_due-by-and-overdue.spec.ts::due by and overdue scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19640,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_late-charge.spec.ts::late charge",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4960,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_late-charge.spec.ts::late charge scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9262,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_late-charge.spec.ts::late charge scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18197,
+        "failure": ""
+      },
+      {
+        "test_id": "cp26_late-charge.spec.ts::late charge scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15305,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_patrons-and-backing.spec.ts::patrons and backing",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8983,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13860,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13658,
+        "failure": ""
+      },
+      {
+        "test_id": "cp27_patrons-and-backing.spec.ts::patrons and backing scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18744,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3703,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12592,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15422,
+        "failure": ""
+      },
+      {
+        "test_id": "cp28_grade-dated.spec.ts::grade dated scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12778,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_reopen-period.spec.ts::reopen period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9613,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_reopen-period.spec.ts::reopen period scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14974,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_reopen-period.spec.ts::reopen period scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9208,
+        "failure": ""
+      },
+      {
+        "test_id": "cp29_reopen-period.spec.ts::reopen period scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8832,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_corrections.spec.ts::corrections",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11380,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_corrections.spec.ts::corrections scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11521,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_corrections.spec.ts::corrections scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18326,
+        "failure": ""
+      },
+      {
+        "test_id": "cp30_corrections.spec.ts::corrections scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14821,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_summary.spec.ts::summary",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5221,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_summary.spec.ts::summary scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14102,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_summary.spec.ts::summary scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15761,
+        "failure": ""
+      },
+      {
+        "test_id": "cp31_summary.spec.ts::summary scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13528,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_rounding-policy-date.spec.ts::rounding policy date",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8380,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15495,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18878,
+        "failure": ""
+      },
+      {
+        "test_id": "cp32_rounding-policy-date.spec.ts::rounding policy date scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10167,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_export-people.spec.ts::export people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 3021,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_export-people.spec.ts::export people scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13411,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_export-people.spec.ts::export people scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12544,
+        "failure": ""
+      },
+      {
+        "test_id": "cp33_export-people.spec.ts::export people scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11599,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_bulk-open.spec.ts::bulk open",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4162,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_bulk-open.spec.ts::bulk open scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14242,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_bulk-open.spec.ts::bulk open scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13056,
+        "failure": ""
+      },
+      {
+        "test_id": "cp34_bulk-open.spec.ts::bulk open scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14708,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_numbering-per-period.spec.ts::numbering per period",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5100,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_numbering-per-period.spec.ts::numbering per period scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12702,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_numbering-per-period.spec.ts::numbering per period scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12908,
+        "failure": ""
+      },
+      {
+        "test_id": "cp35_numbering-per-period.spec.ts::numbering per period scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10557,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_approvals.spec.ts::approvals",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11353,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_approvals.spec.ts::approvals scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14790,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_approvals.spec.ts::approvals scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14528,
+        "failure": ""
+      },
+      {
+        "test_id": "cp36_approvals.spec.ts::approvals scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9507,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_reassign-claim.spec.ts::reassign claim",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9743,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_reassign-claim.spec.ts::reassign claim scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10178,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_reassign-claim.spec.ts::reassign claim scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12597,
+        "failure": ""
+      },
+      {
+        "test_id": "cp37_reassign-claim.spec.ts::reassign claim scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16674,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_terms-per-grade.spec.ts::terms per grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4062,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_terms-per-grade.spec.ts::terms per grade scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13317,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_terms-per-grade.spec.ts::terms per grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14255,
+        "failure": ""
+      },
+      {
+        "test_id": "cp38_terms-per-grade.spec.ts::terms per grade scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16468,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_claim-log.spec.ts::claim log",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 4043,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_claim-log.spec.ts::claim log scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13327,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_claim-log.spec.ts::claim log scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9201,
+        "failure": ""
+      },
+      {
+        "test_id": "cp39_claim-log.spec.ts::claim log scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7962,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_hold-interval.spec.ts::hold interval",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5381,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_hold-interval.spec.ts::hold interval scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11817,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_hold-interval.spec.ts::hold interval scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16939,
+        "failure": ""
+      },
+      {
+        "test_id": "cp40_hold-interval.spec.ts::hold interval scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10573,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_header-counters.spec.ts::header counters",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5661,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_header-counters.spec.ts::header counters scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12097,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_header-counters.spec.ts::header counters scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10837,
+        "failure": ""
+      },
+      {
+        "test_id": "cp41_header-counters.spec.ts::header counters scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10162,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_rate-end-dates.spec.ts::rate end dates",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6650,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_rate-end-dates.spec.ts::rate end dates scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10683,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_rate-end-dates.spec.ts::rate end dates scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18052,
+        "failure": ""
+      },
+      {
+        "test_id": "cp42_rate-end-dates.spec.ts::rate end dates scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13553,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_cap.spec.ts::cap",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6656,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_cap.spec.ts::cap scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11357,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_cap.spec.ts::cap scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13167,
+        "failure": ""
+      },
+      {
+        "test_id": "cp43_cap.spec.ts::cap scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14279,
+        "failure": ""
+      },
+      {
+        "test_id": "cp44_rollup-overdue.spec.ts::rollup overdue",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5207,
+        "failure": ""
+      },
+      {
+        "test_id": "cp44_rollup-overdue.spec.ts::rollup overdue scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12833,
+        "failure": ""
+      },
+      {
+        "test_id": "cp44_rollup-overdue.spec.ts::rollup overdue scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10057,
+        "failure": ""
+      },
+      {
+        "test_id": "cp44_rollup-overdue.spec.ts::rollup overdue scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10782,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_bulk-settle.spec.ts::bulk settle",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8423,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_bulk-settle.spec.ts::bulk settle scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15616,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_bulk-settle.spec.ts::bulk settle scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10715,
+        "failure": ""
+      },
+      {
+        "test_id": "cp45_bulk-settle.spec.ts::bulk settle scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14357,
+        "failure": ""
+      },
+      {
+        "test_id": "cp46_re-settle.spec.ts::re settle",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10789,
+        "failure": ""
+      },
+      {
+        "test_id": "cp46_re-settle.spec.ts::re settle scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10286,
+        "failure": ""
+      },
+      {
+        "test_id": "cp46_re-settle.spec.ts::re settle scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14067,
+        "failure": ""
+      },
+      {
+        "test_id": "cp46_re-settle.spec.ts::re settle scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15343,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_person-period-figures.spec.ts::person period figures",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6768,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_person-period-figures.spec.ts::person period figures scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13959,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_person-period-figures.spec.ts::person period figures scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14478,
+        "failure": ""
+      },
+      {
+        "test_id": "cp47_person-period-figures.spec.ts::person period figures scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12566,
+        "failure": ""
+      },
+      {
+        "test_id": "cp48_dated-settings.spec.ts::dated settings",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17940,
+        "failure": ""
+      },
+      {
+        "test_id": "cp48_dated-settings.spec.ts::dated settings scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10766,
+        "failure": ""
+      },
+      {
+        "test_id": "cp48_dated-settings.spec.ts::dated settings scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11197,
+        "failure": ""
+      },
+      {
+        "test_id": "cp48_dated-settings.spec.ts::dated settings scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12318,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_paste-claims.spec.ts::paste claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20125,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_paste-claims.spec.ts::paste claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12461,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_paste-claims.spec.ts::paste claims scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16797,
+        "failure": ""
+      },
+      {
+        "test_id": "cp49_paste-claims.spec.ts::paste claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15993,
+        "failure": ""
+      },
+      {
+        "test_id": "cp50_deferred-claims.spec.ts::deferred claims",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12088,
+        "failure": ""
+      },
+      {
+        "test_id": "cp50_deferred-claims.spec.ts::deferred claims scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10224,
+        "failure": ""
+      },
+      {
+        "test_id": "cp50_deferred-claims.spec.ts::deferred claims scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18615,
+        "failure": ""
+      },
+      {
+        "test_id": "cp50_deferred-claims.spec.ts::deferred claims scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15611,
+        "failure": ""
+      },
+      {
+        "test_id": "cp51_proofs.spec.ts::proofs",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15097,
+        "failure": ""
+      },
+      {
+        "test_id": "cp51_proofs.spec.ts::proofs scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13671,
+        "failure": ""
+      },
+      {
+        "test_id": "cp51_proofs.spec.ts::proofs scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18123,
+        "failure": ""
+      },
+      {
+        "test_id": "cp51_proofs.spec.ts::proofs scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16109,
+        "failure": ""
+      },
+      {
+        "test_id": "cp52_period-status-as-of-end.spec.ts::period status as of end",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6527,
+        "failure": ""
+      },
+      {
+        "test_id": "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19966,
+        "failure": ""
+      },
+      {
+        "test_id": "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16362,
+        "failure": ""
+      },
+      {
+        "test_id": "cp52_period-status-as-of-end.spec.ts::period status as of end scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12164,
+        "failure": ""
+      },
+      {
+        "test_id": "cp53_permission-matrix.spec.ts::permission matrix",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 49450,
+        "failure": ""
+      },
+      {
+        "test_id": "cp53_permission-matrix.spec.ts::permission matrix scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10543,
+        "failure": ""
+      },
+      {
+        "test_id": "cp53_permission-matrix.spec.ts::permission matrix scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18179,
+        "failure": ""
+      },
+      {
+        "test_id": "cp53_permission-matrix.spec.ts::permission matrix scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 46949,
+        "failure": ""
+      },
+      {
+        "test_id": "cp54_viewer-role.spec.ts::viewer role",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 34206,
+        "failure": ""
+      },
+      {
+        "test_id": "cp54_viewer-role.spec.ts::viewer role scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10279,
+        "failure": ""
+      },
+      {
+        "test_id": "cp54_viewer-role.spec.ts::viewer role scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10683,
+        "failure": ""
+      },
+      {
+        "test_id": "cp54_viewer-role.spec.ts::viewer role scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9295,
+        "failure": ""
+      },
+      {
+        "test_id": "cp55_auto-close.spec.ts::auto close",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5520,
+        "failure": ""
+      },
+      {
+        "test_id": "cp55_auto-close.spec.ts::auto close scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15825,
+        "failure": ""
+      },
+      {
+        "test_id": "cp55_auto-close.spec.ts::auto close scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 36221,
+        "failure": ""
+      },
+      {
+        "test_id": "cp55_auto-close.spec.ts::auto close scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27277,
+        "failure": ""
+      },
+      {
+        "test_id": "cp56_late-per-boundary.spec.ts::late per boundary",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7452,
+        "failure": ""
+      },
+      {
+        "test_id": "cp56_late-per-boundary.spec.ts::late per boundary scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12221,
+        "failure": ""
+      },
+      {
+        "test_id": "cp56_late-per-boundary.spec.ts::late per boundary scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18808,
+        "failure": ""
+      },
+      {
+        "test_id": "cp56_late-per-boundary.spec.ts::late per boundary scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28995,
+        "failure": ""
+      },
+      {
+        "test_id": "cp57_split-claim.spec.ts::split claim",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14970,
+        "failure": ""
+      },
+      {
+        "test_id": "cp57_split-claim.spec.ts::split claim scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12776,
+        "failure": ""
+      },
+      {
+        "test_id": "cp57_split-claim.spec.ts::split claim scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13080,
+        "failure": ""
+      },
+      {
+        "test_id": "cp57_split-claim.spec.ts::split claim scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16226,
+        "failure": ""
+      },
+      {
+        "test_id": "cp58_watch-and-notify.spec.ts::watch and notify",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7682,
+        "failure": ""
+      },
+      {
+        "test_id": "cp58_watch-and-notify.spec.ts::watch and notify scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9733,
+        "failure": ""
+      },
+      {
+        "test_id": "cp58_watch-and-notify.spec.ts::watch and notify scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16117,
+        "failure": ""
+      },
+      {
+        "test_id": "cp58_watch-and-notify.spec.ts::watch and notify scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14429,
+        "failure": ""
+      },
+      {
+        "test_id": "cp59_period-templates.spec.ts::period templates",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8979,
+        "failure": ""
+      },
+      {
+        "test_id": "cp59_period-templates.spec.ts::period templates scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13927,
+        "failure": ""
+      },
+      {
+        "test_id": "cp59_period-templates.spec.ts::period templates scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16338,
+        "failure": ""
+      },
+      {
+        "test_id": "cp59_period-templates.spec.ts::period templates scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13025,
+        "failure": ""
+      },
+      {
+        "test_id": "cp60_trimmed-totals.spec.ts::trimmed totals",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7325,
+        "failure": ""
+      },
+      {
+        "test_id": "cp60_trimmed-totals.spec.ts::trimmed totals scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20937,
+        "failure": ""
+      },
+      {
+        "test_id": "cp60_trimmed-totals.spec.ts::trimmed totals scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16751,
+        "failure": ""
+      },
+      {
+        "test_id": "cp60_trimmed-totals.spec.ts::trimmed totals scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19517,
+        "failure": ""
+      },
+      {
+        "test_id": "cp61_delegation.spec.ts::delegation",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12833,
+        "failure": ""
+      },
+      {
+        "test_id": "cp61_delegation.spec.ts::delegation scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17852,
+        "failure": ""
+      },
+      {
+        "test_id": "cp61_delegation.spec.ts::delegation scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9012,
+        "failure": ""
+      },
+      {
+        "test_id": "cp61_delegation.spec.ts::delegation scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13455,
+        "failure": ""
+      },
+      {
+        "test_id": "cp62_archive-sheet.spec.ts::archive sheet",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 36112,
+        "failure": ""
+      },
+      {
+        "test_id": "cp62_archive-sheet.spec.ts::archive sheet scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15547,
+        "failure": ""
+      },
+      {
+        "test_id": "cp62_archive-sheet.spec.ts::archive sheet scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10166,
+        "failure": ""
+      },
+      {
+        "test_id": "cp62_archive-sheet.spec.ts::archive sheet scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18962,
+        "failure": ""
+      },
+      {
+        "test_id": "cp63_person-terms.spec.ts::person terms",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7835,
+        "failure": ""
+      },
+      {
+        "test_id": "cp63_person-terms.spec.ts::person terms scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9780,
+        "failure": ""
+      },
+      {
+        "test_id": "cp63_person-terms.spec.ts::person terms scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15752,
+        "failure": ""
+      },
+      {
+        "test_id": "cp63_person-terms.spec.ts::person terms scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10112,
+        "failure": ""
+      },
+      {
+        "test_id": "cp64_floor-after-late.spec.ts::floor after late",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7679,
+        "failure": ""
+      },
+      {
+        "test_id": "cp64_floor-after-late.spec.ts::floor after late scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 43500,
+        "failure": ""
+      },
+      {
+        "test_id": "cp64_floor-after-late.spec.ts::floor after late scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19837,
+        "failure": ""
+      },
+      {
+        "test_id": "cp64_floor-after-late.spec.ts::floor after late scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19006,
+        "failure": ""
+      },
+      {
+        "test_id": "cp65_void-settled.spec.ts::void settled",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10214,
+        "failure": ""
+      },
+      {
+        "test_id": "cp65_void-settled.spec.ts::void settled scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 33184,
+        "failure": ""
+      },
+      {
+        "test_id": "cp65_void-settled.spec.ts::void settled scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 40839,
+        "failure": ""
+      },
+      {
+        "test_id": "cp65_void-settled.spec.ts::void settled scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22316,
+        "failure": ""
+      },
+      {
+        "test_id": "cp66_redate-claim.spec.ts::redate claim",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11931,
+        "failure": ""
+      },
+      {
+        "test_id": "cp66_redate-claim.spec.ts::redate claim scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 55244,
+        "failure": ""
+      },
+      {
+        "test_id": "cp66_redate-claim.spec.ts::redate claim scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15862,
+        "failure": ""
+      },
+      {
+        "test_id": "cp66_redate-claim.spec.ts::redate claim scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14103,
+        "failure": ""
+      },
+      {
+        "test_id": "cp67_active-people.spec.ts::active people",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5918,
+        "failure": ""
+      },
+      {
+        "test_id": "cp67_active-people.spec.ts::active people scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23441,
+        "failure": ""
+      },
+      {
+        "test_id": "cp67_active-people.spec.ts::active people scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14064,
+        "failure": ""
+      },
+      {
+        "test_id": "cp67_active-people.spec.ts::active people scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18261,
+        "failure": ""
+      },
+      {
+        "test_id": "cp68_backing-recent-settled.spec.ts::backing recent settled",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6541,
+        "failure": ""
+      },
+      {
+        "test_id": "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17678,
+        "failure": ""
+      },
+      {
+        "test_id": "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17061,
+        "failure": ""
+      },
+      {
+        "test_id": "cp68_backing-recent-settled.spec.ts::backing recent settled scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18113,
+        "failure": ""
+      },
+      {
+        "test_id": "cp69_claim-lock.spec.ts::claim lock",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17034,
+        "failure": ""
+      },
+      {
+        "test_id": "cp69_claim-lock.spec.ts::claim lock scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19218,
+        "failure": ""
+      },
+      {
+        "test_id": "cp69_claim-lock.spec.ts::claim lock scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21954,
+        "failure": ""
+      },
+      {
+        "test_id": "cp69_claim-lock.spec.ts::claim lock scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13440,
+        "failure": ""
+      },
+      {
+        "test_id": "cp70_soft-close.spec.ts::soft close",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13452,
+        "failure": ""
+      },
+      {
+        "test_id": "cp70_soft-close.spec.ts::soft close scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20277,
+        "failure": ""
+      },
+      {
+        "test_id": "cp70_soft-close.spec.ts::soft close scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22943,
+        "failure": ""
+      },
+      {
+        "test_id": "cp70_soft-close.spec.ts::soft close scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 31814,
+        "failure": ""
+      },
+      {
+        "test_id": "cp71_cancel-statement.spec.ts::cancel statement",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12676,
+        "failure": ""
+      },
+      {
+        "test_id": "cp71_cancel-statement.spec.ts::cancel statement scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14381,
+        "failure": ""
+      },
+      {
+        "test_id": "cp71_cancel-statement.spec.ts::cancel statement scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18724,
+        "failure": ""
+      },
+      {
+        "test_id": "cp71_cancel-statement.spec.ts::cancel statement scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20753,
+        "failure": ""
+      },
+      {
+        "test_id": "cp72_retired-leave-totals.spec.ts::retired leave totals",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7206,
+        "failure": ""
+      },
+      {
+        "test_id": "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15695,
+        "failure": ""
+      },
+      {
+        "test_id": "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 42673,
+        "failure": ""
+      },
+      {
+        "test_id": "cp72_retired-leave-totals.spec.ts::retired leave totals scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17336,
+        "failure": ""
+      },
+      {
+        "test_id": "cp73_statement-as-of.spec.ts::statement as of",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17996,
+        "failure": ""
+      },
+      {
+        "test_id": "cp73_statement-as-of.spec.ts::statement as of scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17461,
+        "failure": ""
+      },
+      {
+        "test_id": "cp73_statement-as-of.spec.ts::statement as of scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17004,
+        "failure": ""
+      },
+      {
+        "test_id": "cp73_statement-as-of.spec.ts::statement as of scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20540,
+        "failure": ""
+      },
+      {
+        "test_id": "cp74_as-of-view.spec.ts::as of view",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19474,
+        "failure": ""
+      },
+      {
+        "test_id": "cp74_as-of-view.spec.ts::as of view scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28777,
+        "failure": ""
+      },
+      {
+        "test_id": "cp74_as-of-view.spec.ts::as of view scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18664,
+        "failure": ""
+      },
+      {
+        "test_id": "cp74_as-of-view.spec.ts::as of view scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24941,
+        "failure": ""
+      },
+      {
+        "test_id": "cp75_bulk-grade.spec.ts::bulk grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5903,
+        "failure": ""
+      },
+      {
+        "test_id": "cp75_bulk-grade.spec.ts::bulk grade scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16314,
+        "failure": ""
+      },
+      {
+        "test_id": "cp75_bulk-grade.spec.ts::bulk grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25059,
+        "failure": ""
+      },
+      {
+        "test_id": "cp75_bulk-grade.spec.ts::bulk grade scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17718,
+        "failure": ""
+      },
+      {
+        "test_id": "cp76_snapshots.spec.ts::snapshots",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6778,
+        "failure": ""
+      },
+      {
+        "test_id": "cp76_snapshots.spec.ts::snapshots scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22755,
+        "failure": ""
+      },
+      {
+        "test_id": "cp76_snapshots.spec.ts::snapshots scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17904,
+        "failure": ""
+      },
+      {
+        "test_id": "cp76_snapshots.spec.ts::snapshots scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17044,
+        "failure": ""
+      },
+      {
+        "test_id": "cp77_note-required.spec.ts::note required",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11736,
+        "failure": ""
+      },
+      {
+        "test_id": "cp77_note-required.spec.ts::note required scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22259,
+        "failure": ""
+      },
+      {
+        "test_id": "cp77_note-required.spec.ts::note required scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10047,
+        "failure": ""
+      },
+      {
+        "test_id": "cp77_note-required.spec.ts::note required scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20674,
+        "failure": ""
+      },
+      {
+        "test_id": "cp78_age-buckets.spec.ts::age buckets",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7301,
+        "failure": ""
+      },
+      {
+        "test_id": "cp78_age-buckets.spec.ts::age buckets scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 51866,
+        "failure": ""
+      },
+      {
+        "test_id": "cp78_age-buckets.spec.ts::age buckets scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24557,
+        "failure": ""
+      },
+      {
+        "test_id": "cp78_age-buckets.spec.ts::age buckets scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12925,
+        "failure": ""
+      },
+      {
+        "test_id": "cp79_entry-date.spec.ts::entry date",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12799,
+        "failure": ""
+      },
+      {
+        "test_id": "cp79_entry-date.spec.ts::entry date scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 47308,
+        "failure": ""
+      },
+      {
+        "test_id": "cp79_entry-date.spec.ts::entry date scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14077,
+        "failure": ""
+      },
+      {
+        "test_id": "cp79_entry-date.spec.ts::entry date scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22110,
+        "failure": ""
+      },
+      {
+        "test_id": "cp80_period-by-due-by.spec.ts::period by due by",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9118,
+        "failure": ""
+      },
+      {
+        "test_id": "cp80_period-by-due-by.spec.ts::period by due by scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19358,
+        "failure": ""
+      },
+      {
+        "test_id": "cp80_period-by-due-by.spec.ts::period by due by scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19263,
+        "failure": ""
+      },
+      {
+        "test_id": "cp80_period-by-due-by.spec.ts::period by due by scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 24335,
+        "failure": ""
+      },
+      {
+        "test_id": "cp81_remind.spec.ts::remind",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19423,
+        "failure": ""
+      },
+      {
+        "test_id": "cp81_remind.spec.ts::remind scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18765,
+        "failure": ""
+      },
+      {
+        "test_id": "cp81_remind.spec.ts::remind scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15047,
+        "failure": ""
+      },
+      {
+        "test_id": "cp81_remind.spec.ts::remind scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18653,
+        "failure": ""
+      },
+      {
+        "test_id": "cp82_settled-and-open-totals.spec.ts::settled and open totals",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7713,
+        "failure": ""
+      },
+      {
+        "test_id": "cp82_settled-and-open-totals.spec.ts::settled and open totals scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22206,
+        "failure": ""
+      },
+      {
+        "test_id": "cp82_settled-and-open-totals.spec.ts::settled and open totals scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22208,
+        "failure": ""
+      },
+      {
+        "test_id": "cp82_settled-and-open-totals.spec.ts::settled and open totals scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 50792,
+        "failure": ""
+      },
+      {
+        "test_id": "cp83_holidays.spec.ts::holidays",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7363,
+        "failure": ""
+      },
+      {
+        "test_id": "cp83_holidays.spec.ts::holidays scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 28559,
+        "failure": ""
+      },
+      {
+        "test_id": "cp83_holidays.spec.ts::holidays scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18566,
+        "failure": ""
+      },
+      {
+        "test_id": "cp83_holidays.spec.ts::holidays scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23753,
+        "failure": ""
+      },
+      {
+        "test_id": "cp84_business-day-terms.spec.ts::business day terms",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6475,
+        "failure": ""
+      },
+      {
+        "test_id": "cp84_business-day-terms.spec.ts::business day terms scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 48871,
+        "failure": ""
+      },
+      {
+        "test_id": "cp84_business-day-terms.spec.ts::business day terms scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17349,
+        "failure": ""
+      },
+      {
+        "test_id": "cp84_business-day-terms.spec.ts::business day terms scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18688,
+        "failure": ""
+      },
+      {
+        "test_id": "cp85_grace-per-grade.spec.ts::grace per grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10947,
+        "failure": ""
+      },
+      {
+        "test_id": "cp85_grace-per-grade.spec.ts::grace per grade scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23898,
+        "failure": ""
+      },
+      {
+        "test_id": "cp85_grace-per-grade.spec.ts::grace per grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20217,
+        "failure": ""
+      },
+      {
+        "test_id": "cp85_grace-per-grade.spec.ts::grace per grade scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20983,
+        "failure": ""
+      },
+      {
+        "test_id": "cp86_inline-amount.spec.ts::inline amount",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18430,
+        "failure": ""
+      },
+      {
+        "test_id": "cp86_inline-amount.spec.ts::inline amount scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17535,
+        "failure": ""
+      },
+      {
+        "test_id": "cp86_inline-amount.spec.ts::inline amount scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 43772,
+        "failure": ""
+      },
+      {
+        "test_id": "cp86_inline-amount.spec.ts::inline amount scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 23582,
+        "failure": ""
+      },
+      {
+        "test_id": "cp87_external-reference.spec.ts::external reference",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11496,
+        "failure": ""
+      },
+      {
+        "test_id": "cp87_external-reference.spec.ts::external reference scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15720,
+        "failure": ""
+      },
+      {
+        "test_id": "cp87_external-reference.spec.ts::external reference scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25172,
+        "failure": ""
+      },
+      {
+        "test_id": "cp87_external-reference.spec.ts::external reference scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25248,
+        "failure": ""
+      },
+      {
+        "test_id": "cp88_compound-late-charge.spec.ts::compound late charge",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5709,
+        "failure": ""
+      },
+      {
+        "test_id": "cp88_compound-late-charge.spec.ts::compound late charge scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 29203,
+        "failure": ""
+      },
+      {
+        "test_id": "cp88_compound-late-charge.spec.ts::compound late charge scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21835,
+        "failure": ""
+      },
+      {
+        "test_id": "cp88_compound-late-charge.spec.ts::compound late charge scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 50568,
+        "failure": ""
+      },
+      {
+        "test_id": "cp89_claim-tags.spec.ts::claim tags",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6740,
+        "failure": ""
+      },
+      {
+        "test_id": "cp89_claim-tags.spec.ts::claim tags scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19216,
+        "failure": ""
+      },
+      {
+        "test_id": "cp89_claim-tags.spec.ts::claim tags scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18096,
+        "failure": ""
+      },
+      {
+        "test_id": "cp89_claim-tags.spec.ts::claim tags scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12476,
+        "failure": ""
+      },
+      {
+        "test_id": "cp90_void-reasons.spec.ts::void reasons",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14071,
+        "failure": ""
+      },
+      {
+        "test_id": "cp90_void-reasons.spec.ts::void reasons scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25954,
+        "failure": ""
+      },
+      {
+        "test_id": "cp90_void-reasons.spec.ts::void reasons scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20559,
+        "failure": ""
+      },
+      {
+        "test_id": "cp90_void-reasons.spec.ts::void reasons scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 13124,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 9389,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14502,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15539,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19917,
+        "failure": ""
+      },
+      {
+        "test_id": "cp92_four-eyes-editor.spec.ts::four eyes editor",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16171,
+        "failure": ""
+      },
+      {
+        "test_id": "cp92_four-eyes-editor.spec.ts::four eyes editor scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18467,
+        "failure": ""
+      },
+      {
+        "test_id": "cp92_four-eyes-editor.spec.ts::four eyes editor scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20751,
+        "failure": ""
+      },
+      {
+        "test_id": "cp92_four-eyes-editor.spec.ts::four eyes editor scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20480,
+        "failure": ""
+      },
+      {
+        "test_id": "cp93_bulk-reassign.spec.ts::bulk reassign",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8076,
+        "failure": ""
+      },
+      {
+        "test_id": "cp93_bulk-reassign.spec.ts::bulk reassign scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14741,
+        "failure": ""
+      },
+      {
+        "test_id": "cp93_bulk-reassign.spec.ts::bulk reassign scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 12858,
+        "failure": ""
+      },
+      {
+        "test_id": "cp93_bulk-reassign.spec.ts::bulk reassign scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17571,
+        "failure": ""
+      },
+      {
+        "test_id": "cp94_proof-threshold-per-grade.spec.ts::proof threshold per grade",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16877,
+        "failure": ""
+      },
+      {
+        "test_id": "cp94_proof-threshold-per-grade.spec.ts::proof threshold per grade scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 21647,
+        "failure": ""
+      },
+      {
+        "test_id": "cp94_proof-threshold-per-grade.spec.ts::proof threshold per grade scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 25346,
+        "failure": ""
+      },
+      {
+        "test_id": "cp94_proof-threshold-per-grade.spec.ts::proof threshold per grade scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17015,
+        "failure": ""
+      },
+      {
+        "test_id": "cp95_rate-preview.spec.ts::rate preview",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 11975,
+        "failure": ""
+      },
+      {
+        "test_id": "cp95_rate-preview.spec.ts::rate preview scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19846,
+        "failure": ""
+      },
+      {
+        "test_id": "cp95_rate-preview.spec.ts::rate preview scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 38123,
+        "failure": ""
+      },
+      {
+        "test_id": "cp95_rate-preview.spec.ts::rate preview scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 26789,
+        "failure": ""
+      },
+      {
+        "test_id": "cp96_holidays-redate.spec.ts::holidays redate",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6932,
+        "failure": ""
+      },
+      {
+        "test_id": "cp96_holidays-redate.spec.ts::holidays redate scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16905,
+        "failure": ""
+      },
+      {
+        "test_id": "cp96_holidays-redate.spec.ts::holidays redate scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15111,
+        "failure": ""
+      },
+      {
+        "test_id": "cp96_holidays-redate.spec.ts::holidays redate scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 31165,
+        "failure": ""
+      },
+      {
+        "test_id": "cp97_monthly-totals.spec.ts::monthly totals",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6636,
+        "failure": ""
+      },
+      {
+        "test_id": "cp97_monthly-totals.spec.ts::monthly totals scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16257,
+        "failure": ""
+      },
+      {
+        "test_id": "cp97_monthly-totals.spec.ts::monthly totals scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 20306,
+        "failure": ""
+      },
+      {
+        "test_id": "cp97_monthly-totals.spec.ts::monthly totals scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16072,
+        "failure": ""
+      },
+      {
+        "test_id": "cp98_settle-batches.spec.ts::settle batches",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8349,
+        "failure": ""
+      },
+      {
+        "test_id": "cp98_settle-batches.spec.ts::settle batches scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17732,
+        "failure": ""
+      },
+      {
+        "test_id": "cp98_settle-batches.spec.ts::settle batches scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 38844,
+        "failure": ""
+      },
+      {
+        "test_id": "cp98_settle-batches.spec.ts::settle batches scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14102,
+        "failure": ""
+      },
+      {
+        "test_id": "cp99_person-contact.spec.ts::person contact",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15817,
+        "failure": ""
+      },
+      {
+        "test_id": "cp99_person-contact.spec.ts::person contact scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 27741,
+        "failure": ""
+      },
+      {
+        "test_id": "cp99_person-contact.spec.ts::person contact scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18288,
+        "failure": ""
+      },
+      {
+        "test_id": "cp99_person-contact.spec.ts::person contact scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16311,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

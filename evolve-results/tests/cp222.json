@@ -1,0 +1,66 @@
+{
+  "checkpoint": 222,
+  "checkpoint_id": "cp222_dashboard-over-tree",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 10,
+  "branch": "evolve/202610271-as/just-solve/chain10",
+  "commit_sha": "8f24c79471f7b73941ef68bd97fe5d6c5b9aaf39",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-18T20:41:30",
+  "seconds": 112,
+  "build_log_file": "cp222.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp222_dashboard-over-tree.spec.ts::dashboard over tree": true,
+      "cp222_dashboard-over-tree.spec.ts::dashboard over tree scenario 1": true,
+      "cp222_dashboard-over-tree.spec.ts::dashboard over tree scenario 2": true,
+      "cp222_dashboard-over-tree.spec.ts::dashboard over tree scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp222_dashboard-over-tree.spec.ts::dashboard over tree",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16306,
+        "failure": ""
+      },
+      {
+        "test_id": "cp222_dashboard-over-tree.spec.ts::dashboard over tree scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 16159,
+        "failure": ""
+      },
+      {
+        "test_id": "cp222_dashboard-over-tree.spec.ts::dashboard over tree scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 17431,
+        "failure": ""
+      },
+      {
+        "test_id": "cp222_dashboard-over-tree.spec.ts::dashboard over tree scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19015,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

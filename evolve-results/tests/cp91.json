@@ -1,0 +1,66 @@
+{
+  "checkpoint": 91,
+  "checkpoint_id": "cp91_claim-comments",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 10,
+  "branch": "evolve/202610271-as/just-solve/chain10",
+  "commit_sha": "47af02a0ff1cb5069adb467584b75d6d0a7d9a52",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-18T03:34:51",
+  "seconds": 84,
+  "build_log_file": "cp91.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp91_claim-comments.spec.ts::claim comments": true,
+      "cp91_claim-comments.spec.ts::claim comments scenario 1": true,
+      "cp91_claim-comments.spec.ts::claim comments scenario 2": true,
+      "cp91_claim-comments.spec.ts::claim comments scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 7541,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 8632,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 10180,
+        "failure": ""
+      },
+      {
+        "test_id": "cp91_claim-comments.spec.ts::claim comments scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14879,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

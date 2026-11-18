@@ -1,0 +1,66 @@
+{
+  "checkpoint": 194,
+  "checkpoint_id": "cp194_settle-as-of-date",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 10,
+  "branch": "evolve/202610271-as/just-solve/chain10",
+  "commit_sha": "503c88da6baedf879433b70e5d574bd0139f52cd",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-18T15:21:46",
+  "seconds": 123,
+  "build_log_file": "cp194.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp194_settle-as-of-date.spec.ts::settle as of date": true,
+      "cp194_settle-as-of-date.spec.ts::settle as of date scenario 1": true,
+      "cp194_settle-as-of-date.spec.ts::settle as of date scenario 2": true,
+      "cp194_settle-as-of-date.spec.ts::settle as of date scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp194_settle-as-of-date.spec.ts::settle as of date",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 6045,
+        "failure": ""
+      },
+      {
+        "test_id": "cp194_settle-as-of-date.spec.ts::settle as of date scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 35725,
+        "failure": ""
+      },
+      {
+        "test_id": "cp194_settle-as-of-date.spec.ts::settle as of date scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22112,
+        "failure": ""
+      },
+      {
+        "test_id": "cp194_settle-as-of-date.spec.ts::settle as of date scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18547,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "checkpoint": 137,
+  "checkpoint_id": "cp137_claim-lines",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 10,
+  "branch": "evolve/202610271-as/just-solve/chain10",
+  "commit_sha": "380c49a3ab2fea8566f892de14480ab450362761",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-18T07:20:54",
+  "seconds": 105,
+  "build_log_file": "cp137.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp137_claim-lines.spec.ts::claim lines": false,
+      "cp137_claim-lines.spec.ts::claim lines scenario 1": true,
+      "cp137_claim-lines.spec.ts::claim lines scenario 2": true,
+      "cp137_claim-lines.spec.ts::claim lines scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp137_claim-lines.spec.ts::claim lines",
+        "category": "functionality",
+        "passed": false,
+        "duration_ms": 14724,
+        "failure": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\n  24 |     expect(await ui.addLine(pg_uma, c_ada_2, {\"label\": \"x\", \"qty\": \"1\", \"unit\": \"1.00\"})).toBe(true);\n  25 |     expect(await ui.editClaim(pg_uma, c_ada_0, {\"amount\": \"9.00\"})).toBe(false);\n> 26 |     expect(await ui.editClaim(pg_uma, c_ada_0, {\"note\": \"lined\"})).toBe(true);\n     |                                                                    ^\n  27 |     expect(await ui.editInline(pg_uma, c_ada_0, \"8.00\")).toBe(false);\n  28 |     const pg_vic = await ui.userPage(browser, \"vic\", sheet);\n  29 |     expect(await ui.claimEditOpen(pg_vic, c_ada_0)).toBe(true);\n\n    at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp137_claim-lines.spec.ts:26:68 | Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m"
+      },
+      {
+        "test_id": "cp137_claim-lines.spec.ts::claim lines scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 14370,
+        "failure": ""
+      },
+      {
+        "test_id": "cp137_claim-lines.spec.ts::claim lines scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 19338,
+        "failure": ""
+      },
+      {
+        "test_id": "cp137_claim-lines.spec.ts::claim lines scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 18596,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

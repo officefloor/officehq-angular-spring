@@ -1,0 +1,66 @@
+{
+  "checkpoint": 101,
+  "checkpoint_id": "cp101_audit-viewer",
+  "kind": "checkpoint",
+  "run_id": "202610271-as",
+  "condition": "just-solve",
+  "chain": 10,
+  "branch": "evolve/202610271-as/just-solve/chain10",
+  "commit_sha": "7353e9dcceacdc6a8c0be1f1a56ab4e2998942ae",
+  "harness_sha": "8b39da3c7afa3e0f848a31d0db987618db86a6b6",
+  "harness_dirty": [],
+  "workers": 3,
+  "port": 3002,
+  "started_at": "2026-11-18T04:18:42",
+  "seconds": 123,
+  "build_log_file": "cp101.test.log",
+  "replaced_tests": [],
+  "tests": {
+    "gated": true,
+    "scope": "checkpoint",
+    "build_ok": true,
+    "build_output": "",
+    "total_selected": 4,
+    "results": {
+      "cp101_audit-viewer.spec.ts::audit viewer": true,
+      "cp101_audit-viewer.spec.ts::audit viewer scenario 1": true,
+      "cp101_audit-viewer.spec.ts::audit viewer scenario 2": true,
+      "cp101_audit-viewer.spec.ts::audit viewer scenario 3": true
+    },
+    "detail": [
+      {
+        "test_id": "cp101_audit-viewer.spec.ts::audit viewer",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 5469,
+        "failure": ""
+      },
+      {
+        "test_id": "cp101_audit-viewer.spec.ts::audit viewer scenario 1",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 15407,
+        "failure": ""
+      },
+      {
+        "test_id": "cp101_audit-viewer.spec.ts::audit viewer scenario 2",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 22314,
+        "failure": ""
+      },
+      {
+        "test_id": "cp101_audit-viewer.spec.ts::audit viewer scenario 3",
+        "category": "functionality",
+        "passed": true,
+        "duration_ms": 36252,
+        "failure": ""
+      }
+    ],
+    "error": "",
+    "gate_invalid": false,
+    "app_broken": false,
+    "gate_attempts": 1,
+    "seed_contract": null
+  }
+}

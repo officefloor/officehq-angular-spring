@@ -1,0 +1,101 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp218-grku28os
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp218_review-assignment.spec.ts:6:7 › review assignment › review assignment (11.4s)
+  ✘  2 [chromium] › cp218_review-assignment.spec.ts:99:7 › review assignment › review assignment scenario 1 (23.9s)
+  ✓  3 [chromium] › cp218_review-assignment.spec.ts:744:7 › review assignment › review assignment scenario 2 (20.8s)
+  ✘  4 [chromium] › cp218_review-assignment.spec.ts:1343:7 › review assignment › review assignment scenario 3 (21.9s)
+
+
+  1) [chromium] › cp218_review-assignment.spec.ts:99:7 › review assignment › review assignment scenario 1 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('person-row-4').getByTestId('person-period-2026-03-carried')
+    Expected string: [32m"[7m1[27m.00"[39m
+    Received string: [31m"[7m0[27m.00"[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('person-row-4').getByTestId('person-period-2026-03-carried')[22m
+    [2m  -   locator resolved to <span data-testid="person-period-2026-03-carried">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="person-period-2026-03-carried">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="person-period-2026-03-carried">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="person-period-2026-03-carried">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="person-period-2026-03-carried">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="person-period-2026-03-carried">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="person-period-2026-03-carried">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="person-period-2026-03-carried">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+    [2m  -   locator resolved to <span data-testid="person-period-2026-03-carried">0.00</span>[22m
+    [2m  -   unexpected value "0.00"[22m
+
+
+      300 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-period-2026-04-due-total")).toHaveText("0.00");
+      301 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-period-2026-02-carried")).toHaveText("0.00");
+    > 302 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-period-2026-03-carried")).toHaveText("1.00");
+          |                                                                                                          ^
+      303 |     await expect(pg_vic.getByTestId("person-row-" + p_cam).getByTestId("person-period-2026-04-carried")).toHaveText("0.00");
+      304 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-amount")).toHaveText("12.50");
+      305 |     await expect(pg_vic.getByTestId("claim-row-" + c_cam_0).getByTestId("claim-date")).toHaveText("2026-03-09");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp218_review-assignment.spec.ts:302:106
+
+  2) [chromium] › cp218_review-assignment.spec.ts:1343:7 › review assignment › review assignment scenario 3 
+
+    Error: [31mTimed out 5000ms waiting for [39m[2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m
+
+    Locator: getByTestId('bulk-settle-batch')
+    Expected string: [32m"1"[39m
+    Received string: [31m""[39m
+    Call log:
+      [2m- expect.toHaveText with timeout 5000ms[22m
+    [2m  - waiting for getByTestId('bulk-settle-batch')[22m
+    [2m  -   locator resolved to <span data-testid="bulk-settle-batch"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span data-testid="bulk-settle-batch"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span data-testid="bulk-settle-batch"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span data-testid="bulk-settle-batch"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span data-testid="bulk-settle-batch"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span data-testid="bulk-settle-batch"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span data-testid="bulk-settle-batch"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span data-testid="bulk-settle-batch"></span>[22m
+    [2m  -   unexpected value ""[22m
+    [2m  -   locator resolved to <span data-testid="bulk-settle-batch"></span>[22m
+    [2m  -   unexpected value ""[22m
+
+
+      1681 |     await expect(pg_vic.getByTestId("rollup-settled-total")).toHaveText("0.00");
+      1682 |     await expect(pg_vic.getByTestId("rollup-open-total")).toHaveText("0.00");
+    > 1683 |     await expect(pg_vic.getByTestId("bulk-settle-batch")).toHaveText("1");
+           |                                                           ^
+      1684 |     await expect(pg_vic.getByTestId("rollup-cut-total")).toHaveText("0.00");
+      1685 |     await expect(pg_vic.getByTestId("rollup-aged-0-30")).toHaveText("0.00");
+      1686 |     await expect(pg_vic.getByTestId("rollup-aged-31-60")).toHaveText("0.00");
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp218_review-assignment.spec.ts:1683:59
+
+  2 failed
+    [chromium] › cp218_review-assignment.spec.ts:99:7 › review assignment › review assignment scenario 1 
+    [chromium] › cp218_review-assignment.spec.ts:1343:7 › review assignment › review assignment scenario 3 
+  2 passed (1.3m)

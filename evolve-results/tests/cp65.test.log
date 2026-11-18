@@ -1,0 +1,39 @@
+$ bin/build  (attempt 1)
+Picked up JAVA_TOOL_OPTIONS: -Djava.io.tmpdir=/tmp/202610271-as-testing-cp65-785georn
+
+$ npm ci --silent (cwd e2e)
+
+$ npx playwright install chromium (cwd e2e)
+
+$ npx playwright test --reporter=json,list --workers=3 --output=/home/daniel/ui-work/runs/202610271-as/testing/.run/pw-artifacts  (attempt 1, exit 1)
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › cp65_void-settled.spec.ts:6:7 › void settled › void settled (6.3s)
+  ✓  2 [chromium] › cp65_void-settled.spec.ts:94:7 › void settled › void settled scenario 1 (30.7s)
+  ✓  3 [chromium] › cp65_void-settled.spec.ts:356:7 › void settled › void settled scenario 2 (39.6s)
+  ✘  4 [chromium] › cp65_void-settled.spec.ts:588:7 › void settled › void settled scenario 3 (3.7s)
+
+
+  1) [chromium] › cp65_void-settled.spec.ts:588:7 › void settled › void settled scenario 3 ─────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m3[39m
+    Received: [31m0[39m
+
+      607 |     expect(await ui.setSettingDated(pg_uma, "cap", "2.00", "2026-03-28", "2.00")).toBe(true);
+      608 |     const pg_wes = await ui.userPage(browser, "wes", sheet);
+    > 609 |     expect(await ui.pasteClaims(pg_wes, "Ben,25.00,,paste\nCam,4.00,2026-03-01,paste\nCam,7.77,2026-03-20,paste")).toBe(3);
+          |                                                                                                                    ^
+      610 |     const c_ben_0 = await ui.claimAt(pg_wes, p_ben, 0);
+      611 |     const c_cam_1 = await ui.claimAt(pg_wes, p_cam, 1);
+      612 |     const c_cam_2 = await ui.claimAt(pg_wes, p_cam, 2);
+
+        at /home/daniel/ui-work/runs/202610271-as/testing/e2e/specs/cp65_void-settled.spec.ts:609:116
+
+  Slow test file: [chromium] › cp65_void-settled.spec.ts (1.3m)
+  Consider splitting slow test files to speed up parallel execution
+  1 failed
+    [chromium] › cp65_void-settled.spec.ts:588:7 › void settled › void settled scenario 3 ──────────
+  3 passed (1.4m)
